@@ -1060,6 +1060,7 @@ tr:hover td{background:var(--bg3)}
   <div class="ctxi" onclick="ctxPin()">📌 Закрепить</div>
   <div class="ctxi" onclick="ctxForward()">↪️ Переслать</div>
   <div class="ctxi" onclick="ctxReact()">😀 Реакция</div>
+  <div class="ctxi" onclick="ctxReport()">⚠️ Пожаловаться</div>
   <div class="ctxsep"></div>
   <div class="ctxi rd" onclick="openDelModal()">🗑️ Удалить</div>
 </div>
@@ -1536,11 +1537,11 @@ function wsHandleMessage(msg){
     case "message.deleted": {
       const { messageId, chatId } = msg.payload;
       if(S.messages[chatId]){
-        const m = S.messages[chatId].find(x => x.wsId === messageId || x.id === messageId);
+        const m = S.messages[chatId].find(x => x.wsId === messageId || x.dbId === messageId || x.id === messageId);
         if(m) m._deletedForAll = true;
       }
       if(S.chat === chatId) renderMsgs();
-      saveState();
+      renderChats(); saveState();
       break;
     }
 
@@ -1944,7 +1945,7 @@ function renderMsgs(){
     let h="";
     if(m.t!=="out")h+=`<div class="mav" style="background:${colBg(m.col||0)}">${m.fr?m.fr[0]:"?"}</div>`;
     if(m.t==="sk"){
-      h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})">${m.sk}</div>`;
+      h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="lpStart(event,${m.id})" ontouchend="lpEnd()" ontouchmove="lpEnd()">${m.sk}</div>`;
     }else if(m.t==="voice"){
       const bars=Array.from({length:17},(_,i)=>{const ht=4+Math.round(Math.sin(i*.8+1)*8+Math.random()*7);return`<div class="wb" style="height:${ht}px"></div>`;}).join("");
       h+=`<div class="vbub" oncontextmenu="showCtx(event,${m.id})"><div class="pbtn" onclick="tPlay(this)"><svg width="11" height="11" fill="white" viewBox="0 0 24 24"><path d="m5 3 14 9-14 9V3z"/></svg></div><div class="wf">${bars}</div><div class="vd">${m.dur||"0:00"}</div></div>`;
@@ -1958,7 +1959,7 @@ function renderMsgs(){
       bc+=`<div class="mt">${m.time||""}${m.t==="out"?'<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="'+(m.read?"#38bdf8":"currentColor")+'" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':""}</div>`;
       if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${r.e} ${r.c}</div>`).join("")}</div>`;
       if(m.edited)bc+='';
-      h+=`<div class="bub${m.edited?" edited":""}" oncontextmenu="showCtx(event,${m.id})">${bc}</div>`;
+      h+=`<div class="bub${m.edited?" edited":""}" oncontextmenu="showCtx(event,${m.id})" ontouchstart="lpStart(event,${m.id})" ontouchend="lpEnd()" ontouchmove="lpEnd()">${bc}</div>`;
     }
     row.innerHTML=h; c.appendChild(row);
   });
@@ -2118,7 +2119,25 @@ function startEdit(id){ const m=(S.messages[S.chat]||[]).find(x=>x.id===id);if(!
 function cancelEdit(){ S.editingId=null; el("estrip").classList.remove("on"); }
 
 // ── CTX MENU ──────────────────────────────────────────────────
-function showCtx(e,id){ e.preventDefault(); S.ctxId=id; const m=el("ctx"); m.style.left=Math.min(e.clientX,window.innerWidth-190)+"px"; m.style.top=Math.min(e.clientY,window.innerHeight-200)+"px"; m.classList.add("on"); }
+function showCtx(e,id){
+  e.preventDefault();
+  S.ctxId=id;
+  const m=el("ctx");
+  // Координаты для мыши и для тача
+  const x = e.clientX || (e.touches && e.touches[0]?.clientX) || (e.changedTouches && e.changedTouches[0]?.clientX) || window.innerWidth/2;
+  const y = e.clientY || (e.touches && e.touches[0]?.clientY) || (e.changedTouches && e.changedTouches[0]?.clientY) || window.innerHeight/2;
+  m.style.left=Math.min(x,window.innerWidth-190)+"px";
+  m.style.top=Math.min(y,window.innerHeight-260)+"px";
+  m.classList.add("on");
+}
+
+// Долгое нажатие на мобильных
+let lpTimer=null, lpId=null;
+function lpStart(e,id){
+  lpId=id;
+  lpTimer=setTimeout(()=>{ showCtx(e,id); if(navigator.vibrate)navigator.vibrate(40); },450);
+}
+function lpEnd(){ clearTimeout(lpTimer); }
 document.addEventListener("click",e=>{ el("ctx").classList.remove("on"); el("rxn-picker").classList.remove("on"); });
 function ctxReply(){ setReply(S.ctxId); }
 function ctxEdit(){ const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m||m.t!=="out"){showToast("❌ Только свои сообщения");return;} startEdit(S.ctxId); }
@@ -2133,16 +2152,27 @@ function ctxPin(){
 }
 function unpinMsg(){ S.pinnedMsgId=null; const pb=el("pinbar");if(pb)pb.style.display="none"; saveState(); }
 function ctxForward(){ S.fwdId=S.ctxId; openForward(); }
+function ctxReport(){
+  const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
+  el("ctx").classList.remove("on");
+  showToast("⚠️ Жалоба отправлена модераторам");
+  // TODO: отправка жалобы на сервер /api/reports
+}
 function ctxReact(){ const ctx=el("ctx"); const rp=el("rxn-picker"); rp.style.left=ctx.style.left; rp.style.top=(parseInt(ctx.style.top)-44)+"px"; rp.classList.add("on"); }
 function openDelModal(){
-  // check if it's own message — show "for all" option only for outgoing
   const ms=S.messages[S.chat]||[];
   const m=ms.find(x=>x.id===S.ctxId);
   const isOwn=m&&m.t==="out";
-  el("del-forall-btn").style.display=isOwn?"flex":"none";
-  el("del-info").textContent=isOwn
+  const ch=S.chats.find(c=>c.id===S.chat);
+  // В личном чате можно удалить у всех и свои, и чужие (как в Telegram)
+  // В группах/каналах — свои всегда, чужие только если ты admin/owner
+  const isPersonal = !ch || ch.type==="personal";
+  const isAdmin = ch && (ch.myRole==="owner" || ch.myRole==="admin");
+  const canDeleteForAll = isOwn || isPersonal || isAdmin;
+  el("del-forall-btn").style.display=canDeleteForAll?"flex":"none";
+  el("del-info").textContent=canDeleteForAll
     ?"Вы можете удалить сообщение только у себя или у всех участников чата."
-    :"Это сообщение другого пользователя. Можно удалить только у себя.";
+    :"Можно удалить только у себя.";
   el("m-delete").classList.add("on");
 }
 function delForMe(){
@@ -2154,7 +2184,18 @@ function delForMe(){
 function delForAll(){
   const ms=S.messages[S.chat]||[];
   const i=ms.findIndex(x=>x.id===S.ctxId);
-  if(i!==-1){ ms[i]._deletedForAll=true; }
+  if(i!==-1){
+    const m=ms[i];
+    m._deletedForAll=true;
+    // Отправляем удаление через WebSocket другим участникам
+    const curChat=S.chats.find(c=>c.id===S.chat);
+    const memberIds=getChatMemberIds(curChat);
+    wsSend({type:"message.delete", payload:{messageId:m.wsId||m.dbId||m.id, chatId:S.chat, forAll:true, memberIds}});
+    // Удаляем в БД
+    if(m.dbId && typeof S.chat==="string"){
+      apiDelete("/api/messages/"+m.dbId).catch(()=>{});
+    }
+  }
   closeM("m-delete"); renderMsgs(); showToast("🗑️ Удалено у всех"); saveState();
 }
 function ctxDel(){ openDelModal(); }
