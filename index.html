@@ -1557,6 +1557,20 @@ async function apiPost(path, body, auth=false){
   return res.json();
 }
 
+async function apiGet(path){
+  const t=getToken();
+  const headers = t ? {"Authorization":"Bearer "+t} : {};
+  const res = await fetch(API_URL+path,{headers});
+  return res.json();
+}
+
+async function apiDelete(path){
+  const t=getToken();
+  const headers = {"Content-Type":"application/json","Authorization":"Bearer "+(t||"")};
+  const res = await fetch(API_URL+path,{method:"DELETE",headers});
+  return res.json();
+}
+
 // ── AUTH FUNCTIONS ────────────────────────────────────────────
 async function sendCode(){
   const s=el("csel1"); const ph=el("phinp").value.replace(/\D/g,"");
@@ -1685,6 +1699,73 @@ function loginOK(){
       saveState(); renderChats();
     }
   }, 300);
+
+  // Загружаем реальные чаты из БД
+  setTimeout(loadChatsFromDB, 600);
+}
+
+// ── ЗАГРУЗКА ЧАТОВ ИЗ БД ─────────────────────────────────────
+async function loadChatsFromDB(){
+  try {
+    const data = await apiGet("/api/chats");
+    if(!data.chats) return;
+    data.chats.forEach(dbChat => {
+      // Пропускаем служебные чаты
+      if(dbChat.id === 88888 || dbChat.id === 99999) return;
+      // Если чат уже есть локально — обновляем
+      const existing = S.chats.find(c => c.id === dbChat.id);
+      if(existing){
+        existing.prev = dbChat.last_message || existing.prev;
+        existing.time = dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : existing.time;
+      } else {
+        // Добавляем новый чат из БД
+        S.chats.push({
+          id: dbChat.id,
+          nm: dbChat.name || "Чат",
+          ini: (dbChat.name||"Ч").slice(0,2).toUpperCase(),
+          col: Math.floor(Math.random()*8),
+          online: false,
+          prev: dbChat.last_message || "",
+          time: dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : "",
+          unread: 0,
+          type: dbChat.type || "personal",
+          pinned: false,
+          muted: false,
+          blocked: false,
+          draft: "",
+          dbId: dbChat.id,
+          myRole: dbChat.my_role
+        });
+      }
+    });
+    saveState(); renderChats();
+  } catch(e){ console.warn("loadChatsFromDB error:", e); }
+}
+
+// ── ЗАГРУЗКА СООБЩЕНИЙ ИЗ БД ─────────────────────────────────
+async function loadMessagesFromDB(chatId){
+  if(!chatId || chatId === 99999 || chatId === 88888) return;
+  try {
+    const data = await apiGet("/api/messages/"+chatId);
+    if(!data.messages || !data.messages.length) return;
+    if(!S.messages[chatId]) S.messages[chatId] = [];
+    data.messages.forEach(dbMsg => {
+      // Не дублируем уже загруженные
+      if(S.messages[chatId].find(m => m.dbId === dbMsg.id)) return;
+      const isMe = dbMsg.user_id === S.user?.id;
+      S.messages[chatId].push({
+        id: nextId(),
+        dbId: dbMsg.id,
+        t: isMe ? "out" : "in",
+        fr: dbMsg.sender_name ? dbMsg.sender_name.slice(0,2).toUpperCase() : "?",
+        tx: dbMsg.text,
+        time: new Date(dbMsg.created_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}),
+        read: isMe,
+        edited: !!dbMsg.edited_at
+      });
+    });
+    saveState(); renderMsgs();
+  } catch(e){ console.warn("loadMessagesFromDB error:", e); }
 }
 
 function updateUserUI(){
@@ -1789,6 +1870,8 @@ function openChat(id){
   if(prev){ const inp=el("minput"); if(inp)prev.draft=inp.value; }
 
   S.chat=id; const ch=S.chats.find(x=>x.id===id); if(!ch)return;
+  // Загружаем сообщения из БД если чат реальный
+  if(id !== 99999 && id !== 88888 && typeof id === "string") loadMessagesFromDB(id);
   ch.unread=0; renderChats();
 
   const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
@@ -1909,12 +1992,16 @@ function sendMsg(){
   inp.value=""; aResize(inp); renderMsgs(); renderChats(); saveState();
   if(el("char-count"))el("char-count").textContent="";
 
-  // Отправляем через WebSocket если подключены
+  // Сохраняем сообщение в БД и отправляем через WebSocket
   const memberIds = S.contacts?.filter(c=>c.online).map(c=>String(c.id)) || [];
   const sent = wsSend({
     type: "message.send",
     payload: { chatId: S.chat, text: txt, memberIds }
   });
+  // Сохраняем в БД если чат реальный (UUID)
+  if(typeof S.chat === "string" && S.chat.length > 10){
+    apiPost("/api/messages", {chatId: S.chat, text: txt}, true).catch(e=>console.warn("save msg error:", e));
+  }
 
   // Если WS не подключён — показываем локальный авто-ответ (демо)
   if(!sent){
@@ -2138,19 +2225,44 @@ function filterContacts(v){ renderContacts(v); }
 function startChatWith(contactId){
   const c=S.contacts.find(x=>x.id===contactId); if(!c)return;
   closeContacts();
-  // find or create chat
+  if(typeof c.id === "string" && c.id.length > 10){
+    startChatWithUser(c.id, c.nm, c.col||0); return;
+  }
   let ch=S.chats.find(x=>x.nm===c.nm);
   if(!ch){ ch={id:nextId(),nm:c.nm,ini:c.nm.slice(0,2).toUpperCase(),col:c.col,online:c.online,prev:"",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:""}; S.chats.push(ch); }
   openChat(ch.id); renderChats(); saveState();
+}
+
+async function startChatWithUser(userId, userName, col){
+  const existing = S.chats.find(c => c.withUserId === userId);
+  if(existing){ openChat(existing.id); return; }
+  try {
+    const data = await apiPost("/api/chats", {type:"personal", memberIds:[userId]}, true);
+    if(data.chat){
+      if(data.existing){
+        const alreadyLocal = S.chats.find(c => c.id === data.chat.id);
+        if(alreadyLocal){ openChat(alreadyLocal.id); return; }
+      }
+      const ch = {id:data.chat.id,nm:userName,ini:userName.slice(0,2).toUpperCase(),col:col||0,online:false,prev:"",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:"",withUserId:userId,myRole:"member"};
+      S.chats.unshift(ch); saveState(); renderChats(); openChat(ch.id);
+    }
+  } catch(e){ showToast("❌ Не удалось создать чат"); }
 }
 function openNewContact(){ showToast("👤 Добавить контакт — функция в разработке"); }
 
 // ── NEW CHAT ──────────────────────────────────────────────────
 function openNewChat(){ el("nc-results").innerHTML=""; el("nc-search").value=""; el("m-newchat").classList.add("on"); }
-function searchNewChat(v){
-  const list=S.contacts.filter(c=>!v||c.nm.toLowerCase().includes(v.toLowerCase())||("@"+c.uname).includes(v.toLowerCase()));
-  el("nc-results").innerHTML=list.map(c=>`<div class="contact-item" style="margin-bottom:4px" onclick="startChatWith(${c.id});closeM('m-newchat')"><div class="contact-av" style="background:${colBg(c.col)}">${c.nm[0]}</div><div><div class="contact-nm">${c.nm}</div><div class="contact-ph">@${c.uname}</div></div></div>`).join("");
-  if(!list.length&&v)el("nc-results").innerHTML=`<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пользователь @${v} не найден</div>`;
+async function searchNewChat(v){
+  if(!v){ el("nc-results").innerHTML=""; return; }
+  const local=S.contacts.filter(c=>c.nm.toLowerCase().includes(v.toLowerCase())||("@"+(c.uname||"")).includes(v.toLowerCase()));
+  try {
+    const data = await apiGet("/api/users/search?q="+encodeURIComponent(v));
+    (data.users||[]).filter(u=>u.id!==S.user?.id).forEach(u=>{
+      if(!local.find(c=>c.id===u.id)) local.push({id:u.id,nm:u.name||u.username||"?",uname:u.username||"",col:Math.floor(Math.random()*8),online:false});
+    });
+  } catch(e){}
+  el("nc-results").innerHTML=local.map(c=>`<div class="contact-item" style="margin-bottom:4px" onclick="startChatWithUser('${c.id}','${c.nm}',${c.col||0});closeM('m-newchat')"><div class="contact-av" style="background:${colBg(c.col)}">${c.nm[0]}</div><div><div class="contact-nm">${c.nm}</div><div class="contact-ph">@${c.uname}</div></div></div>`).join("");
+  if(!local.length&&v)el("nc-results").innerHTML=`<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пользователь @${v} не найден</div>`;
 }
 function createGroup(){ closeM("m-newchat"); renderGroupMembers(); el("m-group").classList.add("on"); }
 function renderGroupMembers(){ el("grp-members-list").innerHTML=S.contacts.map(c=>`<div class="contact-item" style="margin-bottom:4px"><input type="checkbox" id="grpm-${c.id}" style="margin-right:8px"><label for="grpm-${c.id}" style="display:flex;align-items:center;gap:8px;cursor:pointer"><div class="contact-av" style="width:32px;height:32px;border-radius:50%;background:${colBg(c.col)};display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff">${c.nm[0]}</div><div><div class="contact-nm">${c.nm}</div><div class="contact-ph">@${c.uname}</div></div></label></div>`).join(""); }
