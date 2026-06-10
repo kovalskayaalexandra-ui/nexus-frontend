@@ -1494,7 +1494,28 @@ function wsHandleMessage(msg){
       if(!S.messages[chatId]) S.messages[chatId] = [];
       // Проверяем что такого сообщения ещё нет
       if(S.messages[chatId].find(m => m.wsId === id)) break;
-      const ch = S.chats.find(c => c.id === chatId);
+      let ch = S.chats.find(c => c.id === chatId);
+      // Если чата нет локально — создаём его (сообщение от нового собеседника)
+      if(!ch){
+        ch = {
+          id: chatId,
+          nm: "Новый чат",
+          ini: "??",
+          col: Math.floor(Math.random()*8),
+          online: true,
+          prev: text,
+          time: now(),
+          unread: 1,
+          type: "personal",
+          pinned: false, muted: false, blocked: false, draft: "",
+          withUserId: senderId
+        };
+        S.chats.unshift(ch);
+        // Подгружаем имя отправителя из БД
+        apiGet("/api/users/"+senderId).then(d=>{
+          if(d.user){ ch.nm = d.user.name||d.user.username||"Пользователь"; ch.ini = ch.nm.slice(0,2).toUpperCase(); renderChats(); saveState(); }
+        }).catch(()=>{});
+      }
       const newMsg = {
         id: nextId(), wsId: id,
         t: "in",
@@ -1542,7 +1563,7 @@ let wsTypingTimer = null;
 function wsSendTyping(){
   const ch = S.chats.find(c => c.id === S.chat);
   if(!ch) return;
-  const memberIds = S.contacts?.filter(c => c.online).map(c => String(c.id)) || [];
+  const memberIds = getChatMemberIds(ch);
   wsSend({ type: "typing.start", payload: { chatId: S.chat, memberIds } });
 }
 
@@ -1555,6 +1576,13 @@ async function apiPost(path, body, auth=false){
   if(auth){ const t=getToken(); if(t) headers["Authorization"]="Bearer "+t; }
   const res = await fetch(API_URL+path,{method:"POST",headers,body:JSON.stringify(body)});
   return res.json();
+}
+
+function getChatMemberIds(chat){
+  // Для личного чата — ID собеседника из withUserId
+  if(chat && chat.withUserId) return [chat.withUserId];
+  // Иначе — онлайн контакты (демо-режим)
+  return S.contacts?.filter(c => c.online).map(c => String(c.id)) || [];
 }
 
 async function apiGet(path){
@@ -1993,7 +2021,8 @@ function sendMsg(){
   if(el("char-count"))el("char-count").textContent="";
 
   // Сохраняем сообщение в БД и отправляем через WebSocket
-  const memberIds = S.contacts?.filter(c=>c.online).map(c=>String(c.id)) || [];
+  const curChat = S.chats.find(c=>c.id===S.chat);
+  const memberIds = getChatMemberIds(curChat);
   const sent = wsSend({
     type: "message.send",
     payload: { chatId: S.chat, text: txt, memberIds }
