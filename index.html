@@ -501,24 +501,40 @@ tr:hover td{background:var(--bg3)}
 @media(max-width:700px){.asb{display:none}}
 @media(max-width:580px){.sb{width:58px}.cinfo,.cmeta{display:none}}
 
-/* ══ GIFTS ══ */
-.gifts-catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:18px}
-.gift-card{background:var(--bg2);border:1.5px solid var(--brd);border-radius:14px;padding:14px;text-align:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
-.gift-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.3)}
-.gift-card.common:hover{border-color:var(--tx2)}
-.gift-card.rare:hover{border-color:var(--acc2)}
-.gift-card.epic:hover{border-color:var(--gr)}
-.gift-card.legendary{border-color:var(--am);background:rgba(251,191,36,.05)}
-.gift-card.legendary:hover{box-shadow:0 8px 24px rgba(251,191,36,.2)}
-.gift-ico{font-size:36px;margin-bottom:8px;display:block}
-.gift-name{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;margin-bottom:4px}
-.gift-price{font-size:11px;color:var(--cr)}
-.gift-limit{font-size:9.5px;color:var(--tx3);margin-top:2px}
-.gift-rarity{position:absolute;top:6px;right:6px;font-size:8.5px;font-weight:700;padding:1px 5px;border-radius:4px}
+/* ══ GIFTS (редизайн в стиле Telegram) ══ */
+.gifts-catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:18px}
+.gift-card{background:var(--bg2);border:1.5px solid var(--brd);border-radius:18px;padding:18px 14px 14px;text-align:center;cursor:pointer;transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s,border-color .2s;position:relative;overflow:hidden}
+.gift-card::before{content:"";position:absolute;inset:0;opacity:0;transition:opacity .25s;pointer-events:none}
+.gift-card:hover{transform:translateY(-4px) scale(1.02)}
+.gift-card:hover::before{opacity:1}
+/* Common */
+.gift-card.common::before{background:radial-gradient(circle at 50% 0%,rgba(148,163,184,.12),transparent 70%)}
+.gift-card.common:hover{border-color:var(--tx2);box-shadow:0 10px 28px rgba(0,0,0,.25)}
+/* Rare — фиолетовое свечение */
+.gift-card.rare{border-color:rgba(167,139,250,.35)}
+.gift-card.rare::before{background:radial-gradient(circle at 50% 0%,rgba(167,139,250,.18),transparent 70%)}
+.gift-card.rare:hover{border-color:var(--acc2);box-shadow:0 10px 30px rgba(167,139,250,.3)}
+/* Epic — зелёное свечение */
+.gift-card.epic{border-color:rgba(52,211,153,.35)}
+.gift-card.epic::before{background:radial-gradient(circle at 50% 0%,rgba(52,211,153,.2),transparent 70%)}
+.gift-card.epic:hover{border-color:var(--gr);box-shadow:0 10px 30px rgba(52,211,153,.32)}
+/* Legendary — золотое свечение + анимация */
+.gift-card.legendary{border-color:rgba(251,191,36,.45);background:linear-gradient(160deg,rgba(251,191,36,.07),rgba(251,191,36,.02))}
+.gift-card.legendary::before{background:radial-gradient(circle at 50% 0%,rgba(251,191,36,.28),transparent 70%)}
+.gift-card.legendary:hover{border-color:var(--am);box-shadow:0 12px 34px rgba(251,191,36,.4)}
+.gift-card.legendary .gift-ico{animation:giftFloat 3s ease-in-out infinite}
+@keyframes giftFloat{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-4px) rotate(-3deg)}}
+.gift-ico{font-size:42px;margin-bottom:10px;display:block;filter:drop-shadow(0 4px 8px rgba(0,0,0,.2));position:relative;z-index:1}
+.gift-name{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;margin-bottom:5px;position:relative;z-index:1}
+.gift-price{font-size:12px;color:var(--cr);font-weight:600;position:relative;z-index:1}
+.gift-limit{font-size:9.5px;color:var(--tx3);margin-top:3px;position:relative;z-index:1}
+.gift-rarity{position:absolute;top:8px;right:8px;font-size:8px;font-weight:700;padding:2px 7px;border-radius:6px;text-transform:uppercase;letter-spacing:.03em;z-index:2}
 .gift-rarity.common{background:var(--bg4);color:var(--tx3)}
-.gift-rarity.rare{background:rgba(167,139,250,.15);color:var(--acc2)}
-.gift-rarity.epic{background:rgba(52,211,153,.15);color:var(--gr)}
-.gift-rarity.legendary{background:rgba(251,191,36,.15);color:var(--am)}
+.gift-rarity.rare{background:linear-gradient(135deg,rgba(167,139,250,.25),rgba(167,139,250,.12));color:var(--acc2)}
+.gift-rarity.epic{background:linear-gradient(135deg,rgba(52,211,153,.25),rgba(52,211,153,.12));color:var(--gr)}
+.gift-rarity.legendary{background:linear-gradient(135deg,rgba(251,191,36,.3),rgba(251,191,36,.12));color:var(--am)}
+/* Бейдж "осталось мало" для лимитированных */
+.gift-scarce{position:absolute;top:8px;left:8px;font-size:8px;font-weight:700;padding:2px 6px;border-radius:6px;background:rgba(248,113,113,.2);color:#f87171;z-index:2}
 .gift-bubble{background:linear-gradient(135deg,rgba(108,99,255,.15),rgba(56,189,248,.1));border:1px solid rgba(108,99,255,.3);border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:10px;max-width:220px;cursor:pointer}
 .gift-bub-ico{font-size:32px;flex-shrink:0}
 .gift-bub-nm{font-family:'Syne',sans-serif;font-weight:700;font-size:12.5px}
@@ -527,6 +543,18 @@ tr:hover td{background:var(--bg3)}
 .gift-sh-item{width:38px;height:38px;border-radius:9px;background:var(--bg3);border:1px solid var(--brd);display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:all .15s;position:relative}
 .gift-sh-item:hover{transform:scale(1.1);border-color:var(--acc)}
 .gift-sh-cnt{position:absolute;top:-5px;right:-5px;background:var(--acc);color:#fff;font-size:8px;font-weight:700;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+/* Профиль — витрина подарков (как в Telegram) */
+.pgift-section{margin-bottom:14px}
+.pgift-section-tit{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.pgift-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
+.pgift{aspect-ratio:1;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:28px;cursor:pointer;position:relative;transition:transform .18s cubic-bezier(.34,1.56,.64,1);border:1.5px solid var(--brd);background:var(--bg2)}
+.pgift:hover{transform:translateY(-3px) scale(1.05)}
+.pgift.rare{border-color:rgba(167,139,250,.4);background:linear-gradient(150deg,rgba(167,139,250,.12),transparent)}
+.pgift.epic{border-color:rgba(52,211,153,.4);background:linear-gradient(150deg,rgba(52,211,153,.12),transparent)}
+.pgift.legendary{border-color:rgba(251,191,36,.5);background:linear-gradient(150deg,rgba(251,191,36,.15),transparent);box-shadow:0 2px 12px rgba(251,191,36,.15)}
+.pgift.legendary::after{content:"⭐";position:absolute;top:-4px;right:-4px;font-size:11px}
+.pgift-cnt{position:absolute;bottom:-4px;right:-4px;background:var(--acc);color:#fff;font-size:9px;font-weight:700;min-width:16px;height:16px;padding:0 3px;border-radius:99px;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg)}
+.pgift-empty{color:var(--tx3);font-size:12px;padding:16px;text-align:center;width:100%}
 
 /* ══ EMOJI PANEL ══ */
 .emoji-search{width:100%;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;padding:6px 10px;color:var(--tx);font-size:12px;outline:none;margin-bottom:8px}
@@ -1377,14 +1405,22 @@ const DEFAULT_STATE = {
   gifts_catalog: [
     {id:1, name:"Сердечко", icon:"❤️", price:50, limit:null, sold:0, rarity:"common", color:"#f87171"},
     {id:2, name:"Звезда", icon:"⭐", price:100, limit:null, sold:0, rarity:"common", color:"#fbbf24"},
-    {id:3, name:"Корона", icon:"👑", price:500, limit:null, sold:0, rarity:"rare", color:"#a78bfa"},
-    {id:4, name:"Бриллиант", icon:"💎", price:1000, limit:5000, sold:0, rarity:"rare", color:"#67e8f9"},
-    {id:5, name:"Дракон", icon:"🐲", price:2500, limit:1000, sold:0, rarity:"epic", color:"#34d399"},
-    {id:6, name:"Галактика", icon:"🌌", price:5000, limit:100, sold:0, rarity:"legendary", color:"linear-gradient(135deg,#6c63ff,#38bdf8)"},
     {id:7, name:"Торт", icon:"🎂", price:150, limit:null, sold:0, rarity:"common", color:"#fb923c"},
-    {id:8, name:"Ракета", icon:"🚀", price:300, limit:null, sold:0, rarity:"common", color:"#38bdf8"},
     {id:9, name:"Котик", icon:"🐱", price:200, limit:null, sold:0, rarity:"common", color:"#f472b6"},
-    {id:10, name:"Молния", icon:"⚡", price:750, limit:2000, sold:0, rarity:"epic", color:"#fbbf24"},
+    {id:8, name:"Ракета", icon:"🚀", price:300, limit:null, sold:0, rarity:"common", color:"#38bdf8"},
+    {id:11, name:"Букет", icon:"💐", price:250, limit:null, sold:0, rarity:"common", color:"#fb7185"},
+    {id:12, name:"Подарок", icon:"🎁", price:180, limit:null, sold:0, rarity:"common", color:"#a78bfa"},
+    {id:3, name:"Корона", icon:"👑", price:500, limit:null, sold:0, rarity:"rare", color:"#a78bfa"},
+    {id:4, name:"Бриллиант", icon:"💎", price:1000, limit:5000, sold:120, rarity:"rare", color:"#67e8f9"},
+    {id:13, name:"Кубок", icon:"🏆", price:800, limit:3000, sold:200, rarity:"rare", color:"#fbbf24"},
+    {id:14, name:"Кольцо", icon:"💍", price:1200, limit:4000, sold:80, rarity:"rare", color:"#67e8f9"},
+    {id:5, name:"Дракон", icon:"🐲", price:2500, limit:1000, sold:850, rarity:"epic", color:"#34d399"},
+    {id:10, name:"Молния", icon:"⚡", price:750, limit:2000, sold:1700, rarity:"epic", color:"#fbbf24"},
+    {id:15, name:"Феникс", icon:"🔥", price:3000, limit:500, sold:430, rarity:"epic", color:"#fb923c"},
+    {id:16, name:"Единорог", icon:"🦄", price:3500, limit:777, sold:700, rarity:"epic", color:"#f472b6"},
+    {id:6, name:"Галактика", icon:"🌌", price:5000, limit:100, sold:88, rarity:"legendary", color:"linear-gradient(135deg,#6c63ff,#38bdf8)"},
+    {id:17, name:"Корона короля", icon:"👑", price:10000, limit:50, sold:47, rarity:"legendary", color:"linear-gradient(135deg,#fbbf24,#f59e0b)"},
+    {id:18, name:"Алмазное сердце", icon:"💖", price:7500, limit:77, sold:60, rarity:"legendary", color:"linear-gradient(135deg,#f472b6,#ec4899)"},
   ],
   my_gifts: [],
   my_stories: [],
@@ -2058,7 +2094,7 @@ function renderMsgs(){
     row.className="mrow out";
     row.setAttribute("data-id","gift-"+m.id);
     const rc={common:"var(--tx2)",rare:"var(--acc2)",epic:"var(--gr)",legendary:"var(--am)"};
-    row.innerHTML='<div class="gift-bubble" onclick="showToast(\'🎁 \'+m.name)">'
+    row.innerHTML='<div class="gift-bubble r-'+(m.rarity||'common')+'" onclick="showToast(\'🎁 \'+m.name)">'
       +'<div class="gift-bub-ico">'+m.icon+'</div>'
       +'<div><div class="gift-bub-nm">🎁 '+m.name+'</div>'
       +'<div class="gift-bub-sub" style="color:'+(rc[m.rarity]||'var(--tx2)')+'">→ '+m.to+'</div>'
@@ -3322,16 +3358,24 @@ function openGifts(recipientName){
 function closeGifts(){ el("screen-gifts").classList.remove("on"); }
 
 function renderGiftsCatalog(rarity){
-  const list = rarity==="all" ? S.gifts_catalog : S.gifts_catalog.filter(g=>g.rarity===rarity);
-  el("gifts-catalog").innerHTML = list.map(g=>`
+  // Сортируем: легендарные первыми (как в Telegram — лимитированные сверху)
+  const order={legendary:0,epic:1,rare:2,common:3};
+  let list = rarity==="all" ? [...S.gifts_catalog] : S.gifts_catalog.filter(g=>g.rarity===rarity);
+  list.sort((a,b)=>(order[a.rarity]||9)-(order[b.rarity]||9));
+  const rarityNames={common:"Обычный",rare:"Редкий",epic:"Эпический",legendary:"Лег."};
+  el("gifts-catalog").innerHTML = list.map(g=>{
+    const left = g.limit ? g.limit-g.sold : null;
+    const scarce = left!==null && left<=g.limit*0.2; // осталось <20%
+    return `
     <div class="gift-card ${g.rarity}" onclick="openGiftModal(${g.id})">
-      <div class="gift-rarity ${g.rarity}">${{common:"Обычный",rare:"Редкий",epic:"Эпический",legendary:"Легендарный"}[g.rarity]}</div>
+      <div class="gift-rarity ${g.rarity}">${rarityNames[g.rarity]}</div>
+      ${scarce?`<div class="gift-scarce">🔥 ${left} шт</div>`:""}
       <div class="gift-ico">${g.icon}</div>
       <div class="gift-name">${g.name}</div>
-      <div class="gift-price">💎 ${g.price} CR</div>
-      <div class="gift-limit">${g.limit?`Осталось: ${g.limit-g.sold} шт.`:"∞ Неограничено"}</div>
-    </div>
-  `).join("");
+      <div class="gift-price">💎 ${g.price.toLocaleString("ru")}</div>
+      <div class="gift-limit">${g.limit?`Лимит: ${left} из ${g.limit}`:"∞ Без лимита"}</div>
+    </div>`;
+  }).join("");
 }
 
 function filterGifts(rarity, btn){
@@ -3377,13 +3421,49 @@ function sendGift(){
 function renderMyGifts(){
   const showcase = el("my-gifts-showcase"); if(!showcase) return;
   const gifts = S.my_gifts||[];
-  if(!gifts.length){ showcase.innerHTML='<div style="color:var(--tx3);font-size:12px;padding:8px">У вас пока нет подарков</div>'; return; }
-  showcase.innerHTML = gifts.slice(-12).map((g,i)=>`
-    <div class="gift-sh-item" title="${g.name} от ${g.from}" onclick="showToast('${g.icon} ${g.name} — от ${g.from}')">
-      ${g.icon}
-      ${gifts.filter(x=>x.id===g.id).length>1?`<div class="gift-sh-cnt">${gifts.filter(x=>x.id===g.id).length}</div>`:""}
-    </div>
-  `).join("");
+  if(!gifts.length){ showcase.innerHTML='<div class="pgift-empty">🎁 У вас пока нет подарков<br><span style="font-size:11px">Подарки от друзей появятся здесь</span></div>'; return; }
+
+  // Группируем по id подарка (считаем количество)
+  const grouped={};
+  gifts.forEach(g=>{
+    if(!grouped[g.id]) grouped[g.id]={...g,count:0};
+    grouped[g.id].count++;
+  });
+  const arr=Object.values(grouped);
+  // Сортируем по редкости: легендарные → эпические → редкие → обычные
+  const order={legendary:0,epic:1,rare:2,common:3};
+  arr.sort((a,b)=>(order[a.rarity]||9)-(order[b.rarity]||9));
+
+  // Разделяем на "особые" (rare+) и обычные
+  const special=arr.filter(g=>g.rarity==="legendary"||g.rarity==="epic"||g.rarity==="rare");
+  const common=arr.filter(g=>g.rarity==="common");
+
+  let html="";
+  if(special.length){
+    html+=`<div class="pgift-section"><div class="pgift-section-tit" style="color:var(--am)">✨ Особые подарки</div><div class="pgift-grid">`;
+    html+=special.map(g=>`<div class="pgift ${g.rarity}" title="${g.name} от ${g.from}" onclick="openMyGiftDetail(${g.id})">${g.icon}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
+    html+=`</div></div>`;
+  }
+  if(common.length){
+    html+=`<div class="pgift-section"><div class="pgift-section-tit" style="color:var(--tx3)">🎁 Обычные</div><div class="pgift-grid">`;
+    html+=common.map(g=>`<div class="pgift ${g.rarity}" title="${g.name} от ${g.from}" onclick="openMyGiftDetail(${g.id})">${g.icon}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
+    html+=`</div></div>`;
+  }
+  showcase.style.flexWrap="";
+  showcase.style.display="block";
+  showcase.innerHTML=html;
+}
+
+// Детали полученного подарка — при клике перекидывает в каталог
+function openMyGiftDetail(giftId){
+  const g=(S.my_gifts||[]).find(x=>x.id===giftId);
+  if(!g)return;
+  const count=(S.my_gifts||[]).filter(x=>x.id===giftId).length;
+  const rarityLabel={common:"⚪ Обычный",rare:"💜 Редкий",epic:"💚 Эпический",legendary:"⭐ Легендарный"}[g.rarity]||"";
+  showToast(`${g.icon} ${g.name} ${rarityLabel}${count>1?` ×${count}`:""}`);
+  // Подсветим этот подарок в каталоге
+  const catItem=S.gifts_catalog.find(x=>x.id===giftId);
+  if(catItem){ setTimeout(()=>openGiftModal(giftId),300); }
 }
 
 // Gift rendering integrated into renderMsgs directly below
