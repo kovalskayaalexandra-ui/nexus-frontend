@@ -155,6 +155,22 @@ button,input,textarea,select{font-family:inherit}
 @keyframes pl{0%,100%{opacity:1}50%{opacity:.35}}
 .pinbar{background:rgba(108,99,255,.06);border-bottom:1px solid var(--brd);padding:5px 13px;display:flex;align-items:center;gap:7px;font-size:11.5px;cursor:pointer;flex-shrink:0}
 .select-bar{display:none;background:var(--bg2);border-bottom:1px solid var(--brd);padding:9px 14px;align-items:center;gap:11px;font-size:13px;flex-shrink:0}
+.mem-item{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:10px;cursor:pointer;transition:.15s}
+.mem-item:hover{background:var(--bg3)}
+.mem-av{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;flex-shrink:0;font-weight:600}
+.mem-info{flex:1;min-width:0}
+.mem-nm{font-size:14px;font-weight:500;display:flex;align-items:center;gap:5px}
+.mem-sub{font-size:11.5px;color:var(--tx3)}
+.mem-role{font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;flex-shrink:0}
+.mem-role.owner{background:rgba(56,189,248,.15);color:#38bdf8}
+.mem-role.admin{background:rgba(108,99,255,.15);color:var(--acc2)}
+.perm-row{display:flex;align-items:center;justify-content:space-between;padding:11px 4px;border-bottom:1px solid var(--brd)}
+.perm-row:last-child{border-bottom:none}
+.perm-label{font-size:13.5px}
+.perm-tgl{width:44px;height:26px;border-radius:99px;background:var(--bg4);position:relative;cursor:pointer;transition:.2s;flex-shrink:0}
+.perm-tgl.on{background:var(--acc)}
+.perm-tgl::after{content:"";position:absolute;width:20px;height:20px;border-radius:50%;background:#fff;top:3px;left:3px;transition:.2s}
+.perm-tgl.on::after{left:21px}
 .select-bar.on{display:flex}
 .mrow.selected{background:rgba(108,99,255,.13)!important;border-radius:8px}
 body.select-mode .bub,body.select-mode .skbub,body.select-mode .vbub{cursor:pointer!important}
@@ -769,6 +785,7 @@ tr:hover td{background:var(--bg3)}
         </div>
       </div>
       <div class="rp-actions">
+        <button class="rp-action-btn" id="rp-members-btn" onclick="openMembers()" style="display:none">👥 Участники</button>
         <button class="rp-action-btn" onclick="pinChat()">📌 Закрепить чат</button>
         <button class="rp-action-btn" onclick="muteChat()">🔇 Заглушить</button>
         <button class="rp-action-btn" onclick="clearHistory()">🗑️ Очистить историю</button>
@@ -1153,6 +1170,48 @@ tr:hover td{background:var(--bg3)}
   <div style="font-size:11.5px;color:var(--tx2);margin-bottom:8px;margin-top:4px">Участники</div>
   <div id="grp-members-list" style="max-height:180px;overflow-y:auto;margin-bottom:12px"></div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-group')">Отмена</button><button class="xbtn gn" onclick="doCreateGroup()">✅ Создать</button></div>
+</div></div>
+
+<!-- MODAL: MEMBERS LIST -->
+<div class="movl" id="m-members"><div class="modal wide">
+  <div class="mtit">👥 Участники</div>
+  <div id="members-add-row" style="margin-bottom:10px">
+    <button class="xbtn sec" style="width:100%" onclick="openAddMember()">➕ Добавить участников</button>
+  </div>
+  <div id="members-list" style="max-height:340px;overflow-y:auto"></div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-members')">Закрыть</button></div>
+</div></div>
+
+<!-- MODAL: MEMBER ACTIONS -->
+<div class="movl" id="m-member-act"><div class="modal">
+  <div class="mtit" id="member-act-name">Участник</div>
+  <div id="member-act-list">
+    <div class="ctxi" onclick="makeAdmin()">⭐ Сделать администратором</div>
+    <div class="ctxi" onclick="openPerms()">🔑 Изменить разрешения</div>
+    <div class="ctxsep"></div>
+    <div class="ctxi rd" onclick="removeMember()">➖ Удалить из группы</div>
+  </div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-member-act')">Отмена</button></div>
+</div></div>
+
+<!-- MODAL: ADMIN PERMISSIONS -->
+<div class="movl" id="m-perms"><div class="modal wide">
+  <div class="mtit">🔑 Права админов</div>
+  <div id="perms-member" style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--bg3);border-radius:10px;margin-bottom:14px"></div>
+  <div style="font-size:11.5px;color:var(--acc2);font-weight:600;margin-bottom:8px">Возможности администратора:</div>
+  <div id="perms-list"></div>
+  <div style="font-size:11.5px;color:var(--tx2);margin:12px 0 6px">Тег участника</div>
+  <input class="fii" id="perms-tag" placeholder="Админ" style="margin-bottom:6px">
+  <div style="font-size:10.5px;color:var(--tx3);margin-bottom:12px">Должность, которая будет показываться в подписи вместо «Админ».</div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-perms')">Отмена</button><button class="xbtn gn" onclick="savePerms()">✅ Сохранить</button></div>
+</div></div>
+
+<!-- MODAL: ADD MEMBER -->
+<div class="movl" id="m-addmember"><div class="modal">
+  <div class="mtit">➕ Добавить участников</div>
+  <input class="fii" id="addmember-search" placeholder="Поиск пользователей..." oninput="searchAddMember(this.value)" style="margin-bottom:10px">
+  <div id="addmember-results" style="max-height:300px;overflow-y:auto"></div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-addmember')">Закрыть</button></div>
 </div></div>
 
 <!-- MODAL: FORWARD -->
@@ -1932,6 +1991,10 @@ function openChat(id){
   else if(ch.online){if(st){st.textContent=T("online");st.className="chst";}}
   else{if(st){st.textContent=T("offline");st.className="chst off";}}
 
+  // Кнопка "Участники" — только для групп
+  const memBtn=el("rp-members-btn");
+  if(memBtn)memBtn.style.display=(ch.type==="groups")?"block":"none";
+
   const rpav=el("rpav"); if(rpav){rpav.style.background=colBg(ch.col); rpav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
   if(el("rpnm"))el("rpnm").textContent=ch.nm;
   if(el("rpst"))el("rpst").textContent="● "+(ch.online?T("online"):T("offline"));
@@ -2242,6 +2305,8 @@ function ctxEdit(){ const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if
 function ctxCopy(){ const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId);if(m?.tx)navigator.clipboard.writeText(m.tx).catch(()=>{});showToast("📋 Скопировано"); }
 function ctxPin(){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
+  // Проверка прав на закрепление в группах
+  if(!canI("pinMsg")){ showToast("🔒 Нет прав на закрепление"); el("ctx").classList.remove("on"); return; }
   if(!S.pinnedByChat[S.chat]) S.pinnedByChat[S.chat]=[];
   // Уже закреплено? — открепляем
   const idx=S.pinnedByChat[S.chat].indexOf(m.id);
@@ -2309,11 +2374,9 @@ function openDelModal(){
   const m=ms.find(x=>x.id===S.ctxId);
   const isOwn=m&&m.t==="out";
   const ch=S.chats.find(c=>c.id===S.chat);
-  // В личном чате можно удалить у всех и свои, и чужие (как в Telegram)
-  // В группах/каналах — свои всегда, чужие только если ты admin/owner
   const isPersonal = !ch || ch.type==="personal";
-  const isAdmin = ch && (ch.myRole==="owner" || ch.myRole==="admin");
-  const canDeleteForAll = isOwn || isPersonal || isAdmin;
+  // В личном чате — свои и чужие; в группе — свои всегда, чужие только при праве deleteMsg
+  const canDeleteForAll = isOwn || isPersonal || canI("deleteMsg");
   el("del-forall-btn").style.display=canDeleteForAll?"flex":"none";
   el("del-info").textContent=canDeleteForAll
     ?"Вы можете удалить сообщение только у себя или у всех участников чата."
@@ -2484,10 +2547,238 @@ function renderGroupMembers(){ el("grp-members-list").innerHTML=S.contacts.map(c
 function doCreateGroup(){
   const nm=el("grp-name")?.value?.trim(); if(!nm){showToast("❌ Введите название");return;}
   const selected=[...document.querySelectorAll('[id^="grpm-"]:checked')].map(cb=>parseInt(cb.id.replace("grpm-","")));
-  const newChat={id:nextId(),nm:nm,ini:nm.slice(0,2).toUpperCase(),col:Math.floor(Math.random()*COLS.length),online:false,prev:"Группа создана",time:now(),unread:0,type:"groups",mbrs:selected.length+1,pinned:false,muted:false,blocked:false,draft:""};
+  // Формируем список участников с ролями
+  const members=[{id:S.user?.id||"me", nm:S.user?.name||"Вы", uname:S.user?.uname||"", col:0, role:"owner", perms:fullPerms()}];
+  selected.forEach(cid=>{
+    const c=S.contacts.find(x=>x.id===cid);
+    if(c) members.push({id:c.id, nm:c.nm, uname:c.uname||"", col:c.col, role:"member", perms:memberPerms()});
+  });
+  const newChat={id:nextId(),nm:nm,ini:nm.slice(0,2).toUpperCase(),col:Math.floor(Math.random()*COLS.length),online:false,prev:"Группа создана",time:now(),unread:0,type:"groups",mbrs:members.length,members:members,myRole:"owner",pinned:false,muted:false,blocked:false,draft:""};
   S.chats.unshift(newChat);
   if(!S.messages[newChat.id])S.messages[newChat.id]=[{id:nextId(),t:"sys",tx:"Вы создали группу «"+nm+"»"},{id:nextId(),t:"date",tx:"Сегодня"}];
   closeM("m-group"); renderChats(); openChat(newChat.id); saveState(); showToast("👥 Группа «"+nm+"» создана!");
+}
+
+// ── ПРАВА УЧАСТНИКОВ ──────────────────────────────────────────
+function fullPerms(){
+  return {changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, manageStream:true, addAdmins:true, anonymous:false};
+}
+function adminPerms(){
+  return {changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, manageStream:true, addAdmins:false, anonymous:false};
+}
+function memberPerms(){
+  return {changeInfo:false, deleteMsg:false, banUsers:false, inviteLinks:false, pinMsg:false, manageStream:false, addAdmins:false, anonymous:false};
+}
+
+const PERM_LABELS={
+  changeInfo:"Изменение профиля группы",
+  deleteMsg:"Удаление сообщений",
+  banUsers:"Блокировка/удаление участников",
+  inviteLinks:"Пригласительные ссылки",
+  pinMsg:"Закрепление сообщений",
+  manageStream:"Управление трансляциями",
+  addAdmins:"Назначение администраторов",
+  anonymous:"Анонимность"
+};
+// Какие права уже реально работают (подключены к действиям)
+const PERM_ACTIVE={changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:false, pinMsg:true, manageStream:false, addAdmins:true, anonymous:false};
+
+let curMemberId=null; // ID участника с которым работаем
+
+// Открыть список участников
+function openMembers(){
+  const ch=S.chats.find(c=>c.id===S.chat);
+  if(!ch||ch.type!=="groups"){ showToast("Только для групп"); return; }
+  // Инициализируем участников для старых групп
+  if(!ch.members){
+    ch.members=[{id:S.user?.id||"me",nm:S.user?.name||"Вы",uname:S.user?.uname||"",col:0,role:"owner",perms:fullPerms()}];
+    // Добавляем демо-участников из контактов чтобы было что показать
+    S.contacts.slice(0,Math.min(5,(ch.mbrs||4)-1)).forEach(c=>{
+      ch.members.push({id:c.id,nm:c.nm,uname:c.uname||"",col:c.col,role:"member",perms:memberPerms()});
+    });
+    ch.mbrs=ch.members.length;
+    saveState();
+  }
+  renderMembersList();
+  el("m-members").classList.add("on");
+}
+
+function renderMembersList(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  const myRole=getMyRole(ch);
+  // Кнопка добавления — только owner/admin
+  el("members-add-row").style.display=(myRole==="owner"||myRole==="admin")?"block":"none";
+  // Сортируем: owner → admin → member
+  const order={owner:0,admin:1,member:2};
+  const sorted=[...(ch.members||[])].sort((a,b)=>(order[a.role]||3)-(order[b.role]||3));
+  el("members-list").innerHTML=sorted.map(m=>{
+    const roleLabel=m.role==="owner"?"Владелец":(m.role==="admin"?(m.tag||"Админ"):"");
+    const roleBadge=roleLabel?`<span class="mem-role ${m.role}">${roleLabel}</span>`:"";
+    return `<div class="mem-item" onclick="openMemberAct('${m.id}')">
+      <div class="mem-av" style="background:${colBg(m.col||0)}">${(m.nm||"?")[0]}</div>
+      <div class="mem-info"><div class="mem-nm">${m.nm}${m.role==="owner"?" 👑":(m.role==="admin"?" ⭐":"")}</div><div class="mem-sub">${m.uname?"@"+m.uname:"участник"}</div></div>
+      ${roleBadge}
+    </div>`;
+  }).join("");
+}
+
+function getMyRole(ch){
+  if(!ch||!ch.members)return "member";
+  const me=ch.members.find(m=>m.id===(S.user?.id||"me"));
+  return me?me.role:"member";
+}
+
+// Универсальная проверка прав в текущем чате
+// Для личных чатов и чатов без members — всё разрешено (нет ролей)
+function canI(permKey){
+  const ch=S.chats.find(c=>c.id===S.chat);
+  if(!ch||ch.type!=="groups"||!ch.members) return true;
+  const me=ch.members.find(m=>m.id===(S.user?.id||"me"));
+  if(!me) return false;
+  if(me.role==="owner") return true; // владелец может всё
+  if(me.role==="admin") return !!(me.perms && me.perms[permKey]);
+  // обычный участник — базовые права (писать может, спец-действия нет)
+  return false;
+}
+
+// Открыть действия над участником
+function openMemberAct(memberId){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  const myRole=getMyRole(ch);
+  const member=ch.members.find(m=>m.id==memberId); if(!member)return;
+  curMemberId=memberId;
+
+  // Нельзя редактировать самого владельца и себя
+  if(member.role==="owner"){ showToast("👑 Это владелец группы"); return; }
+  if(member.id===(S.user?.id||"me")){ showToast("Это вы"); return; }
+  // Только owner/admin могут управлять
+  if(myRole!=="owner"&&myRole!=="admin"){ showToast("🔒 Недостаточно прав"); return; }
+
+  el("member-act-name").textContent=member.nm;
+  const items=el("member-act-list").querySelectorAll(".ctxi");
+  const makeBtn=items[0]; // Сделать админом
+  const permBtn=items[1]; // Изменить разрешения
+  const removeBtn=items[2]; // Удалить
+  if(member.role==="admin"){ makeBtn.textContent="⬇️ Снять администратора"; }
+  else { makeBtn.textContent="⭐ Сделать администратором"; }
+  // Назначать админов — только owner (или admin с правом addAdmins)
+  const canManageAdmins = myRole==="owner" || canI("addAdmins");
+  makeBtn.style.display=canManageAdmins?"block":"none";
+  permBtn.style.display=canManageAdmins?"block":"none";
+  // Удалять участников — owner всегда, admin при праве banUsers
+  const canRemove = myRole==="owner" || canI("banUsers");
+  removeBtn.style.display=canRemove?"block":"none";
+  el("m-member-act").classList.add("on");
+}
+
+function makeAdmin(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  const member=ch.members.find(m=>m.id==curMemberId); if(!member)return;
+  if(member.role==="admin"){
+    member.role="member"; member.perms=memberPerms(); member.tag=null;
+    showToast("⬇️ "+member.nm+" больше не админ");
+    pushSysMsg(member.nm+" снят с должности администратора");
+    closeM("m-member-act"); renderMembersList(); saveState();
+  } else {
+    member.role="admin"; member.perms=adminPerms();
+    closeM("m-member-act");
+    openPermsFor(member);
+    pushSysMsg(member.nm+" назначен администратором");
+    showToast("⭐ "+member.nm+" теперь админ");
+  }
+}
+
+function removeMember(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  const member=ch.members.find(m=>m.id==curMemberId); if(!member)return;
+  ch.members=ch.members.filter(m=>m.id!=curMemberId);
+  ch.mbrs=ch.members.length;
+  pushSysMsg(member.nm+" удалён(а) из группы");
+  showToast("➖ "+member.nm+" удалён");
+  closeM("m-member-act"); renderMembersList(); renderChats(); saveState();
+}
+
+// Открыть редактор прав
+function openPerms(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  const member=ch.members.find(m=>m.id==curMemberId); if(!member)return;
+  closeM("m-member-act");
+  openPermsFor(member);
+}
+
+function openPermsFor(member){
+  curMemberId=member.id;
+  if(!member.perms) member.perms=member.role==="admin"?adminPerms():memberPerms();
+  el("perms-member").innerHTML=`<div class="mem-av" style="width:36px;height:36px;background:${colBg(member.col||0)}">${(member.nm||"?")[0]}</div><div><div class="mem-nm">${member.nm}</div><div class="mem-sub">${member.uname?"@"+member.uname:"участник"}</div></div>`;
+  el("perms-tag").value=member.tag||"";
+  renderPermsList(member);
+  el("m-perms").classList.add("on");
+}
+
+function renderPermsList(member){
+  el("perms-list").innerHTML=Object.keys(PERM_LABELS).map(key=>{
+    const on=member.perms[key];
+    const soon=!PERM_ACTIVE[key]?` <span style="font-size:9px;color:var(--tx3);background:var(--bg4);padding:1px 5px;border-radius:6px;vertical-align:middle">скоро</span>`:"";
+    return `<div class="perm-row"><span class="perm-label">${PERM_LABELS[key]}${soon}</span><div class="perm-tgl${on?" on":""}" onclick="togglePerm('${key}',this)"></div></div>`;
+  }).join("");
+}
+
+function togglePerm(key,elm){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  const member=ch.members.find(m=>m.id==curMemberId); if(!member)return;
+  member.perms[key]=!member.perms[key];
+  elm.classList.toggle("on",member.perms[key]);
+}
+
+function savePerms(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  const member=ch.members.find(m=>m.id==curMemberId); if(!member)return;
+  member.tag=el("perms-tag").value.trim()||null;
+  // Если выданы какие-то права — делаем админом
+  const hasAnyPerm=Object.values(member.perms).some(v=>v);
+  if(hasAnyPerm&&member.role==="member"){ member.role="admin"; }
+  closeM("m-perms"); renderMembersList(); saveState();
+  showToast("✅ Права сохранены");
+}
+
+function pushSysMsg(text){
+  if(!S.messages[S.chat])S.messages[S.chat]=[];
+  S.messages[S.chat].push({id:nextId(),t:"sys",tx:text});
+  if(S.chat===S.chat)renderMsgs();
+}
+
+// Добавление участников
+function openAddMember(){
+  el("addmember-search").value="";
+  el("addmember-results").innerHTML="";
+  el("m-addmember").classList.add("on");
+}
+
+async function searchAddMember(v){
+  if(!v){ el("addmember-results").innerHTML=""; return; }
+  const ch=S.chats.find(c=>c.id===S.chat);
+  const existingIds=(ch?.members||[]).map(m=>String(m.id));
+  let results=S.contacts.filter(c=>(c.nm.toLowerCase().includes(v.toLowerCase())||("@"+(c.uname||"")).includes(v.toLowerCase())) && !existingIds.includes(String(c.id)));
+  // Ищем в БД
+  try {
+    const data=await apiGet("/api/users/search?q="+encodeURIComponent(v));
+    (data.users||[]).filter(u=>u.id!==S.user?.id && !existingIds.includes(String(u.id))).forEach(u=>{
+      if(!results.find(c=>c.id===u.id)) results.push({id:u.id,nm:u.name||u.username||"?",uname:u.username||"",col:Math.floor(Math.random()*8)});
+    });
+  } catch(e){}
+  el("addmember-results").innerHTML=results.map(c=>`<div class="mem-item" onclick="addMemberToGroup('${c.id}','${(c.nm||"").replace(/'/g,"")}','${c.uname||""}',${c.col||0})"><div class="mem-av" style="background:${colBg(c.col||0)}">${(c.nm||"?")[0]}</div><div class="mem-info"><div class="mem-nm">${c.nm}</div><div class="mem-sub">${c.uname?"@"+c.uname:""}</div></div><span style="color:var(--acc);font-size:20px">＋</span></div>`).join("");
+  if(!results.length)el("addmember-results").innerHTML=`<div style="color:var(--tx3);font-size:12.5px;padding:12px;text-align:center">Не найдено</div>`;
+}
+
+function addMemberToGroup(id,nm,uname,col){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  if(!ch.members)ch.members=[];
+  if(ch.members.find(m=>m.id==id)){ showToast("Уже в группе"); return; }
+  ch.members.push({id:id, nm:nm, uname:uname, col:col, role:"member", perms:memberPerms()});
+  ch.mbrs=ch.members.length;
+  pushSysMsg(nm+" добавлен(а) в группу");
+  showToast("➕ "+nm+" добавлен");
+  closeM("m-addmember"); renderMembersList(); renderChats(); saveState();
 }
 
 // ── FORWARD ──────────────────────────────────────────────────
