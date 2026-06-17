@@ -1294,7 +1294,7 @@ tr:hover td{background:var(--bg3)}
 //  localStorage persistence + all Telegram features
 // ══════════════════════════════════════════════════
 
-const APP_VERSION = "2.0.0";
+const APP_VERSION = "2.1.0";
 const STORE_KEY = "nexus_v2_data";
 
 // ── LANGUAGES (14) ──────────────────────────────────────────────
@@ -1456,11 +1456,15 @@ function loadState(){
       const parsed = JSON.parse(saved);
       // Migration: merge saved with defaults to handle new fields in updates
       S = deepMerge(DEFAULT_STATE, parsed);
-      // Always use app's default packs/pkgs (admin can extend via UI)
+      // Эти каталоги ВСЕГДА берутся из кода (не из localStorage),
+      // чтобы обновления подарков/планов сразу появлялись у всех пользователей.
+      // Пользовательские данные (баланс, мои подарки, чаты) при этом сохраняются.
+      S.gifts_catalog = JSON.parse(JSON.stringify(DEFAULT_STATE.gifts_catalog));
+      if(DEFAULT_STATE.vip_plans) S.vip_plans = JSON.parse(JSON.stringify(DEFAULT_STATE.vip_plans));
       if(parsed.version === APP_VERSION){
         // same version — trust saved packs list
       } else {
-        // version upgrade: keep user data, reset packs to defaults if needed
+        // version upgrade: keep user data
         showToast("✨ Nexus обновлён до v"+APP_VERSION+". Данные сохранены!");
       }
     } else {
