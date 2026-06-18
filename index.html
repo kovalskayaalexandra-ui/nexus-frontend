@@ -154,6 +154,12 @@ button,input,textarea,select{font-family:inherit}
 .chst.typ{color:var(--acc2);animation:pl 1.2s ease-in-out infinite}
 @keyframes pl{0%,100%{opacity:1}50%{opacity:.35}}
 .pinbar{background:rgba(108,99,255,.06);border-bottom:1px solid var(--brd);padding:5px 13px;display:flex;align-items:center;gap:7px;font-size:11.5px;cursor:pointer;flex-shrink:0}
+.send-as-row{padding:6px 13px 0;flex-shrink:0}
+.send-as-btn{display:flex;align-items:center;gap:7px;background:var(--bg3);border:1px solid var(--brd);border-radius:99px;padding:5px 12px 5px 5px;font-size:12px;color:var(--tx2);cursor:pointer;transition:.15s}
+.send-as-btn:hover{background:var(--bg4)}
+.send-as-btn.active{background:rgba(108,99,255,.12);border-color:rgba(108,99,255,.4);color:var(--acc2);font-weight:500}
+.sas-av{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:600;flex-shrink:0}
+.as-channel-tag{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--acc2);margin-bottom:4px;opacity:.9}
 .select-bar{display:none;background:var(--bg2);border-bottom:1px solid var(--brd);padding:9px 14px;align-items:center;gap:11px;font-size:13px;flex-shrink:0}
 .mem-item{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:10px;cursor:pointer;transition:.15s}
 .mem-item:hover{background:var(--bg3)}
@@ -781,6 +787,10 @@ tr:hover td{background:var(--bg3)}
         <div class="rsx" onclick="cancelEdit()">✕</div>
       </div>
 
+      <div class="send-as-row" id="send-as-row" style="display:none">
+        <button class="send-as-btn" id="send-as-btn" onclick="toggleSendAs()" style="display:none"></button>
+      </div>
+
       <div class="ibar">
         <div class="attb" onclick="el('file-inp').click()" title="Прикрепить файл">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -819,6 +829,7 @@ tr:hover td{background:var(--bg3)}
       </div>
       <div class="rp-actions">
         <button class="rp-action-btn" id="rp-members-btn" onclick="openMembers()" style="display:none">👥 Участники</button>
+        <button class="rp-action-btn" id="rp-chsettings-btn" onclick="openChannelSettings()" style="display:none">⚙️ Настройки канала</button>
         <button class="rp-action-btn" onclick="pinChat()">📌 Закрепить чат</button>
         <button class="rp-action-btn" onclick="muteChat()">🔇 Заглушить</button>
         <button class="rp-action-btn" onclick="clearHistory()">🗑️ Очистить историю</button>
@@ -1205,6 +1216,17 @@ tr:hover td{background:var(--bg3)}
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-group')">Отмена</button><button class="xbtn gn" onclick="doCreateGroup()">✅ Создать</button></div>
 </div></div>
 
+<!-- MODAL: CHANNEL SETTINGS -->
+<div class="movl" id="m-chsettings"><div class="modal">
+  <div class="mtit">⚙️ Настройки канала</div>
+  <div id="chsettings-name" style="font-size:13px;color:var(--tx2);margin-bottom:14px"></div>
+  <div class="perm-row">
+    <span class="perm-label">Писать от имени канала в чатах<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Разрешить админам писать в личных чатах и группах от имени этого канала</div></span>
+    <div class="perm-tgl" id="chset-allowpost" onclick="toggleChSetting('allowPostInChats',this)"></div>
+  </div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-chsettings')">Закрыть</button></div>
+</div></div>
+
 <!-- MODAL: MEMBERS LIST -->
 <div class="movl" id="m-members"><div class="modal wide">
   <div class="mtit">👥 Участники</div>
@@ -1367,7 +1389,7 @@ const DEFAULT_STATE = {
     {id:2,nm:"Мария Козлова",ini:"МК",col:1,online:true,prev:"Посмотри дизайн!",time:"14:18",unread:3,type:"personal",pinned:false,muted:false,blocked:false,draft:""},
     {id:3,nm:"🚀 Dev Team",ini:"DT",col:2,online:false,prev:"Денис: Деплоим!",time:"13:55",unread:12,type:"groups",mbrs:4,pinned:true,muted:false,blocked:false,draft:""},
     {id:4,nm:"Игорь Петров",ini:"ИП",col:3,online:false,prev:"До пятницы!",time:"12:10",unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:""},
-    {id:5,nm:"📢 Tech News",ini:"TN",col:4,online:false,prev:"Новый релиз iOS",time:"11:30",unread:5,type:"channels",pinned:false,muted:true,blocked:false,draft:""},
+    {id:5,nm:"📢 Tech News",ini:"TN",col:4,online:false,prev:"Новый релиз iOS",time:"11:30",unread:5,type:"channels",pinned:false,muted:true,blocked:false,draft:"",mine:true,myRole:"owner"},
     {id:6,nm:"Семья 🏠",ini:"СМ",col:5,online:false,prev:"Мама: Ужин готов!",time:"вчера",unread:0,type:"groups",mbrs:4,pinned:false,muted:false,blocked:false,draft:""}
   ],
   messages: {
@@ -1429,6 +1451,9 @@ const DEFAULT_STATE = {
   ],
   my_gifts: [],
   my_stories: [],
+  // Фича "писать от имени канала"
+  sendAsChannel: null,         // id канала от имени которого пишем (null = пишем как я)
+  channelSettings: {},         // настройки каналов: { channelId: { allowPostInChats: true } }
   custom_packs: [],
   verified_channels: [],
   emoji_recent: ["😀","❤️","👍","🔥","😂","🎉","💎","✨"],
@@ -2040,6 +2065,20 @@ function openChat(id){
   const memBtn=el("rp-members-btn");
   if(memBtn)memBtn.style.display=(ch.type==="groups")?"block":"none";
 
+  // Кнопка "Настройки канала" — для своих каналов
+  const chSetBtn=el("rp-chsettings-btn");
+  if(chSetBtn)chSetBtn.style.display=(ch.type==="channels"&&(ch.mine||ch.myRole==="owner"||ch.myRole==="admin"))?"block":"none";
+
+  // Кнопка "писать от имени канала"
+  const sendAsRow=el("send-as-row");
+  if(canSendAsChannelHere()){
+    if(sendAsRow)sendAsRow.style.display="block";
+    updateSendAsUI();
+  } else {
+    if(sendAsRow)sendAsRow.style.display="none";
+    S.sendAsChannel=null; // сбрасываем при выходе из подходящего чата
+  }
+
   const rpav=el("rpav"); if(rpav){rpav.style.background=colBg(ch.col); rpav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
   if(el("rpnm"))el("rpnm").textContent=ch.nm;
   if(el("rpst"))el("rpst").textContent="● "+(ch.online?T("online"):T("offline"));
@@ -2083,6 +2122,7 @@ function renderMsgs(){
       h+=`<div class="vbub" oncontextmenu="showCtx(event,${m.id})"><div class="pbtn" onclick="tPlay(this)"><svg width="11" height="11" fill="white" viewBox="0 0 24 24"><path d="m5 3 14 9-14 9V3z"/></svg></div><div class="wf">${bars}</div><div class="vd">${m.dur||"0:00"}</div></div>`;
     }else{
       let bc="";
+      if(m.asChannel)bc+=`<div class="as-channel-tag"><div class="sas-av" style="background:${colBg(m.asChannel.col)};width:18px;height:18px;font-size:9px">${m.asChannel.ini}</div>📢 ${m.asChannel.nm}</div>`;
       if(m.reply)bc+=`<div class="rprev"><div class="rprevnm">${m.reply.fr}</div><div class="rprevtx">${m.reply.tx}</div></div>`;
       bc+=`<span>${m.tx||""}</span>`;
       // link preview
@@ -2114,6 +2154,90 @@ function renderMsgs(){
 }
 
 // ── SEND / EDIT ──────────────────────────────────────────────
+// ── ПИСАТЬ ОТ ИМЕНИ КАНАЛА ────────────────────────────────────
+// Возвращает каналы где пользователь owner/admin (может писать от их имени)
+function myManagedChannels(){
+  return S.chats.filter(c=>{
+    if(c.type!=="channels") return false;
+    // Свои каналы: официальный мой, или где я owner/admin
+    if(c.official) return false; // официальный канал Nexus не считаем
+    const role=c.myRole||(c.mine?"owner":null);
+    return role==="owner"||role==="admin"||c.mine;
+  });
+}
+
+// Можно ли в текущем чате писать от имени канала
+function canSendAsChannelHere(){
+  const ch=S.chats.find(c=>c.id===S.chat);
+  if(!ch) return false;
+  // Только в личных чатах и группах (не в самих каналах)
+  if(ch.type==="channels") return false;
+  // Есть ли хоть один канал у которого разрешено писать в чатах
+  return myManagedChannels().some(c=>{
+    const st=S.channelSettings[c.id];
+    // По умолчанию разрешено (allowPostInChats !== false)
+    return !st || st.allowPostInChats!==false;
+  });
+}
+
+// ── НАСТРОЙКИ КАНАЛА ──────────────────────────────────────────
+function openChannelSettings(){
+  const ch=S.chats.find(c=>c.id===S.chat);
+  if(!ch||ch.type!=="channels"){ showToast("Только для каналов"); return; }
+  el("chsettings-name").textContent="📢 "+ch.nm;
+  if(!S.channelSettings[ch.id]) S.channelSettings[ch.id]={allowPostInChats:true};
+  const allow=S.channelSettings[ch.id].allowPostInChats!==false;
+  el("chset-allowpost").classList.toggle("on",allow);
+  el("m-chsettings").classList.add("on");
+}
+
+function toggleChSetting(key,elm){
+  const ch=S.chats.find(c=>c.id===S.chat);
+  if(!ch) return;
+  if(!S.channelSettings[ch.id]) S.channelSettings[ch.id]={allowPostInChats:true};
+  S.channelSettings[ch.id][key]=!(S.channelSettings[ch.id][key]!==false);
+  // toggle visual
+  const newVal=S.channelSettings[ch.id][key];
+  elm.classList.toggle("on",newVal);
+  saveState();
+  showToast(newVal?"✅ Разрешено":"🔒 Запрещено");
+}
+
+// Переключить "писать как канал"
+function toggleSendAs(){
+  const channels=myManagedChannels().filter(c=>{
+    const st=S.channelSettings[c.id];
+    return !st || st.allowPostInChats!==false;
+  });
+  if(!channels.length){ showToast("У вас нет каналов с разрешением"); return; }
+  // Циклически: я → канал1 → канал2 → ... → я
+  if(!S.sendAsChannel){
+    S.sendAsChannel=channels[0].id;
+  } else {
+    const idx=channels.findIndex(c=>c.id===S.sendAsChannel);
+    if(idx===-1||idx===channels.length-1) S.sendAsChannel=null;
+    else S.sendAsChannel=channels[idx+1].id;
+  }
+  updateSendAsUI(); saveState();
+}
+
+function updateSendAsUI(){
+  const btn=el("send-as-btn");
+  if(!btn) return;
+  if(!canSendAsChannelHere()){ btn.style.display="none"; return; }
+  btn.style.display="flex";
+  if(S.sendAsChannel){
+    const ch=S.chats.find(c=>c.id===S.sendAsChannel);
+    if(ch){
+      btn.innerHTML=`<div class="sas-av" style="background:${colBg(ch.col)}">${ch.ini}</div><span>как «${ch.nm}»</span>`;
+      btn.classList.add("active");
+    }
+  } else {
+    btn.innerHTML=`<div class="sas-av" style="background:${colBg(S.user?.col||0)}">${(S.user?.name||"Я")[0]}</div><span>как я</span>`;
+    btn.classList.remove("active");
+  }
+}
+
 function sendMsg(){
   const inp=el("minput"); const txt=inp.value.trim(); if(!txt)return;
   // ── Support bot interception ──
@@ -2146,6 +2270,13 @@ function sendMsg(){
   }
 
   const msg={id:nextId(),t:"out",tx:txt,time:tm,read:false};
+  // Если пишем от имени канала — помечаем
+  if(S.sendAsChannel && canSendAsChannelHere()){
+    const chan=S.chats.find(c=>c.id===S.sendAsChannel);
+    if(chan){
+      msg.asChannel={id:chan.id, nm:chan.nm, ini:chan.ini, col:chan.col};
+    }
+  }
   if(S.reply){msg.reply={fr:S.reply.fr,tx:S.reply.tx};cancelReply();}
   S.messages[S.chat].push(msg);
   const ch=S.chats.find(c=>c.id===S.chat);
