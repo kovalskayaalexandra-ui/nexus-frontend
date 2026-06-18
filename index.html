@@ -581,6 +581,10 @@ tr:hover td{background:var(--bg3)}
 /* ══ STORIES MULTI ══ */
 .my-stories-grid{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 .story-add-btn{width:60px;height:60px;border-radius:14px;background:var(--bg3);border:1.5px dashed var(--brd);display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;transition:all .15s;flex-direction:column;gap:2px}
+.story-author-opt{display:flex;align-items:center;gap:6px;padding:5px 10px 5px 5px;border-radius:99px;border:1.5px solid var(--brd);cursor:pointer;font-size:12px;transition:.15s}
+.story-author-opt.on{border-color:var(--acc);background:rgba(108,99,255,.1);color:var(--acc2);font-weight:500}
+.mystory-item{display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;margin-bottom:6px;background:var(--bg2)}
+.mystory-prev{width:44px;height:56px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;font-weight:700;flex-shrink:0}
 .story-add-btn:hover{border-color:var(--acc);background:var(--bg4)}
 .story-thumb{width:60px;height:60px;border-radius:14px;position:relative;overflow:hidden;cursor:pointer;flex-shrink:0}
 .story-thumb-bg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:24px}
@@ -3260,7 +3264,14 @@ function prevStoryItem(){
 
 function addMyStory(){
   if(!S.vip?.active){ showToast("👑 Добавить сторис — функция VIP"); openVIP(); return; }
-  showToast("📸 Загрузка сторис — выберите фото или введите текст");
+  openStoryEditor();
+}
+
+// Лимит сторис: обычный VIP — 3, VIP + админ канала — 10
+function storyLimit(){
+  if(!S.vip?.active) return 0;
+  const isChannelAdmin = myManagedChannels().length>0;
+  return isChannelAdmin ? 10 : 3;
 }
 
 // ══════════════════════════════════════════════════
@@ -3377,15 +3388,16 @@ function renderStoriesBar(){
   }
   const isVip = S.vip?.active;
   const myActiveStories=(S.my_stories||[]).filter(s=>Date.now()<s.expires);
-  const myStoryLabel=isVip&&myActiveStories.length>0?myActiveStories.length+"/3":"+"+(isVip?"":"👑");
+  const limit=isVip?storyLimit():3;
+  const myStoryLabel=isVip&&myActiveStories.length>0?myActiveStories.length+"/"+limit:"+"+(isVip?"":"👑");
   bar.innerHTML = `
-    <div class="story-av-wrap" onclick="${isVip?'openStoryEditor()':'openVIP()'}">
+    <div class="story-av-wrap" onclick="${isVip?(myActiveStories.length>0?'openMyStories()':'openStoryEditor()'):'openVIP()'}">
       <div class="story-ring${isVip?' vip-ring':' locked-ring'}">
         <div class="story-av-inner" style="background:${colBg(0)};font-family:'Syne',sans-serif;font-weight:800;font-size:12px;color:#fff">
           ${S.user.avatar?`<img src="${S.user.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(S.user.initials||"Я")}
         </div>
       </div>
-      <div class="story-nm">${isVip?"+ Моя":"👑 VIP"}</div>
+      <div class="story-nm">${isVip?(myActiveStories.length>0?myStoryLabel:"+ Моя"):"👑 VIP"}</div>
     </div>
     ${DEMO_STORIES.map((s,i)=>`
       <div class="story-av-wrap" onclick="openStories(${i})">
@@ -3613,10 +3625,37 @@ function openMyGiftDetail(giftId){
 // ══════════════════════════════════════════════════
 function openStoryEditor(){
   if(!S.vip?.active){ showToast("👑 Сторис — функция VIP"); openVIP(); return; }
-  if((S.my_stories||[]).length >= 3){ showToast("❌ Максимум 3 активных сторис"); return; }
+  const limit=storyLimit();
+  const active=(S.my_stories||[]).filter(s=>Date.now()<s.expires).length;
+  if(active >= limit){ showToast(`❌ Максимум ${limit} активных сторис`); return; }
   selectedStoryBg = "linear-gradient(135deg,#6c63ff,#38bdf8)";
   selectedStoryType = "text";
+  selectedStoryChannel = null; // по умолчанию от себя
+  // Показываем выбор "от себя / от канала" если есть каналы
+  renderStoryAuthorChoice();
   el("m-story-editor").classList.add("on");
+}
+
+let selectedStoryChannel = null;
+
+function renderStoryAuthorChoice(){
+  const wrap=el("story-author-choice");
+  if(!wrap) return;
+  const channels=myManagedChannels();
+  if(!channels.length){ wrap.style.display="none"; return; }
+  wrap.style.display="block";
+  let html=`<div style="font-size:11.5px;color:var(--tx2);margin-bottom:6px">Опубликовать от имени:</div><div style="display:flex;gap:6px;flex-wrap:wrap">`;
+  html+=`<div class="story-author-opt${!selectedStoryChannel?" on":""}" onclick="pickStoryAuthor(null)"><div class="sas-av" style="background:${colBg(S.user?.col||0)}">${(S.user?.name||"Я")[0]}</div>Я</div>`;
+  channels.forEach(c=>{
+    html+=`<div class="story-author-opt${selectedStoryChannel===c.id?" on":""}" onclick="pickStoryAuthor(${c.id})"><div class="sas-av" style="background:${colBg(c.col)}">${c.ini}</div>${c.nm}</div>`;
+  });
+  html+=`</div>`;
+  wrap.innerHTML=html;
+}
+
+function pickStoryAuthor(chId){
+  selectedStoryChannel=chId;
+  renderStoryAuthorChoice();
 }
 
 function selectStoryType(type){
@@ -3648,12 +3687,18 @@ function publishStory(){
     expires: Date.now() + 24*60*60*1000, // 24h
     views: 0
   };
+  // Привязка к каналу если выбран
+  if(selectedStoryChannel){
+    const chan=S.chats.find(c=>c.id===selectedStoryChannel);
+    if(chan) story.channel={id:chan.id, nm:chan.nm, ini:chan.ini, col:chan.col};
+  }
   if(!S.my_stories) S.my_stories=[];
   S.my_stories.push(story);
   closeM("m-story-editor");
   renderStoriesBar();
   saveState();
-  showToast("📖 Сторис опубликована!");
+  const where = story.channel ? `в канал «${story.channel.nm}»` : "";
+  showToast(`📖 Сторис опубликована ${where}!`);
 }
 
 // renderStoriesBar stories count merged into original
@@ -3661,8 +3706,35 @@ function publishStory(){
 function openMyStories(){
   const stories = (S.my_stories||[]).filter(s=>Date.now()<s.expires);
   if(!stories.length){ openStoryEditor(); return; }
-  // Show management
-  showToast("📖 У вас "+stories.length+" активных сторис");
+  // Показываем управление сторис
+  const limit=storyLimit();
+  el("mystories-count").textContent=`${stories.length} из ${limit}`;
+  el("mystories-list").innerHTML=stories.map(s=>{
+    const left=Math.max(0,Math.round((s.expires-Date.now())/3600000));
+    const preview=s.type==="text"?(s.text||"Текст"):(s.emoji||"📖");
+    const chanTag=s.channel?`<div style="font-size:10px;color:var(--acc2);margin-top:2px">📢 ${s.channel.nm}</div>`:"";
+    return `<div class="mystory-item">
+      <div class="mystory-prev" style="background:${s.bg}">${s.type==="emoji"?s.emoji:"Aa"}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:500">${preview.slice(0,30)}</div>
+        <div style="font-size:11px;color:var(--tx3)">👁 ${s.views} · ⏰ ${left}ч осталось</div>
+        ${chanTag}
+      </div>
+      <span style="color:var(--rd);cursor:pointer;font-size:16px;padding:4px" onclick="deleteMyStory(${s.id})">🗑️</span>
+    </div>`;
+  }).join("");
+  // Кнопка добавить если не достигнут лимит
+  el("mystories-add").style.display=(stories.length<limit)?"block":"none";
+  el("m-mystories").classList.add("on");
+}
+
+function deleteMyStory(id){
+  S.my_stories=(S.my_stories||[]).filter(s=>s.id!==id);
+  saveState(); renderStoriesBar();
+  const remaining=(S.my_stories||[]).filter(s=>Date.now()<s.expires);
+  if(remaining.length) openMyStories();
+  else { closeM("m-mystories"); }
+  showToast("🗑️ Сторис удалена");
 }
 
 // ══════════════════════════════════════════════════
@@ -3671,7 +3743,7 @@ function openMyStories(){
 const OFFICIAL_POSTS = [
   {id:1,text:"⬡ **Nexus Messenger v3.0** — крупное обновление!\n\nДобавили: VIP подписку, Сторис, бота поддержки, подарки и многое другое! Обновляйтесь и пишите нам обратную связь 🚀",emoji:"🎉",views:14382,time:"07.06.2026",reactions:[{e:"🔥",c:892},{e:"❤️",c:654},{e:"👍",c:431}]},
   {id:2,text:"💎 **Crystals теперь можно дарить!**\n\nОтправляйте подарки друзьям прямо в чате. Редкие и эксклюзивные подарки уже в магазине.",emoji:"🎁",views:8921,time:"06.06.2026",reactions:[{e:"🎉",c:445},{e:"💎",c:312}]},
-  {id:3,text:"📖 **Сторис для VIP пользователей**\n\nTеперь с VIP аккаунтом можно публиковать до 3 сторис одновременно. Сторис живут 24 часа.",emoji:"📖",views:6540,time:"05.06.2026",reactions:[{e:"⭐",c:234},{e:"👍",c:189}]},
+  {id:3,text:"📖 **Сторис для VIP пользователей**\n\nТеперь с VIP можно публиковать несколько сторис, а VIP-админы каналов — до 10. Сторис живут 24 часа.",emoji:"📖",views:6540,time:"05.06.2026",reactions:[{e:"⭐",c:234},{e:"👍",c:189}]},
   {id:4,text:"✅ **Верификация каналов открыта!**\n\nПодайте заявку через @NexusVerify и получите синюю галочку. Рассматриваем в течение 3-7 дней.",emoji:"✅",views:5120,time:"04.06.2026",reactions:[{e:"❤️",c:156},{e:"🔥",c:98}]},
 ];
 
@@ -4221,10 +4293,19 @@ applyTheme(S.theme||"dark");
 </div>
 
 <!-- MODAL: STORY EDITOR -->
+<!-- MODAL: MY STORIES MANAGEMENT -->
+<div class="movl" id="m-mystories"><div class="modal" style="max-width:420px">
+  <div class="mtit">📖 Мои сторис <span id="mystories-count" style="font-size:12px;color:var(--tx3);font-weight:400"></span></div>
+  <div id="mystories-list" style="max-height:340px;overflow-y:auto;margin-bottom:12px"></div>
+  <button class="xbtn gn" id="mystories-add" style="width:100%;margin-bottom:8px" onclick="closeM('m-mystories');openStoryEditor()">➕ Добавить сторис</button>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-mystories')">Закрыть</button></div>
+</div></div>
+
 <div class="movl" id="m-story-editor">
   <div class="modal" style="max-width:400px">
     <div class="mtit">📖 Новая сторис</div>
     <div class="msub">Выберите тип и добавьте контент</div>
+    <div id="story-author-choice" style="display:none;margin-bottom:14px;padding:10px;background:var(--bg3);border-radius:10px"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
       <div class="story-type-btn on" id="stype-text" onclick="selectStoryType('text')" style="background:var(--bg3);border:1.5px solid var(--acc);border-radius:10px;padding:12px;text-align:center;cursor:pointer">
         <div style="font-size:24px;margin-bottom:4px">✍️</div>
