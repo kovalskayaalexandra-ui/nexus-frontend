@@ -1141,6 +1141,7 @@ tr:hover td{background:var(--bg3)}
   <div class="ctxi" onclick="ctxCopy()">📋 Копировать</div>
   <div class="ctxi" onclick="ctxPin()">📌 Закрепить</div>
   <div class="ctxi" onclick="ctxForward()">↪️ Переслать</div>
+  <div class="ctxi" onclick="ctxSaveToFav()">⭐ В Избранное</div>
   <div class="ctxi" onclick="ctxSelect()">☑️ Выделить</div>
   <div class="ctxi" onclick="ctxReact()">😀 Реакция</div>
   <div class="ctxi" onclick="ctxReport()">⚠️ Пожаловаться</div>
@@ -1871,6 +1872,12 @@ function loginOK(){
   setTimeout(showNotif,4000);
   // official channel + stories bar + support bot
   setTimeout(()=>{
+    // Избранное (Saved Messages) — чат "сам себе", всегда первый служебный
+    if(!S.chats.find(c=>c.id===77777)){
+      S.chats.push({id:77777,nm:"⭐ Избранное",ini:"⭐",col:2,online:false,prev:"Сохранённые сообщения",time:"",unread:0,type:"personal",pinned:true,muted:false,blocked:false,draft:"",saved:true});
+      S.messages[77777]=[{id:1,t:"sys",tx:"Это ваше Избранное — сохраняйте сюда важные сообщения, ссылки и заметки. Видите только вы."}];
+      saveState(); renderChats();
+    }
     if(!S.chats.find(c=>c.id===88888)){
       S.chats.push({id:88888,nm:"Nexus Official ✅",ini:"NO",col:4,online:false,prev:"🎉 Nexus v3.0 — крупное обновление!",time:"сейчас",unread:4,type:"channels",pinned:false,muted:false,blocked:false,draft:"",official:true});
       saveState(); renderChats();
@@ -1895,7 +1902,7 @@ async function loadChatsFromDB(){
     if(!data.chats) return;
     data.chats.forEach(dbChat => {
       // Пропускаем служебные чаты
-      if(dbChat.id === 88888 || dbChat.id === 99999) return;
+      if(dbChat.id === 88888 || dbChat.id === 99999 || dbChat.id === 77777) return;
       // Если чат уже есть локально — обновляем
       const existing = S.chats.find(c => c.id === dbChat.id);
       if(existing){
@@ -1928,7 +1935,7 @@ async function loadChatsFromDB(){
 
 // ── ЗАГРУЗКА СООБЩЕНИЙ ИЗ БД ─────────────────────────────────
 async function loadMessagesFromDB(chatId){
-  if(!chatId || chatId === 99999 || chatId === 88888) return;
+  if(!chatId || chatId === 99999 || chatId === 88888 || chatId === 77777) return;
   try {
     const data = await apiGet("/api/messages/"+chatId);
     if(!data.messages || !data.messages.length) return;
@@ -2244,6 +2251,17 @@ function updateSendAsUI(){
 
 function sendMsg(){
   const inp=el("minput"); const txt=inp.value.trim(); if(!txt)return;
+  // ── Избранное (Saved Messages) — просто сохраняем, без ответов ──
+  if(S.chat === 77777){
+    if(!S.messages[77777]) S.messages[77777]=[];
+    S.messages[77777].push({id:nextId(),t:"out",tx:txt,time:now(),read:true});
+    inp.value=""; aResize(inp);
+    const sch=S.chats.find(c=>c.id===77777);
+    if(sch){sch.prev=txt;sch.time=now();}
+    renderMsgs(); renderChats(); saveState();
+    if(el("char-count"))el("char-count").textContent="";
+    return;
+  }
   // ── Support bot interception ──
   if(S.chat === 99999){
     if(!S.messages[99999]) S.messages[99999]=[];
@@ -2542,6 +2560,17 @@ function unpinMsg(){
   renderPinbar(); saveState();
 }
 function ctxForward(){ S.fwdId=S.ctxId; openForward(); }
+function ctxSaveToFav(){
+  const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
+  el("ctx").classList.remove("on");
+  if(!S.messages[77777]) S.messages[77777]=[];
+  // Сохраняем копию сообщения в Избранное
+  S.messages[77777].push({id:nextId(),t:"out",tx:m.tx||"",sk:m.sk,time:now(),read:true,savedFrom:true});
+  const fav=S.chats.find(c=>c.id===77777);
+  if(fav){ fav.prev=m.tx||"Стикер"; fav.time=now(); }
+  renderChats(); saveState();
+  showToast("⭐ Сохранено в Избранное");
+}
 function ctxReport(){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
   el("ctx").classList.remove("on");
@@ -2962,7 +2991,7 @@ function addMemberToGroup(id,nm,uname,col){
 }
 
 // ── FORWARD ──────────────────────────────────────────────────
-function openForward(){ el("fwd-list").innerHTML=S.chats.map(ch=>`<div class="contact-item" style="margin-bottom:4px" onclick="doForward(${ch.id})"><div class="contact-av" style="background:${colBg(ch.col)}">${ch.ini}</div><div><div class="contact-nm">${ch.nm}</div></div></div>`).join(""); el("m-forward").classList.add("on"); }
+function openForward(){ const sorted=[...S.chats].sort((a,b)=>(b.id===77777?1:0)-(a.id===77777?1:0)); el("fwd-list").innerHTML=sorted.map(ch=>`<div class="contact-item" style="margin-bottom:4px" onclick="doForward(${ch.id})"><div class="contact-av" style="background:${colBg(ch.col)}">${ch.ini}</div><div><div class="contact-nm">${ch.nm}</div></div></div>`).join(""); el("m-forward").classList.add("on"); }
 function doForward(toId){
   if(!S.messages[toId])S.messages[toId]=[];
   const tm=now();
@@ -3188,6 +3217,8 @@ function buyVIP(planId, price){
     updBal(); saveState(); closeM("m-confirm");
     renderVIPScreen();
     updateUserUI();
+    renderStoriesBar();   // обновляем строку сторис (теперь "+ Моя" вместо "👑 VIP")
+    renderChats();        // обновляем чаты (VIP-значки)
     showToast("🎉 VIP активирован! Все привилегии открыты");
     setTimeout(()=>{ openStories(); },1200);
   };
