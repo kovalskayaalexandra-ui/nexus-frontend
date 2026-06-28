@@ -3113,6 +3113,12 @@ detectLang();
 // При наличии токена — обновляем данные с сервера в фоне
 if(S.loggedIn){
   document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on"));
+  // Создаём Избранное если его ещё нет (для тех кто уже залогинен)
+  if(!S.chats.find(c=>c.id===77777)){
+    S.chats.push({id:77777,nm:"⭐ Избранное",ini:"⭐",col:2,online:false,prev:"Сохранённые сообщения",time:"",unread:0,type:"personal",pinned:true,muted:false,blocked:false,draft:"",saved:true});
+    if(!S.messages[77777]) S.messages[77777]=[{id:1,t:"sys",tx:"Это ваше Избранное — сохраняйте сюда важные сообщения, ссылки и заметки. Видите только вы."}];
+    saveState();
+  }
   updateUserUI(); renderChats(); openChat(S.chat||1); updBal();
   setTimeout(showNotif,5000);
   // Подключаем WebSocket при старте если уже залогинены
