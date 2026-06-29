@@ -160,6 +160,15 @@ button,input,textarea,select{font-family:inherit}
 .send-as-btn.active{background:rgba(108,99,255,.12);border-color:rgba(108,99,255,.4);color:var(--acc2);font-weight:500}
 .sas-av{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:600;flex-shrink:0}
 .as-channel-tag{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--acc2);margin-bottom:4px;opacity:.9}
+.spoiler{background:var(--tx2);color:transparent;border-radius:4px;padding:0 3px;cursor:pointer;transition:all .25s;filter:blur(0.3px);user-select:none;position:relative}
+.spoiler::selection{background:transparent}
+.spoiler:not(.revealed){text-shadow:0 0 8px var(--tx1)}
+.spoiler.revealed{background:rgba(128,128,128,.15);color:inherit;cursor:auto;filter:none;text-shadow:none;user-select:text}
+.format-bar{display:none;position:absolute;bottom:100%;left:12px;margin-bottom:6px;background:var(--bg1);border:1px solid var(--brd);border-radius:10px;padding:4px;gap:2px;box-shadow:0 6px 20px rgba(0,0,0,.3);z-index:50}
+.format-bar.on{display:flex}
+.fmt-btn{width:34px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:7px;cursor:pointer;font-size:14px;color:var(--tx1);transition:.15s;user-select:none}
+.fmt-btn:hover{background:var(--acc);color:#fff}
+.msg-code{font-family:'SF Mono',Menlo,Consolas,monospace;background:rgba(128,128,128,.18);padding:1px 5px;border-radius:5px;font-size:.92em}
 .select-bar{display:none;background:var(--bg2);border-bottom:1px solid var(--brd);padding:9px 14px;align-items:center;gap:11px;font-size:13px;flex-shrink:0}
 .mem-item{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:10px;cursor:pointer;transition:.15s}
 .mem-item:hover{background:var(--bg3)}
@@ -231,7 +240,7 @@ body.select-mode .msel-check{display:flex}
 .estrip{display:none;padding:6px 13px 0;background:var(--bg2)}
 .estrip.on{display:flex;align-items:center;gap:7px}
 .esb{border-left:3px solid var(--am);padding:3px 7px;flex:1;font-size:11px;color:var(--am)}
-.ibar{background:var(--bg2);border-top:1px solid var(--brd);padding:8px 11px;display:flex;align-items:flex-end;gap:6px;flex-shrink:0}
+.ibar{background:var(--bg2);border-top:1px solid var(--brd);padding:8px 11px;display:flex;align-items:flex-end;gap:6px;flex-shrink:0;position:relative}
 .attb{width:35px;height:35px;background:var(--bg3);border:1px solid var(--brd);border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);flex-shrink:0}
 .attb:hover{background:var(--bg4);color:var(--acc2)}
 .iwrap{flex:1;background:var(--bg3);border:1px solid var(--brd);border-radius:12px;display:flex;align-items:flex-end;padding:7px 10px;transition:border-color .2s;gap:5px}
@@ -796,12 +805,19 @@ tr:hover td{background:var(--bg3)}
       </div>
 
       <div class="ibar">
+        <div class="format-bar" id="format-bar">
+          <div class="fmt-btn" onclick="applyFormat('bold')" title="Жирный"><b>B</b></div>
+          <div class="fmt-btn" onclick="applyFormat('italic')" title="Курсив"><i>I</i></div>
+          <div class="fmt-btn" onclick="applyFormat('strike')" title="Зачёркнутый"><s>S</s></div>
+          <div class="fmt-btn" onclick="applyFormat('code')" title="Моноширинный"><span style="font-family:monospace">&lt;/&gt;</span></div>
+          <div class="fmt-btn" onclick="applyFormat('spoiler')" title="Спойлер">🫥</div>
+        </div>
         <div class="attb" onclick="el('file-inp').click()" title="Прикрепить файл">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         </div>
         <input type="file" id="file-inp" style="display:none" onchange="attachFile(this)">
         <div class="iwrap">
-          <textarea id="minput" rows="1" placeholder="Написать..." onkeydown="hKey(event)" oninput="onInput(this)"></textarea>
+          <textarea id="minput" rows="1" placeholder="Написать..." onkeydown="hKey(event)" oninput="onInput(this)" onselect="onTextSelect()" onmouseup="onTextSelect()" onkeyup="onTextSelect()"></textarea>
           <div class="ibi" onclick="toggleMP('emoji')"><svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></div>
         </div>
         <span class="char-count" id="char-count"></span>
@@ -2109,6 +2125,25 @@ function openChat(id){
 }
 
 // ── MESSAGES ──────────────────────────────────────────────────
+// Форматирование текста сообщения: экранирование HTML + спойлеры ||текст||
+function escHtml(s){
+  return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function formatMsgText(raw){
+  let safe = escHtml(raw);
+  // Код `текст` (обрабатываем первым чтобы не конфликтовал с другими)
+  safe = safe.replace(/`([^`]+)`/g, (m,inner)=>`<code class="msg-code">${inner}</code>`);
+  // Жирный **текст**
+  safe = safe.replace(/\*\*([^*]+)\*\*/g, (m,inner)=>`<b>${inner}</b>`);
+  // Курсив __текст__
+  safe = safe.replace(/__([^_]+)__/g, (m,inner)=>`<i>${inner}</i>`);
+  // Зачёркнутый ~~текст~~
+  safe = safe.replace(/~~([^~]+)~~/g, (m,inner)=>`<s>${inner}</s>`);
+  // Спойлеры ||текст|| → размытый блок, открывается по клику
+  safe = safe.replace(/\|\|([^|]+)\|\|/g, (m,inner)=>`<span class="spoiler" onclick="this.classList.add('revealed')">${inner}</span>`);
+  return safe;
+}
+
 function renderMsgs(){
   const c=el("msgs"); c.innerHTML="";
   (S.messages[S.chat]||[]).filter(m=>!m._deletedForAll && !m._deletedForMe).forEach(m=>{
@@ -2135,7 +2170,7 @@ function renderMsgs(){
       let bc="";
       if(m.asChannel)bc+=`<div class="as-channel-tag"><div class="sas-av" style="background:${colBg(m.asChannel.col)};width:18px;height:18px;font-size:9px">${m.asChannel.ini}</div>📢 ${m.asChannel.nm}</div>`;
       if(m.reply)bc+=`<div class="rprev"><div class="rprevnm">${m.reply.fr}</div><div class="rprevtx">${m.reply.tx}</div></div>`;
-      bc+=`<span>${m.tx||""}</span>`;
+      bc+=`<span>${formatMsgText(m.tx||"")}</span>`;
       // link preview
       const urlMatch=(m.tx||"").match(/https?:\/\/[^\s]+/);
       if(urlMatch)bc+=`<div class="lnkprev"><div class="lnktitle">🔗 ${urlMatch[0].replace(/https?:\/\//,"").slice(0,40)}</div><div class="lnkdesc">Открыть ссылку</div></div>`;
@@ -2560,6 +2595,37 @@ function unpinMsg(){
   renderPinbar(); saveState();
 }
 function ctxForward(){ S.fwdId=S.ctxId; openForward(); }
+
+// Показать/скрыть плашку форматирования при выделении текста
+function onTextSelect(){
+  const inp=el("minput"); if(!inp)return;
+  const bar=el("format-bar"); if(!bar)return;
+  const hasSelection = inp.selectionStart !== inp.selectionEnd;
+  bar.classList.toggle("on", hasSelection);
+}
+
+// Применить форматирование к выделенному тексту
+function applyFormat(type){
+  const inp=el("minput"); if(!inp)return;
+  const start=inp.selectionStart, end=inp.selectionEnd;
+  const val=inp.value;
+  const selected=val.slice(start,end);
+  if(!selected) return;
+  const wrap={
+    bold:["**","**"],
+    italic:["__","__"],
+    strike:["~~","~~"],
+    code:["`","`"],
+    spoiler:["||","||"]
+  }[type];
+  if(!wrap) return;
+  inp.value = val.slice(0,start)+wrap[0]+selected+wrap[1]+val.slice(end);
+  // Снимаем выделение, прячем плашку
+  const newPos=end+wrap[0].length+wrap[1].length;
+  inp.selectionStart=inp.selectionEnd=newPos;
+  el("format-bar").classList.remove("on");
+  inp.focus(); aResize(inp);
+}
 function ctxSaveToFav(){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
   el("ctx").classList.remove("on");
