@@ -1730,9 +1730,11 @@ function wsHandleMessage(msg){
       const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, poll, contact, spoiler } = msg.payload;
       // Не добавляем своё же сообщение (оно уже есть локально)
       if(senderId === S.user?.id) break;
+      // Защита от "пустых" сообщений (например, если у собеседника не удалась загрузка файла)
+      if(!text && !mediaUrl && !poll && !contact) break;
       if(!S.messages[chatId]) S.messages[chatId] = [];
       // Проверяем что такого сообщения ещё нет
-      if(S.messages[chatId].find(m => m.wsId === id)) break;
+      if(S.messages[chatId].find(m => m.wsId === id || (id && m.dbId === id))) break;
       let ch = S.chats.find(c => c.id === chatId);
       // Если чата нет локально — создаём его (сообщение от нового собеседника)
       if(!ch){
@@ -1755,8 +1757,10 @@ function wsHandleMessage(msg){
           if(d.user){ ch.nm = d.user.name||d.user.username||"Пользователь"; ch.ini = ch.nm.slice(0,2).toUpperCase(); renderChats(); saveState(); }
         }).catch(()=>{});
       }
+      // id, который присылает бэкенд — это настоящий UUID из БД (если сообщение успело сохраниться),
+      // поэтому сразу пишем его и в dbId — иначе после перезагрузки страницы сообщение задвоится
       const newMsg = {
-        id: nextId(), wsId: id,
+        id: nextId(), wsId: id, dbId: id,
         t: "in",
         fr: ch?.ini?.[0] || "?",
         col: ch?.col || 0,
@@ -1783,6 +1787,21 @@ function wsHandleMessage(msg){
       if(S.chat === chatId) renderMsgs();
       renderChats(); saveState();
       if(!ch?.muted && S.chat !== chatId) showNotif();
+      break;
+    }
+
+    case "poll.vote": {
+      const { chatId, msgId, poll } = msg.payload;
+      const list = S.messages[chatId];
+      if(list){
+        const m = list.find(x => x.dbId === msgId);
+        if(m && m.poll){
+          // Обновляем счётчики с сервера, сохраняя свой личный выбор как есть
+          m.poll = { ...poll, myVotes: m.poll.myVotes||[] };
+          if(S.chat === chatId) renderMsgs();
+          saveState();
+        }
+      }
       break;
     }
 
@@ -1828,6 +1847,13 @@ async function apiPost(path, body, auth=false){
   const headers = {"Content-Type":"application/json"};
   if(auth){ const t=getToken(); if(t) headers["Authorization"]="Bearer "+t; }
   const res = await fetch(API_URL+path,{method:"POST",headers,body:JSON.stringify(body)});
+  return res.json();
+}
+
+async function apiPatch(path, body, auth=false){
+  const headers = {"Content-Type":"application/json"};
+  if(auth){ const t=getToken(); if(t) headers["Authorization"]="Bearer "+t; }
+  const res = await fetch(API_URL+path,{method:"PATCH",headers,body:JSON.stringify(body)});
   return res.json();
 }
 
@@ -2470,19 +2496,22 @@ function sendMsg(){
   setInputText(""); aResize(inp); renderMsgs(); renderChats(); saveState();
   if(el("char-count"))el("char-count").textContent="";
 
-  // Сохраняем сообщение в БД и отправляем через WebSocket
-  const curChat = S.chats.find(c=>c.id===S.chat);
-  const memberIds = getChatMemberIds(curChat);
-  const sent = wsSend({
-    type: "message.send",
-    payload: { chatId: S.chat, text: txt, memberIds }
-  });
-  // Сохраняем в БД если чат реальный (UUID)
-  if(typeof S.chat === "string" && S.chat.length > 10){
-    apiPost("/api/messages", {chatId: S.chat, text: txt}, true)
-      .then(d=>{ if(d?.message?.id){ msg.dbId=d.message.id; saveState(); } })
-      .catch(e=>console.warn("save msg error:", e));
+  // Сохраняем сообщение в БД (получаем настоящий id) и уже с ним рассылаем через WebSocket
+  const chatId=S.chat;
+  const memberIds = getChatMemberIds(ch);
+  sendTextToServer(msg, txt, chatId, ch, tm, memberIds);
+}
+
+async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds){
+  let dbId=null;
+  if(typeof chatId === "string" && chatId.length > 10){
+    try{
+      const d=await apiPost("/api/messages", {chatId, text: txt}, true);
+      dbId=d?.message?.id||null;
+      if(dbId){ msg.dbId=dbId; saveState(); }
+    }catch(e){ console.warn("save msg error:", e); }
   }
+  const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, memberIds, id:dbId } });
 
   // Если WS не подключён — показываем локальный авто-ответ (демо)
   if(!sent){
@@ -2492,9 +2521,10 @@ function sendMsg(){
       if(stEl){stEl.textContent=oc;stEl.className=ocl;}
       const reps=["Понял! 👍","Окей 😊","Огонь! 🔥","Договорились ✅","Интересно 💡","🐱","💯","Хорошо!","Спасибо!","👌"];
       const rep={id:nextId(),t:"in",fr:ch?.ini?.[0]||"А",tx:reps[Math.floor(Math.random()*reps.length)],time:tm,col:ch?.col||0};
-      if(!S.messages[S.chat])S.messages[S.chat]=[];
-      S.messages[S.chat].push(rep); if(ch){ch.prev=rep.tx;ch.time=tm;}
-      renderMsgs(); renderChats(); if(!ch?.muted)showNotif(); saveState();
+      if(!S.messages[chatId])S.messages[chatId]=[];
+      S.messages[chatId].push(rep); if(ch){ch.prev=rep.tx;ch.time=tm;}
+      if(S.chat===chatId) renderMsgs();
+      renderChats(); if(!ch?.muted)showNotif(); saveState();
     },1800);
   }
 }
@@ -2578,6 +2608,7 @@ function openPollCreate(e){
     <input class="fii" id="poll-opt-1" placeholder="Вариант 2" maxlength="80">`;
   el("poll-multi").classList.remove("on");
   el("poll-anon").classList.add("on");
+  el("poll-lock").classList.remove("on");
   el("m-poll-create").classList.add("on");
 }
 function addPollOption(){
@@ -2585,7 +2616,7 @@ function addPollOption(){
   el("poll-options-list").insertAdjacentHTML("beforeend",`<input class="fii" id="poll-opt-${pollOptionCount}" placeholder="Вариант ${pollOptionCount+1}" maxlength="80">`);
   pollOptionCount++;
 }
-function submitPoll(){
+async function submitPoll(){
   const q=el("poll-q").value.trim();
   if(!q){ showToast("❌ Введите вопрос"); return; }
   const opts=[];
@@ -2599,25 +2630,30 @@ function submitPoll(){
     question:q, options:opts,
     multi: el("poll-multi").classList.contains("on"),
     anon: el("poll-anon").classList.contains("on"),
+    allowChangeVote: !el("poll-lock").classList.contains("on"),
     totalVotes:0, myVotes:[]
   };
+  const chatId=S.chat;
   const tm=now();
-  if(!S.messages[S.chat])S.messages[S.chat]=[];
+  if(!S.messages[chatId])S.messages[chatId]=[];
   const msg={id:nextId(),t:"out",time:tm,read:false,tx:"",poll};
-  S.messages[S.chat].push(msg);
-  const ch=S.chats.find(c=>c.id===S.chat);
+  S.messages[chatId].push(msg);
+  const ch=S.chats.find(c=>c.id===chatId);
   if(ch){ch.prev="📊 "+q;ch.time=tm;}
   closeM("m-poll-create");
   renderMsgs(); renderChats(); saveState();
 
-  const curChat=S.chats.find(c=>c.id===S.chat);
+  const curChat=S.chats.find(c=>c.id===chatId);
   const memberIds=getChatMemberIds(curChat);
-  wsSend({type:"message.send",payload:{chatId:S.chat,text:"",memberIds,poll}});
-  if(typeof S.chat==="string" && S.chat.length>10){
-    apiPost("/api/messages",{chatId:S.chat,text:"",poll},true)
-      .then(d=>{ if(d?.message?.id){ msg.dbId=d.message.id; saveState(); } })
-      .catch(e=>console.warn("save msg error:",e));
+  let dbId=null;
+  if(typeof chatId==="string" && chatId.length>10){
+    try{
+      const d=await apiPost("/api/messages",{chatId,text:"",poll},true);
+      dbId=d?.message?.id||null;
+      if(dbId){ msg.dbId=dbId; saveState(); }
+    }catch(e){ console.warn("save msg error:",e); }
   }
+  wsSend({type:"message.send",payload:{chatId,text:"",memberIds,poll,id:dbId}});
 }
 function voteWord(n){
   const n10=n%10, n100=n%100;
@@ -2629,11 +2665,20 @@ function voteWord(n){
 // Голосование — работает сразу и наглядно на своём устройстве.
 // ⚠️ Пока нет доработки бэкенда — голос собеседника в реальном времени
 // на твоём экране не появится, посчитается только твой собственный тап.
-function votePoll(msgId,optId){
-  const m=(S.messages[S.chat]||[]).find(x=>x.id===msgId);
+async function votePoll(msgId,optId){
+  const chatId=S.chat;
+  const m=(S.messages[chatId]||[]).find(x=>x.id===msgId);
   if(!m||!m.poll)return;
   const p=m.poll;
   const already=p.myVotes.includes(optId);
+
+  // Автор опроса запретил менять голос после первого выбора
+  if(p.allowChangeVote===false && p.myVotes.length && !already){
+    showToast("🔒 Автор опроса запретил менять голос");
+    return;
+  }
+
+  // ── Локальный оптимистичный апдейт — сразу видно свой тап ──
   if(!p.multi && p.myVotes.length && !already){
     const prevOpt=p.options.find(o=>o.id===p.myVotes[0]);
     if(prevOpt) prevOpt.votes=Math.max(0,prevOpt.votes-1);
@@ -2652,6 +2697,25 @@ function votePoll(msgId,optId){
     p.myVotes.push(optId);
   }
   renderMsgs(); saveState();
+
+  // Опрос ещё не сохранён на сервере (демо-чат/нет сети) — дальше некуда синхронизировать
+  if(!m.dbId) return;
+
+  try{
+    const data=await apiPatch("/api/messages/"+m.dbId+"/vote", {optionId:optId}, true);
+    if(data.error) throw new Error(data.error);
+    // Подтягиваем точные цифры с сервера (на случай гонки с другим голосующим)
+    const myVotes=data.myVotes||p.myVotes;
+    m.poll={...data.poll, myVotes};
+    renderMsgs(); saveState();
+
+    const curChat=S.chats.find(c=>c.id===chatId);
+    const memberIds=getChatMemberIds(curChat);
+    wsSend({type:"poll.vote",payload:{chatId,msgId:m.dbId,poll:data.poll,memberIds}});
+  }catch(err){
+    console.warn("vote error:",err);
+    showToast("❌ "+(err.message||"Не удалось проголосовать"));
+  }
 }
 
 // ── ОТПРАВКА КОНТАКТА ───────────────────────────────────────
@@ -2668,25 +2732,29 @@ function openShareContact(e){
     : `<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пока нет контактов</div>`;
   el("m-share-contact").classList.add("on");
 }
-function sendContactMsg(userId,nm,col,uname){
+async function sendContactMsg(userId,nm,col,uname){
+  const chatId=S.chat;
   const tm=now();
-  if(!S.messages[S.chat])S.messages[S.chat]=[];
+  if(!S.messages[chatId])S.messages[chatId]=[];
   const contact={userId,nm,col,uname};
   const msg={id:nextId(),t:"out",time:tm,read:false,tx:"",contact};
-  S.messages[S.chat].push(msg);
-  const ch=S.chats.find(c=>c.id===S.chat);
+  S.messages[chatId].push(msg);
+  const ch=S.chats.find(c=>c.id===chatId);
   if(ch){ch.prev="👤 "+nm;ch.time=tm;}
   closeM("m-share-contact");
   renderMsgs(); renderChats(); saveState();
 
-  const curChat=S.chats.find(c=>c.id===S.chat);
+  const curChat=S.chats.find(c=>c.id===chatId);
   const memberIds=getChatMemberIds(curChat);
-  wsSend({type:"message.send",payload:{chatId:S.chat,text:"",memberIds,contact}});
-  if(typeof S.chat==="string" && S.chat.length>10){
-    apiPost("/api/messages",{chatId:S.chat,text:"",contact},true)
-      .then(d=>{ if(d?.message?.id){ msg.dbId=d.message.id; saveState(); } })
-      .catch(e=>console.warn("save msg error:",e));
+  let dbId=null;
+  if(typeof chatId==="string" && chatId.length>10){
+    try{
+      const d=await apiPost("/api/messages",{chatId,text:"",contact},true);
+      dbId=d?.message?.id||null;
+      if(dbId){ msg.dbId=dbId; saveState(); }
+    }catch(e){ console.warn("save msg error:",e); }
   }
+  wsSend({type:"message.send",payload:{chatId,text:"",memberIds,contact,id:dbId}});
 }
 
 function openImgViewer(url){
@@ -2778,17 +2846,18 @@ async function sendWithAttachment(caption){
   pendingAttach=null;
   renderAttachPreview();
 
+  const chatId=S.chat;
   const tm=now();
   const localId=nextId();
-  if(!S.messages[S.chat])S.messages[S.chat]=[];
+  if(!S.messages[chatId])S.messages[chatId]=[];
   const msg={id:localId,t:"out",time:tm,read:false,uploading:true,tx:caption||""};
   if(att.kind==="image"){ msg.img=att.previewUrl; if(att.spoiler) msg.spoiler=true; }
   else if(att.kind==="video"){ msg.video=att.previewUrl; if(att.spoiler) msg.spoiler=true; }
   else if(att.kind==="audio") msg.audio={url:att.previewUrl,name:att.file.name};
   else msg.file={name:att.file.name,size:att.file.size};
   if(S.reply){msg.reply={fr:S.reply.fr,tx:S.reply.tx};cancelReply();}
-  S.messages[S.chat].push(msg);
-  const ch=S.chats.find(c=>c.id===S.chat);
+  S.messages[chatId].push(msg);
+  const ch=S.chats.find(c=>c.id===chatId);
   const label=att.kind==="image"?"📷 Фото":(att.kind==="video"?"🎥 Видео":(att.kind==="audio"?"🎵 "+att.file.name:"📎 "+att.file.name));
   if(ch){ch.prev=caption?label+" · "+caption:label;ch.time=tm;ch.draft="";}
   renderMsgs(); renderChats(); saveState();
@@ -2812,22 +2881,25 @@ async function sendWithAttachment(caption){
     else msg.file.url=data.url;
     renderMsgs(); saveState();
 
-    // Отправляем через WebSocket + сохраняем в БД (реальные чаты — id длиннее 10 символов, UUID)
-    const curChat=S.chats.find(c=>c.id===S.chat);
+    // Сначала сохраняем в БД (получаем настоящий id), потом рассылаем через WebSocket с этим id
+    const curChat=S.chats.find(c=>c.id===chatId);
     const memberIds=getChatMemberIds(curChat);
+    let dbId=null;
+    if(typeof chatId==="string" && chatId.length>10){
+      try{
+        const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler},true);
+        dbId=d?.message?.id||null;
+        if(dbId){ msg.dbId=dbId; saveState(); }
+      }catch(e){ console.warn("save msg error:",e); }
+    }
     wsSend({
       type:"message.send",
-      payload:{chatId:S.chat,text:caption||"",memberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler}
+      payload:{chatId,text:caption||"",memberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler,id:dbId}
     });
-    if(typeof S.chat==="string" && S.chat.length>10){
-      apiPost("/api/messages",{chatId:S.chat,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler},true)
-        .then(d=>{ if(d?.message?.id){ msg.dbId=d.message.id; saveState(); } })
-        .catch(e=>console.warn("save msg error:",e));
-    }
   }catch(err){
     console.error("upload error:",err);
     if((att.kind==="video"||att.kind==="audio") && att.previewUrl) URL.revokeObjectURL(att.previewUrl);
-    S.messages[S.chat]=S.messages[S.chat].filter(m=>m.id!==localId);
+    S.messages[chatId]=S.messages[chatId].filter(m=>m.id!==localId);
     renderMsgs(); saveState();
     showToast("❌ "+(err.message||"Не удалось загрузить файл"));
   }
@@ -4974,6 +5046,10 @@ applyTheme(S.theme||"dark");
   <div class="fg" style="margin-top:10px;display:flex;align-items:center;justify-content:space-between">
     <span class="fl" style="margin:0">Анонимный опрос</span>
     <div class="perm-tgl on" id="poll-anon" onclick="this.classList.toggle('on')"></div>
+  </div>
+  <div class="fg" style="margin-top:10px;display:flex;align-items:center;justify-content:space-between">
+    <span class="fl" style="margin:0">Запретить менять голос</span>
+    <div class="perm-tgl" id="poll-lock" onclick="this.classList.toggle('on')"></div>
   </div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-poll-create')">Отмена</button><button class="xbtn gn" onclick="submitPoll()">✅ Создать</button></div>
 </div></div>
