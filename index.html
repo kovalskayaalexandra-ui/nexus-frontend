@@ -240,6 +240,7 @@ body.select-mode .msel-check{display:flex}
 .lnktitle{font-size:11.5px;font-weight:600;color:var(--acc2);margin-bottom:2px}
 .lnkdesc{font-size:10.5px;color:var(--tx2)}
 .draft-label{font-size:10px;color:var(--am);font-weight:600}
+.typing-label{color:var(--acc2);font-weight:600;animation:pl 1.2s ease-in-out infinite}
 
 /* ═══ INPUT BAR ═══ */
 .rstrip{display:none;padding:6px 13px 0;background:var(--bg2)}
@@ -1614,7 +1615,8 @@ setInterval(_save, 3000); // backup save every 3s
 function T(k){ const l=LANGS[S.lang]; return l?(l.t[k]||k):k; }
 function el(id){ return document.getElementById(id); }
 function now(){ const d=new Date(); return d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"); }
-function nextId(){ return Date.now() + Math.floor(Math.random()*1000); }
+let _idSeq = Date.now();
+function nextId(){ return ++_idSeq; }
 function colBg(i){ return COLS[i%COLS.length]; }
 function avatarHTML(av, ini, col, size=43){
   if(av) return `<img src="${av}" style="width:100%;height:100%;object-fit:cover">`;
@@ -1818,13 +1820,26 @@ function wsHandleMessage(msg){
 
     case "user.typing": {
       const { userId, chatId } = msg.payload;
-      if(S.chat !== chatId) break;
-      const stEl = el("chst");
-      if(stEl){ stEl.textContent = "печатает..."; stEl.className = "chst typ"; }
-      clearTimeout(wsTypingTimer);
-      wsTypingTimer = setTimeout(() => {
-        if(stEl){ stEl.textContent = "онлайн"; stEl.className = "chst"; }
-      }, 3000);
+      const ch = S.chats.find(c => c.id === chatId);
+
+      if(S.chat === chatId){
+        // Собеседник печатает в открытом сейчас чате — обновляем статус в шапке
+        const stEl = el("chst");
+        if(stEl){ stEl.textContent = "печатает..."; stEl.className = "chst typ"; }
+        clearTimeout(wsTypingTimer);
+        wsTypingTimer = setTimeout(() => {
+          if(stEl){ stEl.textContent = "онлайн"; stEl.className = "chst"; }
+        }, 3000);
+      } else if(ch){
+        // Чат сейчас не открыт — показываем "печатает..." прямо в списке чатов
+        ch._typing = true;
+        renderChats();
+        clearTimeout(ch._typingTimer);
+        ch._typingTimer = setTimeout(() => {
+          ch._typing = false;
+          renderChats();
+        }, 3000);
+      }
       break;
     }
   }
@@ -1832,7 +1847,11 @@ function wsHandleMessage(msg){
 let wsTypingTimer = null;
 
 // Отправка typing индикатора (вызывается при вводе текста)
+let _lastTypingSent = 0;
 function wsSendTyping(){
+  const nowTs = Date.now();
+  if(nowTs - _lastTypingSent < 2000) return; // не спамим сервер на каждое нажатие клавиши
+  _lastTypingSent = nowTs;
   const ch = S.chats.find(c => c.id === S.chat);
   if(!ch) return;
   const memberIds = getChatMemberIds(ch);
@@ -1871,10 +1890,10 @@ async function apiGet(path){
   return res.json();
 }
 
-async function apiDelete(path){
+async function apiDelete(path, body){
   const t=getToken();
   const headers = {"Content-Type":"application/json","Authorization":"Bearer "+(t||"")};
-  const res = await fetch(API_URL+path,{method:"DELETE",headers});
+  const res = await fetch(API_URL+path,{method:"DELETE",headers, body: body?JSON.stringify(body):undefined});
   return res.json();
 }
 
@@ -2157,7 +2176,7 @@ function renderChats(filter=""){
     d.innerHTML=`<div class="chav" style="background:${colBg(ch.col)}">${avHTML}${ch.online?'<div class="odot"></div>':""}</div>
     <div class="cinfo" style="flex:1;overflow:hidden">
       <div class="cnm">${ch.nm}${ch.muted?' <span style="font-size:10px;opacity:.5">🔇</span>':""}</div>
-      <div class="cprev">${ch.draft?'<span class="draft-label">Черновик: </span>'+ch.draft:ch.prev}</div>
+      <div class="cprev">${ch._typing?'<span class="typing-label">печатает...</span>':(ch.draft?'<span class="draft-label">Черновик: </span>'+ch.draft:ch.prev)}</div>
     </div>
     <div class="cmeta">
       <div class="ctime">${ch.time}</div>
@@ -3010,7 +3029,7 @@ function selDeleteAll(){
     if(m){
       m._deletedForAll=true;
       wsSend({type:"message.delete", payload:{messageId:m.wsId||m.dbId||m.id, chatId:S.chat, forAll:true, memberIds}});
-      if(m.dbId && typeof S.chat==="string") apiDelete("/api/messages/"+m.dbId).catch(()=>{});
+      if(m.dbId && typeof S.chat==="string") apiDelete("/api/messages/"+m.dbId, {forAll:true}).catch(()=>{});
     }
   });
   showToast(`🗑️ Удалено: ${n}`);
@@ -3299,7 +3318,7 @@ function delForAll(){
     wsSend({type:"message.delete", payload:{messageId:m.wsId||m.dbId||m.id, chatId:S.chat, forAll:true, memberIds}});
     // Удаляем в БД
     if(m.dbId && typeof S.chat==="string"){
-      apiDelete("/api/messages/"+m.dbId).catch(()=>{});
+      apiDelete("/api/messages/"+m.dbId, {forAll:true}).catch(()=>{});
     }
   }
   closeM("m-delete"); renderMsgs(); showToast("🗑️ Удалено у всех"); saveState();
