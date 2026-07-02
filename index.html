@@ -164,10 +164,11 @@ button,input,textarea,select{font-family:inherit}
 .spoiler::selection{background:transparent}
 .spoiler:not(.revealed){text-shadow:0 0 8px var(--tx1)}
 .spoiler.revealed{background:rgba(128,128,128,.15);color:inherit;cursor:auto;filter:none;text-shadow:none;user-select:text}
-.format-bar{display:none;position:absolute;bottom:100%;left:12px;margin-bottom:6px;background:var(--bg1);border:1px solid var(--brd);border-radius:10px;padding:4px;gap:2px;box-shadow:0 6px 20px rgba(0,0,0,.3);z-index:50}
+.format-bar{display:none;flex-direction:column;position:absolute;bottom:100%;left:12px;margin-bottom:6px;background:var(--bg1);border:1px solid var(--brd);border-radius:12px;padding:5px;gap:1px;box-shadow:0 10px 28px rgba(0,0,0,.35);z-index:50;min-width:180px}
 .format-bar.on{display:flex}
-.fmt-btn{width:34px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:7px;cursor:pointer;font-size:14px;color:var(--tx1);transition:.15s;user-select:none}
-.fmt-btn:hover{background:var(--acc);color:#fff}
+.fmt-btn{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13.5px;color:var(--tx1);transition:.12s;user-select:none}
+.fmt-btn:hover{background:var(--bg3)}
+.fmt-ic{width:20px;text-align:center;flex-shrink:0;font-size:14px;color:var(--tx2)}
 .msg-code{font-family:'SF Mono',Menlo,Consolas,monospace;background:rgba(128,128,128,.18);padding:1px 5px;border-radius:5px;font-size:.92em}
 .msg-link{color:var(--acc2);text-decoration:underline}
 .minput-ce{flex:1;min-height:20px;max-height:100px;overflow-y:auto;padding:9px 0;font-size:14.5px;color:var(--tx1);outline:none;line-height:1.4;white-space:pre-wrap;word-break:break-word}
@@ -175,9 +176,10 @@ button,input,textarea,select{font-family:inherit}
 .minput-ce b{font-weight:700}
 .minput-ce i{font-style:italic}
 .minput-ce s{text-decoration:line-through}
-.minput-ce .ce-code{font-family:'SF Mono',Menlo,Consolas,monospace;background:rgba(128,128,128,.22);padding:1px 5px;border-radius:5px;font-size:.92em}
-.minput-ce .ce-spoiler{background:rgba(128,128,128,.35);border-radius:4px;padding:0 3px;text-decoration:none}
-.minput-ce .ce-link{color:var(--acc2);text-decoration:underline;cursor:pointer}
+.minput-ce .ce-code{font-family:'SF Mono',Menlo,Consolas,monospace;background:rgba(128,128,128,.22);padding:1px 5px;border-radius:5px;font-size:.92em;cursor:default}
+.minput-ce .ce-spoiler{background:rgba(128,128,128,.35);border-radius:4px;padding:0 3px;text-decoration:none;cursor:default}
+.minput-ce .ce-link{color:var(--acc2);text-decoration:underline;cursor:default}
+.minput-ce b,.minput-ce i,.minput-ce s{cursor:default}
 .select-bar{display:none;background:var(--bg2);border-bottom:1px solid var(--brd);padding:9px 14px;align-items:center;gap:11px;font-size:13px;flex-shrink:0}
 .mem-item{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:10px;cursor:pointer;transition:.15s}
 .mem-item:hover{background:var(--bg3)}
@@ -815,12 +817,12 @@ tr:hover td{background:var(--bg3)}
 
       <div class="ibar">
         <div class="format-bar" id="format-bar">
-          <div class="fmt-btn" onclick="applyFormat('bold')" title="Жирный"><b>B</b></div>
-          <div class="fmt-btn" onclick="applyFormat('italic')" title="Курсив"><i>I</i></div>
-          <div class="fmt-btn" onclick="applyFormat('strike')" title="Зачёркнутый"><s>S</s></div>
-          <div class="fmt-btn" onclick="applyFormat('code')" title="Моноширинный"><span style="font-family:monospace">&lt;/&gt;</span></div>
-          <div class="fmt-btn" onclick="applyFormat('spoiler')" title="Спойлер">🫥</div>
-          <div class="fmt-btn" onclick="promptLink()" title="Ссылка">🔗</div>
+          <div class="fmt-btn" onclick="applyFormat('bold')"><b class="fmt-ic">B</b><span>Жирный</span></div>
+          <div class="fmt-btn" onclick="applyFormat('italic')"><i class="fmt-ic">I</i><span>Курсив</span></div>
+          <div class="fmt-btn" onclick="applyFormat('strike')"><s class="fmt-ic">S</s><span>Зачёркнутый</span></div>
+          <div class="fmt-btn" onclick="applyFormat('code')"><span class="fmt-ic" style="font-family:monospace">&lt;/&gt;</span><span>Моноширинный</span></div>
+          <div class="fmt-btn" onclick="applyFormat('spoiler')"><span class="fmt-ic">🫥</span><span>Спойлер</span></div>
+          <div class="fmt-btn" onclick="promptLink()"><span class="fmt-ic">🔗</span><span>Ссылка</span></div>
         </div>
         <div class="attb" onclick="el('file-inp').click()" title="Прикрепить файл">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -2723,8 +2725,17 @@ function applyFormat(type){
   if(type==="code") wrapper.className="ce-code";
   if(type==="spoiler") wrapper.className="ce-spoiler";
   wrapper.textContent=text;
+  // Делаем элемент "атомарным" — курсор не может зайти внутрь него для печати.
+  // Это устраняет саму причину бага (курсор "застревал" внутри пустого тега):
+  // при стирании такой блок удаляется браузером целиком, одним нажатием backspace,
+  // а не по одному символу с риском что тег останется пустым и печать продолжится внутри него.
+  wrapper.contentEditable="false";
 
   range.deleteContents();
+  // Невидимые "якоря" до и после — чтобы курсору было куда встать по обе стороны от блока
+  const leadSpacer=document.createTextNode("\u200B");
+  range.insertNode(leadSpacer);
+  range.setStartAfter(leadSpacer); range.collapse(true);
   range.insertNode(wrapper);
   const spacer=document.createTextNode("\u200B");
   wrapper.after(spacer);
@@ -2754,12 +2765,17 @@ function confirmLink(){
   if(!/^https?:\/\//i.test(url)) url="https://"+url;
   const a=document.createElement("a");
   a.href=url; a.textContent=text; a.className="ce-link"; a.target="_blank";
+  a.contentEditable="false";
 
   const inp=el("minput");
   if(savedLinkRange && inp.contains(savedLinkRange.commonAncestorContainer)){
     savedLinkRange.deleteContents();
+    const leadSpacer=document.createTextNode("\u200B");
+    savedLinkRange.insertNode(leadSpacer);
+    savedLinkRange.setStartAfter(leadSpacer); savedLinkRange.collapse(true);
     savedLinkRange.insertNode(a);
   } else {
+    inp.appendChild(document.createTextNode("\u200B"));
     inp.appendChild(a);
   }
   const spacer=document.createTextNode("\u200B");
