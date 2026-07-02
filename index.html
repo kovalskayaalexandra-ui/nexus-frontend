@@ -2393,6 +2393,7 @@ function sendSticker(sk){
 function hKey(e){ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();} }
 function onInput(elm){
   aResize(elm);
+  cleanupEmptyFormatSpans();
   if(wsConnected) wsSendTyping();
   const txt=getInputText();
   const len=txt.length;
@@ -2402,6 +2403,36 @@ function onInput(elm){
   const ch=S.chats.find(c=>c.id===S.chat); if(ch)ch.draft=txt;
 }
 function aResize(e){ e.style.height="auto"; e.style.height=Math.min(e.scrollHeight,100)+"px"; }
+
+// Если весь текст внутри форматированного элемента (спойлер/код/жирный/ссылка) стёрт —
+// курсор браузера "залипает" внутри пустого тега, и новый текст продолжает считаться
+// частью этого форматирования. Убираем пустой тег и переносим курсор наружу, в обычный текст.
+function cleanupEmptyFormatSpans(){
+  const inp=el("minput"); if(!inp) return;
+  const sel=window.getSelection();
+  if(!sel || sel.rangeCount===0) return;
+  let cur=sel.anchorNode;
+  let formatEl=null;
+  while(cur && cur!==inp){
+    if(cur.nodeType===1){
+      const isFmt = cur.classList?.contains("ce-spoiler") || cur.classList?.contains("ce-code") ||
+                    cur.classList?.contains("ce-link") || ["B","I","S"].includes(cur.tagName);
+      if(isFmt){ formatEl=cur; break; }
+    }
+    cur=cur.parentNode;
+  }
+  if(!formatEl) return;
+  if(formatEl.textContent.replace(/\u200B/g,"")!=="") return; // не пустой — трогать не надо
+
+  const parent=formatEl.parentNode; if(!parent) return;
+  const idx=Array.prototype.indexOf.call(parent.childNodes, formatEl);
+  // Ставим на его место обычный текстовый узел (с невидимым якорем), чтобы было куда печатать
+  const anchor=document.createTextNode("\u200B");
+  parent.replaceChild(anchor, formatEl);
+  const range=document.createRange();
+  range.setStart(anchor,1); range.setEnd(anchor,1);
+  sel.removeAllRanges(); sel.addRange(range);
+}
 
 function attachFile(inp){
   if(!inp.files[0])return;
