@@ -328,6 +328,9 @@ body.select-mode .msel-check{display:flex}
 .ctxi:hover{background:var(--bg4)}
 .ctxi.rd{color:var(--rd)}
 .ctxsep{height:1px;background:var(--brd);margin:3px 0}
+.ctx-bulk-item{display:none}
+.ctx.has-selection .ctxi.ctx-bulk-item{display:flex}
+.ctx.has-selection .ctxsep.ctx-bulk-item{display:block}
 
 /* ═══ RXNS PICKER ═══ */
 .rxn-picker{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:999px;padding:5px 8px;z-index:1001;display:none;gap:4px;box-shadow:0 8px 32px rgba(0,0,0,.5)}
@@ -1215,6 +1218,11 @@ tr:hover td{background:var(--bg3)}
 
 <!-- ══ CTX MENU ══ -->
 <div class="ctx" id="ctx">
+  <div class="ctxi ctx-bulk-item" onclick="selCopyAll()">📋 Скопировать выделенные</div>
+  <div class="ctxi ctx-bulk-item" onclick="selForwardAll()">↪️ Переслать выделенные</div>
+  <div class="ctxi ctx-bulk-item rd" onclick="selDeleteForMe()">🗑️ Удалить выделенные у меня</div>
+  <div class="ctxi ctx-bulk-item rd" onclick="selDeleteAll()">🗑️ Удалить выделенные у всех</div>
+  <div class="ctxsep ctx-bulk-item"></div>
   <div class="ctxi" onclick="ctxReply()">↩️ Ответить</div>
   <div class="ctxi" onclick="ctxEdit()">✏️ Редактировать</div>
   <div class="ctxi" onclick="ctxCopy()">📋 Копировать</div>
@@ -1226,15 +1234,6 @@ tr:hover td{background:var(--bg3)}
   <div class="ctxi" onclick="ctxReport()">⚠️ Пожаловаться</div>
   <div class="ctxsep"></div>
   <div class="ctxi rd" onclick="openDelModal()">🗑️ Удалить</div>
-</div>
-
-<!-- Меню массовых действий над выделенными сообщениями (правый клик / долгое нажатие в режиме выделения) -->
-<div class="ctx" id="ctx-bulk">
-  <div class="ctxi" onclick="selCopyAll()">📋 Скопировать</div>
-  <div class="ctxi" onclick="selForwardAll()">↪️ Переслать</div>
-  <div class="ctxsep"></div>
-  <div class="ctxi rd" onclick="selDeleteForMe()">🗑️ Удалить у меня</div>
-  <div class="ctxi rd" onclick="selDeleteAll()">🗑️ Удалить у всех</div>
 </div>
 
 <!-- REACTION PICKER -->
@@ -2976,29 +2975,15 @@ function cancelEdit(){ S.editingId=null; el("estrip").classList.remove("on"); }
 
 // ── CTX MENU ──────────────────────────────────────────────────
 function showCtx(e,id){
-  // В режиме выделения правый клик/долгое нажатие открывают отдельное меню
-  // массовых действий (для всех выделенных сообщений), а не обычное контекстное меню
-  if(S.selectMode){ showBulkCtx(e); return; }
   e.preventDefault();
   S.ctxId=id;
   const m=el("ctx");
+  m.classList.toggle("has-selection", S.selectedMsgs.length>0);
   // Координаты для мыши и для тача
   const x = e.clientX || (e.touches && e.touches[0]?.clientX) || (e.changedTouches && e.changedTouches[0]?.clientX) || window.innerWidth/2;
   const y = e.clientY || (e.touches && e.touches[0]?.clientY) || (e.changedTouches && e.changedTouches[0]?.clientY) || window.innerHeight/2;
   m.style.left=Math.min(x,window.innerWidth-190)+"px";
   m.style.top=Math.min(y,window.innerHeight-260)+"px";
-  m.classList.add("on");
-}
-
-// Меню массовых действий — открывается правым кликом/долгим нажатием, пока активно выделение
-function showBulkCtx(e){
-  e.preventDefault();
-  if(!S.selectedMsgs.length) return;
-  const m=el("ctx-bulk");
-  const x = e.clientX || (e.touches && e.touches[0]?.clientX) || (e.changedTouches && e.changedTouches[0]?.clientX) || window.innerWidth/2;
-  const y = e.clientY || (e.touches && e.touches[0]?.clientY) || (e.changedTouches && e.changedTouches[0]?.clientY) || window.innerHeight/2;
-  m.style.left=Math.min(x,window.innerWidth-190)+"px";
-  m.style.top=Math.min(y,window.innerHeight-200)+"px";
   m.classList.add("on");
 }
 
@@ -3009,7 +2994,7 @@ function lpStart(e,id){
   lpTimer=setTimeout(()=>{ showCtx(e,id); if(navigator.vibrate)navigator.vibrate(40); },450);
 }
 function lpEnd(){ clearTimeout(lpTimer); }
-document.addEventListener("click",e=>{ el("ctx").classList.remove("on"); el("ctx-bulk").classList.remove("on"); el("rxn-picker").classList.remove("on"); });
+document.addEventListener("click",e=>{ el("ctx").classList.remove("on"); el("rxn-picker").classList.remove("on"); });
 function ctxReply(){ setReply(S.ctxId); }
 
 // ── ВЫДЕЛЕНИЕ НЕСКОЛЬКИХ СООБЩЕНИЙ (как в Telegram) ──────────
