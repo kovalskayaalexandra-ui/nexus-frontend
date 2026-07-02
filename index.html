@@ -2406,32 +2406,27 @@ function aResize(e){ e.style.height="auto"; e.style.height=Math.min(e.scrollHeig
 
 // Если весь текст внутри форматированного элемента (спойлер/код/жирный/ссылка) стёрт —
 // курсор браузера "залипает" внутри пустого тега, и новый текст продолжает считаться
-// частью этого форматирования. Убираем пустой тег и переносим курсор наружу, в обычный текст.
+// частью этого форматирования. Сканируем ВСЁ поле на каждый ввод и убираем пустые теги
+// (полное сканирование надёжнее точечной проверки курсора — не зависит от того,
+// как конкретный браузер репортит позицию selection после разных способов удаления).
 function cleanupEmptyFormatSpans(){
   const inp=el("minput"); if(!inp) return;
+  const nodes=inp.querySelectorAll("b,i,s,a.ce-link,.ce-code,.ce-spoiler");
+  if(!nodes.length) return;
   const sel=window.getSelection();
-  if(!sel || sel.rangeCount===0) return;
-  let cur=sel.anchorNode;
-  let formatEl=null;
-  while(cur && cur!==inp){
-    if(cur.nodeType===1){
-      const isFmt = cur.classList?.contains("ce-spoiler") || cur.classList?.contains("ce-code") ||
-                    cur.classList?.contains("ce-link") || ["B","I","S"].includes(cur.tagName);
-      if(isFmt){ formatEl=cur; break; }
+  const caretInside = sel && sel.anchorNode && inp.contains(sel.anchorNode);
+  nodes.forEach(elm=>{
+    if(elm.textContent.replace(/\u200B/g,"")==="" && document.contains(elm)){
+      const wasCaretHere = caretInside && elm.contains(sel.anchorNode);
+      const anchor=document.createTextNode("\u200B");
+      elm.replaceWith(anchor);
+      if(wasCaretHere){
+        const range=document.createRange();
+        range.setStart(anchor,1); range.setEnd(anchor,1);
+        sel.removeAllRanges(); sel.addRange(range);
+      }
     }
-    cur=cur.parentNode;
-  }
-  if(!formatEl) return;
-  if(formatEl.textContent.replace(/\u200B/g,"")!=="") return; // не пустой — трогать не надо
-
-  const parent=formatEl.parentNode; if(!parent) return;
-  const idx=Array.prototype.indexOf.call(parent.childNodes, formatEl);
-  // Ставим на его место обычный текстовый узел (с невидимым якорем), чтобы было куда печатать
-  const anchor=document.createTextNode("\u200B");
-  parent.replaceChild(anchor, formatEl);
-  const range=document.createRange();
-  range.setStart(anchor,1); range.setEnd(anchor,1);
-  sel.removeAllRanges(); sel.addRange(range);
+  });
 }
 
 function attachFile(inp){
@@ -2687,6 +2682,7 @@ function onTextSelect(){
 }
 
 // Применить форматирование к выделенному тексту прямо в contenteditable (живой предпросмотр как в Telegram)
+// Если выделенный текст ЦЕЛИКОМ совпадает с уже существующим форматированием того же типа — снимаем его (toggle off)
 function applyFormat(type){
   const inp=el("minput"); if(!inp)return;
   const sel=window.getSelection();
@@ -2696,8 +2692,33 @@ function applyFormat(type){
   const text=range.toString();
   if(!text) return;
 
-  const tagMap={bold:"b", italic:"i", strike:"s", code:"code", spoiler:"span"};
-  const tag=tagMap[type]; if(!tag) return;
+  const tagMap={bold:"B", italic:"I", strike:"S", code:null, spoiler:null};
+
+  // Ищем — не находится ли выделение уже внутри такого же форматирования
+  let anc=range.commonAncestorContainer;
+  if(anc.nodeType===3) anc=anc.parentNode;
+  let existing=null, cur=anc;
+  while(cur && cur!==inp){
+    const matches = type==="spoiler" ? cur.classList?.contains("ce-spoiler")
+                  : type==="code" ? cur.classList?.contains("ce-code")
+                  : cur.tagName===tagMap[type];
+    if(matches){ existing=cur; break; }
+    cur=cur.parentNode;
+  }
+  // Toggle off: выделенный текст == содержимому существующего форматирования → снимаем
+  if(existing && existing.textContent.replace(/\u200B/g,"")===text){
+    const parent=existing.parentNode;
+    const textNode=document.createTextNode(text);
+    parent.replaceChild(textNode, existing);
+    const newRange=document.createRange();
+    newRange.selectNodeContents(textNode);
+    sel.removeAllRanges(); sel.addRange(newRange);
+    el("format-bar").classList.remove("on");
+    inp.focus(); aResize(inp);
+    return;
+  }
+
+  const tag = type==="code"?"code":(type==="spoiler"?"span":tagMap[type].toLowerCase());
   const wrapper=document.createElement(tag);
   if(type==="code") wrapper.className="ce-code";
   if(type==="spoiler") wrapper.className="ce-spoiler";
@@ -2705,8 +2726,6 @@ function applyFormat(type){
 
   range.deleteContents();
   range.insertNode(wrapper);
-  // Добавляем невидимый разделитель после форматированного элемента —
-  // чтобы курсор мог встать "снаружи" и текст не продолжал печататься внутри спойлера/кода
   const spacer=document.createTextNode("\u200B");
   wrapper.after(spacer);
   const newRange=document.createRange();
@@ -3306,6 +3325,16 @@ document.addEventListener("click",e=>{ if(!e.target.closest(".mpanel")&&!e.targe
 // ── INIT ──────────────────────────────────────────────────────
 fillCSEL();
 loadState();
+
+// Страховка: наблюдаем за изменениями поля ввода и подчищаем пустые форматирующие теги
+// (на случай если событие 'input' не сработало для какого-то способа удаления в конкретном браузере)
+(function(){
+  const inp=document.getElementById("minput");
+  if(inp && window.MutationObserver){
+    const mo=new MutationObserver(()=>cleanupEmptyFormatSpans());
+    mo.observe(inp,{childList:true,characterData:true,subtree:true});
+  }
+})();
 applyLang();
 detectLang();
 
