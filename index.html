@@ -2999,6 +2999,9 @@ function toggleMsgSelect(id){
 
 // Массовое удаление
 function selDeleteAll(){
+  const n=S.selectedMsgs.length;
+  if(!n) return;
+  if(!confirm(`Удалить ${n} ${n===1?"сообщение":"сообщений"} у всех участников чата? Это необратимо.`)) return;
   const ms=S.messages[S.chat]||[];
   const curChat=S.chats.find(c=>c.id===S.chat);
   const memberIds=getChatMemberIds(curChat);
@@ -3010,7 +3013,7 @@ function selDeleteAll(){
       if(m.dbId && typeof S.chat==="string") apiDelete("/api/messages/"+m.dbId).catch(()=>{});
     }
   });
-  showToast(`🗑️ Удалено: ${S.selectedMsgs.length}`);
+  showToast(`🗑️ Удалено: ${n}`);
   exitSelectMode(); saveState();
 }
 
