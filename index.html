@@ -2040,16 +2040,25 @@ async function loadMessagesFromDB(chatId){
       // Не дублируем уже загруженные
       if(S.messages[chatId].find(m => m.dbId === dbMsg.id)) return;
       const isMe = dbMsg.user_id === S.user?.id;
-      S.messages[chatId].push({
+      const m = {
         id: nextId(),
         dbId: dbMsg.id,
         t: isMe ? "out" : "in",
         fr: dbMsg.sender_name ? dbMsg.sender_name.slice(0,2).toUpperCase() : "?",
-        tx: dbMsg.text,
+        tx: dbMsg.text || "",
         time: new Date(dbMsg.created_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}),
         read: isMe,
         edited: !!dbMsg.edited_at
-      });
+      };
+      if(dbMsg.media_url){
+        if(dbMsg.media_type==="image"){ m.img=dbMsg.media_url; if(dbMsg.spoiler) m.spoiler=true; }
+        else if(dbMsg.media_type==="video"){ m.video=dbMsg.media_url; if(dbMsg.spoiler) m.spoiler=true; }
+        else if(dbMsg.media_type==="audio") m.audio={url:dbMsg.media_url,name:dbMsg.file_name||"Аудио"};
+        else m.file={name:dbMsg.file_name||"Файл",url:dbMsg.media_url};
+      }
+      if(dbMsg.poll) m.poll={...dbMsg.poll, myVotes:[]};
+      if(dbMsg.contact) m.contact=dbMsg.contact;
+      S.messages[chatId].push(m);
     });
     saveState(); renderMsgs();
   } catch(e){ console.warn("loadMessagesFromDB error:", e); }
@@ -2470,7 +2479,9 @@ function sendMsg(){
   });
   // Сохраняем в БД если чат реальный (UUID)
   if(typeof S.chat === "string" && S.chat.length > 10){
-    apiPost("/api/messages", {chatId: S.chat, text: txt}, true).catch(e=>console.warn("save msg error:", e));
+    apiPost("/api/messages", {chatId: S.chat, text: txt}, true)
+      .then(d=>{ if(d?.message?.id){ msg.dbId=d.message.id; saveState(); } })
+      .catch(e=>console.warn("save msg error:", e));
   }
 
   // Если WS не подключён — показываем локальный авто-ответ (демо)
@@ -2603,7 +2614,9 @@ function submitPoll(){
   const memberIds=getChatMemberIds(curChat);
   wsSend({type:"message.send",payload:{chatId:S.chat,text:"",memberIds,poll}});
   if(typeof S.chat==="string" && S.chat.length>10){
-    apiPost("/api/messages",{chatId:S.chat,text:"",poll},true).catch(e=>console.warn("save msg error:",e));
+    apiPost("/api/messages",{chatId:S.chat,text:"",poll},true)
+      .then(d=>{ if(d?.message?.id){ msg.dbId=d.message.id; saveState(); } })
+      .catch(e=>console.warn("save msg error:",e));
   }
 }
 function voteWord(n){
@@ -2670,7 +2683,9 @@ function sendContactMsg(userId,nm,col,uname){
   const memberIds=getChatMemberIds(curChat);
   wsSend({type:"message.send",payload:{chatId:S.chat,text:"",memberIds,contact}});
   if(typeof S.chat==="string" && S.chat.length>10){
-    apiPost("/api/messages",{chatId:S.chat,text:"",contact},true).catch(e=>console.warn("save msg error:",e));
+    apiPost("/api/messages",{chatId:S.chat,text:"",contact},true)
+      .then(d=>{ if(d?.message?.id){ msg.dbId=d.message.id; saveState(); } })
+      .catch(e=>console.warn("save msg error:",e));
   }
 }
 
@@ -2806,6 +2821,7 @@ async function sendWithAttachment(caption){
     });
     if(typeof S.chat==="string" && S.chat.length>10){
       apiPost("/api/messages",{chatId:S.chat,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler},true)
+        .then(d=>{ if(d?.message?.id){ msg.dbId=d.message.id; saveState(); } })
         .catch(e=>console.warn("save msg error:",e));
     }
   }catch(err){
