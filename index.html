@@ -823,11 +823,7 @@ tr:hover td{background:var(--bg3)}
       <div class="select-bar" id="select-bar">
         <span style="cursor:pointer;font-size:18px;color:var(--tx2)" onclick="exitSelectMode()">✕</span>
         <span style="font-weight:600;font-size:13.5px"><span id="select-count">0</span> выбрано</span>
-        <div style="margin-left:auto;display:flex;gap:14px;align-items:center">
-          <span style="cursor:pointer;font-size:17px" title="Копировать" onclick="selCopyAll()">📋</span>
-          <span style="cursor:pointer;font-size:17px" title="Переслать" onclick="selForwardAll()">↪️</span>
-          <span style="cursor:pointer;font-size:17px" title="Удалить" onclick="selDeleteAll()">🗑️</span>
-        </div>
+        <span style="margin-left:auto;font-size:11.5px;color:var(--tx3)">ПКМ / долгое нажатие — действия</span>
       </div>
 
       <div class="msgs" id="msgs"></div>
@@ -1232,6 +1228,15 @@ tr:hover td{background:var(--bg3)}
   <div class="ctxi rd" onclick="openDelModal()">🗑️ Удалить</div>
 </div>
 
+<!-- Меню массовых действий над выделенными сообщениями (правый клик / долгое нажатие в режиме выделения) -->
+<div class="ctx" id="ctx-bulk">
+  <div class="ctxi" onclick="selCopyAll()">📋 Скопировать</div>
+  <div class="ctxi" onclick="selForwardAll()">↪️ Переслать</div>
+  <div class="ctxsep"></div>
+  <div class="ctxi rd" onclick="selDeleteForMe()">🗑️ Удалить у меня</div>
+  <div class="ctxi rd" onclick="selDeleteAll()">🗑️ Удалить у всех</div>
+</div>
+
 <!-- REACTION PICKER -->
 <div class="rxn-picker" id="rxn-picker">
   <div class="rxn-e" onclick="addRxn('❤️')">❤️</div>
@@ -1586,6 +1591,11 @@ function loadState(){
   } catch(e){
     S = JSON.parse(JSON.stringify(DEFAULT_STATE));
   }
+  // Режим выделения сообщений — временный UI-режим. Если он случайно "залип" в сохранённом
+  // состоянии (например, автосохранение сработало пока он был активен), сбрасываем его —
+  // иначе панель выделения не появится, а правый клик/долгое нажатие останутся заблокированы.
+  S.selectMode = false;
+  S.selectedMsgs = [];
 }
 
 function saveState(){
@@ -2966,9 +2976,9 @@ function cancelEdit(){ S.editingId=null; el("estrip").classList.remove("on"); }
 
 // ── CTX MENU ──────────────────────────────────────────────────
 function showCtx(e,id){
-  // В режиме выделения долгое нажатие/правый клик не должны открывать контекстное меню —
-  // иначе оно "съедает" тап и сообщение не попадает в список выбранных
-  if(S.selectMode) return;
+  // В режиме выделения правый клик/долгое нажатие открывают отдельное меню
+  // массовых действий (для всех выделенных сообщений), а не обычное контекстное меню
+  if(S.selectMode){ showBulkCtx(e); return; }
   e.preventDefault();
   S.ctxId=id;
   const m=el("ctx");
@@ -2980,6 +2990,18 @@ function showCtx(e,id){
   m.classList.add("on");
 }
 
+// Меню массовых действий — открывается правым кликом/долгим нажатием, пока активно выделение
+function showBulkCtx(e){
+  e.preventDefault();
+  if(!S.selectedMsgs.length) return;
+  const m=el("ctx-bulk");
+  const x = e.clientX || (e.touches && e.touches[0]?.clientX) || (e.changedTouches && e.changedTouches[0]?.clientX) || window.innerWidth/2;
+  const y = e.clientY || (e.touches && e.touches[0]?.clientY) || (e.changedTouches && e.changedTouches[0]?.clientY) || window.innerHeight/2;
+  m.style.left=Math.min(x,window.innerWidth-190)+"px";
+  m.style.top=Math.min(y,window.innerHeight-200)+"px";
+  m.classList.add("on");
+}
+
 // Долгое нажатие на мобильных
 let lpTimer=null, lpId=null;
 function lpStart(e,id){
@@ -2987,7 +3009,7 @@ function lpStart(e,id){
   lpTimer=setTimeout(()=>{ showCtx(e,id); if(navigator.vibrate)navigator.vibrate(40); },450);
 }
 function lpEnd(){ clearTimeout(lpTimer); }
-document.addEventListener("click",e=>{ el("ctx").classList.remove("on"); el("rxn-picker").classList.remove("on"); });
+document.addEventListener("click",e=>{ el("ctx").classList.remove("on"); el("ctx-bulk").classList.remove("on"); el("rxn-picker").classList.remove("on"); });
 function ctxReply(){ setReply(S.ctxId); }
 
 // ── ВЫДЕЛЕНИЕ НЕСКОЛЬКИХ СООБЩЕНИЙ (как в Telegram) ──────────
@@ -3031,7 +3053,20 @@ function toggleMsgSelect(id){
   });
 }
 
-// Массовое удаление
+// Массовое удаление только у себя
+function selDeleteForMe(){
+  const n=S.selectedMsgs.length;
+  if(!n) return;
+  const ms=S.messages[S.chat]||[];
+  S.selectedMsgs.forEach(id=>{
+    const m=ms.find(x=>x.id===id);
+    if(m) m._deletedForMe=true;
+  });
+  showToast(`🗑️ Удалено у вас: ${n}`);
+  exitSelectMode(); saveState();
+}
+
+// Массовое удаление у всех
 function selDeleteAll(){
   const n=S.selectedMsgs.length;
   if(!n) return;
