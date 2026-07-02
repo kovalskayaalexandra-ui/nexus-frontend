@@ -252,6 +252,17 @@ body.select-mode .msel-check{display:flex}
 .estrip{display:none;padding:6px 13px 0;background:var(--bg2)}
 .estrip.on{display:flex;align-items:center;gap:7px}
 .esb{border-left:3px solid var(--am);padding:3px 7px;flex:1;font-size:11px;color:var(--am)}
+.attach-preview{display:none;padding:8px 13px;background:var(--bg2);gap:10px;align-items:center}
+.attach-preview.on{display:flex}
+.ap-thumb{width:44px;height:44px;border-radius:9px;overflow:hidden;background:var(--bg3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px}
+.ap-thumb img,.ap-thumb video{width:100%;height:100%;object-fit:cover}
+.ap-info{flex:1;min-width:0}
+.ap-name{font-size:12px;color:var(--tx1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.ap-spoiler{display:none;align-items:center;gap:5px;font-size:11px;color:var(--tx2);cursor:pointer;margin-top:3px}
+.ap-spoiler input{cursor:pointer}
+.msg-img-wrap.spoiler .msg-img{filter:blur(22px) brightness(.7)}
+.msg-video-wrap.spoiler .msg-video{filter:blur(22px) brightness(.7)}
+.spoiler-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;font-size:12px;font-weight:600;text-align:center;padding:0 14px;text-shadow:0 1px 4px rgba(0,0,0,.6)}
 .ibar{background:var(--bg2);border-top:1px solid var(--brd);padding:8px 11px;display:flex;align-items:flex-end;gap:6px;flex-shrink:0;position:relative}
 .attb{width:35px;height:35px;background:var(--bg3);border:1px solid var(--brd);border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);flex-shrink:0;position:relative}
 .attb:hover{background:var(--bg4);color:var(--acc2)}
@@ -835,6 +846,15 @@ tr:hover td{background:var(--bg3)}
       <div class="estrip" id="estrip">
         <div class="esb">✏️ Редактирование</div>
         <div class="rsx" onclick="cancelEdit()">✕</div>
+      </div>
+
+      <div class="attach-preview" id="attach-preview">
+        <div class="ap-thumb" id="ap-thumb"></div>
+        <div class="ap-info">
+          <div class="ap-name" id="ap-name"></div>
+          <label class="ap-spoiler" id="ap-spoiler-wrap"><input type="checkbox" id="ap-spoiler-cb" onchange="toggleAttachSpoiler(this)"> 🫥 Спойлер</label>
+        </div>
+        <div class="rsx" onclick="cancelPendingAttach()">✕</div>
       </div>
 
       <div class="send-as-row" id="send-as-row" style="display:none">
@@ -1707,7 +1727,7 @@ function wsHandleMessage(msg){
       break;
 
     case "message.new": {
-      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, poll, contact } = msg.payload;
+      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, poll, contact, spoiler } = msg.payload;
       // Не добавляем своё же сообщение (оно уже есть локально)
       if(senderId === S.user?.id) break;
       if(!S.messages[chatId]) S.messages[chatId] = [];
@@ -1745,8 +1765,8 @@ function wsHandleMessage(msg){
         read: S.chat === chatId
       };
       if(mediaUrl){
-        if(mediaType==="image") newMsg.img = mediaUrl;
-        else if(mediaType==="video") newMsg.video = mediaUrl;
+        if(mediaType==="image"){ newMsg.img = mediaUrl; if(spoiler) newMsg.spoiler=true; }
+        else if(mediaType==="video"){ newMsg.video = mediaUrl; if(spoiler) newMsg.spoiler=true; }
         else if(mediaType==="audio") newMsg.audio = { url: mediaUrl, name: fileName||"Аудио" };
         else newMsg.file = { name: fileName||"Файл", url: mediaUrl };
       } else if(poll){
@@ -2233,10 +2253,13 @@ function renderMsgs(){
       if(m.asChannel)bc+=`<div class="as-channel-tag"><div class="sas-av" style="background:${colBg(m.asChannel.col)};width:18px;height:18px;font-size:9px">${m.asChannel.ini}</div>📢 ${m.asChannel.nm}</div>`;
       if(m.reply)bc+=`<div class="rprev"><div class="rprevnm">${m.reply.fr}</div><div class="rprevtx">${m.reply.tx}</div></div>`;
       if(m.img){
-        bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}"><img class="msg-img" src="${m.img}" loading="lazy" ${m.uploading?"":`onclick="openImgViewer('${m.img}')"`}>${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
+        const isSp=m.spoiler && !m.spoilerRevealed;
+        bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${m.img}" loading="lazy" ${m.uploading?"":(isSp?`onclick="revealSpoiler(${m.id})"`:`onclick="openImgViewer('${m.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
       }
       if(m.video){
-        bc+=`<div class="msg-video-wrap${m.uploading?" uploading":""}"><video class="msg-video" src="${m.video}" ${m.uploading?"":"controls"} playsinline></video>${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
+        const isSp=m.spoiler && !m.spoilerRevealed;
+        const showCtrl=!m.uploading && !isSp;
+        bc+=`<div class="msg-video-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}"><video class="msg-video" src="${m.video}" ${showCtrl?"controls":""} playsinline ${isSp?`onclick="revealSpoiler(${m.id})"`:""}></video>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
       }
       if(m.audio){
         bc+=`<div class="msg-audio-wrap"><div style="font-size:12px;color:var(--tx2);margin-bottom:3px">🎵 ${escHtml(m.audio.name||"Аудио")}${m.uploading?" · загрузка…":""}</div><audio src="${m.audio.url}" ${m.uploading?"":"controls"}></audio></div>`;
@@ -2373,7 +2396,16 @@ function updateSendAsUI(){
 }
 
 function sendMsg(){
-  const inp=el("minput"); const txt=getInputText(); if(!txt)return;
+  const inp=el("minput"); const txt=getInputText();
+  if(!txt && !pendingAttach) return;
+
+  // ── Есть прикреплённое фото/видео/файл — отправляем медиа + текст как подпись ──
+  if(pendingAttach){
+    setInputText(""); aResize(inp);
+    if(el("char-count"))el("char-count").textContent="";
+    sendWithAttachment(txt);
+    return;
+  }
   // ── Избранное (Saved Messages) — просто сохраняем, без ответов ──
   if(S.chat === 77777){
     if(!S.messages[77777]) S.messages[77777]=[];
@@ -2647,9 +2679,18 @@ function openImgViewer(url){
   el("m-imgview").classList.add("on");
 }
 
+function revealSpoiler(msgId){
+  const m=(S.messages[S.chat]||[]).find(x=>x.id===msgId);
+  if(!m)return;
+  m.spoilerRevealed=true;
+  renderMsgs(); saveState();
+}
+
 // Загружает файл на бэкенд (Supabase Storage через /api/upload) и добавляет
 // сообщение с фото/видео/файлом в чат: сначала локальный превью с индикатором
 // загрузки, потом заменяем на настоящую ссылку с сервера.
+let pendingAttach=null; // {file, kind:'image'|'video'|'audio'|'file', previewUrl, spoiler}
+
 async function attachFile(inp){
   const f=inp.files[0];
   if(!f)return;
@@ -2663,37 +2704,83 @@ async function attachFile(inp){
   const isImg=f.type.startsWith("image/");
   const isVideo=f.type.startsWith("video/");
   const isAudio=f.type.startsWith("audio/");
-  const tm=now();
-  const localId=nextId();
-  if(!S.messages[S.chat])S.messages[S.chat]=[];
+  const kind = isImg?"image":isVideo?"video":isAudio?"audio":"file";
 
-  // Локальный превью, пока файл грузится на сервер
-  let preview=null;
+  let previewUrl=null;
   if(isImg){
-    preview=await new Promise(res=>{
+    previewUrl=await new Promise(res=>{
       const r=new FileReader();
       r.onload=ev=>res(ev.target.result);
       r.readAsDataURL(f);
     });
-  } else if(isVideo){
-    preview=URL.createObjectURL(f); // лёгкий локальный превью, без base64
-  } else if(isAudio){
-    preview=URL.createObjectURL(f);
+  } else if(isVideo||isAudio){
+    previewUrl=URL.createObjectURL(f); // лёгкий локальный превью, без base64
   }
 
-  const msg={id:localId,t:"out",time:tm,read:false,uploading:true,tx:""};
-  if(isImg) msg.img=preview;
-  else if(isVideo) msg.video=preview;
-  else if(isAudio) msg.audio={url:preview,name:f.name};
-  else msg.file={name:f.name,size:f.size};
+  // если уже было вложение (video/audio) — освобождаем память от старого
+  if(pendingAttach && (pendingAttach.kind==="video"||pendingAttach.kind==="audio") && pendingAttach.previewUrl){
+    URL.revokeObjectURL(pendingAttach.previewUrl);
+  }
+
+  pendingAttach={file:f, kind, previewUrl, spoiler:false};
+  renderAttachPreview();
+}
+
+function renderAttachPreview(){
+  const wrap=el("attach-preview");
+  if(!pendingAttach){ wrap.classList.remove("on"); return; }
+  wrap.classList.add("on");
+  const thumb=el("ap-thumb");
+  if(pendingAttach.kind==="image") thumb.innerHTML=`<img src="${pendingAttach.previewUrl}">`;
+  else if(pendingAttach.kind==="video") thumb.innerHTML=`<video src="${pendingAttach.previewUrl}" muted></video>`;
+  else if(pendingAttach.kind==="audio") thumb.innerHTML=`🎵`;
+  else thumb.innerHTML=`📄`;
+  el("ap-name").textContent=pendingAttach.file.name;
+  const canSpoiler = pendingAttach.kind==="image"||pendingAttach.kind==="video";
+  const spWrap=el("ap-spoiler-wrap");
+  spWrap.style.display = canSpoiler ? "flex" : "none";
+  el("ap-spoiler-cb").checked = !!pendingAttach.spoiler;
+  el("minput")?.focus();
+}
+
+function toggleAttachSpoiler(cb){
+  if(pendingAttach) pendingAttach.spoiler=cb.checked;
+}
+
+function cancelPendingAttach(){
+  if(pendingAttach && (pendingAttach.kind==="video"||pendingAttach.kind==="audio") && pendingAttach.previewUrl){
+    URL.revokeObjectURL(pendingAttach.previewUrl);
+  }
+  pendingAttach=null;
+  renderAttachPreview();
+}
+
+// Загружает прикреплённый файл на бэкенд (Supabase Storage через /api/upload)
+// и отправляет одно сообщение: медиа + подпись (текст из поля ввода).
+// Сначала локальный превью с индикатором загрузки, потом — настоящая ссылка с сервера.
+async function sendWithAttachment(caption){
+  const att=pendingAttach;
+  pendingAttach=null;
+  renderAttachPreview();
+
+  const tm=now();
+  const localId=nextId();
+  if(!S.messages[S.chat])S.messages[S.chat]=[];
+  const msg={id:localId,t:"out",time:tm,read:false,uploading:true,tx:caption||""};
+  if(att.kind==="image"){ msg.img=att.previewUrl; if(att.spoiler) msg.spoiler=true; }
+  else if(att.kind==="video"){ msg.video=att.previewUrl; if(att.spoiler) msg.spoiler=true; }
+  else if(att.kind==="audio") msg.audio={url:att.previewUrl,name:att.file.name};
+  else msg.file={name:att.file.name,size:att.file.size};
+  if(S.reply){msg.reply={fr:S.reply.fr,tx:S.reply.tx};cancelReply();}
   S.messages[S.chat].push(msg);
   const ch=S.chats.find(c=>c.id===S.chat);
-  if(ch){ch.prev=isImg?"📷 Фото":(isVideo?"🎥 Видео":(isAudio?"🎵 "+f.name:"📎 "+f.name));ch.time=tm;}
+  const label=att.kind==="image"?"📷 Фото":(att.kind==="video"?"🎥 Видео":(att.kind==="audio"?"🎵 "+att.file.name:"📎 "+att.file.name));
+  if(ch){ch.prev=caption?label+" · "+caption:label;ch.time=tm;ch.draft="";}
   renderMsgs(); renderChats(); saveState();
 
   try{
     const fd=new FormData();
-    fd.append("file",f);
+    fd.append("file",att.file);
     const t=getToken();
     const res=await fetch(API_URL+"/api/upload",{
       method:"POST",
@@ -2704,28 +2791,26 @@ async function attachFile(inp){
     if(!res.ok||!data.success) throw new Error(data.error||"Не удалось загрузить файл");
 
     msg.uploading=false;
-    if(isImg) msg.img=data.url;
-    else if(isVideo){ URL.revokeObjectURL(msg.video); msg.video=data.url; }
-    else if(isAudio){ URL.revokeObjectURL(msg.audio.url); msg.audio.url=data.url; }
+    if(att.kind==="image") msg.img=data.url;
+    else if(att.kind==="video"){ URL.revokeObjectURL(att.previewUrl); msg.video=data.url; }
+    else if(att.kind==="audio"){ URL.revokeObjectURL(att.previewUrl); msg.audio.url=data.url; }
     else msg.file.url=data.url;
     renderMsgs(); saveState();
 
     // Отправляем через WebSocket + сохраняем в БД (реальные чаты — id длиннее 10 символов, UUID)
-    const mediaType=isImg?"image":(isVideo?"video":(isAudio?"audio":"file"));
     const curChat=S.chats.find(c=>c.id===S.chat);
     const memberIds=getChatMemberIds(curChat);
     wsSend({
       type:"message.send",
-      payload:{chatId:S.chat,text:"",memberIds,mediaUrl:data.url,mediaType,fileName:f.name}
+      payload:{chatId:S.chat,text:caption||"",memberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler}
     });
     if(typeof S.chat==="string" && S.chat.length>10){
-      apiPost("/api/messages",{chatId:S.chat,text:"",mediaUrl:data.url,mediaType,fileName:f.name},true)
+      apiPost("/api/messages",{chatId:S.chat,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler},true)
         .catch(e=>console.warn("save msg error:",e));
     }
   }catch(err){
     console.error("upload error:",err);
-    if(isVideo && msg.video) URL.revokeObjectURL(msg.video);
-    if(isAudio && msg.audio?.url) URL.revokeObjectURL(msg.audio.url);
+    if((att.kind==="video"||att.kind==="audio") && att.previewUrl) URL.revokeObjectURL(att.previewUrl);
     S.messages[S.chat]=S.messages[S.chat].filter(m=>m.id!==localId);
     renderMsgs(); saveState();
     showToast("❌ "+(err.message||"Не удалось загрузить файл"));
