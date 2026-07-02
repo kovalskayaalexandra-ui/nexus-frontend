@@ -176,8 +176,9 @@ button,input,textarea,select{font-family:inherit}
 .minput-ce b{font-weight:700}
 .minput-ce i{font-style:italic}
 .minput-ce s{text-decoration:line-through}
-.minput-ce .ce-code{font-family:'SF Mono',Menlo,Consolas,monospace;background:rgba(128,128,128,.22);padding:1px 5px;border-radius:5px;font-size:.92em;cursor:default}
-.minput-ce .ce-spoiler{background:rgba(128,128,128,.35);border-radius:4px;padding:0 3px;text-decoration:none;cursor:default}
+.minput-ce .ce-code{font-family:'SF Mono',Menlo,Consolas,monospace;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);padding:1px 6px;border-radius:5px;font-size:.9em;cursor:default;color:#7dd3fc}
+.minput-ce .ce-spoiler{background:rgba(167,139,250,.16);border:1px solid rgba(167,139,250,.35);border-radius:5px;padding:1px 6px;cursor:default;color:#c4b5fd}
+.minput-ce .ce-spoiler::before{content:"🫥 ";font-size:.85em}
 .minput-ce .ce-link{color:var(--acc2);text-decoration:underline;cursor:default}
 .minput-ce b,.minput-ce i,.minput-ce s{cursor:default}
 .select-bar{display:none;background:var(--bg2);border-bottom:1px solid var(--brd);padding:9px 14px;align-items:center;gap:11px;font-size:13px;flex-shrink:0}
@@ -336,6 +337,16 @@ body.select-mode .msel-check{display:flex}
 /* ═══ MODALS ═══ */
 .movl{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
 .movl.on{display:flex}
+.msg-img-wrap{position:relative;margin-bottom:4px;border-radius:12px;overflow:hidden;max-width:260px}
+.msg-img{display:block;width:100%;max-height:320px;object-fit:cover;border-radius:12px;cursor:pointer}
+.msg-img-wrap.uploading .msg-img{filter:brightness(.5)}
+.msg-img-spin{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.msg-img-spin svg{animation:nxSpin .8s linear infinite}
+@keyframes nxSpin{to{transform:rotate(360deg)}}
+.msg-file{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg3);border-radius:12px;margin-bottom:4px;max-width:260px;cursor:pointer}
+.msg-file-ico{width:34px;height:34px;border-radius:8px;background:var(--acc2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px}
+.msg-file-nm{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px}
+.msg-file-sz{font-size:11px;color:var(--tx2)}
 .modal{background:var(--bg2);border:1px solid var(--brd2);border-radius:18px;padding:24px;width:90%;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:fadeUp .25s ease-out;max-height:90vh;overflow-y:auto}
 .modal.wide{max-width:560px}
 .mtit{font-family:"Syne",sans-serif;font-weight:800;font-size:19px;margin-bottom:5px}
@@ -1673,7 +1684,7 @@ function wsHandleMessage(msg){
       break;
 
     case "message.new": {
-      const { chatId, text, senderId, time, id } = msg.payload;
+      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName } = msg.payload;
       // Не добавляем своё же сообщение (оно уже есть локально)
       if(senderId === S.user?.id) break;
       if(!S.messages[chatId]) S.messages[chatId] = [];
@@ -1710,8 +1721,13 @@ function wsHandleMessage(msg){
         time: time ? new Date(time).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : now(),
         read: S.chat === chatId
       };
+      if(mediaUrl){
+        if(mediaType==="image") newMsg.img = mediaUrl;
+        else newMsg.file = { name: fileName||"Файл", url: mediaUrl };
+      }
       S.messages[chatId].push(newMsg);
-      if(ch){ ch.prev = text; ch.time = now(); if(S.chat !== chatId) ch.unread = (ch.unread||0)+1; }
+      const prevTx = mediaUrl ? (mediaType==="image" ? "📷 Фото" : "📎 "+(fileName||"Файл")) : text;
+      if(ch){ ch.prev = prevTx; ch.time = now(); if(S.chat !== chatId) ch.unread = (ch.unread||0)+1; }
       if(S.chat === chatId) renderMsgs();
       renderChats(); saveState();
       if(!ch?.muted && S.chat !== chatId) showNotif();
@@ -2184,7 +2200,13 @@ function renderMsgs(){
       let bc="";
       if(m.asChannel)bc+=`<div class="as-channel-tag"><div class="sas-av" style="background:${colBg(m.asChannel.col)};width:18px;height:18px;font-size:9px">${m.asChannel.ini}</div>📢 ${m.asChannel.nm}</div>`;
       if(m.reply)bc+=`<div class="rprev"><div class="rprevnm">${m.reply.fr}</div><div class="rprevtx">${m.reply.tx}</div></div>`;
-      bc+=`<span>${formatMsgText(m.tx||"")}</span>`;
+      if(m.img){
+        bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}"><img class="msg-img" src="${m.img}" loading="lazy" ${m.uploading?"":`onclick="openImgViewer('${m.img}')"`}>${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
+      }
+      if(m.file){
+        bc+=`<div class="msg-file" ${m.file.url&&!m.uploading?`onclick="window.open('${m.file.url}','_blank')"`:""}><div class="msg-file-ico">📄</div><div><div class="msg-file-nm">${escHtml(m.file.name)}</div><div class="msg-file-sz">${m.uploading?"загрузка…":(m.file.size?(m.file.size/1024).toFixed(1)+" KB":"")}</div></div></div>`;
+      }
+      if(m.tx)bc+=`<span>${formatMsgText(m.tx)}</span>`;
       // link preview — только для "голых" ссылок, не для оформленных [текст](url)
       const rawForPreview=(m.tx||"").replace(/\[[^\]]+\]\(https?:\/\/[^\s)]+\)/g,"");
       const urlMatch=rawForPreview.match(/https?:\/\/[^\s]+/);
@@ -2431,26 +2453,81 @@ function cleanupEmptyFormatSpans(){
   });
 }
 
-function attachFile(inp){
-  if(!inp.files[0])return;
+function openImgViewer(url){
+  el("imgview-img").src=url;
+  el("m-imgview").classList.add("on");
+}
+
+// Загружает файл на бэкенд (Supabase Storage через /api/upload) и добавляет
+// сообщение с фото/файлом в чат: сначала локальный превью с индикатором
+// загрузки, потом заменяем на настоящую ссылку с сервера.
+async function attachFile(inp){
   const f=inp.files[0];
-  const isImg=f.type.startsWith("image/");
-  if(isImg){
-    const r=new FileReader(); r.onload=ev=>{
-      const tm=now();
-      if(!S.messages[S.chat])S.messages[S.chat]=[];
-      S.messages[S.chat].push({id:nextId(),t:"out",tx:`📎 Фото: ${f.name}`,time:tm,read:false});
-      const ch=S.chats.find(c=>c.id===S.chat); if(ch){ch.prev="📷 Фото";ch.time=tm;}
-      renderMsgs(); renderChats(); saveState();
-    }; r.readAsDataURL(f);
-  } else {
-    const tm=now();
-    if(!S.messages[S.chat])S.messages[S.chat]=[];
-    S.messages[S.chat].push({id:nextId(),t:"out",tx:`📎 Файл: ${f.name} (${(f.size/1024).toFixed(1)} KB)`,time:tm,read:false});
-    const ch=S.chats.find(c=>c.id===S.chat); if(ch){ch.prev="📎 Файл";ch.time=tm;}
-    renderMsgs(); renderChats(); saveState();
+  if(!f)return;
+  inp.value=""; // сбрасываем, чтобы можно было выбрать тот же файл ещё раз
+
+  if(S.chat===77777||S.chat===99999){
+    showToast("📎 Прикрепление файлов здесь пока недоступно");
+    return;
   }
-  setInputText("");
+
+  const isImg=f.type.startsWith("image/");
+  const tm=now();
+  const localId=nextId();
+  if(!S.messages[S.chat])S.messages[S.chat]=[];
+
+  // Локальный превью изображения, пока файл грузится на сервер
+  let preview=null;
+  if(isImg){
+    preview=await new Promise(res=>{
+      const r=new FileReader();
+      r.onload=ev=>res(ev.target.result);
+      r.readAsDataURL(f);
+    });
+  }
+
+  const msg={id:localId,t:"out",time:tm,read:false,uploading:true,tx:""};
+  if(isImg) msg.img=preview;
+  else msg.file={name:f.name,size:f.size};
+  S.messages[S.chat].push(msg);
+  const ch=S.chats.find(c=>c.id===S.chat);
+  if(ch){ch.prev=isImg?"📷 Фото":"📎 "+f.name;ch.time=tm;}
+  renderMsgs(); renderChats(); saveState();
+
+  try{
+    const fd=new FormData();
+    fd.append("file",f);
+    const t=getToken();
+    const res=await fetch(API_URL+"/api/upload",{
+      method:"POST",
+      headers: t?{"Authorization":"Bearer "+t}:{},
+      body: fd
+    });
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok||!data.success) throw new Error(data.error||"Не удалось загрузить файл");
+
+    msg.uploading=false;
+    if(isImg) msg.img=data.url;
+    else msg.file.url=data.url;
+    renderMsgs(); saveState();
+
+    // Отправляем через WebSocket + сохраняем в БД (реальные чаты — id длиннее 10 символов, UUID)
+    const curChat=S.chats.find(c=>c.id===S.chat);
+    const memberIds=getChatMemberIds(curChat);
+    wsSend({
+      type:"message.send",
+      payload:{chatId:S.chat,text:"",memberIds,mediaUrl:data.url,mediaType:isImg?"image":"file",fileName:f.name}
+    });
+    if(typeof S.chat==="string" && S.chat.length>10){
+      apiPost("/api/messages",{chatId:S.chat,text:"",mediaUrl:data.url,mediaType:isImg?"image":"file",fileName:f.name},true)
+        .catch(e=>console.warn("save msg error:",e));
+    }
+  }catch(err){
+    console.error("upload error:",err);
+    S.messages[S.chat]=S.messages[S.chat].filter(m=>m.id!==localId);
+    renderMsgs(); saveState();
+    showToast("❌ "+(err.message||"Не удалось загрузить файл"));
+  }
 }
 
 // ── MEDIA PANEL ──────────────────────────────────────────────
@@ -4571,6 +4648,11 @@ applyTheme(S.theme||"dark");
       <div id="vr-status" style="padding:14px;color:var(--tx3);font-size:12.5px">Заявок нет</div>
     </div>
   </div>
+</div>
+
+<!-- MODAL: IMAGE VIEWER -->
+<div class="movl" id="m-imgview" onclick="if(event.target===this)closeM('m-imgview')">
+  <img id="imgview-img" src="" style="max-width:92vw;max-height:92vh;border-radius:10px;object-fit:contain">
 </div>
 
 <!-- MODAL: STORY EDITOR -->
