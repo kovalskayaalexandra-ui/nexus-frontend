@@ -253,7 +253,7 @@ body.select-mode .msel-check{display:flex}
 .estrip.on{display:flex;align-items:center;gap:7px}
 .esb{border-left:3px solid var(--am);padding:3px 7px;flex:1;font-size:11px;color:var(--am)}
 .ibar{background:var(--bg2);border-top:1px solid var(--brd);padding:8px 11px;display:flex;align-items:flex-end;gap:6px;flex-shrink:0;position:relative}
-.attb{width:35px;height:35px;background:var(--bg3);border:1px solid var(--brd);border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);flex-shrink:0}
+.attb{width:35px;height:35px;background:var(--bg3);border:1px solid var(--brd);border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);flex-shrink:0;position:relative}
 .attb:hover{background:var(--bg4);color:var(--acc2)}
 .iwrap{flex:1;background:var(--bg3);border:1px solid var(--brd);border-radius:12px;display:flex;align-items:flex-end;padding:7px 10px;transition:border-color .2s;gap:5px}
 .iwrap:focus-within{border-color:var(--acc)}
@@ -343,6 +343,21 @@ body.select-mode .msel-check{display:flex}
 .msg-img-spin{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
 .msg-img-spin svg{animation:nxSpin .8s linear infinite}
 @keyframes nxSpin{to{transform:rotate(360deg)}}
+.msg-video-wrap{position:relative;margin-bottom:4px;border-radius:12px;overflow:hidden;max-width:260px;background:#000}
+.msg-video{display:block;width:100%;max-height:320px;border-radius:12px}
+.msg-video-wrap.uploading .msg-video{filter:brightness(.5)}
+.msg-audio-wrap{margin-bottom:4px;max-width:260px}
+.msg-audio-wrap audio{width:100%;height:36px}
+.poll-wrap{min-width:220px;max-width:280px}
+.poll-q{font-weight:600;font-size:13.5px;margin-bottom:2px}
+.poll-sub{font-size:11px;color:var(--tx2);margin-bottom:8px}
+.poll-opts{display:flex;flex-direction:column;gap:6px}
+.poll-opt{position:relative;background:var(--bg3);border:1px solid var(--brd);border-radius:9px;padding:7px 10px;cursor:pointer;overflow:hidden}
+.poll-opt.mine{border-color:var(--acc)}
+.poll-opt-bar{position:absolute;inset:0;background:var(--acc);opacity:.18;width:0;transition:width .3s}
+.poll-opt-row{position:relative;display:flex;justify-content:space-between;gap:8px;font-size:12.5px}
+.poll-opt-pct{font-weight:600;color:var(--tx2);flex-shrink:0}
+.poll-votes{margin-top:8px;font-size:11px;color:var(--tx2)}
 .msg-file{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg3);border-radius:12px;margin-bottom:4px;max-width:260px;cursor:pointer}
 .msg-file-ico{width:34px;height:34px;border-radius:8px;background:var(--acc2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px}
 .msg-file-nm{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px}
@@ -835,8 +850,16 @@ tr:hover td{background:var(--bg3)}
           <div class="fmt-btn" onclick="applyFormat('spoiler')"><span class="fmt-ic">🫥</span><span>Спойлер</span></div>
           <div class="fmt-btn" onclick="promptLink()"><span class="fmt-ic">🔗</span><span>Ссылка</span></div>
         </div>
-        <div class="attb" onclick="el('file-inp').click()" title="Прикрепить файл">
+        <div class="attb" onclick="toggleAttachMenu(event)" title="Прикрепить файл">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          <div class="format-bar" id="attach-menu" style="left:0">
+            <div class="fmt-btn" onclick="pickAttach(event,'media')"><span class="fmt-ic">🖼️</span><span>Галерея</span></div>
+            <div class="fmt-btn" onclick="pickAttach(event,'gif')"><span class="fmt-ic">🎞️</span><span>GIF</span></div>
+            <div class="fmt-btn" onclick="pickAttach(event,'file')"><span class="fmt-ic">📄</span><span>Файл</span></div>
+            <div class="fmt-btn" onclick="pickAttach(event,'music')"><span class="fmt-ic">🎵</span><span>Музыка</span></div>
+            <div class="fmt-btn" onclick="openPollCreate(event)"><span class="fmt-ic">📊</span><span>Опрос</span></div>
+            <div class="fmt-btn" onclick="openShareContact(event)"><span class="fmt-ic">👤</span><span>Контакт</span></div>
+          </div>
         </div>
         <input type="file" id="file-inp" style="display:none" onchange="attachFile(this)">
         <div class="iwrap">
@@ -1684,7 +1707,7 @@ function wsHandleMessage(msg){
       break;
 
     case "message.new": {
-      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName } = msg.payload;
+      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, poll, contact } = msg.payload;
       // Не добавляем своё же сообщение (оно уже есть локально)
       if(senderId === S.user?.id) break;
       if(!S.messages[chatId]) S.messages[chatId] = [];
@@ -1723,10 +1746,19 @@ function wsHandleMessage(msg){
       };
       if(mediaUrl){
         if(mediaType==="image") newMsg.img = mediaUrl;
+        else if(mediaType==="video") newMsg.video = mediaUrl;
+        else if(mediaType==="audio") newMsg.audio = { url: mediaUrl, name: fileName||"Аудио" };
         else newMsg.file = { name: fileName||"Файл", url: mediaUrl };
+      } else if(poll){
+        newMsg.poll = { ...poll, myVotes: [] };
+      } else if(contact){
+        newMsg.contact = contact;
       }
       S.messages[chatId].push(newMsg);
-      const prevTx = mediaUrl ? (mediaType==="image" ? "📷 Фото" : "📎 "+(fileName||"Файл")) : text;
+      const prevTx = mediaUrl ? (mediaType==="image" ? "📷 Фото" : mediaType==="video" ? "🎥 Видео" : mediaType==="audio" ? "🎵 "+(fileName||"Аудио") : "📎 "+(fileName||"Файл"))
+        : poll ? "📊 "+poll.question
+        : contact ? "👤 "+(contact.nm||"Контакт")
+        : text;
       if(ch){ ch.prev = prevTx; ch.time = now(); if(S.chat !== chatId) ch.unread = (ch.unread||0)+1; }
       if(S.chat === chatId) renderMsgs();
       renderChats(); saveState();
@@ -2203,6 +2235,25 @@ function renderMsgs(){
       if(m.img){
         bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}"><img class="msg-img" src="${m.img}" loading="lazy" ${m.uploading?"":`onclick="openImgViewer('${m.img}')"`}>${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
       }
+      if(m.video){
+        bc+=`<div class="msg-video-wrap${m.uploading?" uploading":""}"><video class="msg-video" src="${m.video}" ${m.uploading?"":"controls"} playsinline></video>${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
+      }
+      if(m.audio){
+        bc+=`<div class="msg-audio-wrap"><div style="font-size:12px;color:var(--tx2);margin-bottom:3px">🎵 ${escHtml(m.audio.name||"Аудио")}${m.uploading?" · загрузка…":""}</div><audio src="${m.audio.url}" ${m.uploading?"":"controls"}></audio></div>`;
+      }
+      if(m.poll){
+        const p=m.poll;
+        const voted=p.myVotes && p.myVotes.length>0;
+        const optsHtml=p.options.map(o=>{
+          const pct=p.totalVotes?Math.round(o.votes/p.totalVotes*100):0;
+          const mine=p.myVotes && p.myVotes.includes(o.id);
+          return `<div class="poll-opt${mine?" mine":""}" onclick="votePoll(${m.id},${o.id})"><div class="poll-opt-bar" style="width:${voted?pct:0}%"></div><div class="poll-opt-row"><span>${mine?"✓ ":""}${escHtml(o.text)}</span>${voted?`<span class="poll-opt-pct">${pct}%</span>`:""}</div></div>`;
+        }).join("");
+        bc+=`<div class="poll-wrap"><div class="poll-q">📊 ${escHtml(p.question)}</div><div class="poll-sub">${p.anon?"Анонимный опрос":"Опрос"}${p.multi?" · неск. ответов":""}</div><div class="poll-opts">${optsHtml}</div><div class="poll-votes">${p.totalVotes} ${voteWord(p.totalVotes)}</div></div>`;
+      }
+      if(m.contact){
+        bc+=`<div class="contact-item" style="background:var(--bg1)" onclick="startChatWithUser('${m.contact.userId}','${escHtml(m.contact.nm).replace(/'/g,"\\'")}',${m.contact.col||0})"><div class="contact-av" style="background:${colBg(m.contact.col||0)}">${(m.contact.nm||"?")[0]}</div><div><div class="contact-nm">${escHtml(m.contact.nm)}</div>${m.contact.uname?`<div class="contact-ph">@${m.contact.uname}</div>`:'<div class="contact-ph">Контакт</div>'}</div></div>`;
+      }
       if(m.file){
         bc+=`<div class="msg-file" ${m.file.url&&!m.uploading?`onclick="window.open('${m.file.url}','_blank')"`:""}><div class="msg-file-ico">📄</div><div><div class="msg-file-nm">${escHtml(m.file.name)}</div><div class="msg-file-sz">${m.uploading?"загрузка…":(m.file.size?(m.file.size/1024).toFixed(1)+" KB":"")}</div></div></div>`;
       }
@@ -2453,13 +2504,151 @@ function cleanupEmptyFormatSpans(){
   });
 }
 
+function toggleAttachMenu(e){
+  e.stopPropagation();
+  el("attach-menu").classList.toggle("on");
+}
+// Закрываем меню вложений по клику вне него
+document.addEventListener("click", e=>{ if(!e.target.closest(".attb")) el("attach-menu")?.classList.remove("on"); });
+
+function pickAttach(e,kind){
+  e.stopPropagation();
+  const inp=el("file-inp");
+  if(kind==="media") inp.accept="image/*,video/*";
+  else if(kind==="gif") inp.accept="image/gif";
+  else if(kind==="music") inp.accept="audio/*";
+  else inp.accept="";
+  el("attach-menu").classList.remove("on");
+  inp.click();
+}
+
+// ── ОПРОС ────────────────────────────────────────────────────
+let pollOptionCount=2;
+function openPollCreate(e){
+  e.stopPropagation();
+  el("attach-menu").classList.remove("on");
+  if(S.chat===77777||S.chat===99999){ showToast("📊 Опросы здесь недоступны"); return; }
+  el("poll-q").value="";
+  pollOptionCount=2;
+  el("poll-options-list").innerHTML=`
+    <input class="fii" id="poll-opt-0" placeholder="Вариант 1" maxlength="80">
+    <input class="fii" id="poll-opt-1" placeholder="Вариант 2" maxlength="80">`;
+  el("poll-multi").classList.remove("on");
+  el("poll-anon").classList.add("on");
+  el("m-poll-create").classList.add("on");
+}
+function addPollOption(){
+  if(pollOptionCount>=10){ showToast("❌ Максимум 10 вариантов"); return; }
+  el("poll-options-list").insertAdjacentHTML("beforeend",`<input class="fii" id="poll-opt-${pollOptionCount}" placeholder="Вариант ${pollOptionCount+1}" maxlength="80">`);
+  pollOptionCount++;
+}
+function submitPoll(){
+  const q=el("poll-q").value.trim();
+  if(!q){ showToast("❌ Введите вопрос"); return; }
+  const opts=[];
+  for(let i=0;i<pollOptionCount;i++){
+    const v=el("poll-opt-"+i)?.value.trim();
+    if(v) opts.push({id:i,text:v,votes:0});
+  }
+  if(opts.length<2){ showToast("❌ Нужно минимум 2 варианта"); return; }
+
+  const poll={
+    question:q, options:opts,
+    multi: el("poll-multi").classList.contains("on"),
+    anon: el("poll-anon").classList.contains("on"),
+    totalVotes:0, myVotes:[]
+  };
+  const tm=now();
+  if(!S.messages[S.chat])S.messages[S.chat]=[];
+  const msg={id:nextId(),t:"out",time:tm,read:false,tx:"",poll};
+  S.messages[S.chat].push(msg);
+  const ch=S.chats.find(c=>c.id===S.chat);
+  if(ch){ch.prev="📊 "+q;ch.time=tm;}
+  closeM("m-poll-create");
+  renderMsgs(); renderChats(); saveState();
+
+  const curChat=S.chats.find(c=>c.id===S.chat);
+  const memberIds=getChatMemberIds(curChat);
+  wsSend({type:"message.send",payload:{chatId:S.chat,text:"",memberIds,poll}});
+  if(typeof S.chat==="string" && S.chat.length>10){
+    apiPost("/api/messages",{chatId:S.chat,text:"",poll},true).catch(e=>console.warn("save msg error:",e));
+  }
+}
+function voteWord(n){
+  const n10=n%10, n100=n%100;
+  if(n100>=11&&n100<=14) return "голосов";
+  if(n10===1) return "голос";
+  if(n10>=2&&n10<=4) return "голоса";
+  return "голосов";
+}
+// Голосование — работает сразу и наглядно на своём устройстве.
+// ⚠️ Пока нет доработки бэкенда — голос собеседника в реальном времени
+// на твоём экране не появится, посчитается только твой собственный тап.
+function votePoll(msgId,optId){
+  const m=(S.messages[S.chat]||[]).find(x=>x.id===msgId);
+  if(!m||!m.poll)return;
+  const p=m.poll;
+  const already=p.myVotes.includes(optId);
+  if(!p.multi && p.myVotes.length && !already){
+    const prevOpt=p.options.find(o=>o.id===p.myVotes[0]);
+    if(prevOpt) prevOpt.votes=Math.max(0,prevOpt.votes-1);
+    p.totalVotes=Math.max(0,p.totalVotes-1);
+    p.myVotes=[];
+  }
+  const opt=p.options.find(o=>o.id===optId);
+  if(!opt)return;
+  if(already){
+    opt.votes=Math.max(0,opt.votes-1);
+    p.totalVotes=Math.max(0,p.totalVotes-1);
+    p.myVotes=p.myVotes.filter(id=>id!==optId);
+  } else {
+    opt.votes++;
+    p.totalVotes++;
+    p.myVotes.push(optId);
+  }
+  renderMsgs(); saveState();
+}
+
+// ── ОТПРАВКА КОНТАКТА ───────────────────────────────────────
+function openShareContact(e){
+  e.stopPropagation();
+  el("attach-menu").classList.remove("on");
+  if(S.chat===77777||S.chat===99999){ showToast("👤 Отправка контактов здесь недоступна"); return; }
+  const list=(S.contacts||[]).length ? S.contacts : S.chats.filter(c=>c.withUserId);
+  el("share-contact-list").innerHTML = list.length
+    ? list.map(c=>{
+        const id=c.withUserId||c.id, nm=c.nm, col=c.col||0, uname=c.uname||"";
+        return `<div class="contact-item" onclick="sendContactMsg('${id}','${escHtml(nm).replace(/'/g,"\\'")}',${col},'${uname}')"><div class="contact-av" style="background:${colBg(col)}">${(nm||"?")[0]}</div><div><div class="contact-nm">${nm}</div>${uname?`<div class="contact-ph">@${uname}</div>`:""}</div></div>`;
+      }).join("")
+    : `<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пока нет контактов</div>`;
+  el("m-share-contact").classList.add("on");
+}
+function sendContactMsg(userId,nm,col,uname){
+  const tm=now();
+  if(!S.messages[S.chat])S.messages[S.chat]=[];
+  const contact={userId,nm,col,uname};
+  const msg={id:nextId(),t:"out",time:tm,read:false,tx:"",contact};
+  S.messages[S.chat].push(msg);
+  const ch=S.chats.find(c=>c.id===S.chat);
+  if(ch){ch.prev="👤 "+nm;ch.time=tm;}
+  closeM("m-share-contact");
+  renderMsgs(); renderChats(); saveState();
+
+  const curChat=S.chats.find(c=>c.id===S.chat);
+  const memberIds=getChatMemberIds(curChat);
+  wsSend({type:"message.send",payload:{chatId:S.chat,text:"",memberIds,contact}});
+  if(typeof S.chat==="string" && S.chat.length>10){
+    apiPost("/api/messages",{chatId:S.chat,text:"",contact},true).catch(e=>console.warn("save msg error:",e));
+  }
+}
+
 function openImgViewer(url){
   el("imgview-img").src=url;
   el("m-imgview").classList.add("on");
 }
 
 // Загружает файл на бэкенд (Supabase Storage через /api/upload) и добавляет
-// сообщение с фото/файлом в чат: сначала локальный превью с индикатором
+// сообщение с фото/видео/файлом в чат: сначала локальный превью с индикатором
 // загрузки, потом заменяем на настоящую ссылку с сервера.
 async function attachFile(inp){
   const f=inp.files[0];
@@ -2472,11 +2661,13 @@ async function attachFile(inp){
   }
 
   const isImg=f.type.startsWith("image/");
+  const isVideo=f.type.startsWith("video/");
+  const isAudio=f.type.startsWith("audio/");
   const tm=now();
   const localId=nextId();
   if(!S.messages[S.chat])S.messages[S.chat]=[];
 
-  // Локальный превью изображения, пока файл грузится на сервер
+  // Локальный превью, пока файл грузится на сервер
   let preview=null;
   if(isImg){
     preview=await new Promise(res=>{
@@ -2484,14 +2675,20 @@ async function attachFile(inp){
       r.onload=ev=>res(ev.target.result);
       r.readAsDataURL(f);
     });
+  } else if(isVideo){
+    preview=URL.createObjectURL(f); // лёгкий локальный превью, без base64
+  } else if(isAudio){
+    preview=URL.createObjectURL(f);
   }
 
   const msg={id:localId,t:"out",time:tm,read:false,uploading:true,tx:""};
   if(isImg) msg.img=preview;
+  else if(isVideo) msg.video=preview;
+  else if(isAudio) msg.audio={url:preview,name:f.name};
   else msg.file={name:f.name,size:f.size};
   S.messages[S.chat].push(msg);
   const ch=S.chats.find(c=>c.id===S.chat);
-  if(ch){ch.prev=isImg?"📷 Фото":"📎 "+f.name;ch.time=tm;}
+  if(ch){ch.prev=isImg?"📷 Фото":(isVideo?"🎥 Видео":(isAudio?"🎵 "+f.name:"📎 "+f.name));ch.time=tm;}
   renderMsgs(); renderChats(); saveState();
 
   try{
@@ -2508,22 +2705,27 @@ async function attachFile(inp){
 
     msg.uploading=false;
     if(isImg) msg.img=data.url;
+    else if(isVideo){ URL.revokeObjectURL(msg.video); msg.video=data.url; }
+    else if(isAudio){ URL.revokeObjectURL(msg.audio.url); msg.audio.url=data.url; }
     else msg.file.url=data.url;
     renderMsgs(); saveState();
 
     // Отправляем через WebSocket + сохраняем в БД (реальные чаты — id длиннее 10 символов, UUID)
+    const mediaType=isImg?"image":(isVideo?"video":(isAudio?"audio":"file"));
     const curChat=S.chats.find(c=>c.id===S.chat);
     const memberIds=getChatMemberIds(curChat);
     wsSend({
       type:"message.send",
-      payload:{chatId:S.chat,text:"",memberIds,mediaUrl:data.url,mediaType:isImg?"image":"file",fileName:f.name}
+      payload:{chatId:S.chat,text:"",memberIds,mediaUrl:data.url,mediaType,fileName:f.name}
     });
     if(typeof S.chat==="string" && S.chat.length>10){
-      apiPost("/api/messages",{chatId:S.chat,text:"",mediaUrl:data.url,mediaType:isImg?"image":"file",fileName:f.name},true)
+      apiPost("/api/messages",{chatId:S.chat,text:"",mediaUrl:data.url,mediaType,fileName:f.name},true)
         .catch(e=>console.warn("save msg error:",e));
     }
   }catch(err){
     console.error("upload error:",err);
+    if(isVideo && msg.video) URL.revokeObjectURL(msg.video);
+    if(isAudio && msg.audio?.url) URL.revokeObjectURL(msg.audio.url);
     S.messages[S.chat]=S.messages[S.chat].filter(m=>m.id!==localId);
     renderMsgs(); saveState();
     showToast("❌ "+(err.message||"Не удалось загрузить файл"));
@@ -4654,6 +4856,34 @@ applyTheme(S.theme||"dark");
 <div class="movl" id="m-imgview" onclick="if(event.target===this)closeM('m-imgview')">
   <img id="imgview-img" src="" style="max-width:92vw;max-height:92vh;border-radius:10px;object-fit:contain">
 </div>
+
+<!-- MODAL: POLL CREATE -->
+<div class="movl" id="m-poll-create"><div class="modal">
+  <div class="mtit">📊 Новый опрос</div>
+  <div class="fg"><span class="fl">Вопрос</span><input class="fii" id="poll-q" placeholder="Задайте вопрос" maxlength="200"></div>
+  <div id="poll-options-list" style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+    <input class="fii" id="poll-opt-0" placeholder="Вариант 1" maxlength="80">
+    <input class="fii" id="poll-opt-1" placeholder="Вариант 2" maxlength="80">
+  </div>
+  <div class="xbtn sec" style="margin-top:10px;text-align:center" onclick="addPollOption()">+ Добавить вариант</div>
+  <div class="fg" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between">
+    <span class="fl" style="margin:0">Несколько ответов</span>
+    <div class="perm-tgl" id="poll-multi" onclick="this.classList.toggle('on')"></div>
+  </div>
+  <div class="fg" style="margin-top:10px;display:flex;align-items:center;justify-content:space-between">
+    <span class="fl" style="margin:0">Анонимный опрос</span>
+    <div class="perm-tgl on" id="poll-anon" onclick="this.classList.toggle('on')"></div>
+  </div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-poll-create')">Отмена</button><button class="xbtn gn" onclick="submitPoll()">✅ Создать</button></div>
+</div></div>
+
+<!-- MODAL: SHARE CONTACT -->
+<div class="movl" id="m-share-contact"><div class="modal">
+  <div class="mtit">👤 Отправить контакт</div>
+  <div class="msub">Выберите контакт для отправки</div>
+  <div id="share-contact-list" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-share-contact')">Отмена</button></div>
+</div></div>
 
 <!-- MODAL: STORY EDITOR -->
 <!-- MODAL: LINK INSERT -->
