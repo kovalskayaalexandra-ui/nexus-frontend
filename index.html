@@ -2183,8 +2183,9 @@ function renderMsgs(){
       if(m.asChannel)bc+=`<div class="as-channel-tag"><div class="sas-av" style="background:${colBg(m.asChannel.col)};width:18px;height:18px;font-size:9px">${m.asChannel.ini}</div>📢 ${m.asChannel.nm}</div>`;
       if(m.reply)bc+=`<div class="rprev"><div class="rprevnm">${m.reply.fr}</div><div class="rprevtx">${m.reply.tx}</div></div>`;
       bc+=`<span>${formatMsgText(m.tx||"")}</span>`;
-      // link preview
-      const urlMatch=(m.tx||"").match(/https?:\/\/[^\s]+/);
+      // link preview — только для "голых" ссылок, не для оформленных [текст](url)
+      const rawForPreview=(m.tx||"").replace(/\[[^\]]+\]\(https?:\/\/[^\s)]+\)/g,"");
+      const urlMatch=rawForPreview.match(/https?:\/\/[^\s]+/);
       if(urlMatch)bc+=`<div class="lnkprev"><div class="lnktitle">🔗 ${urlMatch[0].replace(/https?:\/\//,"").slice(0,40)}</div><div class="lnkdesc">Открыть ссылку</div></div>`;
       bc+=`<div class="mt">${m.time||""}${m.t==="out"?'<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="'+(m.read?"#38bdf8":"currentColor")+'" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':""}</div>`;
       if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${r.e} ${r.c}</div>`).join("")}</div>`;
@@ -2614,7 +2615,7 @@ function ctxForward(){ S.fwdId=S.ctxId; openForward(); }
 // Читает contenteditable и превращает форматированный HTML в plain-текст с ||спойлер|| **bold** и т.д.
 function getInputText(){
   const inp=el("minput"); if(!inp) return "";
-  return serializeNode(inp).trim();
+  return serializeNode(inp).replace(/\u200B/g,"").trim();
 }
 function serializeNode(node){
   let out="";
@@ -2643,7 +2644,7 @@ function setInputText(txt){
 }
 function isInputEmpty(){
   const inp=el("minput"); if(!inp) return true;
-  return inp.textContent.trim()==="" && !inp.querySelector("img");
+  return inp.textContent.replace(/\u200B/g,"").trim()==="" && !inp.querySelector("img");
 }
 
 // Показать/скрыть плашку форматирования при выделении текста
@@ -2673,9 +2674,13 @@ function applyFormat(type){
 
   range.deleteContents();
   range.insertNode(wrapper);
-  // Ставим курсор после вставленного узла
-  range.setStartAfter(wrapper); range.setEndAfter(wrapper);
-  sel.removeAllRanges(); sel.addRange(range);
+  // Добавляем невидимый разделитель после форматированного элемента —
+  // чтобы курсор мог встать "снаружи" и текст не продолжал печататься внутри спойлера/кода
+  const spacer=document.createTextNode("\u200B");
+  wrapper.after(spacer);
+  const newRange=document.createRange();
+  newRange.setStart(spacer,1); newRange.setEnd(spacer,1);
+  sel.removeAllRanges(); sel.addRange(newRange);
 
   el("format-bar").classList.remove("on");
   inp.focus(); aResize(inp);
@@ -2707,6 +2712,12 @@ function confirmLink(){
   } else {
     inp.appendChild(a);
   }
+  const spacer=document.createTextNode("\u200B");
+  a.after(spacer);
+  const newRange=document.createRange();
+  newRange.setStart(spacer,1); newRange.setEnd(spacer,1);
+  const sel2=window.getSelection();
+  sel2.removeAllRanges(); sel2.addRange(newRange);
   closeM("m-linkinsert");
   inp.focus(); aResize(inp);
 }
