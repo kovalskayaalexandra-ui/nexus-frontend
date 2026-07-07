@@ -121,6 +121,13 @@ button,input,textarea,select{font-family:inherit}
   transition:all .15s;box-shadow:0 2px 8px rgba(108,99,255,.4)}
 .new-chat-btn:hover{transform:scale(1.07)}
 .clist{flex:1;overflow-y:auto;padding:5px 0}
+#global-search-results{flex:none;border-top:1px solid var(--brd)}
+#global-search-results:empty{border-top:none}
+.gsr-label{padding:10px 16px 4px;font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.03em}
+.unknown-bar{display:none;padding:9px 13px;background:var(--bg2);gap:8px}
+.unknown-bar.on{display:flex}
+.unknown-bar-btn{flex:1;border:none;border-radius:9px;padding:9px 8px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--acc);color:#fff}
+.unknown-bar-btn.rd{background:var(--bg3);color:var(--rd);border:1px solid var(--rd)}
 .ci{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-radius:8px;margin:1px 5px;transition:background .15s;position:relative}
 .ci:hover{background:var(--bg3)}
 .ci.on{background:var(--bg4)}
@@ -793,6 +800,7 @@ tr:hover td{background:var(--bg3)}
         <button class="new-chat-btn" onclick="openNewChat()" title="Новый чат">+</button>
       </div>
       <div class="clist" id="clist"></div>
+      <div class="clist" id="global-search-results"></div>
     </div>
 
     <div class="cm">
@@ -855,6 +863,11 @@ tr:hover td{background:var(--bg3)}
           <label class="ap-spoiler" id="ap-spoiler-wrap"><input type="checkbox" id="ap-spoiler-cb" onchange="toggleAttachSpoiler(this)"> 🫥 Спойлер</label>
         </div>
         <div class="rsx" onclick="cancelPendingAttach()">✕</div>
+      </div>
+
+      <div class="unknown-bar" id="unknown-bar">
+        <button class="unknown-bar-btn" onclick="addCurrentChatToContacts()">➕ Добавить в контакты</button>
+        <button class="unknown-bar-btn rd" onclick="reportAndBlockCurrentChat()">🚫 Пожаловаться и заблокировать</button>
       </div>
 
       <div class="send-as-row" id="send-as-row" style="display:none">
@@ -2204,7 +2217,53 @@ function renderChats(filter=""){
   });
 }
 function setTab(e,t){ document.querySelectorAll(".stab").forEach(x=>x.classList.remove("on")); e.classList.add("on"); S.tab=t; renderChats(); saveState(); }
-function filterChats(v){ renderChats(v); }
+let _searchDebounce=null;
+function filterChats(v){
+  renderChats(v); // локальные чаты — как и раньше, мгновенно
+  clearTimeout(_searchDebounce);
+  const wrap=el("global-search-results");
+  if(!v || v.trim().length<2){
+    if(wrap) wrap.innerHTML="";
+    return;
+  }
+  const q=v.trim();
+  _searchDebounce=setTimeout(async ()=>{
+    try{
+      const data=await apiGet("/api/users/search?q="+encodeURIComponent(q));
+      // Не показываем повторно тех, с кем уже есть чат — они и так видны выше, среди локальных
+      const localIds=new Set(S.chats.filter(c=>c.withUserId).map(c=>c.withUserId));
+      const results=(data.users||[]).filter(u=>u.id!==S.user?.id && !localIds.has(u.id));
+      renderGlobalSearchResults(results, q);
+    }catch(e){ console.warn("global search error:", e); }
+  }, 300);
+}
+function renderGlobalSearchResults(users, query){
+  const wrap=el("global-search-results");
+  if(!wrap) return;
+  if(!users.length){
+    wrap.innerHTML=`<div class="gsr-label">Глобальный поиск</div><div style="color:var(--tx3);font-size:12.5px;padding:4px 16px 12px">Никого не найдено по «${escHtml(query)}»</div>`;
+    return;
+  }
+  wrap.innerHTML=`<div class="gsr-label">Глобальный поиск</div>`+users.map(u=>{
+    const nm=u.name||u.username||"Пользователь";
+    const col=Math.floor(Math.random()*8);
+    const safeNm=escHtml(nm).replace(/'/g,"\\'");
+    const avHTML=u.avatar_url?`<img src="${u.avatar_url}" style="width:100%;height:100%;object-fit:cover">`:nm[0].toUpperCase();
+    return `<div class="ci" onclick="openChatFromSearch('${u.id}','${safeNm}',${col})">
+      <div class="chav" style="background:${colBg(col)}">${avHTML}</div>
+      <div class="cinfo" style="flex:1;overflow:hidden">
+        <div class="cnm">${escHtml(nm)}</div>
+        <div class="cprev">${u.username?"@"+escHtml(u.username):"Найден по глобальному поиску"}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+function openChatFromSearch(userId, nm, col){
+  startChatWithUser(userId, nm, col);
+  el("sb-search").value="";
+  el("global-search-results").innerHTML="";
+  renderChats();
+}
 function globalSearch(v){
   if(!v){ renderChats(); return; }
   // search contacts + chats
@@ -2243,6 +2302,10 @@ function openChat(id){
   // Кнопка "Участники" — только для групп
   const memBtn=el("rp-members-btn");
   if(memBtn)memBtn.style.display=(ch.type==="groups")?"block":"none";
+
+  // Панель "Добавить в контакты / Пожаловаться" — для личных чатов с людьми, которых нет в контактах
+  const unkBar=el("unknown-bar");
+  if(unkBar) unkBar.classList.toggle("on", ch.type==="personal" && !!ch.withUserId && !ch.isContact);
 
   // Кнопка "Настройки канала" — для своих каналов
   const chSetBtn=el("rp-chsettings-btn");
@@ -3434,6 +3497,20 @@ function deleteChatCompletely(){
     apiDelete("/api/chats/"+chatId).catch(e=>console.warn("delete chat error:",e));
     wsSend({type:"chat.delete", payload:{chatId, memberIds}});
   }
+}
+function addCurrentChatToContacts(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  ch.isContact=true;
+  const bar=el("unknown-bar"); if(bar)bar.classList.remove("on");
+  showToast("➕ "+ch.nm+" добавлен в контакты");
+  saveState();
+}
+function reportAndBlockCurrentChat(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  if(!confirm("Пожаловаться на "+ch.nm+" и заблокировать? Дальнейшие сообщения от него приходить не будут.")) return;
+  ch.blocked=true; if(!S.blocked.includes(ch.id))S.blocked.push(ch.id);
+  const bar=el("unknown-bar"); if(bar)bar.classList.remove("on");
+  renderChats(); showToast("🚫 Жалоба отправлена, "+ch.nm+" заблокирован"); saveState();
 }
 function blockUser(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
