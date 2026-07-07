@@ -799,7 +799,7 @@ tr:hover td{background:var(--bg3)}
       <div class="chdr">
         <div class="av" id="chav" style="background:linear-gradient(135deg,#6c63ff,#38bdf8)">АС</div>
         <div class="chin">
-          <div class="chnm" id="chnm" onclick="openChatInfo()">Алекс Смирнов</div>
+          <div class="chnm" id="chnm" onclick="openChatInfo()">Чат</div>
           <div class="chst" id="chst">онлайн</div>
         </div>
         <div class="ibt" onclick="startCall('voice')" title="Голосовой звонок" style="width:33px;height:33px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);transition:all .15s"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.14 12 19.79 19.79 0 0 1 1.07 3.38a2 2 0 0 1 2-2.18H6a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21 16z"/></svg></div>
@@ -894,7 +894,7 @@ tr:hover td{background:var(--bg3)}
     <div class="rp" id="rp">
       <div class="rphdr">
         <div class="rpav" id="rpav" style="background:linear-gradient(135deg,#6c63ff,#38bdf8)">АС</div>
-        <div class="rpnm" id="rpnm">Алекс Смирнов</div>
+        <div class="rpnm" id="rpnm">Чат</div>
         <div class="rpst" id="rpst">● онлайн</div>
         <div class="rpacts">
           <div class="rpact"><div class="rpai" onclick="startCall('voice')"><svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.14 12 19.79 19.79 0 0 1 1.07 3.38a2 2 0 0 1 2-2.18H6a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21 16z"/></svg></div><div class="rpal" id="t-rpcl">Звонок</div></div>
@@ -919,6 +919,7 @@ tr:hover td{background:var(--bg3)}
         <button class="rp-action-btn" onclick="pinChat()">📌 Закрепить чат</button>
         <button class="rp-action-btn" onclick="muteChat()">🔇 Заглушить</button>
         <button class="rp-action-btn" onclick="clearHistory()">🗑️ Очистить историю</button>
+        <button class="rp-action-btn rd" onclick="deleteChatCompletely()">🗑️ Удалить чат</button>
         <button class="rp-action-btn rd" onclick="blockUser()">🚫 Заблокировать</button>
       </div>
     </div>
@@ -1207,7 +1208,7 @@ tr:hover td{background:var(--bg3)}
 <!-- ══ CALL SCREEN ══ -->
 <div class="call-screen" id="call-screen">
   <div class="call-av" id="call-av">АС</div>
-  <div class="call-nm" id="call-nm">Алекс Смирнов</div>
+  <div class="call-nm" id="call-nm">Абонент</div>
   <div class="call-st" id="call-st">Вызов...</div>
   <div class="call-btns">
     <div class="call-btn mute" onclick="showToast('🎤 Микрофон выключен')" title="Mute">🎤</div>
@@ -1476,50 +1477,9 @@ const DEFAULT_STATE = {
     {cr:2500,price:1650,bonus:"+250",pop:false},
     {cr:5000,price:3100,bonus:"+600",pop:false}
   ],
-  chats: [
-    {id:1,nm:"Алекс Смирнов",ini:"АС",col:0,online:true,prev:"Буду в 15:00 ✅",time:"14:32",unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:""},
-    {id:2,nm:"Мария Козлова",ini:"МК",col:1,online:true,prev:"Посмотри дизайн!",time:"14:18",unread:3,type:"personal",pinned:false,muted:false,blocked:false,draft:""},
-    {id:3,nm:"🚀 Dev Team",ini:"DT",col:2,online:false,prev:"Денис: Деплоим!",time:"13:55",unread:12,type:"groups",mbrs:4,pinned:true,muted:false,blocked:false,draft:""},
-    {id:4,nm:"Игорь Петров",ini:"ИП",col:3,online:false,prev:"До пятницы!",time:"12:10",unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:""},
-    {id:5,nm:"📢 Tech News",ini:"TN",col:4,online:false,prev:"Новый релиз iOS",time:"11:30",unread:5,type:"channels",pinned:false,muted:true,blocked:false,draft:"",mine:true,myRole:"owner"},
-    {id:6,nm:"Семья 🏠",ini:"СМ",col:5,online:false,prev:"Мама: Ужин готов!",time:"вчера",unread:0,type:"groups",mbrs:4,pinned:false,muted:false,blocked:false,draft:""}
-  ],
-  messages: {
-    1:[
-      {id:1,t:"date",tx:"Сегодня"},{id:2,t:"sys",tx:"Алекс принял запрос на связь"},
-      {id:3,t:"in",fr:"АС",tx:"Привет! Как дела? 😊",time:"14:20",col:0},
-      {id:4,t:"out",tx:"Всё отлично! Работаю над проектом 🚀",time:"14:21",read:true},
-      {id:5,t:"sk",fr:"АС",sk:"😺",time:"14:23",col:0},
-      {id:6,t:"in",fr:"АС",tx:"B2B-приложение для управления задачами 💡",time:"14:25",col:0,rxn:[{e:"🔥",c:1,m:false},{e:"👍",c:2,m:true}]},
-      {id:7,t:"voice",fr:"АС",dur:"0:42",time:"14:27",col:0},
-      {id:8,t:"out",tx:"Звучит отлично! Пиши если нужна помощь 💪",time:"14:29",read:true},
-      {id:9,t:"in",fr:"АС",tx:"Буду в 15:00 ✅",time:"14:32",col:0}
-    ],
-    2:[
-      {id:1,t:"date",tx:"Сегодня"},
-      {id:2,t:"in",fr:"МК",tx:"Привет! Закончила макет 👀",time:"14:00",col:1},
-      {id:3,t:"sk",fr:"МК",sk:"🐱",time:"14:18",col:1},
-      {id:4,t:"in",fr:"МК",tx:"Посмотри дизайн! Жду фидбэк 🎨",time:"14:19",col:1}
-    ],
-    3:[
-      {id:1,t:"date",tx:"Сегодня"},{id:2,t:"sys",tx:"Денис добавил вас в группу"},
-      {id:3,t:"in",fr:"Денис",tx:"Всем привет! Начинаем спринт 🏃",time:"13:30",col:2},
-      {id:4,t:"sk",fr:"Света",sk:"🐶",time:"13:32",col:5},
-      {id:5,t:"out",tx:"Созвонимся в 14:00?",time:"13:35",read:true},
-      {id:6,t:"in",fr:"Олег",tx:"👍 В 14:00 ок!",time:"13:36",col:3},
-      {id:7,t:"in",fr:"Денис",tx:"Готово, деплоим! 🎉",time:"13:55",col:2,rxn:[{e:"🎉",c:4,m:true},{e:"✅",c:2,m:false}]}
-    ]
-  },
-  contacts: [
-    {id:1,nm:"Алекс Смирнов",uname:"alex_s",phone:"+7 999 111 2233",col:0,online:true},
-    {id:2,nm:"Мария Козлова",uname:"maria_k",phone:"+7 900 222 3344",col:1,online:true},
-    {id:3,nm:"Игорь Петров",uname:"igor_p",phone:"+7 911 333 4455",col:3,online:false},
-    {id:4,nm:"Денис Волков",uname:"denis_v",phone:"+7 925 444 5566",col:2,online:false},
-    {id:5,nm:"Светлана Иванова",uname:"svetlana_i",phone:"+7 965 555 6677",col:5,online:false},
-    {id:6,nm:"Tanaka Hiroshi",uname:"tanaka_h",phone:"+81 90 1234 5678",col:4,online:true},
-    {id:7,nm:"Kim Minji",uname:"kim_m",phone:"+82 10 9876 5432",col:7,online:false},
-    {id:8,nm:"Hassan Al-Rashid",uname:"hassan_a",phone:"+966 50 123 4567",col:6,online:false}
-  ],
+  chats: [],
+  messages: {},
+  contacts: [],
   blocked: [],
   gifts_catalog: [
     {id:1, name:"Сердечко", icon:"❤️", price:50, limit:null, sold:0, rarity:"common", color:"#f87171"},
@@ -1595,6 +1555,19 @@ function loadState(){
   // иначе панель выделения не появится, а правый клик/долгое нажатие останутся заблокированы.
   S.selectMode = false;
   S.selectedMsgs = [];
+
+  // Разовая чистка демо-персонажей (Алекс Смирнов, Мария Козлова, Dev Team, Игорь Петров,
+  // Tech News, Семья) — они были захардкожены как заглушка для показа UI и никак не связаны
+  // с реальными аккаунтами. У кого это уже сохранилось в localStorage — подчищаем.
+  const DEMO_CHAT_IDS = [1,2,3,4,5,6];
+  if(S.chats && S.chats.length){
+    S.chats = S.chats.filter(c => !DEMO_CHAT_IDS.includes(c.id));
+  }
+  if(S.messages){
+    DEMO_CHAT_IDS.forEach(id => { delete S.messages[id]; });
+  }
+  // Контактов пока нет как реальной функции — список всегда пустой из кода
+  S.contacts = [];
 }
 
 function saveState(){
@@ -1823,6 +1796,15 @@ function wsHandleMessage(msg){
       const ch = S.chats.find(c => c.id === chatId);
       if(ch){ ch.prev = ""; }
       if(S.chat === chatId) renderMsgs();
+      renderChats(); saveState();
+      break;
+    }
+
+    case "chat.deleted": {
+      const { chatId } = msg.payload;
+      S.chats = S.chats.filter(c => c.id !== chatId);
+      delete S.messages[chatId];
+      if(S.chat === chatId) openChat(77777);
       renderChats(); saveState();
       break;
     }
@@ -3431,6 +3413,28 @@ function clearHistory(){
     wsSend({type:"chat.clear", payload:{chatId:S.chat, memberIds}});
   }
 }
+// Полное удаление чата — стирает переписку у ОБОИХ участников (не просто "у себя")
+function deleteChatCompletely(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  if(!confirm("Удалить чат с "+ch.nm+" полностью? Это сотрёт переписку у ОБОИХ участников и не отменяется.")) return;
+
+  const chatId=S.chat;
+  const isRealChat = typeof chatId==="string" && chatId.length>10;
+  const memberIds = getChatMemberIds(ch);
+
+  S.chats = S.chats.filter(c => c.id !== chatId);
+  delete S.messages[chatId];
+  saveState();
+
+  openChat(77777); // безопасный переход, чтобы не остаться на удалённом чате
+  renderChats();
+  showToast("🗑️ Чат удалён");
+
+  if(isRealChat){
+    apiDelete("/api/chats/"+chatId).catch(e=>console.warn("delete chat error:",e));
+    wsSend({type:"chat.delete", payload:{chatId, memberIds}});
+  }
+}
 function blockUser(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
   if(confirm("Заблокировать "+ch.nm+"?")){
@@ -4025,11 +4029,7 @@ function buyVIP(planId, price){
 //  STORIES
 // ══════════════════════════════════════════════════
 
-const DEMO_STORIES = [
-  {user:"Алекс", ini:"АС", col:0, items:[{type:"text",bg:"linear-gradient(135deg,#6c63ff,#38bdf8)",text:"Привет всем! 👋",emoji:"✨"},{type:"emoji",bg:"linear-gradient(135deg,#f093fb,#f5576c)",emoji:"🐱"}]},
-  {user:"Мария", ini:"МК", col:1, items:[{type:"text",bg:"linear-gradient(135deg,#43e97b,#38f9d7)",text:"Новый проект 🚀",emoji:"🎯"}]},
-  {user:"Dev Team", ini:"DT", col:2, items:[{type:"text",bg:"linear-gradient(135deg,#fa709a,#fee140)",text:"Деплоим! 🔥",emoji:"🔥"}]},
-];
+const DEMO_STORIES = [];
 
 let storyState = {user:0, item:0, timer:null, progress:0};
 
