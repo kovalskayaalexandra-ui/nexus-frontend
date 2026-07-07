@@ -1779,7 +1779,7 @@ function wsHandleMessage(msg){
         : contact ? "👤 "+(contact.nm||"Контакт")
         : text;
       if(ch){ ch.prev = prevTx; ch.time = now(); if(S.chat !== chatId) ch.unread = (ch.unread||0)+1; }
-      if(S.chat === chatId) renderMsgs();
+      if(S.chat === chatId) { renderMsgs(); markChatAsRead(chatId); }
       renderChats(); saveState();
       if(!ch?.muted && S.chat !== chatId) showNotif();
       break;
@@ -1793,6 +1793,21 @@ function wsHandleMessage(msg){
         if(m && m.poll){
           // Обновляем счётчики с сервера, сохраняя свой личный выбор как есть
           m.poll = { ...poll, myVotes: m.poll.myVotes||[] };
+          if(S.chat === chatId) renderMsgs();
+          saveState();
+        }
+      }
+      break;
+    }
+
+    case "messages.read": {
+      const { chatId, readIds } = msg.payload;
+      const list = S.messages[chatId];
+      if(list && readIds && readIds.length){
+        const idSet = new Set(readIds);
+        let changed = false;
+        list.forEach(m => { if(m.dbId && idSet.has(m.dbId) && !m.read){ m.read = true; changed = true; } });
+        if(changed){
           if(S.chat === chatId) renderMsgs();
           saveState();
         }
@@ -2102,6 +2117,19 @@ async function loadChatsFromDB(){
 }
 
 // ── ЗАГРУЗКА СООБЩЕНИЙ ИЗ БД ─────────────────────────────────
+// Помечает чужие сообщения в чате прочитанными на сервере и уведомляет
+// отправителя по WebSocket, чтобы у него мгновенно появилась вторая галочка
+async function markChatAsRead(chatId){
+  try{
+    const data=await apiPatch("/api/messages/chat/"+chatId+"/read", {}, true);
+    if(data?.readIds?.length){
+      const curChat=S.chats.find(c=>c.id===chatId);
+      const memberIds=getChatMemberIds(curChat);
+      wsSend({type:"messages.read", payload:{chatId, memberIds, readIds:data.readIds}});
+    }
+  }catch(e){ console.warn("mark chat as read error:", e); }
+}
+
 async function loadMessagesFromDB(chatId){
   if(!chatId || chatId === 99999 || chatId === 88888 || chatId === 77777) return;
   try {
@@ -2120,7 +2148,7 @@ async function loadMessagesFromDB(chatId){
         fr: dbMsg.sender_name ? dbMsg.sender_name.slice(0,2).toUpperCase() : "?",
         tx: dbMsg.text || "",
         time: new Date(dbMsg.created_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}),
-        read: isMe,
+        read: isMe ? !!dbMsg.read_at : true,
         edited: !!dbMsg.edited_at
       };
       if(dbMsg.media_url){
@@ -2286,7 +2314,7 @@ function openChat(id){
 
   S.chat=id; const ch=S.chats.find(x=>x.id===id); if(!ch)return;
   // Загружаем сообщения из БД если чат реальный
-  if(id !== 99999 && id !== 88888 && typeof id === "string") loadMessagesFromDB(id);
+  if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); markChatAsRead(id); }
   ch.unread=0; renderChats();
 
   const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
@@ -2358,8 +2386,16 @@ function formatMsgText(raw){
   return safe;
 }
 
+// Одна серая галочка — отправлено, две синие — прочитано (как в Telegram)
+function ticksHTML(m){
+  if(m.read){
+    return '<svg class="mtick" width="16" height="12" viewBox="0 0 30 24" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 13 7 19 16 8"/><polyline points="11 13 17 19 29 4"/></svg>';
+  }
+  return '<svg class="mtick" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+}
 function renderMsgs(){
   const c=el("msgs"); c.innerHTML="";
+  renderUnknownBar(S.chats.find(x=>x.id===S.chat));
   (S.messages[S.chat]||[]).filter(m=>!m._deletedForAll && !m._deletedForMe).forEach(m=>{
     if(m.t==="date"){const d=document.createElement("div");d.className="ddiv";d.innerHTML=`<span>${m.tx}</span>`;c.appendChild(d);return;}
     if(m.t==="sys"){const s=document.createElement("div");s.className="sysmsg";s.textContent=m.tx;c.appendChild(s);return;}
@@ -2417,7 +2453,7 @@ function renderMsgs(){
       const rawForPreview=(m.tx||"").replace(/\[[^\]]+\]\(https?:\/\/[^\s)]+\)/g,"");
       const urlMatch=rawForPreview.match(/https?:\/\/[^\s]+/);
       if(urlMatch)bc+=`<div class="lnkprev"><div class="lnktitle">🔗 ${urlMatch[0].replace(/https?:\/\//,"").slice(0,40)}</div><div class="lnkdesc">Открыть ссылку</div></div>`;
-      bc+=`<div class="mt">${m.time||""}${m.t==="out"?'<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="'+(m.read?"#38bdf8":"currentColor")+'" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':""}</div>`;
+      bc+=`<div class="mt">${m.time||""}${m.t==="out"?ticksHTML(m):""}</div>`;
       if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${r.e} ${r.c}</div>`).join("")}</div>`;
       if(m.edited)bc+='';
       h+=`<div class="bub${m.edited?" edited":""}" oncontextmenu="showCtx(event,${m.id})" ontouchstart="lpStart(event,${m.id})" ontouchend="lpEnd()" ontouchmove="lpEnd()">${bc}</div>`;
