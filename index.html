@@ -1888,7 +1888,9 @@ async function apiPatch(path, body, auth=false){
 }
 
 function getChatMemberIds(chat){
-  // Для личного чата — ID собеседника из withUserId
+  // Группы/каналы — достоверный список участников из БД (chat_members)
+  if(chat && Array.isArray(chat.memberIds) && chat.memberIds.length) return chat.memberIds;
+  // Личный чат — ID собеседника из withUserId
   if(chat && chat.withUserId) return [chat.withUserId];
   // Иначе — онлайн контакты (демо-режим)
   return S.contacts?.filter(c => c.online).map(c => String(c.id)) || [];
@@ -2055,17 +2057,27 @@ async function loadChatsFromDB(){
     data.chats.forEach(dbChat => {
       // Пропускаем служебные чаты
       if(dbChat.id === 88888 || dbChat.id === 99999 || dbChat.id === 77777) return;
+
+      // Достоверный список остальных участников чата — приходит прямо из chat_members,
+      // не угадывается по истории сообщений (это и было источником бага с "путаницей" собеседника)
+      const others = dbChat.other_members || [];
+      const isPersonal = (dbChat.type || "personal") === "personal";
+      const otherUser = isPersonal ? others[0] : null;
+      const displayName = otherUser?.name || dbChat.name || "Чат";
+
       // Если чат уже есть локально — обновляем
       const existing = S.chats.find(c => c.id === dbChat.id);
       if(existing){
         existing.prev = dbChat.last_message || existing.prev;
         existing.time = dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : existing.time;
+        if(otherUser) existing.withUserId = otherUser.userId;
+        if(!isPersonal) existing.memberIds = others.map(m => m.userId);
       } else {
         // Добавляем новый чат из БД
         S.chats.push({
           id: dbChat.id,
-          nm: dbChat.name || "Чат",
-          ini: (dbChat.name||"Ч").slice(0,2).toUpperCase(),
+          nm: displayName,
+          ini: (displayName||"Ч").slice(0,2).toUpperCase(),
           col: Math.floor(Math.random()*8),
           online: false,
           prev: dbChat.last_message || "",
@@ -2077,7 +2089,9 @@ async function loadChatsFromDB(){
           blocked: false,
           draft: "",
           dbId: dbChat.id,
-          myRole: dbChat.my_role
+          myRole: dbChat.my_role,
+          withUserId: otherUser ? otherUser.userId : undefined,
+          memberIds: !isPersonal ? others.map(m => m.userId) : undefined
         });
       }
     });
@@ -2092,17 +2106,6 @@ async function loadMessagesFromDB(chatId){
     const data = await apiGet("/api/messages/"+chatId);
     if(!data.messages || !data.messages.length) return;
     if(!S.messages[chatId]) S.messages[chatId] = [];
-
-    // Чинит реальную отправку по WebSocket: если чат попал в список из БД (а не через
-    // "живое" сообщение или явный старт диалога), у него могло не сохраниться withUserId —
-    // без него сервер не знает, кому слать новые сообщения этого чата в реальном времени.
-    // Восстанавливаем по автору первого же входящего сообщения. Делаем это ДО проверки
-    // на дубликаты — иначе для уже закешированных локально сообщений фикс не сработает.
-    const ch = S.chats.find(c => c.id === chatId);
-    if(ch && ch.type === "personal" && !ch.withUserId){
-      const firstIncoming = data.messages.find(dm => dm.user_id && dm.user_id !== S.user?.id);
-      if(firstIncoming) ch.withUserId = firstIncoming.user_id;
-    }
 
     data.messages.forEach(dbMsg => {
       // Не дублируем уже загруженные
