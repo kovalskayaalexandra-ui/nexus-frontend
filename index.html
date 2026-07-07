@@ -865,10 +865,7 @@ tr:hover td{background:var(--bg3)}
         <div class="rsx" onclick="cancelPendingAttach()">✕</div>
       </div>
 
-      <div class="unknown-bar" id="unknown-bar">
-        <button class="unknown-bar-btn" onclick="addCurrentChatToContacts()">➕ Добавить в контакты</button>
-        <button class="unknown-bar-btn rd" onclick="reportAndBlockCurrentChat()">🚫 Пожаловаться и заблокировать</button>
-      </div>
+      <div class="unknown-bar" id="unknown-bar"></div>
 
       <div class="send-as-row" id="send-as-row" style="display:none">
         <button class="send-as-btn" id="send-as-btn" onclick="toggleSendAs()" style="display:none"></button>
@@ -2303,9 +2300,9 @@ function openChat(id){
   const memBtn=el("rp-members-btn");
   if(memBtn)memBtn.style.display=(ch.type==="groups")?"block":"none";
 
-  // Панель "Добавить в контакты / Пожаловаться" — для личных чатов с людьми, которых нет в контактах
-  const unkBar=el("unknown-bar");
-  if(unkBar) unkBar.classList.toggle("on", ch.type==="personal" && !!ch.withUserId && !ch.isContact);
+  // Панель "Добавить в контакты / Пожаловаться / Удалить" — для личных чатов
+  // с людьми, которых нет в контактах, или для ещё пустых чатов (ни одного сообщения)
+  renderUnknownBar(ch);
 
   // Кнопка "Настройки канала" — для своих каналов
   const chSetBtn=el("rp-chsettings-btn");
@@ -3498,10 +3495,30 @@ function deleteChatCompletely(){
     wsSend({type:"chat.delete", payload:{chatId, memberIds}});
   }
 }
+function renderUnknownBar(ch){
+  const bar=el("unknown-bar"); if(!bar)return;
+  if(!ch || ch.type!=="personal" || !ch.withUserId){ bar.classList.remove("on"); bar.innerHTML=""; return; }
+
+  const hasMessages=(S.messages[ch.id]||[]).some(m=>m.t!=="date"&&m.t!=="sys");
+  // Показываем панель, если человек ещё не в контактах, ИЛИ чат всё ещё пустой
+  // (добавили в контакты/начали чат, но ничего не написали — должна остаться возможность отменить)
+  if(ch.isContact && hasMessages){ bar.classList.remove("on"); bar.innerHTML=""; return; }
+
+  let html="";
+  if(!ch.isContact){
+    html+=`<button class="unknown-bar-btn" onclick="addCurrentChatToContacts()">➕ Добавить в контакты</button>`;
+    html+=`<button class="unknown-bar-btn rd" onclick="reportAndBlockCurrentChat()">🚫 Пожаловаться и заблокировать</button>`;
+  }
+  if(!hasMessages){
+    html+=`<button class="unknown-bar-btn rd" onclick="deleteChatCompletely()">🗑️ Удалить</button>`;
+  }
+  bar.innerHTML=html;
+  bar.classList.add("on");
+}
 function addCurrentChatToContacts(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
   ch.isContact=true;
-  const bar=el("unknown-bar"); if(bar)bar.classList.remove("on");
+  renderUnknownBar(ch);
   showToast("➕ "+ch.nm+" добавлен в контакты");
   saveState();
 }
@@ -3509,7 +3526,7 @@ function reportAndBlockCurrentChat(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
   if(!confirm("Пожаловаться на "+ch.nm+" и заблокировать? Дальнейшие сообщения от него приходить не будут.")) return;
   ch.blocked=true; if(!S.blocked.includes(ch.id))S.blocked.push(ch.id);
-  const bar=el("unknown-bar"); if(bar)bar.classList.remove("on");
+  renderUnknownBar(ch);
   renderChats(); showToast("🚫 Жалоба отправлена, "+ch.nm+" заблокирован"); saveState();
 }
 function blockUser(){
