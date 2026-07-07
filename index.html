@@ -3475,7 +3475,7 @@ function saveProfile(){
   apiPatch("/api/users/me", {name:nm, username:uname || null, bio:bio}, true)
     .then(d=>{
       console.log("📥 Ответ сервера на сохранение профиля:", d);
-      if(!d?.success) showToast("⚠️ Сохранено локально, но не на сервере — поиск других может не найти");
+      if(!d?.success) showToast("⚠️ "+(d?.error || "Не удалось сохранить на сервере"));
     })
     .catch(e=>{ console.error("save profile error:", e); showToast("⚠️ Сохранено локально, но не на сервере — поиск других может не найти"); });
 }
