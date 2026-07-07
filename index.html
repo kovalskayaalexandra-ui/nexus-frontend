@@ -1817,6 +1817,16 @@ function wsHandleMessage(msg){
       break;
     }
 
+    case "chat.cleared": {
+      const { chatId } = msg.payload;
+      S.messages[chatId] = [];
+      const ch = S.chats.find(c => c.id === chatId);
+      if(ch){ ch.prev = ""; }
+      if(S.chat === chatId) renderMsgs();
+      renderChats(); saveState();
+      break;
+    }
+
     case "message.deleted": {
       const { messageId, chatId } = msg.payload;
       if(S.messages[chatId]){
@@ -3409,13 +3419,16 @@ function muteChat(){
   ch.muted=!ch.muted; renderChats(); showToast(ch.muted?"🔇 Заглушено":"🔔 Уведомления включены"); saveState();
 }
 function clearHistory(){
-  if(!confirm("Очистить историю чата?")) return;
+  if(!confirm("Очистить историю чата? Она удалится у всех участников.")) return;
   S.messages[S.chat]=[];
   renderMsgs(); renderChats();
   showToast("🗑️ История очищена");
   saveState();
   if(typeof S.chat==="string" && S.chat.length>10){
     apiDelete("/api/messages/chat/"+S.chat+"/clear").catch(e=>console.warn("clear history error:",e));
+    const curChat=S.chats.find(c=>c.id===S.chat);
+    const memberIds=getChatMemberIds(curChat);
+    wsSend({type:"chat.clear", payload:{chatId:S.chat, memberIds}});
   }
 }
 function blockUser(){
