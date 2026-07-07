@@ -3472,7 +3472,7 @@ function saveProfile(){
   closeM("m-profile"); updateUserUI(); openSettings(); saveState(); showToast("✅ Профиль сохранён");
 
   // Сохраняем на сервере — иначе новое имя/юзернейм не найти через поиск у других пользователей
-  apiPatch("/api/users/me", {name:nm, username:uname, bio:bio}, true)
+  apiPatch("/api/users/me", {name:nm, username:uname || null, bio:bio}, true)
     .then(d=>{
       console.log("📥 Ответ сервера на сохранение профиля:", d);
       if(!d?.success) showToast("⚠️ Сохранено локально, но не на сервере — поиск других может не найти");
