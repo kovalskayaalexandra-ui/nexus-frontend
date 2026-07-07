@@ -3468,6 +3468,10 @@ function saveProfile(){
   const nm=(el("prof-name")?.value||"").trim(); if(!nm){showToast("❌ Имя не может быть пустым");return;}
   const uname=(el("prof-uname")?.value||"").replace("@","").replace(/[^a-z0-9_]/gi,"");
   const bio=el("prof-bio")?.value||"";
+
+  // Запоминаем, что было ДО правки — если сервер откажет, вернём как было
+  const prevUser={...S.user};
+
   S.user={...S.user,name:nm,uname:uname,bio:bio,avatar:profAvatarData,initials:nm.slice(0,2).toUpperCase()};
   closeM("m-profile"); updateUserUI(); openSettings(); saveState(); showToast("✅ Профиль сохранён");
 
@@ -3475,9 +3479,20 @@ function saveProfile(){
   apiPatch("/api/users/me", {name:nm, username:uname || null, bio:bio}, true)
     .then(d=>{
       console.log("📥 Ответ сервера на сохранение профиля:", d);
-      if(!d?.success) showToast("⚠️ "+(d?.error || "Не удалось сохранить на сервере"));
+      if(!d?.success){
+        // Сервер отклонил — откатываем локальные изменения и заново открываем окно
+        // редактирования с правильными (откаченными) значениями, а не оставляем
+        // на экране/в полях то, что сервер не принял
+        S.user=prevUser;
+        updateUserUI(); saveState();
+        openEditProfile();
+        showToast("⚠️ "+(d?.error || "Не удалось сохранить: изменения отменены"));
+      }
     })
-    .catch(e=>{ console.error("save profile error:", e); showToast("⚠️ Сохранено локально, но не на сервере — поиск других может не найти"); });
+    .catch(e=>{
+      console.error("save profile error:", e);
+      showToast("⚠️ Сохранено локально, но не на сервере — поиск других может не найти");
+    });
 }
 function savePrivacy(){ S.privacy={phone:el("priv-phone")?.value,online:el("priv-online")?.value,e2e:el("priv-e2e")?.checked}; saveState(); showToast("✅ Приватность сохранена"); }
 function saveNotif(){ S.notifSettings={push:el("notif-push")?.checked,sound:el("notif-sound")?.checked,preview:el("notif-preview")?.checked}; saveState(); }
