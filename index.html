@@ -3473,8 +3473,11 @@ function saveProfile(){
 
   // Сохраняем на сервере — иначе новое имя/юзернейм не найти через поиск у других пользователей
   apiPatch("/api/users/me", {name:nm, username:uname, bio:bio}, true)
-    .then(d=>{ if(!d?.success) showToast("⚠️ Сохранено локально, но не на сервере — поиск других может не найти"); })
-    .catch(e=>{ console.warn("save profile error:", e); showToast("⚠️ Сохранено локально, но не на сервере — поиск других может не найти"); });
+    .then(d=>{
+      console.log("📥 Ответ сервера на сохранение профиля:", d);
+      if(!d?.success) showToast("⚠️ Сохранено локально, но не на сервере — поиск других может не найти");
+    })
+    .catch(e=>{ console.error("save profile error:", e); showToast("⚠️ Сохранено локально, но не на сервере — поиск других может не найти"); });
 }
 function savePrivacy(){ S.privacy={phone:el("priv-phone")?.value,online:el("priv-online")?.value,e2e:el("priv-e2e")?.checked}; saveState(); showToast("✅ Приватность сохранена"); }
 function saveNotif(){ S.notifSettings={push:el("notif-push")?.checked,sound:el("notif-sound")?.checked,preview:el("notif-preview")?.checked}; saveState(); }
