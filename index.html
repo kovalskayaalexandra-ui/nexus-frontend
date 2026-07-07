@@ -1727,6 +1727,7 @@ function wsSend(data){
 }
 
 function wsHandleMessage(msg){
+  console.log("📥 WS получено:", msg.type, msg.payload);
   switch(msg.type){
 
     case "auth.ok":
@@ -1864,6 +1865,7 @@ function wsSendTyping(){
   const ch = S.chats.find(c => c.id === S.chat);
   if(!ch) return;
   const memberIds = getChatMemberIds(ch);
+  console.log("📤 Отправляю typing.start, memberIds:", memberIds, "withUserId чата:", ch.withUserId);
   wsSend({ type: "typing.start", payload: { chatId: S.chat, memberIds } });
 }
 
@@ -2551,6 +2553,7 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds){
       if(dbId){ msg.dbId=dbId; saveState(); }
     }catch(e){ console.warn("save msg error:", e); }
   }
+  console.log("📤 Отправляю сообщение, chatId:", chatId, "memberIds:", memberIds, "withUserId чата:", ch?.withUserId);
   const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, memberIds, id:dbId } });
 
   // Если WS не подключён — показываем локальный авто-ответ (демо)
@@ -2580,6 +2583,7 @@ function sendSticker(sk){
 
 function hKey(e){ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();} }
 function onInput(elm){
+  console.log("⌨️ onInput сработал, wsConnected:", wsConnected);
   aResize(elm);
   cleanupEmptyFormatSpans();
   if(wsConnected) wsSendTyping();
