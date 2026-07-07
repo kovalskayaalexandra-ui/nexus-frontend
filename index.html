@@ -3050,9 +3050,13 @@ function selDeleteForMe(){
   const n=S.selectedMsgs.length;
   if(!n) return;
   const ms=S.messages[S.chat]||[];
+  const isRealChat=typeof S.chat==="string" && S.chat.length>10;
   S.selectedMsgs.forEach(id=>{
     const m=ms.find(x=>x.id===id);
-    if(m) m._deletedForMe=true;
+    if(m){
+      m._deletedForMe=true;
+      if(isRealChat && m.dbId) apiDelete("/api/messages/"+m.dbId).catch(()=>{});
+    }
   });
   showToast(`🗑️ Удалено у вас: ${n}`);
   exitSelectMode(); saveState();
@@ -3345,7 +3349,13 @@ function openDelModal(){
 function delForMe(){
   const ms=S.messages[S.chat]||[];
   const i=ms.findIndex(x=>x.id===S.ctxId);
-  if(i!==-1){ ms[i]._deletedForMe=true; }
+  if(i!==-1){
+    const m=ms[i];
+    m._deletedForMe=true;
+    if(m.dbId && typeof S.chat==="string"){
+      apiDelete("/api/messages/"+m.dbId).catch(e=>console.warn("delete for me error:",e));
+    }
+  }
   closeM("m-delete"); renderMsgs(); showToast("🗑️ Удалено у вас"); saveState();
 }
 function delForAll(){
@@ -3399,7 +3409,14 @@ function muteChat(){
   ch.muted=!ch.muted; renderChats(); showToast(ch.muted?"🔇 Заглушено":"🔔 Уведомления включены"); saveState();
 }
 function clearHistory(){
-  confirm("Очистить историю чата?")&&(S.messages[S.chat]=[],renderMsgs(),showToast("🗑️ История очищена"),saveState());
+  if(!confirm("Очистить историю чата?")) return;
+  S.messages[S.chat]=[];
+  renderMsgs(); renderChats();
+  showToast("🗑️ История очищена");
+  saveState();
+  if(typeof S.chat==="string" && S.chat.length>10){
+    apiDelete("/api/messages/chat/"+S.chat+"/clear").catch(e=>console.warn("clear history error:",e));
+  }
 }
 function blockUser(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
