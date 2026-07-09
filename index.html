@@ -2067,6 +2067,23 @@ function loginOK(){
 }
 
 // ── ЗАГРУЗКА ЧАТОВ ИЗ БД ─────────────────────────────────────
+// Точечное обновление имени/аватара собеседника — вызывается при каждом открытии
+// чата, чтобы смена имени на другой стороне подтягивалась без полной перезагрузки
+// страницы (loadChatsFromDB запускается только один раз при старте приложения)
+async function refreshChatPeerInfo(ch){
+  if(!ch || ch.type!=="personal" || !ch.withUserId) return;
+  try{
+    const data=await apiGet("/api/users/"+ch.withUserId);
+    const u=data.user;
+    if(u && u.name && u.name!==ch.nm){
+      ch.nm=u.name;
+      ch.ini=u.name.slice(0,2).toUpperCase();
+      if(S.chat===ch.id && el("chnm")) el("chnm").textContent=ch.nm;
+      renderChats(); saveState();
+    }
+  }catch(e){ console.warn("refresh peer info error:", e); }
+}
+
 async function loadChatsFromDB(){
   try {
     const data = await apiGet("/api/chats");
@@ -2320,7 +2337,7 @@ function openChat(id){
 
   S.chat=id; const ch=S.chats.find(x=>x.id===id); if(!ch)return;
   // Загружаем сообщения из БД если чат реальный
-  if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); markChatAsRead(id); }
+  if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); markChatAsRead(id); refreshChatPeerInfo(ch); }
   ch.unread=0; renderChats();
 
   const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
