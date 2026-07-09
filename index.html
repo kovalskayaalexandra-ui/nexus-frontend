@@ -2089,6 +2089,12 @@ async function loadChatsFromDB(){
         existing.time = dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : existing.time;
         if(otherUser) existing.withUserId = otherUser.userId;
         if(!isPersonal) existing.memberIds = others.map(m => m.userId);
+        // Имя собеседника могло поменяться (сменил имя в профиле) — синхронизируем,
+        // а не оставляем то, что было закреплено при первом создании чата
+        if(isPersonal && otherUser?.name){
+          existing.nm = otherUser.name;
+          existing.ini = otherUser.name.slice(0,2).toUpperCase();
+        }
       } else {
         // Добавляем новый чат из БД
         S.chats.push({
