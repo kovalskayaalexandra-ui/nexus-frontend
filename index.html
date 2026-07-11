@@ -149,6 +149,19 @@ button,input,textarea,select{font-family:inherit}
 .voice-wave-progress{color:#fff}
 .mrow.in .voice-wave-progress{color:var(--acc)}
 .voice-dur{font-size:11px;opacity:.75}
+.vc-recorder{display:flex;flex-direction:column;align-items:center;gap:18px;padding:24px}
+#vc-preview{width:260px;height:260px;border-radius:50%;object-fit:cover;background:#000;transform:scaleX(-1)}
+.vc-timer{font-size:16px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums}
+.vc-actions{display:flex;gap:22px;align-items:center}
+.vc-btn{width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;background:var(--bg3);color:var(--tx1)}
+.vc-btn-rec{background:var(--rd);color:#fff;width:66px;height:66px;font-size:24px}
+.vc-btn-rec.recording{animation:micPulse 1.2s ease-in-out infinite}
+.vc-btn-ok{background:var(--acc);color:#fff}
+.video-circle-wrap{position:relative;width:200px;height:200px;border-radius:50%;overflow:hidden;cursor:pointer;background:#000}
+.video-circle{width:100%;height:100%;object-fit:cover}
+.vc-play-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;background:rgba(0,0,0,.25);text-shadow:0 2px 6px rgba(0,0,0,.5)}
+.vc-play-overlay.hidden{display:none}
+.vc-dur-badge{position:absolute;bottom:10px;right:14px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:2px 7px;border-radius:20px}
 .ci{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-radius:8px;margin:1px 5px;transition:background .15s;position:relative}
 .ci:hover{background:var(--bg3)}
 .ci.on{background:var(--bg4)}
@@ -928,6 +941,9 @@ tr:hover td{background:var(--bg3)}
         <span class="char-count" id="char-count"></span>
         <button class="mic-btn" id="mic-btn" onclick="toggleVoiceRecording()" title="Голосовое сообщение">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
+        </button>
+        <button class="mic-btn" id="vc-btn" onclick="openVideoCircleRecorder()" title="Видео-кружочек">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m10 9 5 3-5 3z"/></svg>
         </button>
         <button class="sndbtn" onclick="sendMsg()"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4 20-7z"/><path d="M22 2 11 13"/></svg></button>
       </div>
@@ -1800,6 +1816,7 @@ function wsHandleMessage(msg){
         else if(mediaType==="video"){ newMsg.video = mediaUrl; if(spoiler) newMsg.spoiler=true; }
         else if(mediaType==="audio") newMsg.audio = { url: mediaUrl, name: fileName||"Аудио" };
         else if(mediaType==="voice") newMsg.voice = { url: mediaUrl, duration: 0, waveform: waveform||null };
+        else if(mediaType==="videoCircle") newMsg.videoCircle = { url: mediaUrl, duration: 0 };
         else newMsg.file = { name: fileName||"Файл", url: mediaUrl };
       } else if(poll){
         newMsg.poll = { ...poll, myVotes: [] };
@@ -1807,7 +1824,7 @@ function wsHandleMessage(msg){
         newMsg.contact = contact;
       }
       S.messages[chatId].push(newMsg);
-      const prevTx = mediaUrl ? (mediaType==="image" ? "📷 Фото" : mediaType==="video" ? "🎥 Видео" : mediaType==="voice" ? "🎤 Голосовое" : mediaType==="audio" ? "🎵 "+(fileName||"Аудио") : "📎 "+(fileName||"Файл"))
+      const prevTx = mediaUrl ? (mediaType==="image" ? "📷 Фото" : mediaType==="video" ? "🎥 Видео" : mediaType==="videoCircle" ? "⭕ Видео-кружочек" : mediaType==="voice" ? "🎤 Голосовое" : mediaType==="audio" ? "🎵 "+(fileName||"Аудио") : "📎 "+(fileName||"Файл"))
         : poll ? "📊 "+poll.question
         : contact ? "👤 "+(contact.nm||"Контакт")
         : text;
@@ -2212,6 +2229,7 @@ async function loadMessagesFromDB(chatId){
         else if(dbMsg.media_type==="video"){ m.video=dbMsg.media_url; if(dbMsg.spoiler) m.spoiler=true; }
         else if(dbMsg.media_type==="audio") m.audio={url:dbMsg.media_url,name:dbMsg.file_name||"Аудио"};
         else if(dbMsg.media_type==="voice") m.voice={url:dbMsg.media_url,duration:0,waveform:dbMsg.waveform||null};
+        else if(dbMsg.media_type==="videoCircle") m.videoCircle={url:dbMsg.media_url,duration:0};
         else m.file={name:dbMsg.file_name||"Файл",url:dbMsg.media_url};
       }
       if(dbMsg.poll) m.poll={...dbMsg.poll, myVotes:[]};
@@ -2495,6 +2513,13 @@ function renderMsgs(){
         } else {
           const barsHTML=renderWaveBars(m.voice.waveform);
           bc+=`<div class="voice-msg" onclick="toggleVoicePlay(this,'${m.voice.url}')"><div class="voice-play-btn">▶</div><div class="voice-track"><div class="voice-wave-wrap" onclick="seekVoice(event,this.closest('.voice-msg'))"><div class="voice-wave-bars">${barsHTML}</div><div class="voice-wave-bars voice-wave-progress" style="clip-path:inset(0 100% 0 0)">${barsHTML}</div></div><div class="voice-dur">${formatDur(m.voice.duration)}</div></div><audio preload="metadata"></audio></div>`;
+        }
+      }
+      if(m.videoCircle){
+        if(m.uploading){
+          bc+=`<div class="video-circle-wrap"><video class="video-circle" src="${m.videoCircle.url}" muted playsinline></video><div class="vc-play-overlay">⏳</div></div>`;
+        } else {
+          bc+=`<div class="video-circle-wrap" onclick="toggleVideoCirclePlay(this)"><video class="video-circle" src="${m.videoCircle.url}" playsinline muted loop></video><div class="vc-play-overlay">▶</div><div class="vc-dur-badge">${formatDur(m.videoCircle.duration)}</div></div>`;
         }
       }
       if(m.poll){
@@ -3112,6 +3137,96 @@ function seekVoice(e, wrapEl){
   audio.currentTime=Math.max(0,Math.min(1,pct))*audio.duration;
 }
 
+// ── ВИДЕО-КРУЖОЧКИ ───────────────────────────────────────────
+const VC_MAX_SEC=60; // как в Telegram — максимум минута
+let vcRecorder=null, vcChunks=[], vcStream=null, vcStartTs=0, vcTimerInt=null, vcRecording=false;
+
+async function openVideoCircleRecorder(){
+  if(S.chat===77777||S.chat===99999){ showToast("⭕ Видео-кружочки здесь недоступны"); return; }
+  try{
+    vcStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:400,height:400},audio:true});
+  }catch(e){
+    showToast("❌ Нет доступа к камере — разреши в настройках браузера");
+    return;
+  }
+  const preview=el("vc-preview");
+  preview.srcObject=vcStream;
+  el("vc-timer").textContent="0:00";
+  el("vc-rec-btn").style.display="flex";
+  el("vc-rec-btn").classList.remove("recording");
+  el("vc-rec-btn").textContent="⏺";
+  el("vc-send-btn").style.display="none";
+  el("m-videocircle").classList.add("on");
+}
+
+function toggleVideoCircleRecording(){
+  if(vcRecording){ finishVideoCircle(); return; }
+  vcChunks=[];
+  const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus") ? "video/webm;codecs=vp8,opus" : (MediaRecorder.isTypeSupported("video/webm")?"video/webm":"");
+  vcRecorder = mime ? new MediaRecorder(vcStream,{mimeType:mime}) : new MediaRecorder(vcStream);
+  vcRecorder.ondataavailable=e=>{ if(e.data && e.data.size>0) vcChunks.push(e.data); };
+  vcRecorder.start();
+  vcStartTs=Date.now();
+  vcRecording=true;
+  el("vc-rec-btn").classList.add("recording");
+  el("vc-rec-btn").textContent="⏹";
+  vcTimerInt=setInterval(()=>{
+    const sec=(Date.now()-vcStartTs)/1000;
+    el("vc-timer").textContent=formatDur(sec);
+    if(sec>=VC_MAX_SEC) finishVideoCircle();
+  },200);
+}
+
+function closeVideoCircleModal(){
+  clearInterval(vcTimerInt);
+  el("vc-rec-btn").classList.remove("recording");
+  el("m-videocircle").classList.remove("on");
+  if(vcStream){ vcStream.getTracks().forEach(t=>t.stop()); vcStream=null; }
+  vcRecording=false;
+}
+
+function cancelVideoCircle(){
+  if(vcRecorder && vcRecorder.state==="recording"){ vcRecorder.onstop=null; vcRecorder.stop(); }
+  closeVideoCircleModal();
+  vcRecorder=null; vcChunks=[];
+}
+
+function finishVideoCircle(){
+  if(!vcRecording || !vcRecorder || vcRecorder.state!=="recording") return;
+  const durationSec=(Date.now()-vcStartTs)/1000;
+  vcRecorder.onstop=()=>{
+    closeVideoCircleModal();
+    if(durationSec<1){ showToast("❌ Слишком короткая запись"); vcRecorder=null; vcChunks=[]; return; }
+    const blob=new Blob(vcChunks, {type: vcRecorder.mimeType||"video/webm"});
+    const ext=(blob.type.split("/")[1]||"webm").split(";")[0];
+    const file=new File([blob], "circle_"+Date.now()+"."+ext, {type: blob.type});
+    const previewUrl=URL.createObjectURL(blob);
+    if(pendingAttach && (pendingAttach.kind==="video"||pendingAttach.kind==="audio"||pendingAttach.kind==="voice"||pendingAttach.kind==="videoCircle") && pendingAttach.previewUrl){
+      URL.revokeObjectURL(pendingAttach.previewUrl);
+    }
+    pendingAttach={file, kind:"videoCircle", previewUrl, spoiler:false, duration:durationSec};
+    renderAttachPreview();
+    vcRecorder=null; vcChunks=[];
+  };
+  vcRecorder.stop();
+}
+
+// Воспроизведение кружочка в чате: тап — play/pause, звук включается сразу
+function toggleVideoCirclePlay(wrapEl){
+  const video=wrapEl.querySelector("video");
+  const overlay=wrapEl.querySelector(".vc-play-overlay");
+  if(video.paused){
+    document.querySelectorAll(".video-circle-wrap video").forEach(v=>{ if(v!==video && !v.paused) v.pause(); });
+    video.muted=false;
+    video.play();
+    overlay.classList.add("hidden");
+  } else {
+    video.pause();
+    overlay.classList.remove("hidden");
+  }
+  video.onended=()=>{ overlay.classList.remove("hidden"); };
+}
+
 
 async function attachFile(inp){
   const f=inp.files[0];
@@ -3155,10 +3270,11 @@ function renderAttachPreview(){
   const thumb=el("ap-thumb");
   if(pendingAttach.kind==="image") thumb.innerHTML=`<img src="${pendingAttach.previewUrl}">`;
   else if(pendingAttach.kind==="video") thumb.innerHTML=`<video src="${pendingAttach.previewUrl}" muted></video>`;
+  else if(pendingAttach.kind==="videoCircle") thumb.innerHTML=`<video src="${pendingAttach.previewUrl}" muted style="border-radius:50%"></video>`;
   else if(pendingAttach.kind==="audio") thumb.innerHTML=`🎵`;
   else if(pendingAttach.kind==="voice") thumb.innerHTML=`🎤`;
   else thumb.innerHTML=`📄`;
-  el("ap-name").textContent=pendingAttach.kind==="voice"?("Голосовое · "+formatDur(pendingAttach.duration||0)):pendingAttach.file.name;
+  el("ap-name").textContent=pendingAttach.kind==="voice"?("Голосовое · "+formatDur(pendingAttach.duration||0)):(pendingAttach.kind==="videoCircle"?("Видео-кружочек · "+formatDur(pendingAttach.duration||0)):pendingAttach.file.name);
   const canSpoiler = pendingAttach.kind==="image"||pendingAttach.kind==="video";
   const spWrap=el("ap-spoiler-wrap");
   spWrap.style.display = canSpoiler ? "flex" : "none";
@@ -3195,11 +3311,12 @@ async function sendWithAttachment(caption){
   else if(att.kind==="video"){ msg.video=att.previewUrl; if(att.spoiler) msg.spoiler=true; }
   else if(att.kind==="audio") msg.audio={url:att.previewUrl,name:att.file.name};
   else if(att.kind==="voice") msg.voice={url:att.previewUrl,duration:att.duration||0,waveform:att.waveform||null};
+  else if(att.kind==="videoCircle") msg.videoCircle={url:att.previewUrl,duration:att.duration||0};
   else msg.file={name:att.file.name,size:att.file.size};
   if(S.reply){msg.reply={fr:S.reply.fr,tx:S.reply.tx};cancelReply();}
   S.messages[chatId].push(msg);
   const ch=S.chats.find(c=>c.id===chatId);
-  const label=att.kind==="image"?"📷 Фото":(att.kind==="video"?"🎥 Видео":(att.kind==="voice"?"🎤 Голосовое":(att.kind==="audio"?"🎵 "+att.file.name:"📎 "+att.file.name)));
+  const label=att.kind==="image"?"📷 Фото":(att.kind==="video"?"🎥 Видео":(att.kind==="videoCircle"?"⭕ Видео-кружочек":(att.kind==="voice"?"🎤 Голосовое":(att.kind==="audio"?"🎵 "+att.file.name:"📎 "+att.file.name))));
   if(ch){ch.prev=caption?label+" · "+caption:label;ch.time=tm;ch.draft="";}
   renderMsgs(); renderChats(); saveState();
 
@@ -3220,6 +3337,7 @@ async function sendWithAttachment(caption){
     else if(att.kind==="video"){ URL.revokeObjectURL(att.previewUrl); msg.video=data.url; }
     else if(att.kind==="audio"){ URL.revokeObjectURL(att.previewUrl); msg.audio.url=data.url; }
     else if(att.kind==="voice"){ URL.revokeObjectURL(att.previewUrl); msg.voice.url=data.url; }
+    else if(att.kind==="videoCircle"){ URL.revokeObjectURL(att.previewUrl); msg.videoCircle.url=data.url; }
     else msg.file.url=data.url;
     renderMsgs(); saveState();
 
@@ -3240,7 +3358,7 @@ async function sendWithAttachment(caption){
     });
   }catch(err){
     console.error("upload error:",err);
-    if((att.kind==="video"||att.kind==="audio"||att.kind==="voice") && att.previewUrl) URL.revokeObjectURL(att.previewUrl);
+    if((att.kind==="video"||att.kind==="audio"||att.kind==="voice"||att.kind==="videoCircle") && att.previewUrl) URL.revokeObjectURL(att.previewUrl);
     S.messages[chatId]=S.messages[chatId].filter(m=>m.id!==localId);
     renderMsgs(); saveState();
     showToast("❌ "+(err.message||"Не удалось загрузить файл"));
@@ -5476,6 +5594,19 @@ applyTheme(S.theme||"dark");
     <div class="settings-section">
       <div class="settings-section-title">Статус заявки</div>
       <div id="vr-status" style="padding:14px;color:var(--tx3);font-size:12.5px">Заявок нет</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: VIDEO CIRCLE RECORDER -->
+<div class="movl" id="m-videocircle">
+  <div class="vc-recorder">
+    <video id="vc-preview" autoplay muted playsinline></video>
+    <div class="vc-timer" id="vc-timer">0:00</div>
+    <div class="vc-actions">
+      <button class="vc-btn" onclick="cancelVideoCircle()" title="Отменить">🗑️</button>
+      <button class="vc-btn vc-btn-rec" id="vc-rec-btn" onclick="toggleVideoCircleRecording()" title="Начать запись">⏺</button>
+      <button class="vc-btn vc-btn-ok" id="vc-send-btn" onclick="finishVideoCircle()" title="Готово" style="display:none">✓</button>
     </div>
   </div>
 </div>
