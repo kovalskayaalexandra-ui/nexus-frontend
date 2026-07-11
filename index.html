@@ -128,6 +128,24 @@ button,input,textarea,select{font-family:inherit}
 .unknown-bar.on{display:flex}
 .unknown-bar-btn{flex:1;border:none;border-radius:9px;padding:9px 8px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--acc);color:#fff}
 .unknown-bar-btn.rd{background:var(--bg3);color:var(--rd);border:1px solid var(--rd)}
+.mic-btn{width:35px;height:35px;background:var(--bg3);border:1px solid var(--brd);border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);flex-shrink:0}
+.mic-btn:hover{background:var(--bg4);color:var(--acc2)}
+.mic-btn.recording{background:var(--rd);color:#fff;border-color:var(--rd);animation:micPulse 1.2s ease-in-out infinite}
+@keyframes micPulse{0%,100%{opacity:1}50%{opacity:.6}}
+.recording-bar{display:none;align-items:center;gap:10px;padding:9px 13px;background:var(--bg2)}
+.recording-bar.on{display:flex}
+.rec-dot{width:10px;height:10px;border-radius:50%;background:var(--rd);flex-shrink:0;animation:micPulse 1.2s ease-in-out infinite}
+.rec-timer{font-size:13px;font-weight:600;color:var(--tx1);font-variant-numeric:tabular-nums}
+.rec-hint{flex:1;font-size:12.5px;color:var(--tx3)}
+.rec-btn{width:30px;height:30px;border-radius:50%;border:none;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;background:var(--bg3);color:var(--tx2)}
+.rec-btn-ok{background:var(--acc);color:#fff}
+.voice-msg{display:flex;align-items:center;gap:10px;min-width:190px;padding:2px 0}
+.voice-play-btn{width:34px;height:34px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:13px}
+.voice-track{flex:1;display:flex;flex-direction:column;gap:4px;cursor:pointer}
+.voice-bar{height:3px;border-radius:2px;background:rgba(255,255,255,.25);position:relative;overflow:hidden}
+.mrow.in .voice-bar{background:var(--bg4)}
+.voice-bar-fill{position:absolute;left:0;top:0;bottom:0;width:0%;background:currentColor;border-radius:2px}
+.voice-dur{font-size:11px;opacity:.75}
 .ci{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-radius:8px;margin:1px 5px;transition:background .15s;position:relative}
 .ci:hover{background:var(--bg3)}
 .ci.on{background:var(--bg4)}
@@ -867,6 +885,14 @@ tr:hover td{background:var(--bg3)}
 
       <div class="unknown-bar" id="unknown-bar"></div>
 
+      <div class="recording-bar" id="recording-bar">
+        <div class="rec-dot"></div>
+        <div class="rec-timer" id="rec-timer">0:00</div>
+        <div class="rec-hint">Запись голосового…</div>
+        <button class="rec-btn" onclick="cancelVoiceRecording()" title="Отменить">🗑️</button>
+        <button class="rec-btn rec-btn-ok" onclick="stopVoiceRecording()" title="Готово">✓</button>
+      </div>
+
       <div class="send-as-row" id="send-as-row" style="display:none">
         <button class="send-as-btn" id="send-as-btn" onclick="toggleSendAs()" style="display:none"></button>
       </div>
@@ -897,6 +923,9 @@ tr:hover td{background:var(--bg3)}
           <div class="ibi" onclick="toggleMP('emoji')"><svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></div>
         </div>
         <span class="char-count" id="char-count"></span>
+        <button class="mic-btn" id="mic-btn" onclick="toggleVoiceRecording()" title="Голосовое сообщение">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
+        </button>
         <button class="sndbtn" onclick="sendMsg()"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4 20-7z"/><path d="M22 2 11 13"/></svg></button>
       </div>
     </div>
@@ -1767,6 +1796,7 @@ function wsHandleMessage(msg){
         if(mediaType==="image"){ newMsg.img = mediaUrl; if(spoiler) newMsg.spoiler=true; }
         else if(mediaType==="video"){ newMsg.video = mediaUrl; if(spoiler) newMsg.spoiler=true; }
         else if(mediaType==="audio") newMsg.audio = { url: mediaUrl, name: fileName||"Аудио" };
+        else if(mediaType==="voice") newMsg.voice = { url: mediaUrl, duration: 0 };
         else newMsg.file = { name: fileName||"Файл", url: mediaUrl };
       } else if(poll){
         newMsg.poll = { ...poll, myVotes: [] };
@@ -1774,7 +1804,7 @@ function wsHandleMessage(msg){
         newMsg.contact = contact;
       }
       S.messages[chatId].push(newMsg);
-      const prevTx = mediaUrl ? (mediaType==="image" ? "📷 Фото" : mediaType==="video" ? "🎥 Видео" : mediaType==="audio" ? "🎵 "+(fileName||"Аудио") : "📎 "+(fileName||"Файл"))
+      const prevTx = mediaUrl ? (mediaType==="image" ? "📷 Фото" : mediaType==="video" ? "🎥 Видео" : mediaType==="voice" ? "🎤 Голосовое" : mediaType==="audio" ? "🎵 "+(fileName||"Аудио") : "📎 "+(fileName||"Файл"))
         : poll ? "📊 "+poll.question
         : contact ? "👤 "+(contact.nm||"Контакт")
         : text;
@@ -2178,6 +2208,7 @@ async function loadMessagesFromDB(chatId){
         if(dbMsg.media_type==="image"){ m.img=dbMsg.media_url; if(dbMsg.spoiler) m.spoiler=true; }
         else if(dbMsg.media_type==="video"){ m.video=dbMsg.media_url; if(dbMsg.spoiler) m.spoiler=true; }
         else if(dbMsg.media_type==="audio") m.audio={url:dbMsg.media_url,name:dbMsg.file_name||"Аудио"};
+        else if(dbMsg.media_type==="voice") m.voice={url:dbMsg.media_url,duration:0};
         else m.file={name:dbMsg.file_name||"Файл",url:dbMsg.media_url};
       }
       if(dbMsg.poll) m.poll={...dbMsg.poll, myVotes:[]};
@@ -2454,6 +2485,13 @@ function renderMsgs(){
       }
       if(m.audio){
         bc+=`<div class="msg-audio-wrap"><div style="font-size:12px;color:var(--tx2);margin-bottom:3px">🎵 ${escHtml(m.audio.name||"Аудио")}${m.uploading?" · загрузка…":""}</div><audio src="${m.audio.url}" ${m.uploading?"":"controls"}></audio></div>`;
+      }
+      if(m.voice){
+        if(m.uploading){
+          bc+=`<div class="voice-msg"><div class="voice-play-btn">🎤</div><div class="voice-track"><div class="voice-bar"><div class="voice-bar-fill" style="width:0%"></div></div><div class="voice-dur">загрузка…</div></div></div>`;
+        } else {
+          bc+=`<div class="voice-msg" onclick="toggleVoicePlay(this,'${m.voice.url}')"><div class="voice-play-btn">▶</div><div class="voice-track"><div class="voice-bar" onclick="seekVoice(event,this.closest('.voice-msg'))"><div class="voice-bar-fill" style="width:0%"></div></div><div class="voice-dur">${formatDur(m.voice.duration)}</div></div><audio preload="metadata"></audio></div>`;
+        }
       }
       if(m.poll){
         const p=m.poll;
@@ -2930,7 +2968,111 @@ function revealSpoiler(msgId){
 // Загружает файл на бэкенд (Supabase Storage через /api/upload) и добавляет
 // сообщение с фото/видео/файлом в чат: сначала локальный превью с индикатором
 // загрузки, потом заменяем на настоящую ссылку с сервера.
-let pendingAttach=null; // {file, kind:'image'|'video'|'audio'|'file', previewUrl, spoiler}
+let pendingAttach=null; // {file, kind:'image'|'video'|'audio'|'voice'|'file', previewUrl, spoiler}
+
+// ── ГОЛОСОВЫЕ СООБЩЕНИЯ ──────────────────────────────────────
+function formatDur(sec){
+  sec=Math.max(0,Math.round(sec||0));
+  const m=Math.floor(sec/60), s=sec%60;
+  return m+":"+String(s).padStart(2,"0");
+}
+
+let voiceRecorder=null, voiceChunks=[], voiceStream=null, voiceStartTs=0, voiceTimerInt=null;
+
+async function toggleVoiceRecording(){
+  if(voiceRecorder && voiceRecorder.state==="recording"){ stopVoiceRecording(); return; }
+  if(S.chat===77777||S.chat===99999){ showToast("🎤 Голосовые здесь недоступны"); return; }
+  try{
+    voiceStream=await navigator.mediaDevices.getUserMedia({audio:true});
+  }catch(e){
+    showToast("❌ Нет доступа к микрофону — разреши в настройках браузера");
+    return;
+  }
+  voiceChunks=[];
+  const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+  voiceRecorder = mime ? new MediaRecorder(voiceStream,{mimeType:mime}) : new MediaRecorder(voiceStream);
+  voiceRecorder.ondataavailable=e=>{ if(e.data && e.data.size>0) voiceChunks.push(e.data); };
+  voiceRecorder.start();
+  voiceStartTs=Date.now();
+  el("mic-btn")?.classList.add("recording");
+  el("recording-bar")?.classList.add("on");
+  el("rec-timer").textContent="0:00";
+  voiceTimerInt=setInterval(()=>{
+    el("rec-timer").textContent=formatDur((Date.now()-voiceStartTs)/1000);
+  },200);
+}
+
+function stopVoiceRecordingInternal(){
+  clearInterval(voiceTimerInt);
+  el("mic-btn")?.classList.remove("recording");
+  el("recording-bar")?.classList.remove("on");
+  if(voiceStream){ voiceStream.getTracks().forEach(t=>t.stop()); voiceStream=null; }
+}
+
+function cancelVoiceRecording(){
+  if(!voiceRecorder) return;
+  voiceRecorder.onstop=null;
+  if(voiceRecorder.state==="recording") voiceRecorder.stop();
+  stopVoiceRecordingInternal();
+  voiceRecorder=null; voiceChunks=[];
+  showToast("🗑️ Запись отменена");
+}
+
+function stopVoiceRecording(){
+  if(!voiceRecorder || voiceRecorder.state!=="recording") return;
+  const durationSec=(Date.now()-voiceStartTs)/1000;
+  voiceRecorder.onstop=()=>{
+    stopVoiceRecordingInternal();
+    if(durationSec<1){ showToast("❌ Слишком короткая запись"); voiceRecorder=null; voiceChunks=[]; return; }
+    const blob=new Blob(voiceChunks, {type: voiceRecorder.mimeType||"audio/webm"});
+    const ext=(blob.type.split("/")[1]||"webm").split(";")[0];
+    const file=new File([blob], "voice_"+Date.now()+"."+ext, {type: blob.type});
+    const previewUrl=URL.createObjectURL(blob);
+    if(pendingAttach && (pendingAttach.kind==="video"||pendingAttach.kind==="audio"||pendingAttach.kind==="voice") && pendingAttach.previewUrl){
+      URL.revokeObjectURL(pendingAttach.previewUrl);
+    }
+    pendingAttach={file, kind:"voice", previewUrl, spoiler:false, duration:durationSec};
+    renderAttachPreview();
+    voiceRecorder=null; voiceChunks=[];
+  };
+  voiceRecorder.stop();
+}
+
+// Воспроизведение голосового в чате: play/pause + прогресс-бар
+function toggleVoicePlay(wrapEl, url){
+  const audio=wrapEl.querySelector("audio");
+  const btn=wrapEl.querySelector(".voice-play-btn");
+  const fill=wrapEl.querySelector(".voice-bar-fill");
+  const durEl=wrapEl.querySelector(".voice-dur");
+  if(!audio.src) audio.src=url;
+  // Ставим на паузу все остальные голосовые в чате перед воспроизведением этого
+  if(audio.paused){
+    document.querySelectorAll(".voice-msg audio").forEach(a=>{ if(a!==audio && !a.paused) a.pause(); });
+    audio.play();
+    btn.textContent="⏸";
+  } else {
+    audio.pause();
+    btn.textContent="▶";
+  }
+  if(!audio._wired){
+    audio._wired=true;
+    audio.addEventListener("timeupdate",()=>{
+      if(audio.duration) fill.style.width=(audio.currentTime/audio.duration*100)+"%";
+      durEl.textContent=formatDur(audio.duration&&!isNaN(audio.duration)?(audio.duration-audio.currentTime):0);
+    });
+    audio.addEventListener("ended",()=>{ btn.textContent="▶"; fill.style.width="0%"; durEl.textContent=formatDur(audio.duration||0); });
+    audio.addEventListener("loadedmetadata",()=>{ if(audio.duration && !isNaN(audio.duration)) durEl.textContent=formatDur(audio.duration); });
+  }
+}
+function seekVoice(e, wrapEl){
+  e.stopPropagation();
+  const audio=wrapEl.querySelector("audio");
+  if(!audio.duration || isNaN(audio.duration)) return;
+  const bar=e.currentTarget;
+  const pct=(e.clientX-bar.getBoundingClientRect().left)/bar.offsetWidth;
+  audio.currentTime=Math.max(0,Math.min(1,pct))*audio.duration;
+}
+
 
 async function attachFile(inp){
   const f=inp.files[0];
@@ -2975,8 +3117,9 @@ function renderAttachPreview(){
   if(pendingAttach.kind==="image") thumb.innerHTML=`<img src="${pendingAttach.previewUrl}">`;
   else if(pendingAttach.kind==="video") thumb.innerHTML=`<video src="${pendingAttach.previewUrl}" muted></video>`;
   else if(pendingAttach.kind==="audio") thumb.innerHTML=`🎵`;
+  else if(pendingAttach.kind==="voice") thumb.innerHTML=`🎤`;
   else thumb.innerHTML=`📄`;
-  el("ap-name").textContent=pendingAttach.file.name;
+  el("ap-name").textContent=pendingAttach.kind==="voice"?("Голосовое · "+formatDur(pendingAttach.duration||0)):pendingAttach.file.name;
   const canSpoiler = pendingAttach.kind==="image"||pendingAttach.kind==="video";
   const spWrap=el("ap-spoiler-wrap");
   spWrap.style.display = canSpoiler ? "flex" : "none";
@@ -3012,11 +3155,12 @@ async function sendWithAttachment(caption){
   if(att.kind==="image"){ msg.img=att.previewUrl; if(att.spoiler) msg.spoiler=true; }
   else if(att.kind==="video"){ msg.video=att.previewUrl; if(att.spoiler) msg.spoiler=true; }
   else if(att.kind==="audio") msg.audio={url:att.previewUrl,name:att.file.name};
+  else if(att.kind==="voice") msg.voice={url:att.previewUrl,duration:att.duration||0};
   else msg.file={name:att.file.name,size:att.file.size};
   if(S.reply){msg.reply={fr:S.reply.fr,tx:S.reply.tx};cancelReply();}
   S.messages[chatId].push(msg);
   const ch=S.chats.find(c=>c.id===chatId);
-  const label=att.kind==="image"?"📷 Фото":(att.kind==="video"?"🎥 Видео":(att.kind==="audio"?"🎵 "+att.file.name:"📎 "+att.file.name));
+  const label=att.kind==="image"?"📷 Фото":(att.kind==="video"?"🎥 Видео":(att.kind==="voice"?"🎤 Голосовое":(att.kind==="audio"?"🎵 "+att.file.name:"📎 "+att.file.name)));
   if(ch){ch.prev=caption?label+" · "+caption:label;ch.time=tm;ch.draft="";}
   renderMsgs(); renderChats(); saveState();
 
@@ -3036,6 +3180,7 @@ async function sendWithAttachment(caption){
     if(att.kind==="image") msg.img=data.url;
     else if(att.kind==="video"){ URL.revokeObjectURL(att.previewUrl); msg.video=data.url; }
     else if(att.kind==="audio"){ URL.revokeObjectURL(att.previewUrl); msg.audio.url=data.url; }
+    else if(att.kind==="voice"){ URL.revokeObjectURL(att.previewUrl); msg.voice.url=data.url; }
     else msg.file.url=data.url;
     renderMsgs(); saveState();
 
@@ -3056,7 +3201,7 @@ async function sendWithAttachment(caption){
     });
   }catch(err){
     console.error("upload error:",err);
-    if((att.kind==="video"||att.kind==="audio") && att.previewUrl) URL.revokeObjectURL(att.previewUrl);
+    if((att.kind==="video"||att.kind==="audio"||att.kind==="voice") && att.previewUrl) URL.revokeObjectURL(att.previewUrl);
     S.messages[chatId]=S.messages[chatId].filter(m=>m.id!==localId);
     renderMsgs(); saveState();
     showToast("❌ "+(err.message||"Не удалось загрузить файл"));
