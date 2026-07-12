@@ -3203,48 +3203,8 @@ function drawVcWatermark(ctx,size){
 function toggleVideoCircleRecording(){
   if(vcRecording){ finishVideoCircle(); return; }
   vcChunks=[];
-
-  // Записываем не сырой поток камеры, а canvas с уже вживлённым затемнением по краям —
-  // так эффект оказывается впечатан в сам файл с самого начала (как у Telegram),
-  // и скачивание/пересылка потом не требуют никакой обработки, происходят мгновенно
-  const size=400;
-  vcCanvas=document.createElement("canvas");
-  vcCanvas.width=size; vcCanvas.height=size;
-  vcCanvasCtx=vcCanvas.getContext("2d");
-
-  vcSourceVideo=document.createElement("video");
-  vcSourceVideo.srcObject=vcStream;
-  vcSourceVideo.muted=true;
-  vcSourceVideo.playsInline=true;
-  vcSourceVideo.play();
-
-  function drawVcFrame(){
-    const ctx=vcCanvasCtx, vw=vcSourceVideo.videoWidth||size, vh=vcSourceVideo.videoHeight||size;
-    const scale=Math.max(size/vw,size/vh);
-    const dw=vw*scale, dh=vh*scale;
-    ctx.save();
-    ctx.scale(-1,1); // зеркалим, как в живом превью (фронтальная камера)
-    ctx.drawImage(vcSourceVideo, -(size-dw)/2-dw, (size-dh)/2, dw, dh);
-    ctx.restore();
-    // Мягкая виньетка по краям — не чёрная вырезка, а плавное затемнение
-    const grad=ctx.createRadialGradient(size/2,size/2,size*0.32,size/2,size/2,size*0.5);
-    grad.addColorStop(0,"rgba(0,0,0,0)");
-    grad.addColorStop(1,"rgba(0,0,0,.72)");
-    ctx.fillStyle=grad;
-    ctx.fillRect(0,0,size,size);
-    drawVcWatermark(ctx,size);
-    vcCanvasRaf=requestAnimationFrame(drawVcFrame);
-  }
-  drawVcFrame();
-
-  const canvasStream=vcCanvas.captureStream(30);
-  const combinedStream=new MediaStream([
-    ...canvasStream.getVideoTracks(),
-    ...vcStream.getAudioTracks()
-  ]);
-
   const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus") ? "video/webm;codecs=vp8,opus" : (MediaRecorder.isTypeSupported("video/webm")?"video/webm":"");
-  vcRecorder = mime ? new MediaRecorder(combinedStream,{mimeType:mime}) : new MediaRecorder(combinedStream);
+  vcRecorder = mime ? new MediaRecorder(vcStream,{mimeType:mime}) : new MediaRecorder(vcStream);
   vcRecorder.ondataavailable=e=>{ if(e.data && e.data.size>0) vcChunks.push(e.data); };
   vcRecorder.start();
   vcStartTs=Date.now();
@@ -4083,12 +4043,98 @@ async function downloadMedia(url, filename){
     showToast("❌ Не удалось скачать — попробуй открыть в новой вкладке");
   }
 }
+// Скачивание видео-кружочка — вживляем виньетку по краям и водяной знак "NEXUS"
+// ТОЛЬКО в скачиваемый файл (внутри самого чата кружок остаётся чистым, без
+// эффектов — ровно как у Telegram: внутри приложения просто круглая обрезка,
+// а виньетка/подпись нужны лишь когда файл открывают вне приложения, там
+// уже нет круглой рамки интерфейса, которая прятала бы квадратные углы)
+async function downloadVideoCircleRounded(url, filename){
+  showToast("⬇️ Готовим видео… это займёт примерно столько же, сколько длится запись");
+  try{
+    const video=document.createElement("video");
+    video.src=url;
+    video.crossOrigin="anonymous";
+    video.playsInline=true;
+    await new Promise((res,rej)=>{
+      video.onloadedmetadata=res;
+      video.onerror=()=>rej(new Error("Не удалось загрузить видео"));
+    });
+
+    const size=Math.min(video.videoWidth||400, video.videoHeight||400);
+    const canvas=document.createElement("canvas");
+    canvas.width=size; canvas.height=size;
+    const ctx=canvas.getContext("2d");
+
+    const AudioCtx=window.AudioContext||window.webkitAudioContext;
+    const audioCtx=new AudioCtx();
+    const srcNode=audioCtx.createMediaElementSource(video);
+    const destNode=audioCtx.createMediaStreamDestination();
+    srcNode.connect(destNode);
+    srcNode.connect(audioCtx.destination);
+
+    const canvasStream=canvas.captureStream(30);
+    const combinedStream=new MediaStream([
+      ...canvasStream.getVideoTracks(),
+      ...destNode.stream.getAudioTracks()
+    ]);
+
+    const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
+    const recorder=new MediaRecorder(combinedStream,{mimeType:mime});
+    const chunks=[];
+    recorder.ondataavailable=e=>{ if(e.data && e.data.size>0) chunks.push(e.data); };
+    const recordingDone=new Promise(res=>{ recorder.onstop=res; });
+
+    let rafId;
+    function drawFrame(){
+      ctx.save();
+      const vw=video.videoWidth,vh=video.videoHeight;
+      const scale=Math.max(size/vw,size/vh);
+      const dw=vw*scale, dh=vh*scale;
+      ctx.drawImage(video,(size-dw)/2,(size-dh)/2,dw,dh);
+      ctx.restore();
+      // Мягкая виньетка по краям — не чёрная вырезка, а плавное затемнение
+      const grad=ctx.createRadialGradient(size/2,size/2,size*0.32,size/2,size/2,size*0.5);
+      grad.addColorStop(0,"rgba(0,0,0,0)");
+      grad.addColorStop(1,"rgba(0,0,0,.72)");
+      ctx.fillStyle=grad;
+      ctx.fillRect(0,0,size,size);
+      drawVcWatermark(ctx,size);
+      rafId=requestAnimationFrame(drawFrame);
+    }
+
+    recorder.start();
+    video.currentTime=0;
+    await video.play();
+    drawFrame();
+
+    video.onended=()=>{
+      cancelAnimationFrame(rafId);
+      recorder.stop();
+      combinedStream.getTracks().forEach(t=>t.stop());
+      audioCtx.close();
+    };
+
+    await recordingDone;
+
+    const blob=new Blob(chunks,{type:mime});
+    const objUrl=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=objUrl; a.download=(filename||"video_circle")+".webm";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(objUrl),5000);
+    showToast("✅ Видео сохранено");
+  }catch(e){
+    console.error("rounded download error:",e);
+    showToast("⚠️ Не получилось оформить — скачиваю как есть");
+    downloadMedia(url,(filename||"video_circle")+".webm");
+  }
+}
 function ctxDownload(){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId);
   if(!m) return;
   if(m.img) downloadMedia(m.img, "photo_"+m.id+".jpg");
   else if(m.video) downloadMedia(m.video, "video_"+m.id+".mp4");
-  else if(m.videoCircle) downloadMedia(m.videoCircle.url, "video_message_"+m.id+".webm");
+  else if(m.videoCircle) downloadVideoCircleRounded(m.videoCircle.url, "video_message_"+m.id);
   else if(m.voice) downloadMedia(m.voice.url, "voice_"+m.id+".webm");
   else if(m.audio) downloadMedia(m.audio.url, m.audio.name||("audio_"+m.id+".mp3"));
   else if(m.file) downloadMedia(m.file.url, m.file.name||("file_"+m.id));
