@@ -3180,23 +3180,27 @@ let vcCanvas=null, vcCanvasCtx=null, vcCanvasRaf=null, vcSourceVideo=null;
 // Водяной знак "NEXUS" дугой по нижнему краю кружочка — свой аналог того,
 // что у Telegram уже вшито в скачиваемый файл видео-заметки
 function drawVcWatermark(ctx,size){
-  const text="NEXUS", r=size*0.465, cx=size/2, cy=size/2;
-  const letterSpacingDeg=13;
+  const y=size*0.895;
+  const logoR=size*0.032;
+  const logoX=size*0.36, logoY=y;
   ctx.save();
-  ctx.font="700 13px Syne, sans-serif";
-  ctx.fillStyle="rgba(255,255,255,.55)";
-  ctx.textAlign="center";
-  ctx.textBaseline="middle";
-  ctx.translate(cx,cy);
-  ctx.rotate((90-((text.length-1)*letterSpacingDeg)/2)*Math.PI/180);
-  for(let i=0;i<text.length;i++){
-    ctx.save();
-    ctx.rotate((i*letterSpacingDeg)*Math.PI/180);
-    ctx.translate(0,-r);
-    ctx.rotate(Math.PI/2);
-    ctx.fillText(text[i],0,0);
-    ctx.restore();
+  ctx.shadowColor="rgba(0,0,0,.5)";
+  ctx.shadowBlur=size*0.02;
+  // Логотип — шестиугольник, как эмблема Nexus
+  ctx.fillStyle="rgba(255,255,255,.9)";
+  ctx.beginPath();
+  for(let i=0;i<6;i++){
+    const a=Math.PI/3*i - Math.PI/2;
+    const px=logoX+logoR*Math.cos(a), py=logoY+logoR*Math.sin(a);
+    if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
   }
+  ctx.closePath();
+  ctx.fill();
+  // Текст рядом с логотипом
+  ctx.font="700 "+Math.round(size*0.034)+"px Syne, Arial, sans-serif";
+  ctx.textAlign="left";
+  ctx.textBaseline="middle";
+  ctx.fillText("NEXUS", logoX+logoR*1.9, logoY);
   ctx.restore();
 }
 
@@ -4092,10 +4096,11 @@ async function downloadVideoCircleRounded(url, filename){
       const dw=vw*scale, dh=vh*scale;
       ctx.drawImage(video,(size-dw)/2,(size-dh)/2,dw,dh);
       ctx.restore();
-      // Мягкая виньетка по краям — не чёрная вырезка, а плавное затемнение
-      const grad=ctx.createRadialGradient(size/2,size/2,size*0.32,size/2,size/2,size*0.5);
+      // Виньетка по краям — заметно темнее, начинается ближе к центру
+      const grad=ctx.createRadialGradient(size/2,size/2,size*0.14,size/2,size/2,size*0.5);
       grad.addColorStop(0,"rgba(0,0,0,0)");
-      grad.addColorStop(1,"rgba(0,0,0,.72)");
+      grad.addColorStop(0.55,"rgba(0,0,0,.55)");
+      grad.addColorStop(1,"rgba(0,0,0,.94)");
       ctx.fillStyle=grad;
       ctx.fillRect(0,0,size,size);
       drawVcWatermark(ctx,size);
