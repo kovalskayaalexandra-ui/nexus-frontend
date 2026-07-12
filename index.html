@@ -973,10 +973,7 @@ tr:hover td{background:var(--bg3)}
       </div>
       <div class="rpsec">
         <div class="rpst2" id="t-rpmd">Медиа</div>
-        <div class="mgrid" id="rp-media">
-          <div class="mth">🖼️</div><div class="mth">🖼️</div><div class="mth">🖼️</div>
-          <div class="mth">🖼️</div><div class="mth">🖼️</div><div class="mth">🖼️</div>
-        </div>
+        <div class="mgrid" id="rp-media"></div>
       </div>
       <div class="rp-actions">
         <button class="rp-action-btn" id="rp-members-btn" onclick="openMembers()" style="display:none">👥 Участники</button>
@@ -2439,9 +2436,8 @@ function openChat(id){
   // pinned messages (multiple)
   renderPinbar();
 
-  // right panel stickers
-  const rpStk=el("rp-stickers");
-  if(rpStk){ rpStk.innerHTML=S.packs.slice(0,4).map(p=>`<div style="font-size:32px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--bg3);cursor:pointer" onclick="toggleMP('stickers')">${p.stickers[0]}</div>`).join(""); }
+  // Правая панель — реальные стикеры и медиа именно из этого чата
+  renderRightPanelMedia(ch);
 
   renderMsgs(); cancelReply(); cancelEdit(); closeMPanel();
   S.chat=id; saveState();
@@ -2479,6 +2475,7 @@ function ticksHTML(m){
 function renderMsgs(){
   const c=el("msgs"); c.innerHTML="";
   renderUnknownBar(S.chats.find(x=>x.id===S.chat));
+  renderRightPanelMedia(S.chats.find(x=>x.id===S.chat));
   (S.messages[S.chat]||[]).filter(m=>!m._deletedForAll && !m._deletedForMe).forEach(m=>{
     if(m.t==="date"){const d=document.createElement("div");d.className="ddiv";d.innerHTML=`<span>${m.tx}</span>`;c.appendChild(d);return;}
     if(m.t==="sys"){const s=document.createElement("div");s.className="sysmsg";s.textContent=m.tx;c.appendChild(s);return;}
@@ -3925,6 +3922,48 @@ function deleteChatCompletely(){
     wsSend({type:"chat.delete", payload:{chatId, memberIds}});
   }
 }
+// Правая панель чата — реальные стикеры и медиа именно из этого чата,
+// а не статичная заглушка
+function renderRightPanelMedia(ch){
+  if(!ch) return;
+  const msgs=S.messages[ch.id]||[];
+
+  // Стикеры — недавно использованные именно в этом чате, без повторов
+  const rpStk=el("rp-stickers");
+  if(rpStk){
+    const seen=new Set(), used=[];
+    for(let i=msgs.length-1;i>=0 && used.length<8;i--){
+      const m=msgs[i];
+      if(m.t==="sk" && m.sk && !seen.has(m.sk)){ seen.add(m.sk); used.push(m.sk); }
+    }
+    if(used.length){
+      rpStk.innerHTML=used.map(sk=>`<div style="font-size:32px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--bg3);cursor:pointer" onclick="sendSticker('${sk}')" title="Отправить ещё раз">${sk}</div>`).join("");
+    } else {
+      // В этом чате стикеров ещё не было — ярлыки паков, открывают панель выбора
+      rpStk.innerHTML=(S.packs||[]).slice(0,4).map(p=>`<div style="font-size:32px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--bg3);cursor:pointer" onclick="toggleMP('stickers')">${p.stickers[0]}</div>`).join("");
+    }
+  }
+
+  // Медиа — реальные фото/видео/кружочки, отправленные в этом чате
+  const rpMd=el("rp-media");
+  if(rpMd){
+    const items=[];
+    for(let i=msgs.length-1;i>=0 && items.length<6;i--){
+      const m=msgs[i];
+      if(m.img || m.video || m.videoCircle) items.push(m);
+    }
+    if(items.length){
+      rpMd.innerHTML=items.map(m=>{
+        if(m.img) return `<div class="mth" style="padding:0;overflow:hidden" onclick="openImgViewer('${m.img}')"><img src="${m.img}" style="width:100%;height:100%;object-fit:cover"></div>`;
+        const vurl=m.video||m.videoCircle.url;
+        return `<div class="mth" style="padding:0;overflow:hidden;position:relative" onclick="window.open('${vurl}','_blank')"><video src="${vurl}" muted style="width:100%;height:100%;object-fit:cover"></video><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25);color:#fff;font-size:16px">▶</div></div>`;
+      }).join("");
+    } else {
+      rpMd.innerHTML=`<div style="grid-column:1/-1;color:var(--tx3);font-size:12px;text-align:center;padding:10px 0">Медиа пока нет</div>`;
+    }
+  }
+}
+
 function renderUnknownBar(ch){
   const bar=el("unknown-bar"); if(!bar)return;
   if(!ch || ch.type!=="personal" || !ch.withUserId){ bar.classList.remove("on"); bar.innerHTML=""; return; }
