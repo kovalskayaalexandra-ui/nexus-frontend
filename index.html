@@ -3175,11 +3175,76 @@ async function openVideoCircleRecorder(){
   el("m-videocircle").classList.add("on");
 }
 
+let vcCanvas=null, vcCanvasCtx=null, vcCanvasRaf=null, vcSourceVideo=null;
+
+// Водяной знак "NEXUS" дугой по нижнему краю кружочка — свой аналог того,
+// что у Telegram уже вшито в скачиваемый файл видео-заметки
+function drawVcWatermark(ctx,size){
+  const text="NEXUS", r=size*0.465, cx=size/2, cy=size/2;
+  const letterSpacingDeg=13;
+  ctx.save();
+  ctx.font="700 13px Syne, sans-serif";
+  ctx.fillStyle="rgba(255,255,255,.55)";
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+  ctx.translate(cx,cy);
+  ctx.rotate((90-((text.length-1)*letterSpacingDeg)/2)*Math.PI/180);
+  for(let i=0;i<text.length;i++){
+    ctx.save();
+    ctx.rotate((i*letterSpacingDeg)*Math.PI/180);
+    ctx.translate(0,-r);
+    ctx.rotate(Math.PI/2);
+    ctx.fillText(text[i],0,0);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
 function toggleVideoCircleRecording(){
   if(vcRecording){ finishVideoCircle(); return; }
   vcChunks=[];
+
+  // Записываем не сырой поток камеры, а canvas с уже вживлённым затемнением по краям —
+  // так эффект оказывается впечатан в сам файл с самого начала (как у Telegram),
+  // и скачивание/пересылка потом не требуют никакой обработки, происходят мгновенно
+  const size=400;
+  vcCanvas=document.createElement("canvas");
+  vcCanvas.width=size; vcCanvas.height=size;
+  vcCanvasCtx=vcCanvas.getContext("2d");
+
+  vcSourceVideo=document.createElement("video");
+  vcSourceVideo.srcObject=vcStream;
+  vcSourceVideo.muted=true;
+  vcSourceVideo.playsInline=true;
+  vcSourceVideo.play();
+
+  function drawVcFrame(){
+    const ctx=vcCanvasCtx, vw=vcSourceVideo.videoWidth||size, vh=vcSourceVideo.videoHeight||size;
+    const scale=Math.max(size/vw,size/vh);
+    const dw=vw*scale, dh=vh*scale;
+    ctx.save();
+    ctx.scale(-1,1); // зеркалим, как в живом превью (фронтальная камера)
+    ctx.drawImage(vcSourceVideo, -(size-dw)/2-dw, (size-dh)/2, dw, dh);
+    ctx.restore();
+    // Мягкая виньетка по краям — не чёрная вырезка, а плавное затемнение
+    const grad=ctx.createRadialGradient(size/2,size/2,size*0.32,size/2,size/2,size*0.5);
+    grad.addColorStop(0,"rgba(0,0,0,0)");
+    grad.addColorStop(1,"rgba(0,0,0,.72)");
+    ctx.fillStyle=grad;
+    ctx.fillRect(0,0,size,size);
+    drawVcWatermark(ctx,size);
+    vcCanvasRaf=requestAnimationFrame(drawVcFrame);
+  }
+  drawVcFrame();
+
+  const canvasStream=vcCanvas.captureStream(30);
+  const combinedStream=new MediaStream([
+    ...canvasStream.getVideoTracks(),
+    ...vcStream.getAudioTracks()
+  ]);
+
   const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus") ? "video/webm;codecs=vp8,opus" : (MediaRecorder.isTypeSupported("video/webm")?"video/webm":"");
-  vcRecorder = mime ? new MediaRecorder(vcStream,{mimeType:mime}) : new MediaRecorder(vcStream);
+  vcRecorder = mime ? new MediaRecorder(combinedStream,{mimeType:mime}) : new MediaRecorder(combinedStream);
   vcRecorder.ondataavailable=e=>{ if(e.data && e.data.size>0) vcChunks.push(e.data); };
   vcRecorder.start();
   vcStartTs=Date.now();
@@ -3195,9 +3260,12 @@ function toggleVideoCircleRecording(){
 
 function closeVideoCircleModal(){
   clearInterval(vcTimerInt);
+  cancelAnimationFrame(vcCanvasRaf);
   el("vc-rec-btn").classList.remove("recording");
   el("m-videocircle").classList.remove("on");
   if(vcStream){ vcStream.getTracks().forEach(t=>t.stop()); vcStream=null; }
+  if(vcSourceVideo){ vcSourceVideo.pause(); vcSourceVideo.srcObject=null; vcSourceVideo=null; }
+  vcCanvas=null; vcCanvasCtx=null;
   vcRecording=false;
 }
 
@@ -5672,6 +5740,7 @@ applyTheme(S.theme||"dark");
 <div class="movl" id="m-videocircle">
   <div class="vc-recorder">
     <video id="vc-preview" autoplay muted playsinline></video>
+    <canvas id="vc-record-canvas" width="360" height="360" style="display:none"></canvas>
     <div class="vc-timer" id="vc-timer">0:00</div>
     <div class="vc-actions">
       <button class="vc-btn" onclick="cancelVideoCircle()" title="Отменить">🗑️</button>
