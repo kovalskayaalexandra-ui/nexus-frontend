@@ -381,10 +381,19 @@ body.select-mode .msel-check{display:flex}
 .ctx.has-selection .ctxsep.ctx-bulk-item{display:block}
 
 /* ═══ RXNS PICKER ═══ */
-.rxn-picker{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:999px;padding:5px 8px;z-index:1001;display:none;gap:4px;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.rxn-picker{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:999px;padding:5px 8px;z-index:1001;display:none;align-items:center;gap:4px;box-shadow:0 8px 32px rgba(0,0,0,.5)}
 .rxn-picker.on{display:flex}
-.rxn-e{font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background .1s}
+.rxn-e{font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background .1s;flex-shrink:0}
 .rxn-e:hover{background:var(--bg4);transform:scale(1.2)}
+.rxn-quick-row{display:flex;gap:4px}
+.rxn-expanded{display:none}
+.rxn-picker.expanded{flex-direction:column;align-items:stretch;border-radius:14px;padding:10px;width:270px;max-height:300px}
+.rxn-picker.expanded .rxn-quick-row,.rxn-picker.expanded .rxn-more{display:none}
+.rxn-picker.expanded .rxn-expanded{display:block}
+#rxn-cats{display:flex;gap:2px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid var(--brd)}
+#rxn-grid{display:flex;flex-wrap:wrap;gap:2px;max-height:210px;overflow-y:auto}
+#rxn-grid .emoji-item{font-size:19px;cursor:pointer;padding:4px;border-radius:6px;width:32px;height:32px;display:flex;align-items:center;justify-content:center}
+#rxn-grid .emoji-item:hover{background:var(--bg4)}
 
 /* ═══ SEARCH OVERLAY ═══ */
 .srch-overlay{position:absolute;top:0;left:0;right:0;background:var(--bg2);border-bottom:1px solid var(--brd);z-index:60;display:none;padding:8px 12px;align-items:center;gap:8px}
@@ -980,6 +989,7 @@ tr:hover td{background:var(--bg3)}
         <button class="rp-action-btn" id="rp-chsettings-btn" onclick="openChannelSettings()" style="display:none">⚙️ Настройки канала</button>
         <button class="rp-action-btn" onclick="pinChat()">📌 Закрепить чат</button>
         <button class="rp-action-btn" onclick="muteChat()">🔇 Заглушить</button>
+        <button class="rp-action-btn" onclick="archiveChat()" id="rp-archive-btn">🗄️ В архив</button>
         <button class="rp-action-btn" onclick="clearHistory()">🗑️ Очистить историю</button>
         <button class="rp-action-btn rd" onclick="deleteChatCompletely()">🗑️ Удалить чат</button>
         <button class="rp-action-btn rd" onclick="blockUser()">🚫 Заблокировать</button>
@@ -1302,14 +1312,12 @@ tr:hover td{background:var(--bg3)}
 
 <!-- REACTION PICKER -->
 <div class="rxn-picker" id="rxn-picker">
-  <div class="rxn-e" onclick="addRxn('❤️')">❤️</div>
-  <div class="rxn-e" onclick="addRxn('👍')">👍</div>
-  <div class="rxn-e" onclick="addRxn('😂')">😂</div>
-  <div class="rxn-e" onclick="addRxn('🔥')">🔥</div>
-  <div class="rxn-e" onclick="addRxn('😮')">😮</div>
-  <div class="rxn-e" onclick="addRxn('😢')">😢</div>
-  <div class="rxn-e" onclick="addRxn('🎉')">🎉</div>
-  <div class="rxn-e" onclick="addRxn('💯')">💯</div>
+  <div class="rxn-quick-row" id="rxn-quick-row"></div>
+  <div class="rxn-e rxn-more" onclick="toggleRxnExpand(event)">➕</div>
+  <div class="rxn-expanded" id="rxn-expanded">
+    <div class="emoji-cats" id="rxn-cats"></div>
+    <div class="emoji-grid" id="rxn-grid"></div>
+  </div>
 </div>
 
 <!-- MODALS -->
@@ -1358,16 +1366,17 @@ tr:hover td{background:var(--bg3)}
   <div id="nc-results" style="max-height:260px;overflow-y:auto"></div>
   <div style="margin-top:14px;display:flex;gap:8px">
     <button class="xbtn sec" style="flex:1" onclick="closeM('m-newchat')">Отмена</button>
-    <button class="xbtn am" style="flex:1" onclick="createGroup()">👥 Создать группу</button>
+    <button class="xbtn am" style="flex:1" onclick="createGroup()">👥 Группа</button>
+    <button class="xbtn am" style="flex:1" onclick="createChannel()">📢 Канал</button>
   </div>
 </div></div>
 
 <!-- MODAL: CREATE GROUP -->
 <div class="movl" id="m-group"><div class="modal wide">
-  <div class="mtit">👥 Создать группу</div>
-  <div class="frow s1"><div class="fg"><span class="fl">Название группы</span><input class="fii" id="grp-name" placeholder="Например: Dev Team"></div></div>
+  <div class="mtit" id="grp-modal-title">👥 Создать группу</div>
+  <div class="frow s1"><div class="fg"><span class="fl" id="grp-name-label">Название группы</span><input class="fii" id="grp-name" placeholder="Например: Dev Team"></div></div>
   <div class="frow s1"><div class="fg"><span class="fl">Описание (необязательно)</span><input class="fii" id="grp-desc" placeholder="О чём ваша группа?"></div></div>
-  <div style="font-size:11.5px;color:var(--tx2);margin-bottom:8px;margin-top:4px">Участники</div>
+  <div style="font-size:11.5px;color:var(--tx2);margin-bottom:8px;margin-top:4px" id="grp-members-label">Участники</div>
   <div id="grp-members-list" style="max-height:180px;overflow-y:auto;margin-bottom:12px"></div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-group')">Отмена</button><button class="xbtn gn" onclick="doCreateGroup()">✅ Создать</button></div>
 </div></div>
@@ -2320,9 +2329,24 @@ function updBal(){
 function renderChats(filter=""){
   const c=el("clist"); c.innerHTML="";
   let list=S.tab==="all"?[...S.chats]:S.chats.filter(x=>x.type===S.tab);
-  list=list.filter(x=>!x.blocked);
+  list=list.filter(x=>!x.blocked && !x.archived);
   if(filter)list=list.filter(x=>x.nm.toLowerCase().includes(filter.toLowerCase()));
   list.sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0));
+
+  // Строка "Архив" сверху списка — только если там реально что-то есть
+  const archivedCount=S.chats.filter(x=>x.archived && !x.blocked).length;
+  if(archivedCount>0 && !filter){
+    const ad=document.createElement("div");
+    ad.className="ci";
+    ad.onclick=()=>openArchive();
+    ad.innerHTML=`<div class="chav" style="background:var(--bg3);color:var(--tx2)">🗄️</div>
+    <div class="cinfo" style="flex:1;overflow:hidden">
+      <div class="cnm">Архив</div>
+      <div class="cprev">${archivedCount} ${archivedCount===1?"чат":"чатов"}</div>
+    </div>`;
+    c.appendChild(ad);
+  }
+
   list.forEach(ch=>{
     const d=document.createElement("div");
     d.className="ci"+(ch.id===S.chat?" on":"")+(ch.pinned?" pinned":"")+(ch.muted?" muted":"");
@@ -2426,6 +2450,10 @@ function openChat(id){
   // Кнопка "Участники" — только для групп
   const memBtn=el("rp-members-btn");
   if(memBtn)memBtn.style.display=(ch.type==="groups")?"block":"none";
+
+  // Кнопка архива — меняет подпись, если чат уже в архиве
+  const archBtn=el("rp-archive-btn");
+  if(archBtn) archBtn.textContent = ch.archived ? "📤 Вернуть из архива" : "🗄️ В архив";
 
   // Панель "Добавить в контакты / Пожаловаться / Удалить" — для личных чатов
   // с людьми, которых нет в контактах, или для ещё пустых чатов (ни одного сообщения)
@@ -3830,7 +3858,33 @@ function ctxReport(){
   showToast("⚠️ Жалоба отправлена модераторам");
   // TODO: отправка жалобы на сервер /api/reports
 }
-function ctxReact(e){ if(e)e.stopPropagation(); const ctx=el("ctx"); const rp=el("rxn-picker"); rp.style.left=ctx.style.left; rp.style.top=(parseInt(ctx.style.top)-44)+"px"; ctx.classList.remove("on"); rp.classList.add("on"); }
+const QUICK_REACTIONS=["❤️","👍","🔥","😂","😮","😢","🎉","💯"];
+let rxnExpanded=false;
+
+function ctxReact(e){
+  if(e)e.stopPropagation();
+  const ctx=el("ctx"); const rp=el("rxn-picker");
+  rp.style.left=ctx.style.left; rp.style.top=(parseInt(ctx.style.top)-44)+"px";
+  ctx.classList.remove("on");
+  rxnExpanded=false; rp.classList.remove("expanded");
+  el("rxn-quick-row").innerHTML=QUICK_REACTIONS.map(em=>`<div class="rxn-e" onclick="addRxn('${em}')">${em}</div>`).join("");
+  rp.classList.add("on");
+}
+function toggleRxnExpand(e){
+  if(e)e.stopPropagation();
+  rxnExpanded=!rxnExpanded;
+  const rp=el("rxn-picker");
+  rp.classList.toggle("expanded",rxnExpanded);
+  if(rxnExpanded){
+    el("rxn-cats").innerHTML=EMOJI_CATS_LIST.map((cat,i)=>`<div class="emoji-cat${i===0?" on":""}" onclick="event.stopPropagation();switchRxnCat('${cat}',this)">${cat.split(" ")[0]}</div>`).join("");
+    el("rxn-grid").innerHTML=EMOJI_DB[EMOJI_CATS_LIST[0]].map(em=>`<div class="emoji-item" onclick="addRxn('${em}')">${em}</div>`).join("");
+  }
+}
+function switchRxnCat(cat, catEl){
+  document.querySelectorAll("#rxn-cats .emoji-cat").forEach(x=>x.classList.remove("on"));
+  catEl.classList.add("on");
+  el("rxn-grid").innerHTML=EMOJI_DB[cat].map(em=>`<div class="emoji-item" onclick="addRxn('${em}')">${em}</div>`).join("");
+}
 function openDelModal(){
   const ms=S.messages[S.chat]||[];
   const m=ms.find(x=>x.id===S.ctxId);
@@ -3935,6 +3989,40 @@ function pinChat(){
 function muteChat(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
   ch.muted=!ch.muted; renderChats(); showToast(ch.muted?"🔇 Заглушено":"🔔 Уведомления включены"); saveState();
+}
+function archiveChat(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  ch.archived=!ch.archived;
+  renderChats(); saveState();
+  if(ch.archived){
+    showToast("🗄️ Чат перемещён в архив");
+    openChat(77777); // безопасный переход, раз текущий чат только что спрятан из списка
+  } else {
+    const archBtn=el("rp-archive-btn"); if(archBtn) archBtn.textContent="🗄️ В архив";
+    showToast("📤 Чат возвращён из архива");
+  }
+}
+function unarchiveChat(chatId){
+  const ch=S.chats.find(c=>c.id===chatId); if(!ch)return;
+  ch.archived=false;
+  renderArchiveList(); renderChats(); saveState();
+  showToast("Чат восстановлен из архива");
+}
+function openArchive(){ renderArchiveList(); el("m-archive").classList.add("on"); }
+function renderArchiveList(){
+  const list=S.chats.filter(c=>c.archived && !c.blocked);
+  const box=el("archive-list"); if(!box)return;
+  box.innerHTML = list.length ? list.map(ch=>{
+    const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:(ch.ini||"?");
+    return `<div class="ci" style="border-radius:10px" onclick="closeM('m-archive');openChat(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})">
+      <div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>
+      <div class="cinfo" style="flex:1;overflow:hidden">
+        <div class="cnm">${ch.nm}</div>
+        <div class="cprev">${ch.prev||""}</div>
+      </div>
+      <button class="rp-action-btn" style="width:auto;padding:6px 10px;font-size:11.5px" onclick="event.stopPropagation();unarchiveChat(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})">Вернуть</button>
+    </div>`;
+  }).join("") : `<div style="color:var(--tx3);font-size:12.5px;padding:20px;text-align:center">Архив пуст</div>`;
 }
 function clearHistory(){
   if(!confirm("Очистить историю чата? Она удалится у всех участников.")) return;
@@ -4291,7 +4379,23 @@ async function searchNewChat(v){
   el("nc-results").innerHTML=local.map(c=>`<div class="contact-item" style="margin-bottom:4px" onclick="startChatWithUser('${c.id}','${c.nm}',${c.col||0});closeM('m-newchat')"><div class="contact-av" style="background:${colBg(c.col)}">${c.nm[0]}</div><div><div class="contact-nm">${c.nm}</div><div class="contact-ph">@${c.uname}</div></div></div>`).join("");
   if(!local.length&&v)el("nc-results").innerHTML=`<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пользователь @${v} не найден</div>`;
 }
-function createGroup(){ closeM("m-newchat"); renderGroupMembers(); el("m-group").classList.add("on"); }
+let creatingChannelMode=false;
+function createGroup(){
+  creatingChannelMode=false;
+  el("grp-modal-title").textContent="👥 Создать группу";
+  el("grp-name-label").textContent="Название группы";
+  el("grp-members-label").textContent="Участники";
+  el("grp-name").placeholder="Например: Dev Team";
+  closeM("m-newchat"); renderGroupMembers(); el("m-group").classList.add("on");
+}
+function createChannel(){
+  creatingChannelMode=true;
+  el("grp-modal-title").textContent="📢 Создать канал";
+  el("grp-name-label").textContent="Название канала";
+  el("grp-members-label").textContent="Первые подписчики (необязательно)";
+  el("grp-name").placeholder="Например: Nexus News";
+  closeM("m-newchat"); renderGroupMembers(); el("m-group").classList.add("on");
+}
 function renderGroupMembers(){
   const list=(S.contacts||[]).length ? S.contacts : S.chats.filter(c=>c.withUserId && c.type==="personal");
   el("grp-members-list").innerHTML=list.map(c=>{
@@ -4302,19 +4406,21 @@ function renderGroupMembers(){
 function doCreateGroup(){
   const nm=el("grp-name")?.value?.trim(); if(!nm){showToast("❌ Введите название");return;}
   const selected=[...document.querySelectorAll('[id^="grpm-"]:checked')].map(cb=>cb.id.replace("grpm-",""));
+  const isChannel=creatingChannelMode;
   // Формируем список участников с ролями
   const members=[{id:S.user?.id||"me", nm:S.user?.name||"Вы", uname:S.user?.uname||"", col:0, role:"owner", perms:fullPerms()}];
   selected.forEach(cid=>{
     const c=(S.contacts||[]).find(x=>String(x.id)===cid) || S.chats.find(x=>String(x.withUserId)===cid);
     if(c){
       const nm2=c.nm, col2=c.col||0, uname2=c.uname||"";
-      members.push({id:cid, nm:nm2, uname:uname2, col:col2, role:"member", perms:memberPerms()});
+      members.push({id:cid, nm:nm2, uname:uname2, col:col2, role:isChannel?"member":"member", perms:memberPerms()});
     }
   });
-  const newChat={id:nextId(),nm:nm,ini:nm.slice(0,2).toUpperCase(),col:Math.floor(Math.random()*COLS.length),online:false,prev:"Группа создана",time:now(),unread:0,type:"groups",mbrs:members.length,members:members,myRole:"owner",pinned:false,muted:false,blocked:false,draft:""};
+  const newChat={id:nextId(),nm:nm,ini:nm.slice(0,2).toUpperCase(),col:Math.floor(Math.random()*COLS.length),online:false,prev:isChannel?"Канал создан":"Группа создана",time:now(),unread:0,type:isChannel?"channels":"groups",mbrs:members.length,members:members,myRole:"owner",mine:isChannel,pinned:false,muted:false,blocked:false,draft:""};
   S.chats.unshift(newChat);
-  if(!S.messages[newChat.id])S.messages[newChat.id]=[{id:nextId(),t:"sys",tx:"Вы создали группу «"+nm+"»"},{id:nextId(),t:"date",tx:"Сегодня"}];
-  closeM("m-group"); renderChats(); openChat(newChat.id); saveState(); showToast("👥 Группа «"+nm+"» создана!");
+  if(!S.messages[newChat.id])S.messages[newChat.id]=[{id:nextId(),t:"sys",tx:isChannel?"Вы создали канал «"+nm+"»":"Вы создали группу «"+nm+"»"},{id:nextId(),t:"date",tx:"Сегодня"}];
+  closeM("m-group"); renderChats(); openChat(newChat.id); saveState();
+  showToast(isChannel ? "📢 Канал «"+nm+"» создан!" : "👥 Группа «"+nm+"» создана!");
 }
 
 // ── ПРАВА УЧАСТНИКОВ ──────────────────────────────────────────
@@ -6042,6 +6148,13 @@ applyTheme(S.theme||"dark");
     <div class="perm-tgl" id="poll-lock" onclick="this.classList.toggle('on')"></div>
   </div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-poll-create')">Отмена</button><button class="xbtn gn" onclick="submitPoll()">✅ Создать</button></div>
+</div></div>
+
+<!-- MODAL: ARCHIVE -->
+<div class="movl" id="m-archive"><div class="modal">
+  <div class="mtit">🗄️ Архив</div>
+  <div id="archive-list" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-archive')">Закрыть</button></div>
 </div></div>
 
 <!-- MODAL: GIFT VIP — RECIPIENT -->
