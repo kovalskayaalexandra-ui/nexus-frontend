@@ -3879,15 +3879,44 @@ function tPlay(btn){ const p=btn.dataset.p==="1"; btn.innerHTML=p?'<svg width="1
 
 function toggleRxn(msgId, ri){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===msgId); if(!m?.rxn)return;
-  const r=m.rxn[ri]; r.m=!r.m; r.c+=r.m?1:-1; if(r.c<=0)m.rxn.splice(ri,1);
+  const r=m.rxn[ri]; if(!r)return;
+  const maxReactions=(S.vip?.active)?3:1;
+  if(!r.m){
+    const myCount=m.rxn.filter(x=>x.m).length;
+    if(myCount>=maxReactions){
+      if(maxReactions===1){
+        m.rxn.forEach(x=>{ if(x.m && x!==r){ x.m=false; x.c=Math.max(0,x.c-1); } });
+      } else {
+        showToast(`❌ Максимум ${maxReactions} реакции одновременно`);
+        return;
+      }
+    }
+  }
+  r.m=!r.m; r.c+=r.m?1:-1;
+  m.rxn=m.rxn.filter(x=>x.c>0);
   renderMsgs(); saveState();
 }
 function addRxn(emoji){
   el("rxn-picker").classList.remove("on");
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
   if(!m.rxn)m.rxn=[];
-  const ex=m.rxn.find(r=>r.e===emoji);
-  if(ex){ex.m=true;ex.c++;}else{m.rxn.push({e:emoji,c:1,m:true});}
+  let ex=m.rxn.find(r=>r.e===emoji);
+  if(ex && ex.m){ renderMsgs(); return; } // уже стоит эта же реакция
+
+  const maxReactions=(S.vip?.active)?3:1;
+  const myCount=m.rxn.filter(x=>x.m).length;
+  if(myCount>=maxReactions){
+    if(maxReactions===1){
+      m.rxn.forEach(x=>{ if(x.m){ x.m=false; x.c=Math.max(0,x.c-1); } });
+    } else {
+      showToast(`❌ Максимум ${maxReactions} реакции одновременно`);
+      renderMsgs();
+      return;
+    }
+  }
+  ex=m.rxn.find(r=>r.e===emoji);
+  if(ex){ ex.m=true; ex.c++; } else { m.rxn.push({e:emoji,c:1,m:true}); }
+  m.rxn=m.rxn.filter(x=>x.c>0);
   renderMsgs(); saveState();
 }
 
@@ -4993,8 +5022,7 @@ function renderSupportQuick(){
 }
 
 function sendSupportQuery(text){
-  const inp = el("minput");
-  inp.value = text;
+  setInputText(text);
   sendMsg();
 }
 
@@ -5423,13 +5451,25 @@ function openOfficialChannel(){
   el("screen-official").classList.add("on");
 }
 
-// Настоящий тоггл реакции на посте — считает, сохраняет, показывает твой выбор
+// Настоящий тоггл реакции на посте — считает, сохраняет, показывает твой выбор,
+// ограничен по VIP: обычный пользователь — 1 реакция одновременно, VIP — до 3
 function togglePostReaction(postId, emoji){
   if(!S.officialPostReactions) S.officialPostReactions={};
   if(!S.officialPostReactions[postId]) S.officialPostReactions[postId]=[];
   const arr=S.officialPostReactions[postId];
   const idx=arr.indexOf(emoji);
-  if(idx===-1) arr.push(emoji); else arr.splice(idx,1);
+  const maxReactions=(S.vip?.active)?3:1;
+
+  if(idx!==-1){
+    arr.splice(idx,1); // снимаем уже стоящую
+  } else if(arr.length<maxReactions){
+    arr.push(emoji);
+  } else if(maxReactions===1){
+    arr.length=0; arr.push(emoji); // обычный пользователь — меняем реакцию на новую
+  } else {
+    showToast(`❌ Максимум ${maxReactions} реакции одновременно`);
+    return;
+  }
   saveState();
   openOfficialChannel();
 }
