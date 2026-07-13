@@ -2506,7 +2506,8 @@ function openChat(id){
   // Кнопка "Настройки канала" — для своих каналов
   const chSetBtn=el("rp-chsettings-btn");
   if(chSetBtn){
-    const canEdit=(ch.type==="channels"||ch.type==="groups")&&(ch.mine||ch.myRole==="owner"||ch.myRole==="admin");
+    const myRole=myRoleIn(ch);
+    const canEdit=(ch.type==="channels"||ch.type==="groups")&&(ch.mine||myRole==="owner"||myRole==="admin");
     chSetBtn.style.display=canEdit?"block":"none";
     chSetBtn.textContent=ch.type==="channels"?"⚙️ Изменить канал":"⚙️ Изменить группу";
   }
@@ -2708,6 +2709,8 @@ function canSendAsChannelHere(){
 function openChannelSettings(){
   const ch=S.chats.find(c=>c.id===S.chat);
   if(!ch||(ch.type!=="channels"&&ch.type!=="groups")){ showToast("Только для групп и каналов"); return; }
+  const myRole=myRoleIn(ch);
+  if(!ch.mine && myRole!=="owner" && myRole!=="admin"){ showToast("🔒 Нет прав редактировать этот чат"); return; }
   const isChannel=ch.type==="channels";
   el("chsettings-title").textContent=isChannel?"⚙️ Изменить канал":"⚙️ Изменить группу";
   el("chset-name-label").textContent=isChannel?"Название канала":"Название группы";
@@ -2818,6 +2821,8 @@ function previewChSetAvatar(inp){
 
 function saveChatInfo(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  const myRole=myRoleIn(ch);
+  if((ch.type==="groups"||ch.type==="channels") && !ch.mine && myRole!=="owner" && myRole!=="admin"){ showToast("🔒 Нет прав редактировать этот чат"); return; }
   const nm=el("chset-name")?.value?.trim();
   if(!nm){ showToast("❌ Название не может быть пустым"); return; }
   const uname=(el("chset-uname")?.value||"").replace("@","").replace(/[^a-z0-9_]/gi,"");
@@ -3772,16 +3777,19 @@ function selDeleteAll(){
   if(!confirm(`Удалить ${n} ${n===1?"сообщение":"сообщений"} у всех участников чата? Это необратимо.`)) return;
   const ms=S.messages[S.chat]||[];
   const curChat=S.chats.find(c=>c.id===S.chat);
+  const canAll=canModerateChat(curChat);
   const memberIds=getChatMemberIds(curChat);
+  let blocked=0;
   S.selectedMsgs.forEach(id=>{
     const m=ms.find(x=>x.id===id);
     if(m){
+      if(m.t!=="out" && !canAll){ blocked++; return; }
       m._deletedForAll=true;
       wsSend({type:"message.delete", payload:{messageId:m.wsId||m.dbId||m.id, chatId:S.chat, forAll:true, memberIds}});
       if(m.dbId && typeof S.chat==="string") apiDelete("/api/messages/"+m.dbId, {forAll:true}).catch(()=>{});
     }
   });
-  showToast(`🗑️ Удалено: ${n}`);
+  showToast(blocked ? `🗑️ Удалено: ${n-blocked}, пропущено чужих: ${blocked}` : `🗑️ Удалено: ${n}`);
   exitSelectMode(); saveState();
 }
 
@@ -4092,9 +4100,10 @@ function delForAll(){
   const i=ms.findIndex(x=>x.id===S.ctxId);
   if(i!==-1){
     const m=ms[i];
+    const curChat=S.chats.find(c=>c.id===S.chat);
+    if(m.t!=="out" && !canModerateChat(curChat)){ showToast("🔒 Нет прав удалять чужие сообщения у всех"); return; }
     m._deletedForAll=true;
     // Отправляем удаление через WebSocket другим участникам
-    const curChat=S.chats.find(c=>c.id===S.chat);
     const memberIds=getChatMemberIds(curChat);
     wsSend({type:"message.delete", payload:{messageId:m.wsId||m.dbId||m.id, chatId:S.chat, forAll:true, memberIds}});
     // Удаляем в БД
@@ -4203,7 +4212,22 @@ function renderArchiveList(){
   }).join("") : `<div style="color:var(--tx3);font-size:12.5px;padding:20px;text-align:center">Архив пуст</div>`;
 }
 function clearHistory(){
-  if(!confirm("Очистить историю чата? Она удалится у всех участников.")) return;
+  const ch=S.chats.find(c=>c.id===S.chat);
+  const canAll=canModerateChat(ch);
+  if(!confirm(canAll ? "Очистить историю чата? Она удалится у всех участников." : "Очистить историю чата у себя? У остальных участников она останется.")) return;
+
+  if(!canAll){
+    // Рядовой участник группы/канала — чистим только у себя, локально
+    (S.messages[S.chat]||[]).forEach(m=>{ m._deletedForMe=true; });
+    renderMsgs(); renderChats();
+    showToast("🗑️ История очищена у вас");
+    saveState();
+    if(typeof S.chat==="string" && S.chat.length>10){
+      apiDelete("/api/messages/chat/"+S.chat+"/clear-for-me").catch(e=>console.warn("clear history error:",e));
+    }
+    return;
+  }
+
   S.messages[S.chat]=[];
   renderMsgs(); renderChats();
   showToast("🗑️ История очищена");
@@ -4218,7 +4242,27 @@ function clearHistory(){
 // Полное удаление чата — стирает переписку у ОБОИХ участников (не просто "у себя")
 function deleteChatCompletely(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
-  if(!confirm("Удалить чат с "+ch.nm+" полностью? Это сотрёт переписку у ОБОИХ участников и не отменяется.")) return;
+  const canAll=canModerateChat(ch);
+  const isGroupOrChannel=ch.type==="groups"||ch.type==="channels";
+
+  if(isGroupOrChannel && !canAll){
+    // Рядовой участник — может только покинуть группу/канал, не удалить его у всех
+    if(!confirm("Покинуть «"+ch.nm+"»? Ты выйдешь из чата, но он останется у остальных участников.")) return;
+    const chatId=S.chat;
+    const isRealChat = typeof chatId==="string" && chatId.length>10;
+    S.chats = S.chats.filter(c => c.id !== chatId);
+    delete S.messages[chatId];
+    saveState();
+    openChat(77777);
+    renderChats();
+    showToast("Вы покинули «"+ch.nm+"»");
+    if(isRealChat){
+      apiDelete("/api/chats/"+chatId+"/leave").catch(e=>console.warn("leave chat error:",e));
+    }
+    return;
+  }
+
+  if(!confirm(isGroupOrChannel ? "Удалить «"+ch.nm+"» полностью? Чат исчезнет у ВСЕХ участников и не восстановится." : "Удалить чат с "+ch.nm+" полностью? Это сотрёт переписку у ОБОИХ участников и не отменяется.")) return;
 
   const chatId=S.chat;
   const isRealChat = typeof chatId==="string" && chatId.length>10;
@@ -4602,6 +4646,32 @@ function doCreateGroup(){
 }
 
 // ── ПРАВА УЧАСТНИКОВ ──────────────────────────────────────────
+// Реальная роль ТЕКУЩЕГО пользователя в чате — смотрим список участников,
+// а не единое поле myRole на объекте чата (оно раньше просто копировало роль
+// создателя и было одинаковым для всех, кто открывал этот же чат — баг)
+function myRoleIn(ch){
+  if(!ch) return "member";
+  if(ch.members && ch.members.length){
+    const me=ch.members.find(m=>String(m.id)===String(S.user?.id));
+    if(me) return me.role||"member";
+  }
+  return ch.myRole||"member"; // резерв для старых/демо-чатов без списка участников
+}
+// Может ли текущий пользователь удалять/очищать историю ДЛЯ ВСЕХ в этом чате.
+// В личных чатах — может любая из двух сторон (как и раньше).
+// В группах/каналах — только owner/admin с правом deleteMsg.
+function canModerateChat(ch){
+  if(!ch) return false;
+  if(ch.type!=="groups" && ch.type!=="channels") return true;
+  const role=myRoleIn(ch);
+  if(role==="owner") return true;
+  if(role==="admin"){
+    const me=ch.members?.find(m=>String(m.id)===String(S.user?.id));
+    return me?.perms?.deleteMsg!==false;
+  }
+  return false;
+}
+
 function fullPerms(){
   return {changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, manageStream:true, addAdmins:true, anonymous:false};
 }
