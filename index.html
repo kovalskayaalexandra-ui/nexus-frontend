@@ -1973,6 +1973,7 @@ function wsHandleMessage(msg){
 
     case "chat.deleted": {
       const { chatId } = msg.payload;
+      console.log("📥 Получено удаление чата:", chatId);
       S.chats = S.chats.filter(c => c.id !== chatId);
       delete S.messages[chatId];
       if(S.chat === chatId) openChat(77777);
@@ -2792,6 +2793,7 @@ function deleteGroupFromSettings(){
   const chatId=S.chat;
   const isRealChat = typeof chatId==="string" && chatId.length>10;
   const memberIds = getChatMemberIds(ch);
+  console.log("📤 Удаляю группу/канал, chatId:", chatId, "isRealChat:", isRealChat, "memberIds:", memberIds, "ch.members:", ch.members, "ch.memberIds:", ch.memberIds);
 
   closeM("m-chsettings");
   S.chats = S.chats.filter(c => c.id !== chatId);
