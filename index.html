@@ -1896,6 +1896,7 @@ function wsHandleMessage(msg){
 
     case "story.received": {
       const { story, fromUserId, fromName, fromCol, fromIni } = msg.payload;
+      console.log("📥 Получена сторис от:", fromName, fromUserId, story);
       if(!S.friend_stories) S.friend_stories={};
       if(!S.friend_stories[fromUserId]) S.friend_stories[fromUserId]={name:fromName, col:fromCol||0, ini:fromIni||"?", items:[]};
       S.friend_stories[fromUserId].name=fromName; // на случай смены имени
@@ -5154,6 +5155,7 @@ function renderStory(){
   ).join("");
   el("story-dots").innerHTML="";
   el("story-del-btn").style.display = storyState.owner ? "none" : "flex";
+  el("story-add-btn").style.display = storyState.owner ? "none" : ((S.my_stories||[]).filter(x=>Date.now()<x.expires).length < storyLimit() ? "block" : "none");
 }
 
 function startStoryTimer(){
@@ -5642,7 +5644,8 @@ function previewStoryMedia(inp, kind){
 // в реальном времени, без сохранения на сервере (как и сам объект сторис)
 function notifyFriendsAboutStory(story){
   const memberIds=S.chats.filter(c=>c.withUserId).map(c=>c.withUserId);
-  if(!memberIds.length) return;
+  console.log("📤 Уведомляю друзей о новой сторис, memberIds:", memberIds);
+  if(!memberIds.length){ console.log("⚠️ Некому отправлять — нет чатов с withUserId"); return; }
   wsSend({type:"story.new", payload:{
     story:{id:story.id, type:story.type, bg:story.bg, text:story.text, emoji:story.emoji, mediaUrl:story.mediaUrl, caption:story.caption, created:story.created, expires:story.expires, channel:story.channel||null},
     memberIds,
@@ -6110,7 +6113,8 @@ applyTheme(S.theme||"dark");
     <div id="story-caption" style="display:none;position:absolute;bottom:90px;left:0;right:0;text-align:center;color:#fff;font-size:14px;padding:0 24px;text-shadow:0 2px 8px rgba(0,0,0,.5)"></div>
     <div id="story-emoji" style="font-size:72px;margin-bottom:16px"></div>
     <div id="story-text" style="font-family:'Syne',sans-serif;font-weight:800;font-size:26px;color:#fff;text-align:center;padding:0 32px;text-shadow:0 2px 12px rgba(0,0,0,.4)"></div>
-    <div id="story-del-btn" onclick="deleteCurrentStory()" style="display:none;position:absolute;top:28px;right:52px;z-index:11;color:rgba(255,255,255,.85);font-size:18px;cursor:pointer">🗑️</div>
+    <div id="story-del-btn" onclick="deleteCurrentStory()" style="display:none;position:absolute;top:28px;right:88px;z-index:11;color:rgba(255,255,255,.85);font-size:18px;cursor:pointer">🗑️</div>
+    <div id="story-add-btn" onclick="closeStories();openStoryEditor()" style="display:none;position:absolute;top:28px;right:52px;z-index:11;color:rgba(255,255,255,.85);font-size:20px;cursor:pointer">➕</div>
 
     <!-- Nav zones -->
     <div style="position:absolute;top:0;left:0;width:40%;height:100%;cursor:pointer;z-index:5" onclick="prevStoryItem()"></div>
