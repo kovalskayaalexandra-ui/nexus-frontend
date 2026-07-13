@@ -4717,9 +4717,11 @@ async function doCreateGroup(){
   });
 
   showToast("⏳ Создаём...");
+  console.log("📤 Создаю группу, выбранные id (selected):", selected, "итоговые memberIds:", memberIds);
   let realId=null;
   try{
     const data=await apiPost("/api/chats", {type:isChannel?"channels":"groups", name:nm, description:desc, memberIds}, true);
+    console.log("📥 Ответ сервера на создание группы:", data);
     realId=data?.chat?.id || null;
   }catch(e){ console.warn("create chat on server error:", e); }
 
