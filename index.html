@@ -991,8 +991,8 @@ tr:hover td{background:var(--bg3)}
         <button class="rp-action-btn" onclick="muteChat()">🔇 Заглушить</button>
         <button class="rp-action-btn" onclick="archiveChat()" id="rp-archive-btn">🗄️ В архив</button>
         <button class="rp-action-btn" onclick="clearHistory()">🗑️ Очистить историю</button>
-        <button class="rp-action-btn rd" onclick="deleteChatCompletely()">🗑️ Удалить чат</button>
-        <button class="rp-action-btn rd" onclick="blockUser()">🚫 Заблокировать</button>
+        <button class="rp-action-btn rd" id="rp-delete-btn" onclick="deleteChatCompletely()">🗑️ Удалить чат</button>
+        <button class="rp-action-btn rd" id="rp-block-btn" onclick="blockUser()">🚫 Заблокировать</button>
       </div>
     </div>
   </div>
@@ -1407,6 +1407,9 @@ tr:hover td{background:var(--bg3)}
   <div id="chset-reactions-picker-row" style="margin-bottom:10px">
     <button class="rp-action-btn" onclick="openReactionsAllowedPicker()" style="width:100%">😀 Выбрать разрешённые реакции</button>
     <div style="font-size:10.5px;color:var(--tx3);margin-top:4px" id="chset-reactions-summary"></div>
+  </div>
+  <div id="chset-delete-row" style="display:none;margin-bottom:10px">
+    <button class="rp-action-btn rd" onclick="deleteGroupFromSettings()" style="width:100%" id="chset-delete-btn">🗑️ Удалить группу</button>
   </div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-chsettings')">Отмена</button><button class="xbtn gn" onclick="saveChatInfo()">✅ Сохранить</button></div>
 </div></div>
@@ -1914,6 +1917,22 @@ function wsHandleMessage(msg){
       break;
     }
 
+    case "group.created": {
+      const { chat, fromName } = msg.payload;
+      if(!S.chats.find(c=>c.id===chat.id)){
+        S.chats.unshift({
+          id:chat.id, nm:chat.nm, ini:chat.nm.slice(0,2).toUpperCase(),
+          col:Math.floor(Math.random()*COLS.length), online:false,
+          prev:(chat.type==="channels"?"Канал создан":"Группа создана"), time:now(),
+          unread:0, type:chat.type, mbrs:2, myRole:"member", mine:false,
+          pinned:false, muted:false, blocked:false, draft:""
+        });
+        renderChats(); saveState();
+        showToast(`${chat.type==="channels"?"📢":"👥"} ${fromName} добавил(а) вас в «${chat.nm}»`);
+      }
+      break;
+    }
+
     case "story.received": {
       const { story, fromUserId, fromName, fromCol, fromIni } = msg.payload;
       console.log("📥 Получена сторис от:", fromName, fromUserId, story);
@@ -2034,6 +2053,11 @@ async function apiPatch(path, body, auth=false){
 function getChatMemberIds(chat){
   // Группы/каналы — достоверный список участников из БД (chat_members)
   if(chat && Array.isArray(chat.memberIds) && chat.memberIds.length) return chat.memberIds;
+  // Локально созданные группы/каналы — участники хранятся как объекты в chat.members
+  if(chat && Array.isArray(chat.members) && chat.members.length){
+    const ids=chat.members.map(m=>String(m.id)).filter(id=>id!==String(S.user?.id));
+    if(ids.length) return ids;
+  }
   // Личный чат — ID собеседника из withUserId
   if(chat && chat.withUserId) return [chat.withUserId];
   // Иначе — онлайн контакты (демо-режим)
@@ -2499,6 +2523,13 @@ function openChat(id){
   const archBtn=el("rp-archive-btn");
   if(archBtn) archBtn.textContent = ch.archived ? "📤 Вернуть из архива" : "🗄️ В архив";
 
+  // Базовые системные чаты (Избранное/Nexus Official/NexusSupport) —
+  // нельзя удалить, заблокировать или отправить в архив
+  const isSystem=isSystemChat(ch.id);
+  if(archBtn) archBtn.style.display=isSystem?"none":"block";
+  if(el("rp-delete-btn")) el("rp-delete-btn").style.display=isSystem?"none":"block";
+  if(el("rp-block-btn")) el("rp-block-btn").style.display=isSystem?"none":"block";
+
   // Панель "Добавить в контакты / Пожаловаться / Удалить" — для личных чатов
   // с людьми, которых нет в контактах, или для ещё пустых чатов (ни одного сообщения)
   renderUnknownBar(ch);
@@ -2740,7 +2771,40 @@ function openChannelSettings(){
   el("chset-reactions-enabled").classList.toggle("on",reactEnabled);
   el("chset-reactions-picker-row").style.display=reactEnabled?"block":"none";
   updateReactionsSummary(ch.id);
+
+  // "Удалить группу/канал" — только для владельца (создателя), не для админов
+  const isOwner = ch.mine || myRoleIn(ch)==="owner";
+  el("chset-delete-row").style.display = isOwner ? "block" : "none";
+  if(el("chset-delete-btn")) el("chset-delete-btn").textContent = isChannel ? "🗑️ Удалить канал" : "🗑️ Удалить группу";
+
   el("m-chsettings").classList.add("on");
+}
+
+// Удалить группу/канал целиком — доступно только владельцу (создателю), не админам.
+// Как в Telegram: админы могут только покинуть, удалить весь чат может лишь владелец.
+function deleteGroupFromSettings(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  const isOwner = ch.mine || myRoleIn(ch)==="owner";
+  if(!isOwner){ showToast("🔒 Удалить может только создатель"); return; }
+  const isChannel=ch.type==="channels";
+  if(!confirm(`Удалить ${isChannel?"канал":"группу"} «${ch.nm}» насовсем? Это удалит её у ВСЕХ участников и не восстановится.`)) return;
+
+  const chatId=S.chat;
+  const isRealChat = typeof chatId==="string" && chatId.length>10;
+  const memberIds = getChatMemberIds(ch);
+
+  closeM("m-chsettings");
+  S.chats = S.chats.filter(c => c.id !== chatId);
+  delete S.messages[chatId];
+  saveState();
+  openChat(77777);
+  renderChats();
+  showToast(`🗑️ ${isChannel?"Канал":"Группа"} удалена`);
+
+  if(isRealChat){
+    apiDelete("/api/chats/"+chatId).catch(e=>console.warn("delete chat error:",e));
+    wsSend({type:"chat.delete", payload:{chatId, memberIds}});
+  }
 }
 
 function updateReactionsSummary(chatId){
@@ -4179,6 +4243,7 @@ function muteChat(){
 }
 function archiveChat(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  if(isSystemChat(ch.id)){ showToast("🔒 Это системный чат, его нельзя архивировать"); return; }
   ch.archived=!ch.archived;
   renderChats(); saveState();
   if(ch.archived){
@@ -4242,6 +4307,7 @@ function clearHistory(){
 // Полное удаление чата — стирает переписку у ОБОИХ участников (не просто "у себя")
 function deleteChatCompletely(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  if(isSystemChat(ch.id)){ showToast("🔒 Это системный чат, его нельзя удалить"); return; }
   const canAll=canModerateChat(ch);
   const isGroupOrChannel=ch.type==="groups"||ch.type==="channels";
 
@@ -4357,8 +4423,13 @@ function reportAndBlockCurrentChat(){
   renderUnknownBar(ch);
   renderChats(); showToast("🚫 Жалоба отправлена, "+ch.nm+" заблокирован"); saveState();
 }
+// Базовые системные чаты — Избранное/Nexus Official/NexusSupport.
+// Их нельзя удалить, заблокировать или отправить в архив.
+function isSystemChat(chatId){ return chatId===77777 || chatId===88888 || chatId===99999; }
+
 function blockUser(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  if(isSystemChat(ch.id)){ showToast("🔒 Это системный чат, его нельзя заблокировать"); return; }
   if(confirm("Заблокировать "+ch.nm+"?")){
     ch.blocked=true; if(!S.blocked.includes(ch.id))S.blocked.push(ch.id);
     renderChats(); showToast("🚫 "+ch.nm+" заблокирован"); saveState();
@@ -4625,24 +4696,45 @@ function renderGroupMembers(){
     return `<div class="contact-item" style="margin-bottom:4px"><input type="checkbox" id="grpm-${id}" style="margin-right:8px"><label for="grpm-${id}" style="display:flex;align-items:center;gap:8px;cursor:pointer"><div class="contact-av" style="width:32px;height:32px;border-radius:50%;background:${colBg(col)};display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff">${nm[0]}</div><div><div class="contact-nm">${nm}</div>${uname?`<div class="contact-ph">@${uname}</div>`:""}</div></label></div>`;
   }).join("") || `<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пока не с кем создать группу — сначала начни с кем-нибудь чат</div>`;
 }
-function doCreateGroup(){
+async function doCreateGroup(){
   const nm=el("grp-name")?.value?.trim(); if(!nm){showToast("❌ Введите название");return;}
+  const desc=el("grp-desc")?.value?.trim()||"";
   const selected=[...document.querySelectorAll('[id^="grpm-"]:checked')].map(cb=>cb.id.replace("grpm-",""));
   const isChannel=creatingChannelMode;
-  // Формируем список участников с ролями
+
+  // Формируем список участников с ролями (для локального отображения)
   const members=[{id:S.user?.id||"me", nm:S.user?.name||"Вы", uname:S.user?.uname||"", col:0, role:"owner", perms:fullPerms()}];
+  const memberIds=[];
   selected.forEach(cid=>{
     const c=(S.contacts||[]).find(x=>String(x.id)===cid) || S.chats.find(x=>String(x.withUserId)===cid);
     if(c){
       const nm2=c.nm, col2=c.col||0, uname2=c.uname||"";
-      members.push({id:cid, nm:nm2, uname:uname2, col:col2, role:isChannel?"member":"member", perms:memberPerms()});
+      members.push({id:cid, nm:nm2, uname:uname2, col:col2, role:"member", perms:memberPerms()});
+      memberIds.push(cid);
     }
   });
-  const newChat={id:nextId(),nm:nm,ini:nm.slice(0,2).toUpperCase(),col:Math.floor(Math.random()*COLS.length),online:false,prev:isChannel?"Канал создан":"Группа создана",time:now(),unread:0,type:isChannel?"channels":"groups",mbrs:members.length,members:members,myRole:"owner",mine:isChannel,pinned:false,muted:false,blocked:false,draft:""};
+
+  showToast("⏳ Создаём...");
+  let realId=null;
+  try{
+    const data=await apiPost("/api/chats", {type:isChannel?"channels":"groups", name:nm, description:desc, memberIds}, true);
+    realId=data?.chat?.id || null;
+  }catch(e){ console.warn("create chat on server error:", e); }
+
+  const newChat={id:realId||nextId(),nm:nm,ini:nm.slice(0,2).toUpperCase(),col:Math.floor(Math.random()*COLS.length),online:false,prev:isChannel?"Канал создан":"Группа создана",time:now(),unread:0,type:isChannel?"channels":"groups",mbrs:members.length,members:members,memberIds:memberIds,myRole:"owner",mine:isChannel,pinned:false,muted:false,blocked:false,draft:""};
   S.chats.unshift(newChat);
   if(!S.messages[newChat.id])S.messages[newChat.id]=[{id:nextId(),t:"sys",tx:isChannel?"Вы создали канал «"+nm+"»":"Вы создали группу «"+nm+"»"},{id:nextId(),t:"date",tx:"Сегодня"}];
   closeM("m-group"); renderChats(); openChat(newChat.id); saveState();
   showToast(isChannel ? "📢 Канал «"+nm+"» создан!" : "👥 Группа «"+nm+"» создана!");
+
+  // Уведомляем приглашённых участников в реальном времени, чтобы им не пришлось перезагружать страницу
+  if(realId && memberIds.length){
+    wsSend({type:"group.created", payload:{
+      chat:{id:realId, nm, type:isChannel?"channels":"groups", desc},
+      memberIds,
+      fromName:S.user?.name||"Пользователь"
+    }});
+  }
 }
 
 // ── ПРАВА УЧАСТНИКОВ ──────────────────────────────────────────
