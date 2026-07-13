@@ -4292,15 +4292,24 @@ async function searchNewChat(v){
   if(!local.length&&v)el("nc-results").innerHTML=`<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пользователь @${v} не найден</div>`;
 }
 function createGroup(){ closeM("m-newchat"); renderGroupMembers(); el("m-group").classList.add("on"); }
-function renderGroupMembers(){ el("grp-members-list").innerHTML=S.contacts.map(c=>`<div class="contact-item" style="margin-bottom:4px"><input type="checkbox" id="grpm-${c.id}" style="margin-right:8px"><label for="grpm-${c.id}" style="display:flex;align-items:center;gap:8px;cursor:pointer"><div class="contact-av" style="width:32px;height:32px;border-radius:50%;background:${colBg(c.col)};display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff">${c.nm[0]}</div><div><div class="contact-nm">${c.nm}</div><div class="contact-ph">@${c.uname}</div></div></label></div>`).join(""); }
+function renderGroupMembers(){
+  const list=(S.contacts||[]).length ? S.contacts : S.chats.filter(c=>c.withUserId && c.type==="personal");
+  el("grp-members-list").innerHTML=list.map(c=>{
+    const id=c.withUserId||c.id, nm=c.nm, col=c.col||0, uname=c.uname||"";
+    return `<div class="contact-item" style="margin-bottom:4px"><input type="checkbox" id="grpm-${id}" style="margin-right:8px"><label for="grpm-${id}" style="display:flex;align-items:center;gap:8px;cursor:pointer"><div class="contact-av" style="width:32px;height:32px;border-radius:50%;background:${colBg(col)};display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff">${nm[0]}</div><div><div class="contact-nm">${nm}</div>${uname?`<div class="contact-ph">@${uname}</div>`:""}</div></label></div>`;
+  }).join("") || `<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пока не с кем создать группу — сначала начни с кем-нибудь чат</div>`;
+}
 function doCreateGroup(){
   const nm=el("grp-name")?.value?.trim(); if(!nm){showToast("❌ Введите название");return;}
-  const selected=[...document.querySelectorAll('[id^="grpm-"]:checked')].map(cb=>parseInt(cb.id.replace("grpm-","")));
+  const selected=[...document.querySelectorAll('[id^="grpm-"]:checked')].map(cb=>cb.id.replace("grpm-",""));
   // Формируем список участников с ролями
   const members=[{id:S.user?.id||"me", nm:S.user?.name||"Вы", uname:S.user?.uname||"", col:0, role:"owner", perms:fullPerms()}];
   selected.forEach(cid=>{
-    const c=S.contacts.find(x=>x.id===cid);
-    if(c) members.push({id:c.id, nm:c.nm, uname:c.uname||"", col:c.col, role:"member", perms:memberPerms()});
+    const c=(S.contacts||[]).find(x=>String(x.id)===cid) || S.chats.find(x=>String(x.withUserId)===cid);
+    if(c){
+      const nm2=c.nm, col2=c.col||0, uname2=c.uname||"";
+      members.push({id:cid, nm:nm2, uname:uname2, col:col2, role:"member", perms:memberPerms()});
+    }
   });
   const newChat={id:nextId(),nm:nm,ini:nm.slice(0,2).toUpperCase(),col:Math.floor(Math.random()*COLS.length),online:false,prev:"Группа создана",time:now(),unread:0,type:"groups",mbrs:members.length,members:members,myRole:"owner",pinned:false,muted:false,blocked:false,draft:""};
   S.chats.unshift(newChat);
