@@ -1381,15 +1381,26 @@ tr:hover td{background:var(--bg3)}
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-group')">Отмена</button><button class="xbtn gn" onclick="doCreateGroup()">✅ Создать</button></div>
 </div></div>
 
-<!-- MODAL: CHANNEL SETTINGS -->
+<!-- MODAL: GROUP/CHANNEL SETTINGS -->
 <div class="movl" id="m-chsettings"><div class="modal">
-  <div class="mtit">⚙️ Настройки канала</div>
-  <div id="chsettings-name" style="font-size:13px;color:var(--tx2);margin-bottom:14px"></div>
-  <div class="perm-row">
+  <div class="mtit" id="chsettings-title">⚙️ Настройки канала</div>
+
+  <div style="display:flex;justify-content:center;margin-bottom:14px">
+    <button id="chset-av-btn" style="width:72px;height:72px;border-radius:50%;border:none;font-size:26px;cursor:pointer;position:relative;overflow:hidden">⬡
+      <input type="file" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="previewChSetAvatar(this)">
+    </button>
+  </div>
+
+  <div class="frow s1"><div class="fg"><span class="fl" id="chset-name-label">Название</span><input class="fii" id="chset-name"></div></div>
+  <div class="frow s1"><div class="fg"><span class="fl">Username (необязательно)</span><input class="fii" id="chset-uname" placeholder="@username"></div></div>
+  <div class="frow s1"><div class="fg"><span class="fl">Описание</span><input class="fii" id="chset-desc" placeholder="О чём этот чат?"></div></div>
+
+  <div id="chsettings-name" style="font-size:11.5px;color:var(--tx3);margin-bottom:10px"></div>
+  <div class="perm-row" id="chset-allowpost-row">
     <span class="perm-label">Писать от имени канала в чатах<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Разрешить админам писать в личных чатах и группах от имени этого канала</div></span>
     <div class="perm-tgl" id="chset-allowpost" onclick="toggleChSetting('allowPostInChats',this)"></div>
   </div>
-  <div class="macts"><button class="xbtn sec" onclick="closeM('m-chsettings')">Закрыть</button></div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-chsettings')">Отмена</button><button class="xbtn gn" onclick="saveChatInfo()">✅ Сохранить</button></div>
 </div></div>
 
 <!-- MODAL: MEMBERS LIST -->
@@ -1880,6 +1891,18 @@ function wsHandleMessage(msg){
           saveState();
         }
       }
+      break;
+    }
+
+    case "story.received": {
+      const { story, fromUserId, fromName, fromCol, fromIni } = msg.payload;
+      if(!S.friend_stories) S.friend_stories={};
+      if(!S.friend_stories[fromUserId]) S.friend_stories[fromUserId]={name:fromName, col:fromCol||0, ini:fromIni||"?", items:[]};
+      S.friend_stories[fromUserId].name=fromName; // на случай смены имени
+      S.friend_stories[fromUserId].items.push(story);
+      S.friend_stories[fromUserId].items=S.friend_stories[fromUserId].items.filter(s=>Date.now()<s.expires);
+      renderStoriesBar(); saveState();
+      showToast(`📖 ${fromName} опубликовал(а) сторис`);
       break;
     }
 
@@ -2461,7 +2484,11 @@ function openChat(id){
 
   // Кнопка "Настройки канала" — для своих каналов
   const chSetBtn=el("rp-chsettings-btn");
-  if(chSetBtn)chSetBtn.style.display=(ch.type==="channels"&&(ch.mine||ch.myRole==="owner"||ch.myRole==="admin"))?"block":"none";
+  if(chSetBtn){
+    const canEdit=(ch.type==="channels"||ch.type==="groups")&&(ch.mine||ch.myRole==="owner"||ch.myRole==="admin");
+    chSetBtn.style.display=canEdit?"block":"none";
+    chSetBtn.textContent=ch.type==="channels"?"⚙️ Изменить канал":"⚙️ Изменить группу";
+  }
 
   // Кнопка "писать от имени канала"
   const sendAsRow=el("send-as-row");
@@ -2659,12 +2686,73 @@ function canSendAsChannelHere(){
 // ── НАСТРОЙКИ КАНАЛА ──────────────────────────────────────────
 function openChannelSettings(){
   const ch=S.chats.find(c=>c.id===S.chat);
-  if(!ch||ch.type!=="channels"){ showToast("Только для каналов"); return; }
-  el("chsettings-name").textContent="📢 "+ch.nm;
-  if(!S.channelSettings[ch.id]) S.channelSettings[ch.id]={allowPostInChats:true};
-  const allow=S.channelSettings[ch.id].allowPostInChats!==false;
-  el("chset-allowpost").classList.toggle("on",allow);
+  if(!ch||(ch.type!=="channels"&&ch.type!=="groups")){ showToast("Только для групп и каналов"); return; }
+  const isChannel=ch.type==="channels";
+  el("chsettings-title").textContent=isChannel?"⚙️ Изменить канал":"⚙️ Изменить группу";
+  el("chset-name-label").textContent=isChannel?"Название канала":"Название группы";
+  el("chset-name").value=ch.nm||"";
+  el("chset-uname").value=ch.uname||"";
+  el("chset-desc").value=ch.desc||"";
+  const avBtn=el("chset-av-btn");
+  if(avBtn){
+    const fileInput=avBtn.querySelector("input");
+    avBtn.innerHTML = ch.avatar ? `<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0">` : "⬡";
+    if(fileInput) avBtn.appendChild(fileInput);
+    avBtn.style.background = ch.avatar ? "none" : colBg(ch.col);
+  }
+  chSetAvatarData = ch.avatar || "";
+
+  el("chset-allowpost-row").style.display = isChannel ? "flex" : "none";
+  if(isChannel){
+    el("chsettings-name").textContent="📢 "+ch.nm;
+    if(!S.channelSettings[ch.id]) S.channelSettings[ch.id]={allowPostInChats:true};
+    const allow=S.channelSettings[ch.id].allowPostInChats!==false;
+    el("chset-allowpost").classList.toggle("on",allow);
+  } else {
+    el("chsettings-name").textContent="";
+  }
   el("m-chsettings").classList.add("on");
+}
+
+let chSetAvatarData="";
+function previewChSetAvatar(inp){
+  if(!inp.files[0])return;
+  const r=new FileReader();
+  r.onload=e=>{
+    chSetAvatarData=e.target.result;
+    const avBtn=el("chset-av-btn");
+    const fileInput=avBtn.querySelector("input");
+    avBtn.innerHTML=`<img src="${chSetAvatarData}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0">`;
+    if(fileInput) avBtn.appendChild(fileInput);
+    avBtn.style.background="none";
+  };
+  r.readAsDataURL(inp.files[0]);
+}
+
+function saveChatInfo(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  const nm=el("chset-name")?.value?.trim();
+  if(!nm){ showToast("❌ Название не может быть пустым"); return; }
+  const uname=(el("chset-uname")?.value||"").replace("@","").replace(/[^a-z0-9_]/gi,"");
+  // Проверка уникальности юзернейма среди других своих чатов (пока чисто локально)
+  if(uname){
+    const clash=S.chats.find(c=>c.id!==ch.id && c.uname && c.uname.toLowerCase()===uname.toLowerCase());
+    if(clash){ showToast("❌ Этот username уже занят другим чатом"); return; }
+  }
+  ch.nm=nm;
+  ch.ini=nm.slice(0,2).toUpperCase();
+  ch.uname=uname;
+  ch.desc=el("chset-desc")?.value?.trim()||"";
+  ch.avatar=chSetAvatarData||"";
+  closeM("m-chsettings");
+  renderChats();
+  if(S.chat===ch.id){
+    if(el("chnm")) el("chnm").textContent=ch.nm;
+    const chav=el("chav");
+    if(chav){ chav.style.background=ch.avatar?"none":colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?"; }
+  }
+  saveState();
+  showToast("✅ Изменения сохранены");
 }
 
 function toggleChSetting(key,elm){
@@ -4978,7 +5066,7 @@ function buyVIP(planId, price){
     renderStoriesBar();   // обновляем строку сторис (теперь "+ Моя" вместо "👑 VIP")
     renderChats();        // обновляем чаты (VIP-значки)
     showToast("🎉 VIP активирован! Все привилегии открыты");
-    setTimeout(()=>{ openStories(); },1200);
+    setTimeout(()=>{ viewMyStories(0); },1200);
   };
   el("m-confirm").classList.add("on");
 }
@@ -4989,62 +5077,122 @@ function buyVIP(planId, price){
 
 const DEMO_STORIES = [];
 
-let storyState = {user:0, item:0, timer:null, progress:0};
+let storyState = {items:[], index:0, timer:null, progress:0};
 
-function openStories(userIdx){
+function viewMyStories(startIndex){
   if(!S.vip?.active){ showToast("👑 Сторис — функция VIP"); openVIP(); return; }
-  storyState.user = userIdx||0; storyState.item=0;
+  const items=(S.my_stories||[]).filter(s=>Date.now()<s.expires);
+  if(!items.length){ openStoryEditor(); return; }
+  storyState.items=items;
+  storyState.index=Math.min(startIndex||0, items.length-1);
+  storyState.owner=null; // null = свои
   renderStory();
   el("screen-stories").classList.add("on");
   startStoryTimer();
 }
-function closeStories(){ el("screen-stories").classList.remove("on"); clearInterval(storyState.timer); }
+function viewFriendStories(userId){
+  const data=S.friend_stories?.[userId];
+  const items=(data?.items||[]).filter(s=>Date.now()<s.expires);
+  if(!items.length) return;
+  storyState.items=items;
+  storyState.index=0;
+  storyState.owner={userId, name:data.name, col:data.col, ini:data.ini};
+  renderStory();
+  el("screen-stories").classList.add("on");
+  startStoryTimer();
+}
+function closeStories(){ el("screen-stories").classList.remove("on"); clearInterval(storyState.timer); pauseStoryVideo(); }
+
+function pauseStoryVideo(){ const v=el("story-media-video"); if(v) v.pause(); }
+
+function formatStoryAge(ts){
+  const h=Math.floor((Date.now()-ts)/3600000);
+  if(h<1) return "только что";
+  if(h<24) return h+" ч назад";
+  return Math.floor(h/24)+" дн назад";
+}
 
 function renderStory(){
-  const u = DEMO_STORIES[storyState.user];
-  const item = u.items[storyState.item];
+  const s = storyState.items[storyState.index];
+  if(!s){ closeStories(); return; }
   const sc = el("story-canvas");
-  sc.style.background = item.bg;
-  el("story-user").textContent = u.ini;
-  el("story-user").style.background = colBg(u.col);
-  el("story-username").textContent = u.user;
-  el("story-time").textContent = now();
-  el("story-emoji").textContent = item.emoji||"";
-  el("story-text").textContent = item.type==="text" ? item.text : "";
+  pauseStoryVideo();
+  el("story-media-img").style.display="none";
+  el("story-media-video").style.display="none";
+  el("story-emoji").style.display="none";
+  el("story-text").style.display="none";
+  el("story-caption").style.display="none";
 
-  // progress bars
-  el("story-bars").innerHTML = u.items.map((_,i)=>
-    `<div class="sbar"><div class="sbar-fill" id="sbar-${i}" style="width:${i<storyState.item?100:0}%"></div></div>`
-  ).join("");
+  if(s.type==="text"){
+    sc.style.background = s.bg;
+    el("story-text").textContent = s.text||"";
+    el("story-text").style.display="block";
+  } else if(s.type==="emoji"){
+    sc.style.background = s.bg;
+    el("story-emoji").textContent = s.emoji||"";
+    el("story-emoji").style.display="block";
+  } else if(s.type==="photo"){
+    sc.style.background = "#000";
+    const img=el("story-media-img");
+    img.src=s.mediaUrl; img.style.display="block";
+    if(s.caption){ el("story-caption").textContent=s.caption; el("story-caption").style.display="block"; }
+  } else if(s.type==="video"){
+    sc.style.background = "#000";
+    const vid=el("story-media-video");
+    vid.src=s.mediaUrl; vid.style.display="block";
+    vid.currentTime=0; vid.play().catch(()=>{});
+    if(s.caption){ el("story-caption").textContent=s.caption; el("story-caption").style.display="block"; }
+  }
 
-  // dots
-  el("story-dots").innerHTML = DEMO_STORIES.map((s,i)=>
-    `<div class="sdot${i===storyState.user?" on":""}" onclick="storyState.user=${i};storyState.item=0;renderStory();startStoryTimer()">${s.ini[0]}</div>`
+  el("story-user").textContent = storyState.owner ? storyState.owner.ini : (S.user?.initials||"Я");
+  el("story-user").style.background = colBg(storyState.owner ? storyState.owner.col : 0);
+  el("story-username").textContent = s.channel ? s.channel.nm : (storyState.owner ? storyState.owner.name : (S.user?.name||"Вы"));
+  el("story-time").textContent = formatStoryAge(s.created);
+
+  el("story-bars").innerHTML = storyState.items.map((_,i)=>
+    `<div class="sbar"><div class="sbar-fill" id="sbar-${i}" style="width:${i<storyState.index?100:0}%"></div></div>`
   ).join("");
+  el("story-dots").innerHTML="";
+  el("story-del-btn").style.display = storyState.owner ? "none" : "flex";
 }
 
 function startStoryTimer(){
   clearInterval(storyState.timer);
   storyState.progress=0;
-  const bar = ()=>el("sbar-"+storyState.item);
+  const s=storyState.items[storyState.index];
+  const step = s?.type==="video" ? 1 : 2; // видео обычно длиннее — прогресс идёт медленнее
+  const bar = ()=>el("sbar-"+storyState.index);
   storyState.timer = setInterval(()=>{
-    storyState.progress += 2;
+    storyState.progress += step;
     if(bar()) bar().style.width = storyState.progress+"%";
     if(storyState.progress >= 100){ nextStoryItem(); }
   }, 100);
 }
 
 function nextStoryItem(){
-  const u = DEMO_STORIES[storyState.user];
-  if(storyState.item < u.items.length-1){
-    storyState.item++; storyState.progress=0; renderStory(); startStoryTimer();
-  } else if(storyState.user < DEMO_STORIES.length-1){
-    storyState.user++; storyState.item=0; storyState.progress=0; renderStory(); startStoryTimer();
+  if(storyState.index < storyState.items.length-1){
+    storyState.index++; storyState.progress=0; renderStory(); startStoryTimer();
   } else { closeStories(); }
 }
 function prevStoryItem(){
-  if(storyState.item > 0){ storyState.item--; storyState.progress=0; renderStory(); startStoryTimer(); }
-  else if(storyState.user > 0){ storyState.user--; storyState.item=0; storyState.progress=0; renderStory(); startStoryTimer(); }
+  if(storyState.index > 0){
+    storyState.index--; storyState.progress=0; renderStory(); startStoryTimer();
+  }
+}
+
+function deleteCurrentStory(){
+  if(storyState.owner){ return; } // нельзя удалить чужую сторис
+  const s=storyState.items[storyState.index];
+  if(!s) return;
+  if(!confirm("Удалить эту сторис?")) return;
+  S.my_stories=(S.my_stories||[]).filter(x=>x.id!==s.id);
+  saveState(); renderStoriesBar();
+  const items=(S.my_stories||[]).filter(x=>Date.now()<x.expires);
+  if(!items.length){ closeStories(); showToast("🗑️ Сторис удалена"); return; }
+  storyState.items=items;
+  if(storyState.index>=items.length) storyState.index=items.length-1;
+  renderStory(); startStoryTimer();
+  showToast("🗑️ Сторис удалена");
 }
 
 function addMyStory(){
@@ -5174,8 +5322,15 @@ function renderStoriesBar(){
   const myActiveStories=(S.my_stories||[]).filter(s=>Date.now()<s.expires);
   const limit=isVip?storyLimit():3;
   const myStoryLabel=isVip&&myActiveStories.length>0?myActiveStories.length+"/"+limit:"+"+(isVip?"":"👑");
+
+  // Сторис друзей — тех, кто прислал уведомление в реальном времени (см. story.received)
+  const friendEntries=Object.entries(S.friend_stories||{}).filter(([uid,data])=>{
+    data.items=(data.items||[]).filter(s=>Date.now()<s.expires);
+    return data.items.length>0;
+  });
+
   bar.innerHTML = `
-    <div class="story-av-wrap" onclick="${isVip?(myActiveStories.length>0?'openMyStories()':'openStoryEditor()'):'openVIP()'}">
+    <div class="story-av-wrap" onclick="${isVip?(myActiveStories.length>0?'viewMyStories(0)':'openStoryEditor()'):'openVIP()'}">
       <div class="story-ring${isVip?' vip-ring':' locked-ring'}">
         <div class="story-av-inner" style="background:${colBg(0)};font-family:'Syne',sans-serif;font-weight:800;font-size:12px;color:#fff">
           ${S.user.avatar?`<img src="${S.user.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(S.user.initials||"Я")}
@@ -5183,12 +5338,12 @@ function renderStoriesBar(){
       </div>
       <div class="story-nm">${isVip?(myActiveStories.length>0?myStoryLabel:"+ Моя"):"👑 VIP"}</div>
     </div>
-    ${DEMO_STORIES.map((s,i)=>`
-      <div class="story-av-wrap" onclick="openStories(${i})">
+    ${friendEntries.map(([uid,data])=>`
+      <div class="story-av-wrap" onclick="viewFriendStories('${uid}')">
         <div class="story-ring">
-          <div class="story-av-inner" style="background:${colBg(s.col)};font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#fff">${s.ini}</div>
+          <div class="story-av-inner" style="background:${colBg(data.col)};font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#fff">${data.ini}</div>
         </div>
-        <div class="story-nm">${s.user.split(" ")[0]}</div>
+        <div class="story-nm">${(data.name||"?").split(" ")[0]}</div>
       </div>
     `).join("")}
   `;
@@ -5415,6 +5570,14 @@ function openStoryEditor(){
   selectedStoryBg = "linear-gradient(135deg,#6c63ff,#38bdf8)";
   selectedStoryType = "text";
   selectedStoryChannel = null; // по умолчанию от себя
+  if(pendingStoryMedia?.previewUrl) URL.revokeObjectURL(pendingStoryMedia.previewUrl);
+  pendingStoryMedia = null;
+  const pd=el("story-photo-drop"), vd=el("story-video-drop");
+  if(pd) pd.innerHTML=`<span id="story-photo-hint">📷 Нажми, чтобы выбрать фото</span><input type="file" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="previewStoryMedia(this,'photo')">`;
+  if(vd) vd.innerHTML=`<span id="story-video-hint">🎥 Нажми, чтобы выбрать видео</span><input type="file" accept="video/*" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="previewStoryMedia(this,'video')">`;
+  if(el("se-photo-caption")) el("se-photo-caption").value="";
+  if(el("se-video-caption")) el("se-video-caption").value="";
+  selectStoryType("text");
   // Показываем выбор "от себя / от канала" если есть каналы
   renderStoryAuthorChoice();
   el("m-story-editor").classList.add("on");
@@ -5448,6 +5611,8 @@ function selectStoryType(type){
   el("stype-"+type).style.borderColor = "var(--acc)";
   el("story-text-editor").style.display = type==="text"?"block":"none";
   el("story-emoji-editor").style.display = type==="emoji"?"block":"none";
+  el("story-photo-editor").style.display = type==="photo"?"block":"none";
+  el("story-video-editor").style.display = type==="video"?"block":"none";
 }
 
 function selectStoryBg(bg, el_){
@@ -5458,10 +5623,43 @@ function selectStoryBg(bg, el_){
 
 function selectStoryEmoji(e){ selectedStoryEmoji = e; showToast("Выбрано: "+e); }
 
-function publishStory(){
+let pendingStoryMedia=null; // {file, kind:'photo'|'video', previewUrl}
+function previewStoryMedia(inp, kind){
+  if(!inp.files[0]) return;
+  const file=inp.files[0];
+  const previewUrl=URL.createObjectURL(file);
+  if(pendingStoryMedia?.previewUrl) URL.revokeObjectURL(pendingStoryMedia.previewUrl);
+  pendingStoryMedia={file, kind, previewUrl};
+  const drop=el(kind==="photo"?"story-photo-drop":"story-video-drop");
+  if(kind==="photo"){
+    drop.querySelector("span").outerHTML=`<img src="${previewUrl}" style="max-width:100%;max-height:140px;border-radius:8px">`;
+  } else {
+    drop.querySelector("span").outerHTML=`<video src="${previewUrl}" muted style="max-width:100%;max-height:140px;border-radius:8px"></video>`;
+  }
+}
+
+// Уведомляем всех, с кем есть чат ("друзья"), что опубликована новая сторис —
+// в реальном времени, без сохранения на сервере (как и сам объект сторис)
+function notifyFriendsAboutStory(story){
+  const memberIds=S.chats.filter(c=>c.withUserId).map(c=>c.withUserId);
+  if(!memberIds.length) return;
+  wsSend({type:"story.new", payload:{
+    story:{id:story.id, type:story.type, bg:story.bg, text:story.text, emoji:story.emoji, mediaUrl:story.mediaUrl, caption:story.caption, created:story.created, expires:story.expires, channel:story.channel||null},
+    memberIds,
+    fromUserId:S.user?.id, fromName:S.user?.name||"Пользователь", fromCol:0, fromIni:S.user?.initials||"?"
+  }});
+}
+
+async function publishStory(){
   if(!S.vip?.active) return;
   const text = selectedStoryType==="text" ? (el("se-text")?.value||"") : "";
   const emoji = selectedStoryType==="emoji" ? selectedStoryEmoji : "";
+
+  if((selectedStoryType==="photo"||selectedStoryType==="video") && !pendingStoryMedia){
+    showToast("❌ Сначала выбери "+(selectedStoryType==="photo"?"фото":"видео"));
+    return;
+  }
+
   const story = {
     id: nextId(),
     type: selectedStoryType,
@@ -5471,16 +5669,51 @@ function publishStory(){
     expires: Date.now() + 24*60*60*1000, // 24h
     views: 0
   };
-  // Привязка к каналу если выбран
   if(selectedStoryChannel){
     const chan=S.chats.find(c=>c.id===selectedStoryChannel);
     if(chan) story.channel={id:chan.id, nm:chan.nm, ini:chan.ini, col:chan.col};
   }
+
+  if(selectedStoryType==="photo"||selectedStoryType==="video"){
+    const capEl=el(selectedStoryType==="photo"?"se-photo-caption":"se-video-caption");
+    story.caption=capEl?.value?.trim()||"";
+    story.mediaUrl=pendingStoryMedia.previewUrl; // локальное превью сразу, пока грузится
+    story.uploading=true;
+    if(!S.my_stories) S.my_stories=[];
+    S.my_stories.push(story);
+    closeM("m-story-editor");
+    renderStoriesBar(); saveState();
+    showToast("📖 Загружаем...");
+    try{
+      const fd=new FormData();
+      fd.append("file",pendingStoryMedia.file);
+      const t=getToken();
+      const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.success) throw new Error(data.error||"Не удалось загрузить файл");
+      URL.revokeObjectURL(story.mediaUrl);
+      story.mediaUrl=data.url;
+      story.uploading=false;
+      saveState();
+      notifyFriendsAboutStory(story);
+      const where = story.channel ? `в канал «${story.channel.nm}»` : "";
+      showToast(`📖 Сторис опубликована ${where}!`);
+    }catch(err){
+      console.error("story upload error:",err);
+      S.my_stories=S.my_stories.filter(s=>s.id!==story.id);
+      renderStoriesBar(); saveState();
+      showToast("❌ "+(err.message||"Не удалось загрузить файл"));
+    }
+    pendingStoryMedia=null;
+    return;
+  }
+
   if(!S.my_stories) S.my_stories=[];
   S.my_stories.push(story);
   closeM("m-story-editor");
   renderStoriesBar();
   saveState();
+  notifyFriendsAboutStory(story);
   const where = story.channel ? `в канал «${story.channel.nm}»` : "";
   showToast(`📖 Сторис опубликована ${where}!`);
 }
@@ -5493,18 +5726,21 @@ function openMyStories(){
   // Показываем управление сторис
   const limit=storyLimit();
   el("mystories-count").textContent=`${stories.length} из ${limit}`;
-  el("mystories-list").innerHTML=stories.map(s=>{
+  el("mystories-list").innerHTML=stories.map((s,i)=>{
     const left=Math.max(0,Math.round((s.expires-Date.now())/3600000));
-    const preview=s.type==="text"?(s.text||"Текст"):(s.emoji||"📖");
+    const preview=s.type==="text"?(s.text||"Текст"):s.type==="emoji"?(s.emoji||"📖"):s.type==="photo"?"📷 Фото":"🎥 Видео";
     const chanTag=s.channel?`<div style="font-size:10px;color:var(--acc2);margin-top:2px">📢 ${s.channel.nm}</div>`:"";
-    return `<div class="mystory-item">
-      <div class="mystory-prev" style="background:${s.bg}">${s.type==="emoji"?s.emoji:"Aa"}</div>
+    const thumbHTML = s.type==="photo" ? `<img src="${s.mediaUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`
+      : s.type==="video" ? `<video src="${s.mediaUrl}" muted style="width:100%;height:100%;object-fit:cover;border-radius:8px"></video>`
+      : (s.type==="emoji"?s.emoji:"Aa");
+    return `<div class="mystory-item" onclick="closeM('m-mystories');viewMyStories(${i})" style="cursor:pointer">
+      <div class="mystory-prev" style="background:${s.bg||"#000"};overflow:hidden">${thumbHTML}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:500">${preview.slice(0,30)}</div>
         <div style="font-size:11px;color:var(--tx3)">👁 ${s.views} · ⏰ ${left}ч осталось</div>
         ${chanTag}
       </div>
-      <span style="color:var(--rd);cursor:pointer;font-size:16px;padding:4px" onclick="deleteMyStory(${s.id})">🗑️</span>
+      <span style="color:var(--rd);cursor:pointer;font-size:16px;padding:4px" onclick="event.stopPropagation();deleteMyStory(${s.id})">🗑️</span>
     </div>`;
   }).join("");
   // Кнопка добавить если не достигнут лимит
@@ -5869,8 +6105,12 @@ applyTheme(S.theme||"dark");
     </div>
 
     <!-- Story content -->
+    <img id="story-media-img" style="display:none;max-width:100%;max-height:100%;object-fit:contain">
+    <video id="story-media-video" style="display:none;max-width:100%;max-height:100%;object-fit:contain" playsinline></video>
+    <div id="story-caption" style="display:none;position:absolute;bottom:90px;left:0;right:0;text-align:center;color:#fff;font-size:14px;padding:0 24px;text-shadow:0 2px 8px rgba(0,0,0,.5)"></div>
     <div id="story-emoji" style="font-size:72px;margin-bottom:16px"></div>
     <div id="story-text" style="font-family:'Syne',sans-serif;font-weight:800;font-size:26px;color:#fff;text-align:center;padding:0 32px;text-shadow:0 2px 12px rgba(0,0,0,.4)"></div>
+    <div id="story-del-btn" onclick="deleteCurrentStory()" style="display:none;position:absolute;top:28px;right:52px;z-index:11;color:rgba(255,255,255,.85);font-size:18px;cursor:pointer">🗑️</div>
 
     <!-- Nav zones -->
     <div style="position:absolute;top:0;left:0;width:40%;height:100%;cursor:pointer;z-index:5" onclick="prevStoryItem()"></div>
@@ -6203,14 +6443,22 @@ applyTheme(S.theme||"dark");
     <div class="mtit">📖 Новая сторис</div>
     <div class="msub">Выберите тип и добавьте контент</div>
     <div id="story-author-choice" style="display:none;margin-bottom:14px;padding:10px;background:var(--bg3);border-radius:10px"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
-      <div class="story-type-btn on" id="stype-text" onclick="selectStoryType('text')" style="background:var(--bg3);border:1.5px solid var(--acc);border-radius:10px;padding:12px;text-align:center;cursor:pointer">
-        <div style="font-size:24px;margin-bottom:4px">✍️</div>
-        <div style="font-size:12px;font-weight:600">Текст</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+      <div class="story-type-btn on" id="stype-text" onclick="selectStoryType('text')" style="background:var(--bg3);border:1.5px solid var(--acc);border-radius:10px;padding:10px 6px;text-align:center;cursor:pointer">
+        <div style="font-size:20px;margin-bottom:4px">✍️</div>
+        <div style="font-size:11px;font-weight:600">Текст</div>
       </div>
-      <div class="story-type-btn" id="stype-emoji" onclick="selectStoryType('emoji')" style="background:var(--bg3);border:1.5px solid var(--brd);border-radius:10px;padding:12px;text-align:center;cursor:pointer">
-        <div style="font-size:24px;margin-bottom:4px">😀</div>
-        <div style="font-size:12px;font-weight:600">Эмодзи</div>
+      <div class="story-type-btn" id="stype-emoji" onclick="selectStoryType('emoji')" style="background:var(--bg3);border:1.5px solid var(--brd);border-radius:10px;padding:10px 6px;text-align:center;cursor:pointer">
+        <div style="font-size:20px;margin-bottom:4px">😀</div>
+        <div style="font-size:11px;font-weight:600">Эмодзи</div>
+      </div>
+      <div class="story-type-btn" id="stype-photo" onclick="selectStoryType('photo')" style="background:var(--bg3);border:1.5px solid var(--brd);border-radius:10px;padding:10px 6px;text-align:center;cursor:pointer">
+        <div style="font-size:20px;margin-bottom:4px">📷</div>
+        <div style="font-size:11px;font-weight:600">Фото</div>
+      </div>
+      <div class="story-type-btn" id="stype-video" onclick="selectStoryType('video')" style="background:var(--bg3);border:1.5px solid var(--brd);border-radius:10px;padding:10px 6px;text-align:center;cursor:pointer">
+        <div style="font-size:20px;margin-bottom:4px">🎥</div>
+        <div style="font-size:11px;font-weight:600">Видео</div>
       </div>
     </div>
     <div id="story-text-editor">
@@ -6244,6 +6492,26 @@ applyTheme(S.theme||"dark");
           <div onclick="selectStoryEmoji(this.textContent)" style="font-size:28px;padding:4px;cursor:pointer;border-radius:8px">🌙</div>
         </div>
       </div>
+    </div>
+    <div id="story-photo-editor" style="display:none">
+      <div class="fg" style="margin-bottom:10px">
+        <span class="fl">Фото</span>
+        <label style="display:block;margin-top:6px;border:1.5px dashed var(--brd);border-radius:10px;padding:16px;text-align:center;cursor:pointer;position:relative;overflow:hidden;min-height:100px" id="story-photo-drop">
+          <span id="story-photo-hint">📷 Нажми, чтобы выбрать фото</span>
+          <input type="file" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="previewStoryMedia(this,'photo')">
+        </label>
+      </div>
+      <div class="fg"><span class="fl">Подпись (необязательно)</span><input class="fii" id="se-photo-caption" placeholder="Добавь подпись..."></div>
+    </div>
+    <div id="story-video-editor" style="display:none">
+      <div class="fg" style="margin-bottom:10px">
+        <span class="fl">Видео (до 60 сек)</span>
+        <label style="display:block;margin-top:6px;border:1.5px dashed var(--brd);border-radius:10px;padding:16px;text-align:center;cursor:pointer;position:relative;overflow:hidden;min-height:100px" id="story-video-drop">
+          <span id="story-video-hint">🎥 Нажми, чтобы выбрать видео</span>
+          <input type="file" accept="video/*" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="previewStoryMedia(this,'video')">
+        </label>
+      </div>
+      <div class="fg"><span class="fl">Подпись (необязательно)</span><input class="fii" id="se-video-caption" placeholder="Добавь подпись..."></div>
     </div>
     <div class="macts">
       <button class="xbtn sec" onclick="closeM('m-story-editor')">Отмена</button>
