@@ -1400,7 +1400,27 @@ tr:hover td{background:var(--bg3)}
     <span class="perm-label">Писать от имени канала в чатах<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Разрешить админам писать в личных чатах и группах от имени этого канала</div></span>
     <div class="perm-tgl" id="chset-allowpost" onclick="toggleChSetting('allowPostInChats',this)"></div>
   </div>
+  <div class="perm-row">
+    <span class="perm-label">Реакции<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Разрешить участникам ставить реакции на сообщения/посты</div></span>
+    <div class="perm-tgl" id="chset-reactions-enabled" onclick="toggleChSetting('reactionsEnabled',this)"></div>
+  </div>
+  <div id="chset-reactions-picker-row" style="margin-bottom:10px">
+    <button class="rp-action-btn" onclick="openReactionsAllowedPicker()" style="width:100%">😀 Выбрать разрешённые реакции</button>
+    <div style="font-size:10.5px;color:var(--tx3);margin-top:4px" id="chset-reactions-summary"></div>
+  </div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-chsettings')">Отмена</button><button class="xbtn gn" onclick="saveChatInfo()">✅ Сохранить</button></div>
+</div></div>
+
+<!-- MODAL: ALLOWED REACTIONS PICKER -->
+<div class="movl" id="m-reactions-allowed"><div class="modal">
+  <div class="mtit">😀 Разрешённые реакции</div>
+  <div class="msub">Отметь, какие реакции можно ставить в этом чате. Ничего не выбрано — разрешены все.</div>
+  <div id="rxn-allowed-cats" style="display:flex;gap:2px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid var(--brd)"></div>
+  <div id="rxn-allowed-grid" style="display:flex;flex-wrap:wrap;gap:2px;max-height:260px;overflow-y:auto"></div>
+  <div class="macts">
+    <button class="xbtn sec" onclick="clearAllowedReactions()">Сбросить (разрешить все)</button>
+    <button class="xbtn gn" onclick="closeM('m-reactions-allowed')">Готово</button>
+  </div>
 </div></div>
 
 <!-- MODAL: MEMBERS LIST -->
@@ -2712,7 +2732,73 @@ function openChannelSettings(){
   } else {
     el("chsettings-name").textContent="";
   }
+  if(!S.channelSettings[ch.id]) S.channelSettings[ch.id]={};
+  const reactEnabled=S.channelSettings[ch.id].reactionsEnabled!==false;
+  el("chset-reactions-enabled").classList.toggle("on",reactEnabled);
+  el("chset-reactions-picker-row").style.display=reactEnabled?"block":"none";
+  updateReactionsSummary(ch.id);
   el("m-chsettings").classList.add("on");
+}
+
+function updateReactionsSummary(chatId){
+  const allowed=S.channelSettings[chatId]?.allowedReactions;
+  el("chset-reactions-summary").textContent = (allowed && allowed.length)
+    ? "Разрешено: "+allowed.join(" ")
+    : "Разрешены все реакции";
+}
+
+function openReactionsAllowedPicker(){
+  const chatId=S.chat;
+  if(!S.channelSettings[chatId]) S.channelSettings[chatId]={};
+  renderAllowedReactionsCats();
+  renderAllowedReactionsGrid(EMOJI_CATS_LIST[0]);
+  el("m-reactions-allowed").classList.add("on");
+}
+function renderAllowedReactionsCats(){
+  el("rxn-allowed-cats").innerHTML=EMOJI_CATS_LIST.map((cat,i)=>`<div class="emoji-cat${i===0?" on":""}" onclick="switchAllowedRxnCat('${cat}',this)">${cat.split(" ")[0]}</div>`).join("");
+}
+function switchAllowedRxnCat(cat, catEl){
+  document.querySelectorAll("#rxn-allowed-cats .emoji-cat").forEach(x=>x.classList.remove("on"));
+  catEl.classList.add("on");
+  renderAllowedReactionsGrid(cat);
+}
+function renderAllowedReactionsGrid(cat){
+  const chatId=S.chat;
+  const allowed=S.channelSettings[chatId]?.allowedReactions||[];
+  el("rxn-allowed-grid").innerHTML=EMOJI_DB[cat].map(em=>{
+    const isOn=allowed.includes(em);
+    return `<div class="emoji-item${isOn?" allowed-on":""}" style="${isOn?"background:var(--acc);border-radius:6px":""}" onclick="toggleAllowedReaction('${em}',this)">${em}</div>`;
+  }).join("");
+}
+function toggleAllowedReaction(emoji, itemEl){
+  const chatId=S.chat;
+  if(!S.channelSettings[chatId]) S.channelSettings[chatId]={};
+  if(!S.channelSettings[chatId].allowedReactions) S.channelSettings[chatId].allowedReactions=[];
+  const arr=S.channelSettings[chatId].allowedReactions;
+  const idx=arr.indexOf(emoji);
+  if(idx===-1){ arr.push(emoji); itemEl.classList.add("allowed-on"); itemEl.style.background="var(--acc)"; itemEl.style.borderRadius="6px"; }
+  else { arr.splice(idx,1); itemEl.classList.remove("allowed-on"); itemEl.style.background=""; }
+  updateReactionsSummary(chatId);
+  saveState();
+}
+function clearAllowedReactions(){
+  const chatId=S.chat;
+  if(S.channelSettings[chatId]) S.channelSettings[chatId].allowedReactions=[];
+  updateReactionsSummary(chatId);
+  renderAllowedReactionsGrid(document.querySelector("#rxn-allowed-cats .emoji-cat.on")?.textContent ? EMOJI_CATS_LIST.find(c=>c.startsWith(document.querySelector("#rxn-allowed-cats .emoji-cat.on").textContent)) : EMOJI_CATS_LIST[0]);
+  saveState();
+  showToast("✅ Разрешены все реакции");
+}
+
+// Проверка: разрешена ли конкретная реакция в этом чате (для групп/каналов)
+function isReactionAllowed(chatId, emoji){
+  const ch=S.chats.find(c=>c.id===chatId);
+  if(!ch || (ch.type!=="groups" && ch.type!=="channels")) return true; // личные чаты — без ограничений
+  const settings=S.channelSettings[chatId];
+  if(!settings) return true;
+  if(settings.reactionsEnabled===false) return false;
+  if(settings.allowedReactions && settings.allowedReactions.length) return settings.allowedReactions.includes(emoji);
+  return true;
 }
 
 let chSetAvatarData="";
@@ -2764,6 +2850,7 @@ function toggleChSetting(key,elm){
   // toggle visual
   const newVal=S.channelSettings[ch.id][key];
   elm.classList.toggle("on",newVal);
+  if(key==="reactionsEnabled") el("chset-reactions-picker-row").style.display=newVal?"block":"none";
   saveState();
   showToast(newVal?"✅ Разрешено":"🔒 Запрещено");
 }
@@ -4023,6 +4110,7 @@ function tPlay(btn){ const p=btn.dataset.p==="1"; btn.innerHTML=p?'<svg width="1
 function toggleRxn(msgId, ri){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===msgId); if(!m?.rxn)return;
   const r=m.rxn[ri]; if(!r)return;
+  if(!r.m && !isReactionAllowed(S.chat, r.e)){ showToast("🔒 Эта реакция здесь запрещена"); return; }
   const maxReactions=(S.vip?.active)?3:1;
   if(!r.m){
     const myCount=m.rxn.filter(x=>x.m).length;
@@ -4042,6 +4130,7 @@ function toggleRxn(msgId, ri){
 function addRxn(emoji){
   el("rxn-picker").classList.remove("on");
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
+  if(!isReactionAllowed(S.chat, emoji)){ showToast("🔒 Эта реакция здесь запрещена"); return; }
   if(!m.rxn)m.rxn=[];
   let ex=m.rxn.find(r=>r.e===emoji);
   if(ex && ex.m){ renderMsgs(); return; } // уже стоит эта же реакция
