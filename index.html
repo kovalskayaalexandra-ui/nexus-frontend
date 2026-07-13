@@ -1294,7 +1294,7 @@ tr:hover td{background:var(--bg3)}
   <div class="ctxi" onclick="ctxForward()">↪️ Переслать</div>
   <div class="ctxi" onclick="ctxSaveToFav()">⭐ В Избранное</div>
   <div class="ctxi" onclick="ctxSelect()">☑️ Выделить</div>
-  <div class="ctxi" onclick="ctxReact()">😀 Реакция</div>
+  <div class="ctxi" onclick="ctxReact(event)">😀 Реакция</div>
   <div class="ctxi" onclick="ctxReport()">⚠️ Пожаловаться</div>
   <div class="ctxsep"></div>
   <div class="ctxi rd" onclick="openDelModal()">🗑️ Удалить</div>
@@ -3830,7 +3830,7 @@ function ctxReport(){
   showToast("⚠️ Жалоба отправлена модераторам");
   // TODO: отправка жалобы на сервер /api/reports
 }
-function ctxReact(){ const ctx=el("ctx"); const rp=el("rxn-picker"); rp.style.left=ctx.style.left; rp.style.top=(parseInt(ctx.style.top)-44)+"px"; rp.classList.add("on"); }
+function ctxReact(e){ if(e)e.stopPropagation(); const ctx=el("ctx"); const rp=el("rxn-picker"); rp.style.left=ctx.style.left; rp.style.top=(parseInt(ctx.style.top)-44)+"px"; ctx.classList.remove("on"); rp.classList.add("on"); }
 function openDelModal(){
   const ms=S.messages[S.chat]||[];
   const m=ms.find(x=>x.id===S.ctxId);
