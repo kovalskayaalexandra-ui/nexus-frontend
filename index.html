@@ -1704,6 +1704,15 @@ function loadState(){
   } else {
     console.log("ℹ️ Избранное на месте, id 77777 найден:", !!S.chats?.find(c=>c.id===77777));
   }
+  // На случай, если системные чаты успели получить blocked/archived ДО того, как мы
+  // защитили их от этого — снимаем флаги принудительно при каждой загрузке
+  [77777,88888,99999].forEach(sid=>{
+    const sc=S.chats?.find(c=>c.id===sid);
+    if(sc && (sc.blocked||sc.archived)){
+      console.log("🔧 Снимаю blocked/archived с системного чата", sid);
+      sc.blocked=false; sc.archived=false;
+    }
+  });
 }
 
 function saveState(){
