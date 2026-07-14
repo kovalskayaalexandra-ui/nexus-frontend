@@ -4717,7 +4717,7 @@ async function doCreateGroup(){
   });
 
   showToast("⏳ Создаём...");
-  console.log("📤 Создаю группу, выбранные id (selected):", selected, "итоговые memberIds:", memberIds);
+  console.log("📤 Создаю группу, выбранные id (selected):", selected, "итоговые memberIds:", memberIds, "все чаты с withUserId:", S.chats.filter(c=>c.withUserId).map(c=>({nm:c.nm, withUserId:c.withUserId})));
   let realId=null;
   try{
     const data=await apiPost("/api/chats", {type:isChannel?"channels":"groups", name:nm, description:desc, memberIds}, true);
