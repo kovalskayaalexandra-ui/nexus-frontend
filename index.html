@@ -1809,6 +1809,16 @@ function wsSend(data){
   return false;
 }
 
+// Надёжная отправка с повтором — для важных разовых уведомлений (создание группы и т.п.),
+// где потеря сообщения из-за случайного переподключения WebSocket особенно заметна
+function wsSendReliable(data, attempt=1){
+  const ok=wsSend(data);
+  console.log(`📤 wsSendReliable (${data.type}), попытка ${attempt}:`, ok?"✅ отправлено":"❌ соединение не готово");
+  if(!ok && attempt<15){
+    setTimeout(()=>wsSendReliable(data, attempt+1), 5000); // до ~70 секунд суммарно
+  }
+}
+
 function wsHandleMessage(msg){
   console.log("📥 WS получено:", msg.type, msg.payload);
   switch(msg.type){
@@ -2805,7 +2815,7 @@ function deleteGroupFromSettings(){
 
   if(isRealChat){
     apiDelete("/api/chats/"+chatId).catch(e=>console.warn("delete chat error:",e));
-    wsSend({type:"chat.delete", payload:{chatId, memberIds}});
+    wsSendReliable({type:"chat.delete", payload:{chatId, memberIds}});
   }
 }
 
@@ -4303,7 +4313,7 @@ function clearHistory(){
     apiDelete("/api/messages/chat/"+S.chat+"/clear").catch(e=>console.warn("clear history error:",e));
     const curChat=S.chats.find(c=>c.id===S.chat);
     const memberIds=getChatMemberIds(curChat);
-    wsSend({type:"chat.clear", payload:{chatId:S.chat, memberIds}});
+    wsSendReliable({type:"chat.clear", payload:{chatId:S.chat, memberIds}});
   }
 }
 // Полное удаление чата — стирает переписку у ОБОИХ участников (не просто "у себя")
@@ -4346,7 +4356,7 @@ function deleteChatCompletely(){
 
   if(isRealChat){
     apiDelete("/api/chats/"+chatId).catch(e=>console.warn("delete chat error:",e));
-    wsSend({type:"chat.delete", payload:{chatId, memberIds}});
+    wsSendReliable({type:"chat.delete", payload:{chatId, memberIds}});
   }
 }
 // Правая панель чата — реальные стикеры и медиа именно из этого чата,
@@ -4734,7 +4744,7 @@ async function doCreateGroup(){
 
   // Уведомляем приглашённых участников в реальном времени, чтобы им не пришлось перезагружать страницу
   if(realId && memberIds.length){
-    wsSend({type:"group.created", payload:{
+    wsSendReliable({type:"group.created", payload:{
       chat:{id:realId, nm, type:isChannel?"channels":"groups", desc},
       memberIds,
       fromName:S.user?.name||"Пользователь"
@@ -5295,7 +5305,7 @@ function confirmGiftVip(planId, price){
     saveState();
 
     // Уведомляем получателя в реальном времени по WebSocket
-    wsSend({type:"vip.gift", payload:{chatId:ch?.id||null, memberIds:[recipient.userId], planId, fromName:S.user?.name||"Друг"}});
+    wsSendReliable({type:"vip.gift", payload:{chatId:ch?.id||null, memberIds:[recipient.userId], planId, fromName:S.user?.name||"Друг"}});
 
     showToast(`🎁 VIP подарен ${recipient.nm}!`);
     giftVipRecipient=null;
@@ -5564,7 +5574,29 @@ function getSupportAnswer(txt){
 // ══════════════════════════════════════════════════
 //  STORIES BAR — inject above chat list
 // ══════════════════════════════════════════════════
+// Реально удаляет истёкшие (старше 24ч) сторис из памяти, а не просто скрывает их из показа
+function purgeExpiredStories(){
+  let changed=false;
+  if(S.my_stories){
+    const before=S.my_stories.length;
+    S.my_stories=S.my_stories.filter(s=>Date.now()<s.expires);
+    if(S.my_stories.length!==before) changed=true;
+  }
+  if(S.friend_stories){
+    Object.keys(S.friend_stories).forEach(uid=>{
+      const data=S.friend_stories[uid];
+      const before=(data.items||[]).length;
+      data.items=(data.items||[]).filter(s=>Date.now()<s.expires);
+      if(data.items.length!==before) changed=true;
+      if(data.items.length===0) delete S.friend_stories[uid];
+    });
+  }
+  if(changed) saveState();
+}
+setInterval(purgeExpiredStories, 5*60*1000); // проверяем каждые 5 минут, пока приложение открыто
+
 function renderStoriesBar(){
+  purgeExpiredStories();
   let bar = document.getElementById("stories-bar");
   if(!bar){
     bar = document.createElement("div");
@@ -5902,7 +5934,7 @@ function notifyFriendsAboutStory(story){
   const memberIds=S.chats.filter(c=>c.withUserId).map(c=>c.withUserId);
   console.log("📤 Уведомляю друзей о новой сторис, memberIds:", memberIds);
   if(!memberIds.length){ console.log("⚠️ Некому отправлять — нет чатов с withUserId"); return; }
-  wsSend({type:"story.new", payload:{
+  wsSendReliable({type:"story.new", payload:{
     story:{id:story.id, type:story.type, bg:story.bg, text:story.text, emoji:story.emoji, mediaUrl:story.mediaUrl, caption:story.caption, created:story.created, expires:story.expires, channel:story.channel||null},
     memberIds,
     fromUserId:S.user?.id, fromName:S.user?.name||"Пользователь", fromCol:0, fromIni:S.user?.initials||"?"
