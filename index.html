@@ -858,7 +858,7 @@ tr:hover td{background:var(--bg3)}
         <div class="av" id="chav" style="background:linear-gradient(135deg,#6c63ff,#38bdf8)">АС</div>
         <div class="chin">
           <div class="chnm" id="chnm" onclick="openChatInfo()">Чат</div>
-          <div class="chst" id="chst">онлайн</div>
+          <div class="chst" id="chst" onclick="openChatInfo()" style="cursor:pointer">онлайн</div>
         </div>
         <div class="ibt" onclick="startCall('voice')" title="Голосовой звонок" style="width:33px;height:33px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);transition:all .15s"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.14 12 19.79 19.79 0 0 1 1.07 3.38a2 2 0 0 1 2-2.18H6a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21 16z"/></svg></div>
         <div class="ibt" onclick="startCall('video')" title="Видеозвонок" style="width:33px;height:33px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);transition:all .15s"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>
@@ -4532,9 +4532,44 @@ function blockUser(){
   }
 }
 function openChatInfo(){
-  const ch=S.chats.find(c=>c.id===S.chat);
-  if(ch?.id===88888){ openOfficialChannel(); return; }
-  showToast("ℹ️ Информация о чате: "+ch?.nm);
+  const ch = S.chats.find(c => c.id === S.chat); if(!ch) return;
+  if(ch.id===88888){ openOfficialChannel(); return; }
+
+  const av=el("ui-avatar");
+  av.style.background=colBg(ch.col);
+  av.innerHTML = ch.avatar ? `<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">` : (ch.ini||"?");
+  el("ui-name").textContent = ch.nm;
+  el("ui-uname").textContent = ch.uname ? "@"+ch.uname : "";
+  el("ui-bio-row").style.display="none";
+  el("ui-gifts-row").style.display="none";
+  el("ui-edit-btn").style.display="none";
+
+  if(ch.type==="personal"){
+    el("ui-status").textContent = ch.online ? "в сети" : "был(а) недавно";
+
+    // Подтягиваем "о себе" с сервера, если это реальный собеседник
+    if(ch.withUserId){
+      apiGet("/api/users/"+ch.withUserId).then(d=>{
+        if(d.user?.bio){ el("ui-bio").textContent=d.user.bio; el("ui-bio-row").style.display="block"; }
+      }).catch(()=>{});
+    }
+
+    // Подарки — берём прямо из истории переписки с этим человеком (свои и полученные)
+    const gifts=(S.messages[ch.id]||[]).filter(m=>m.t==="gift");
+    if(gifts.length){
+      el("ui-gifts-grid").innerHTML = gifts.map(g=>`<div class="pgift ${g.rarity||"common"}" title="${escHtml(g.name)}" onclick="closeM('m-user-info');showToast('🎁 '+'${escHtml(g.name).replace(/'/g,"\\'")}')">${giftVisual(g)}</div>`).join("");
+      el("ui-gifts-row").style.display="block";
+    }
+  } else {
+    // Группа/канал — упрощённая информация
+    el("ui-status").textContent = (ch.mbrs||0)+" участник"+((ch.mbrs||0)%10===1&&(ch.mbrs||0)!==11?"":"ов");
+    if(ch.desc){ el("ui-bio").textContent=ch.desc; el("ui-bio-row").style.display="block"; }
+
+    const myRole=myRoleIn(ch);
+    if(ch.mine || myRole==="owner" || myRole==="admin") el("ui-edit-btn").style.display="block";
+  }
+
+  el("m-user-info").classList.add("on");
 }
 
 // ── PROFILE ──────────────────────────────────────────────────
@@ -6832,6 +6867,28 @@ applyTheme(S.theme||"dark");
   <div class="msub">Вставь ссылку-приглашение или код</div>
   <div class="frow s1"><div class="fg"><input class="fii" id="join-link-inp" placeholder="nexus.app/join/xxxxxxxx"></div></div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-join-link')">Отмена</button><button class="xbtn gn" onclick="doJoinByLink()">Войти</button></div>
+</div></div>
+
+<!-- MODAL: USER/CHAT INFO -->
+<div class="movl" id="m-user-info"><div class="modal">
+  <div style="display:flex;flex-direction:column;align-items:center;padding:6px 0 16px">
+    <div id="ui-avatar" style="width:84px;height:84px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;margin-bottom:10px;overflow:hidden"></div>
+    <div id="ui-name" style="font-family:'Syne',sans-serif;font-weight:700;font-size:18px;text-align:center"></div>
+    <div id="ui-uname" style="color:var(--acc2);font-size:13px;margin-top:2px"></div>
+    <div id="ui-status" style="color:var(--tx3);font-size:12.5px;margin-top:4px"></div>
+  </div>
+  <div id="ui-bio-row" style="padding:10px 0;border-top:1px solid var(--brd);display:none">
+    <div style="font-size:11px;color:var(--tx3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.03em">О себе</div>
+    <div id="ui-bio" style="font-size:13px;line-height:1.5"></div>
+  </div>
+  <div id="ui-gifts-row" style="padding:10px 0;border-top:1px solid var(--brd);display:none">
+    <div style="font-size:11px;color:var(--tx3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">🎁 Подарки</div>
+    <div id="ui-gifts-grid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+  </div>
+  <div class="macts">
+    <button class="xbtn sec" onclick="closeM('m-user-info')">Закрыть</button>
+    <button class="xbtn gn" id="ui-edit-btn" style="display:none" onclick="closeM('m-user-info');openChannelSettings()">✏️ Изменить</button>
+  </div>
 </div></div>
 
 <!-- MODAL: ARCHIVE -->
