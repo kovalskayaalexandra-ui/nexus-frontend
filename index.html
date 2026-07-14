@@ -1867,7 +1867,7 @@ function wsHandleMessage(msg){
       break;
 
     case "message.new": {
-      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, poll, contact, spoiler, waveform, gift } = msg.payload;
+      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, poll, contact, spoiler, waveform, gift, msgType } = msg.payload;
       // Не добавляем своё же сообщение (оно уже есть локально)
       if(senderId === S.user?.id) break;
       // Защита от "пустых" сообщений (например, если у собеседника не удалась загрузка файла)
@@ -1908,7 +1908,10 @@ function wsHandleMessage(msg){
         time: time ? new Date(time).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : now(),
         read: S.chat === chatId
       };
-      if(mediaUrl){
+      if(msgType==="sticker"){
+        newMsg.t = "sk";
+        newMsg.sk = text;
+      } else if(mediaUrl){
         if(mediaType==="image"){ newMsg.img = mediaUrl; if(spoiler) newMsg.spoiler=true; }
         else if(mediaType==="video"){ newMsg.video = mediaUrl; if(spoiler) newMsg.spoiler=true; }
         else if(mediaType==="audio") newMsg.audio = { url: mediaUrl, name: fileName||"Аудио" };
@@ -1934,7 +1937,7 @@ function wsHandleMessage(msg){
         S.my_gifts.push({id:nextId(),msgId:id,icon:gift.icon,imageUrl:gift.imageUrl||null,name:gift.name,rarity:gift.rarity,from:ch?.nm||"Пользователь",to:"Вы",date:now()});
       }
       S.messages[chatId].push(newMsg);
-      const prevTx = mediaUrl ? (mediaType==="image" ? "📷 Фото" : mediaType==="video" ? "🎥 Видео" : mediaType==="videoCircle" ? "⭕ Видео-кружочек" : mediaType==="voice" ? "🎤 Голосовое" : mediaType==="audio" ? "🎵 "+(fileName||"Аудио") : "📎 "+(fileName||"Файл"))
+      const prevTx = msgType==="sticker" ? "Стикер "+text : mediaUrl ? (mediaType==="image" ? "📷 Фото" : mediaType==="video" ? "🎥 Видео" : mediaType==="videoCircle" ? "⭕ Видео-кружочек" : mediaType==="voice" ? "🎤 Голосовое" : mediaType==="audio" ? "🎵 "+(fileName||"Аудио") : "📎 "+(fileName||"Файл"))
         : poll ? "📊 "+poll.question
         : contact ? "👤 "+(contact.nm||"Контакт")
         : gift ? "🎁 Подарок: "+gift.name
@@ -2386,7 +2389,10 @@ async function loadMessagesFromDB(chatId){
         read: isMe ? !!dbMsg.read_at : true,
         edited: !!dbMsg.edited_at
       };
-      if(dbMsg.media_url){
+      if(dbMsg.type==="sticker"){
+        m.t="sk";
+        m.sk=dbMsg.text;
+      } else if(dbMsg.media_url){
         if(dbMsg.media_type==="image"){ m.img=dbMsg.media_url; if(dbMsg.spoiler) m.spoiler=true; }
         else if(dbMsg.media_type==="video"){ m.video=dbMsg.media_url; if(dbMsg.spoiler) m.spoiler=true; }
         else if(dbMsg.media_type==="audio") m.audio={url:dbMsg.media_url,name:dbMsg.file_name||"Аудио"};
@@ -3211,13 +3217,27 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds){
   }
 }
 
-function sendSticker(sk){
+async function sendSticker(sk){
   if(!S.messages[S.chat])S.messages[S.chat]=[];
   const tm=now(); const id=nextId();
-  S.messages[S.chat].push({id,t:"sk",sk,time:tm});
+  const localMsg={id,t:"sk",sk,time:tm};
+  S.messages[S.chat].push(localMsg);
   const ch=S.chats.find(c=>c.id===S.chat);
   if(ch){ch.prev="Стикер "+sk;ch.time=tm;}
   renderMsgs(); closeMPanel(); renderChats(); saveState();
+
+  // Раньше стикер оставался только локально у отправителя и никогда не доходил
+  // до собеседника — та же болезнь, что уже чинили у голосовых/подарков
+  const chatId=S.chat;
+  if(typeof chatId==="string" && chatId.length>10){
+    try{
+      const d=await apiPost("/api/messages", {chatId, text:sk, type:"sticker"}, true);
+      const dbId=d?.message?.id||null;
+      if(dbId){ localMsg.dbId=dbId; saveState(); }
+      const memberIds=getChatMemberIds(ch);
+      wsSendReliable({type:"message.send", payload:{chatId, text:sk, msgType:"sticker", memberIds, id:dbId}});
+    }catch(e){ console.warn("send sticker error:", e); }
+  }
 }
 
 function hKey(e){ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();} }
