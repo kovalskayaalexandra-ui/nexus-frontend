@@ -1845,11 +1845,11 @@ function wsHandleMessage(msg){
       break;
 
     case "message.new": {
-      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, poll, contact, spoiler, waveform } = msg.payload;
+      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, poll, contact, spoiler, waveform, gift } = msg.payload;
       // Не добавляем своё же сообщение (оно уже есть локально)
       if(senderId === S.user?.id) break;
       // Защита от "пустых" сообщений (например, если у собеседника не удалась загрузка файла)
-      if(!text && !mediaUrl && !poll && !contact) break;
+      if(!text && !mediaUrl && !poll && !contact && !gift) break;
       if(!S.messages[chatId]) S.messages[chatId] = [];
       // Проверяем что такого сообщения ещё нет
       if(S.messages[chatId].find(m => m.wsId === id || (id && m.dbId === id))) break;
@@ -1897,11 +1897,20 @@ function wsHandleMessage(msg){
         newMsg.poll = { ...poll, myVotes: [] };
       } else if(contact){
         newMsg.contact = contact;
+      } else if(gift){
+        newMsg.t = "gift";
+        newMsg.icon = gift.icon;
+        newMsg.imageUrl = gift.imageUrl||null;
+        newMsg.name = gift.name;
+        newMsg.rarity = gift.rarity;
+        newMsg.to = gift.to;
+        newMsg.msg = gift.msg||"";
       }
       S.messages[chatId].push(newMsg);
       const prevTx = mediaUrl ? (mediaType==="image" ? "📷 Фото" : mediaType==="video" ? "🎥 Видео" : mediaType==="videoCircle" ? "⭕ Видео-кружочек" : mediaType==="voice" ? "🎤 Голосовое" : mediaType==="audio" ? "🎵 "+(fileName||"Аудио") : "📎 "+(fileName||"Файл"))
         : poll ? "📊 "+poll.question
         : contact ? "👤 "+(contact.nm||"Контакт")
+        : gift ? "🎁 Подарок: "+gift.name
         : text;
       if(ch){ ch.prev = prevTx; ch.time = now(); if(S.chat !== chatId) ch.unread = (ch.unread||0)+1; }
       if(S.chat === chatId) { renderMsgs(); markChatAsRead(chatId); }
@@ -2359,6 +2368,15 @@ async function loadMessagesFromDB(chatId){
       }
       if(dbMsg.poll) m.poll={...dbMsg.poll, myVotes:[]};
       if(dbMsg.contact) m.contact=dbMsg.contact;
+      if(dbMsg.gift){
+        m.t="gift";
+        m.icon=dbMsg.gift.icon;
+        m.imageUrl=dbMsg.gift.imageUrl||null;
+        m.name=dbMsg.gift.name;
+        m.rarity=dbMsg.gift.rarity;
+        m.to=dbMsg.gift.to;
+        m.msg=dbMsg.gift.msg||"";
+      }
       S.messages[chatId].push(m);
     });
     saveState(); renderMsgs();
@@ -5845,7 +5863,7 @@ function openGiftModal(id){
   el("m-gift").classList.add("on");
 }
 
-function sendGift(){
+async function sendGift(){
   const g = S.gifts_catalog.find(x=>x.id===selectedGiftId); if(!g) return;
   if(S.bal < g.price){ showToast("❌ Недостаточно CR"); return; }
   S.bal -= g.price;
@@ -5856,14 +5874,26 @@ function sendGift(){
   // send as message in chat
   if(!S.messages[S.chat]) S.messages[S.chat]=[];
   const msg_ = el("mgift-msg")?.value||"";
-  S.messages[S.chat].push({
-    id:nextId(),t:"gift",icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,
-    msg:msg_,time:now(),to:giftRecipient
-  });
+  const giftData={icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,to:giftRecipient,msg:msg_};
+  const localMsg={id:nextId(),t:"gift",...giftData,time:now()};
+  S.messages[S.chat].push(localMsg);
   const ch=S.chats.find(c=>c.id===S.chat);
   if(ch){ch.prev="🎁 Подарок: "+g.name;ch.time=now();}
   updBal(); closeM("m-gift"); renderMsgs(); renderChats(); renderMyGifts(); saveState();
   showToast("🎁 Подарок «"+g.name+"» отправлен!");
+
+  // Реально сохраняем на сервере и доставляем собеседнику — раньше подарок оставался
+  // только в браузере отправителя и никогда не долетал до получателя
+  const chatId=S.chat;
+  if(typeof chatId==="string" && chatId.length>10){
+    try{
+      const d=await apiPost("/api/messages", {chatId, text:"", gift:giftData}, true);
+      const dbId=d?.message?.id||null;
+      if(dbId){ localMsg.dbId=dbId; saveState(); }
+      const memberIds=getChatMemberIds(ch);
+      wsSendReliable({type:"message.send", payload:{chatId, text:"", memberIds, gift:giftData, id:dbId}});
+    }catch(e){ console.warn("send gift error:", e); }
+  }
 }
 
 function renderMyGifts(){
