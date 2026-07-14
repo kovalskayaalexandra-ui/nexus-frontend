@@ -1691,6 +1691,19 @@ function loadState(){
   }
   // Контактов пока нет как реальной функции — список всегда пустой из кода
   S.contacts = [];
+
+  // Самовосстановление "Избранного" (chat 77777) — раньше эта проверка была только
+  // в момент входа (loginOK), поэтому если чат случайно пропадал (удаление/баг до того,
+  // как мы защитили системные чаты от удаления), обычная перезагрузка страницы его не
+  // возвращала. Теперь проверяется при каждой загрузке состояния.
+  if(S.chats && !S.chats.find(c=>c.id===77777)){
+    console.log("🔧 Избранное отсутствует, восстанавливаю...");
+    S.chats.push({id:77777,nm:"⭐ Избранное",ini:"⭐",col:2,online:false,prev:"Сохранённые сообщения",time:"",unread:0,type:"personal",pinned:true,muted:false,blocked:false,draft:"",saved:true});
+    if(!S.messages) S.messages={};
+    if(!S.messages[77777]) S.messages[77777]=[{id:1,t:"sys",tx:"Это ваше Избранное — сохраняйте сюда важные сообщения, ссылки и заметки. Видите только вы."}];
+  } else {
+    console.log("ℹ️ Избранное на месте, id 77777 найден:", !!S.chats?.find(c=>c.id===77777));
+  }
 }
 
 function saveState(){
@@ -1899,12 +1912,17 @@ function wsHandleMessage(msg){
         newMsg.contact = contact;
       } else if(gift){
         newMsg.t = "gift";
+        newMsg.out = false;
         newMsg.icon = gift.icon;
         newMsg.imageUrl = gift.imageUrl||null;
         newMsg.name = gift.name;
         newMsg.rarity = gift.rarity;
         newMsg.to = gift.to;
         newMsg.msg = gift.msg||"";
+        // Добавляем в личную коллекцию "Мои подарки" — иначе получатель видит подарок
+        // только внутри самого чата, а не в профиле/во всплывающем окне отовсюду
+        if(!S.my_gifts) S.my_gifts=[];
+        S.my_gifts.push({id:nextId(),msgId:id,icon:gift.icon,imageUrl:gift.imageUrl||null,name:gift.name,rarity:gift.rarity,from:ch?.nm||"Пользователь",to:"Вы",date:now()});
       }
       S.messages[chatId].push(newMsg);
       const prevTx = mediaUrl ? (mediaType==="image" ? "📷 Фото" : mediaType==="video" ? "🎥 Видео" : mediaType==="videoCircle" ? "⭕ Видео-кружочек" : mediaType==="voice" ? "🎤 Голосовое" : mediaType==="audio" ? "🎵 "+(fileName||"Аудио") : "📎 "+(fileName||"Файл"))
@@ -2370,12 +2388,22 @@ async function loadMessagesFromDB(chatId){
       if(dbMsg.contact) m.contact=dbMsg.contact;
       if(dbMsg.gift){
         m.t="gift";
+        m.out=isMe;
         m.icon=dbMsg.gift.icon;
         m.imageUrl=dbMsg.gift.imageUrl||null;
         m.name=dbMsg.gift.name;
         m.rarity=dbMsg.gift.rarity;
         m.to=dbMsg.gift.to;
         m.msg=dbMsg.gift.msg||"";
+        // Пополняем личную коллекцию "Мои подарки" при первой загрузке этого сообщения,
+        // чтобы получатель видел подарок и вне чата, не дублируя при повторных загрузках
+        if(!isMe){
+          if(!S.my_gifts) S.my_gifts=[];
+          if(!S.my_gifts.find(g=>g.msgId===dbMsg.id)){
+            const senderChat=S.chats.find(c=>c.id===chatId);
+            S.my_gifts.push({id:nextId(),msgId:dbMsg.id,icon:dbMsg.gift.icon,imageUrl:dbMsg.gift.imageUrl||null,name:dbMsg.gift.name,rarity:dbMsg.gift.rarity,from:senderChat?.nm||"Пользователь",to:"Вы",date:m.time});
+          }
+        }
       }
       S.messages[chatId].push(m);
     });
@@ -2649,7 +2677,7 @@ function renderMsgs(){
     if(m.t==="date"){const d=document.createElement("div");d.className="ddiv";d.innerHTML=`<span>${m.tx}</span>`;c.appendChild(d);return;}
     if(m.t==="sys"){const s=document.createElement("div");s.className="sysmsg";s.textContent=m.tx;c.appendChild(s);return;}
     const row=document.createElement("div");
-    row.className="mrow "+(m.t==="out"?"out":"in")+(S.selectedMsgs.includes(m.id)?" selected":"");
+    row.className="mrow "+((m.t==="out"||(m.t==="gift"&&m.out))?"out":"in")+(S.selectedMsgs.includes(m.id)?" selected":"");
     row.dataset.id=m.id;
     // В режиме выделения клик по строке переключает выбор
     if(S.selectMode){
@@ -2659,9 +2687,17 @@ function renderMsgs(){
     let h="";
     // Чекбокс для режима выделения
     if(m.t!=="date"&&m.t!=="sys")h+=`<div class="msel-check">${S.selectedMsgs.includes(m.id)?"✓":""}</div>`;
-    if(m.t!=="out")h+=`<div class="mav" style="background:${colBg(m.col||0)}">${m.fr?m.fr[0]:"?"}</div>`;
+    if(m.t!=="out" && !(m.t==="gift"&&m.out))h+=`<div class="mav" style="background:${colBg(m.col||0)}">${m.fr?m.fr[0]:"?"}</div>`;
     if(m.t==="sk"){
       h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="lpStart(event,${m.id})" ontouchend="lpEnd()" ontouchmove="lpEnd()">${m.sk}</div>`;
+    }else if(m.t==="gift"){
+      const rc={common:"var(--tx2)",rare:"var(--acc2)",epic:"var(--gr)",legendary:"var(--am)"};
+      h+=`<div class="gift-bubble r-${m.rarity||"common"}" onclick="showToast('🎁 '+'${escHtml(m.name||"").replace(/'/g,"\\'")}')">`
+        +`<div class="gift-bub-ico">${giftVisual(m)}</div>`
+        +`<div><div class="gift-bub-nm">🎁 ${escHtml(m.name||"")}</div>`
+        +`<div class="gift-bub-sub" style="color:${rc[m.rarity]||"var(--tx2)"}">→ ${escHtml(m.to||"")}</div>`
+        +(m.msg?`<div class="gift-bub-sub">"${escHtml(m.msg)}"</div>`:"")
+        +`<div class="mt">${m.time||""}</div></div></div>`;
     }else if(m.t==="voice"){
       const bars=Array.from({length:17},(_,i)=>{const ht=4+Math.round(Math.sin(i*.8+1)*8+Math.random()*7);return`<div class="wb" style="height:${ht}px"></div>`;}).join("");
       h+=`<div class="vbub" oncontextmenu="showCtx(event,${m.id})"><div class="pbtn" onclick="tPlay(this)"><svg width="11" height="11" fill="white" viewBox="0 0 24 24"><path d="m5 3 14 9-14 9V3z"/></svg></div><div class="wf">${bars}</div><div class="vd">${m.dur||"0:00"}</div></div>`;
@@ -2734,21 +2770,6 @@ function renderMsgs(){
     row.innerHTML=h; c.appendChild(row);
   });
   c.scrollTop=c.scrollHeight;
-  // render gift messages
-  (S.messages[S.chat]||[]).filter(m=>m.t==="gift").forEach(m=>{
-    if(c.querySelector('[data-id="gift-'+m.id+'"]')) return;
-    const row=document.createElement("div");
-    row.className="mrow out";
-    row.setAttribute("data-id","gift-"+m.id);
-    const rc={common:"var(--tx2)",rare:"var(--acc2)",epic:"var(--gr)",legendary:"var(--am)"};
-    row.innerHTML='<div class="gift-bubble r-'+(m.rarity||'common')+'" onclick="showToast(\'🎁 \'+m.name)">'
-      +'<div class="gift-bub-ico">'+giftVisual(m)+'</div>'
-      +'<div><div class="gift-bub-nm">🎁 '+m.name+'</div>'
-      +'<div class="gift-bub-sub" style="color:'+(rc[m.rarity]||'var(--tx2)')+'">→ '+m.to+'</div>'
-      +(m.msg?'<div class="gift-bub-sub">"'+m.msg+'"</div>':"")
-      +'<div class="mt">'+m.time+'</div></div></div>';
-    c.appendChild(row);
-  });
 }
 
 // ── SEND / EDIT ──────────────────────────────────────────────
@@ -5910,7 +5931,7 @@ async function sendGift(){
   if(!S.messages[S.chat]) S.messages[S.chat]=[];
   const msg_ = el("mgift-msg")?.value||"";
   const giftData={icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,to:giftRecipient,msg:msg_};
-  const localMsg={id:nextId(),t:"gift",...giftData,time:now()};
+  const localMsg={id:nextId(),t:"gift",out:true,...giftData,time:now()};
   S.messages[S.chat].push(localMsg);
   const ch=S.chats.find(c=>c.id===S.chat);
   if(ch){ch.prev="🎁 Подарок: "+g.name;ch.time=now();}
