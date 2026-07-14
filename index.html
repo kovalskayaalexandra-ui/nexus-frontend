@@ -2659,6 +2659,9 @@ function formatMsgText(raw){
   let safe = escHtml(raw);
   // Ссылки [текст](url)
   safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m,txt,url)=>`<a href="${url}" target="_blank" class="msg-link" onclick="event.stopPropagation()">${txt}</a>`);
+  // Голые ссылки — просто вставленный URL без спец-разметки. Не трогаем то, что уже
+  // превратилось в <a> на предыдущем шаге (там URL идёт сразу после кавычки, не пробела)
+  safe = safe.replace(/(^|[\s])(https?:\/\/[^\s<]+)/g, (m,pre,url)=>`${pre}<a href="${url}" target="_blank" class="msg-link" onclick="event.stopPropagation()">${url}</a>`);
   // Код `текст`
   safe = safe.replace(/`([^`]+)`/g, (m,inner)=>`<code class="msg-code">${inner}</code>`);
   // Жирный **текст**
@@ -2771,7 +2774,7 @@ function renderMsgs(){
       // link preview — только для "голых" ссылок, не для оформленных [текст](url)
       const rawForPreview=(m.tx||"").replace(/\[[^\]]+\]\(https?:\/\/[^\s)]+\)/g,"");
       const urlMatch=rawForPreview.match(/https?:\/\/[^\s]+/);
-      if(urlMatch)bc+=`<div class="lnkprev"><div class="lnktitle">🔗 ${urlMatch[0].replace(/https?:\/\//,"").slice(0,40)}</div><div class="lnkdesc">Открыть ссылку</div></div>`;
+      if(urlMatch)bc+=`<div class="lnkprev" style="cursor:pointer" onclick="window.open('${urlMatch[0].replace(/'/g,"%27")}','_blank')"><div class="lnktitle">🔗 ${urlMatch[0].replace(/https?:\/\//,"").slice(0,40)}</div><div class="lnkdesc">Открыть ссылку</div></div>`;
       bc+=`<div class="mt">${m.time||""}${m.t==="out"?ticksHTML(m):""}</div>`;
       if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${r.e} ${r.c}</div>`).join("")}</div>`;
       if(m.edited)bc+='';
