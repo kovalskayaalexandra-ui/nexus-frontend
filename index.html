@@ -2250,6 +2250,7 @@ function loginOK(){
   updateUserUI(); renderChats(); openChat(S.chat||1); updBal();
   // Подключаем WebSocket
   setTimeout(wsConnect, 300);
+  checkPendingJoinLink();
   setTimeout(()=>{ el("ver-banner").classList.add("on"); setTimeout(()=>el("ver-banner").classList.remove("on"),5000); },1500);
   setTimeout(showNotif,4000);
   // official channel + stories bar + support bot
@@ -2845,7 +2846,7 @@ function openChannelSettings(){
   updateReactionsSummary(ch.id);
 
   el("chset-private").classList.toggle("on", !!S.channelSettings[ch.id].isPrivate);
-  el("chset-invite-link").value = ch.inviteLink || "Ссылка появится после сохранения";
+  el("chset-invite-link").value = ch.inviteLink ? buildRealInviteLink(ch.inviteLink) : "Ссылка появится после сохранения";
 
   // "Удалить группу/канал" — только для владельца (создателя), не для админов
   const isOwner = ch.mine || myRoleIn(ch)==="owner";
@@ -2888,8 +2889,22 @@ function openJoinByLink(){
   if(el("join-link-inp")) el("join-link-inp").value="";
   el("m-join-link").classList.add("on");
 }
-async function doJoinByLink(){
-  const code=el("join-link-inp")?.value?.trim();
+// Если в адресной строке есть ?join=код (перешли по ссылке-приглашению) —
+// автоматически вступаем в чат, как только пользователь точно залогинен
+function checkPendingJoinLink(){
+  const params=new URLSearchParams(window.location.search);
+  const code=params.get("join");
+  if(!code) return;
+  // Убираем параметр из адресной строки, чтобы не сработало повторно при обновлении страницы
+  const url=new URL(window.location.href);
+  url.searchParams.delete("join");
+  window.history.replaceState({}, "", url.toString());
+  showToast("🔗 Обнаружена ссылка-приглашение...");
+  setTimeout(()=>{ doJoinByLink(code); }, 1200);
+}
+
+async function doJoinByLink(codeOverride){
+  const code=codeOverride || el("join-link-inp")?.value?.trim();
   if(!code){ showToast("❌ Вставь ссылку или код"); return; }
   showToast("⏳ Проверяем ссылку...");
   try{
@@ -2913,6 +2928,14 @@ async function doJoinByLink(){
   }
 }
 
+// Строим настоящую, кликабельную ссылку на реальный адрес, где живёт приложение —
+// раньше использовался фейковый домен "nexus.app", по которому физически невозможно перейти
+function buildRealInviteLink(codeOrLink){
+  if(!codeOrLink) return "";
+  const code=codeOrLink.trim().split("/").pop();
+  return window.location.origin + window.location.pathname + "?join=" + code;
+}
+
 function copyInviteLink(){
   const link=el("chset-invite-link")?.value;
   if(!link || link.startsWith("Ссылка появится")){ showToast("❌ Сначала сохрани чат"); return; }
@@ -2926,7 +2949,7 @@ async function regenerateInviteLink(){
     const data=await apiPost("/api/chats/"+ch.id+"/regenerate-invite", {}, true);
     if(data?.success){
       ch.inviteLink=data.inviteLink;
-      el("chset-invite-link").value=data.inviteLink;
+      el("chset-invite-link").value=buildRealInviteLink(data.inviteLink);
       saveState();
       showToast("🔄 Новая ссылка создана");
     } else throw new Error(data?.error);
@@ -5321,6 +5344,7 @@ if(S.loggedIn){
   setTimeout(showNotif,5000);
   // Подключаем WebSocket при старте если уже залогинены
   setTimeout(wsConnect, 500);
+  checkPendingJoinLink();
   // Фоновое обновление профиля с сервера если есть токен
   if(getToken()){
     fetch(API_URL+"/api/users/me",{headers:{"Authorization":"Bearer "+getToken()}})
