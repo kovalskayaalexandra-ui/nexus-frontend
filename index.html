@@ -1369,6 +1369,7 @@ tr:hover td{background:var(--bg3)}
     <button class="xbtn am" style="flex:1" onclick="createGroup()">👥 Группа</button>
     <button class="xbtn am" style="flex:1" onclick="createChannel()">📢 Канал</button>
   </div>
+  <button class="rp-action-btn" style="width:100%;margin-top:8px" onclick="openJoinByLink()">🔗 Войти по ссылке-приглашению</button>
 </div></div>
 
 <!-- MODAL: CREATE GROUP -->
@@ -1403,6 +1404,18 @@ tr:hover td{background:var(--bg3)}
   <div class="perm-row">
     <span class="perm-label">Реакции<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Разрешить участникам ставить реакции на сообщения/посты</div></span>
     <div class="perm-tgl" id="chset-reactions-enabled" onclick="toggleChSetting('reactionsEnabled',this)"></div>
+  </div>
+  <div class="perm-row">
+    <span class="perm-label">Приватный чат<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Вступить можно только по ссылке-приглашению</div></span>
+    <div class="perm-tgl" id="chset-private" onclick="toggleChSetting('isPrivate',this)"></div>
+  </div>
+  <div class="fg" style="margin-bottom:10px">
+    <span class="fl">Ссылка-приглашение</span>
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <input class="fii" id="chset-invite-link" readonly style="flex:1;font-size:11.5px">
+      <button class="rp-action-btn" style="width:auto;padding:8px 12px" onclick="copyInviteLink()">📋</button>
+      <button class="rp-action-btn" style="width:auto;padding:8px 12px" onclick="regenerateInviteLink()">🔄</button>
+    </div>
   </div>
   <div id="chset-reactions-picker-row" style="margin-bottom:10px">
     <button class="rp-action-btn" onclick="openReactionsAllowedPicker()" style="width:100%">😀 Выбрать разрешённые реакции</button>
@@ -2711,7 +2724,7 @@ function renderMsgs(){
     row.setAttribute("data-id","gift-"+m.id);
     const rc={common:"var(--tx2)",rare:"var(--acc2)",epic:"var(--gr)",legendary:"var(--am)"};
     row.innerHTML='<div class="gift-bubble r-'+(m.rarity||'common')+'" onclick="showToast(\'🎁 \'+m.name)">'
-      +'<div class="gift-bub-ico">'+m.icon+'</div>'
+      +'<div class="gift-bub-ico">'+giftVisual(m)+'</div>'
       +'<div><div class="gift-bub-nm">🎁 '+m.name+'</div>'
       +'<div class="gift-bub-sub" style="color:'+(rc[m.rarity]||'var(--tx2)')+'">→ '+m.to+'</div>'
       +(m.msg?'<div class="gift-bub-sub">"'+m.msg+'"</div>':"")
@@ -2783,6 +2796,9 @@ function openChannelSettings(){
   el("chset-reactions-picker-row").style.display=reactEnabled?"block":"none";
   updateReactionsSummary(ch.id);
 
+  el("chset-private").classList.toggle("on", !!S.channelSettings[ch.id].isPrivate);
+  el("chset-invite-link").value = ch.inviteLink || "Ссылка появится после сохранения";
+
   // "Удалить группу/канал" — только для владельца (создателя), не для админов
   const isOwner = ch.mine || myRoleIn(ch)==="owner";
   el("chset-delete-row").style.display = isOwner ? "block" : "none";
@@ -2817,6 +2833,56 @@ function deleteGroupFromSettings(){
     apiDelete("/api/chats/"+chatId).catch(e=>console.warn("delete chat error:",e));
     wsSendReliable({type:"chat.delete", payload:{chatId, memberIds}});
   }
+}
+
+function openJoinByLink(){
+  closeM("m-newchat");
+  if(el("join-link-inp")) el("join-link-inp").value="";
+  el("m-join-link").classList.add("on");
+}
+async function doJoinByLink(){
+  const code=el("join-link-inp")?.value?.trim();
+  if(!code){ showToast("❌ Вставь ссылку или код"); return; }
+  showToast("⏳ Проверяем ссылку...");
+  try{
+    const data=await apiPost("/api/chats/join", {inviteCode:code}, true);
+    if(!data?.success) throw new Error(data?.error||"Ссылка недействительна");
+    const chat=data.chat;
+    closeM("m-join-link");
+    let ch=S.chats.find(c=>c.id===chat.id);
+    if(!ch){
+      ch={id:chat.id, nm:chat.name||"Чат", ini:(chat.name||"Ч").slice(0,2).toUpperCase(),
+        col:Math.floor(Math.random()*COLS.length), online:false, prev:"Вы вступили в чат", time:now(),
+        unread:0, type:chat.type, mbrs:2, myRole:"member", mine:false, inviteLink:chat.invite_link,
+        pinned:false, muted:false, blocked:false, draft:""};
+      S.chats.unshift(ch);
+    }
+    renderChats(); openChat(ch.id); saveState();
+    showToast("✅ Вы вступили в «"+ch.nm+"»");
+  }catch(e){
+    console.warn("join by link error:",e);
+    showToast("❌ "+(e.message||"Ссылка недействительна или устарела"));
+  }
+}
+
+function copyInviteLink(){
+  const link=el("chset-invite-link")?.value;
+  if(!link || link.startsWith("Ссылка появится")){ showToast("❌ Сначала сохрани чат"); return; }
+  navigator.clipboard?.writeText(link).then(()=>showToast("📋 Ссылка скопирована")).catch(()=>showToast("❌ Не удалось скопировать"));
+}
+async function regenerateInviteLink(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  if(typeof ch.id!=="string" || ch.id.length<10){ showToast("❌ Сначала сохрани чат на сервере"); return; }
+  if(!confirm("Старая ссылка перестанет работать. Создать новую?")) return;
+  try{
+    const data=await apiPost("/api/chats/"+ch.id+"/regenerate-invite", {}, true);
+    if(data?.success){
+      ch.inviteLink=data.inviteLink;
+      el("chset-invite-link").value=data.inviteLink;
+      saveState();
+      showToast("🔄 Новая ссылка создана");
+    } else throw new Error(data?.error);
+  }catch(e){ console.warn("regenerate invite error:",e); showToast("❌ Не удалось обновить ссылку"); }
 }
 
 function updateReactionsSummary(chatId){
@@ -4734,9 +4800,10 @@ async function doCreateGroup(){
     const data=await apiPost("/api/chats", {type:isChannel?"channels":"groups", name:nm, description:desc, memberIds}, true);
     console.log("📥 Ответ сервера на создание группы:", data);
     realId=data?.chat?.id || null;
+    var serverInviteLink=data?.chat?.invite_link || null;
   }catch(e){ console.warn("create chat on server error:", e); }
 
-  const newChat={id:realId||nextId(),nm:nm,ini:nm.slice(0,2).toUpperCase(),col:Math.floor(Math.random()*COLS.length),online:false,prev:isChannel?"Канал создан":"Группа создана",time:now(),unread:0,type:isChannel?"channels":"groups",mbrs:members.length,members:members,memberIds:memberIds,myRole:"owner",mine:isChannel,pinned:false,muted:false,blocked:false,draft:""};
+  const newChat={id:realId||nextId(),nm:nm,ini:nm.slice(0,2).toUpperCase(),col:Math.floor(Math.random()*COLS.length),online:false,prev:isChannel?"Канал создан":"Группа создана",time:now(),unread:0,type:isChannel?"channels":"groups",mbrs:members.length,members:members,memberIds:memberIds,myRole:"owner",mine:isChannel,pinned:false,muted:false,blocked:false,draft:"",inviteLink:serverInviteLink,isPrivate:false};
   S.chats.unshift(newChat);
   if(!S.messages[newChat.id])S.messages[newChat.id]=[{id:nextId(),t:"sys",tx:isChannel?"Вы создали канал «"+nm+"»":"Вы создали группу «"+nm+"»"},{id:nextId(),t:"date",tx:"Сегодня"}];
   closeM("m-group"); renderChats(); openChat(newChat.id); saveState();
@@ -5751,7 +5818,7 @@ function renderGiftsCatalog(rarity){
     <div class="gift-card ${g.rarity}" onclick="openGiftModal(${g.id})">
       <div class="gift-rarity ${g.rarity}">${rarityNames[g.rarity]}</div>
       ${scarce?`<div class="gift-scarce">🔥 ${left} шт</div>`:""}
-      <div class="gift-ico">${g.icon}</div>
+      <div class="gift-ico">${giftVisual(g)}</div>
       <div class="gift-name">${g.name}</div>
       <div class="gift-price">💎 ${g.price.toLocaleString("ru")}</div>
       <div class="gift-limit">${g.limit?`Лимит: ${left} из ${g.limit}`:"∞ Без лимита"}</div>
@@ -5768,7 +5835,7 @@ function filterGifts(rarity, btn){
 function openGiftModal(id){
   const g = S.gifts_catalog.find(x=>x.id===id); if(!g) return;
   selectedGiftId = id;
-  el("mgift-ico").textContent = g.icon;
+  el("mgift-ico").innerHTML = giftVisual(g);
   el("mgift-nm").textContent = g.name;
   el("mgift-rarity").textContent = {common:"⚪ Обычный",rare:"💜 Редкий",epic:"💚 Эпический",legendary:"⭐ Легендарный"}[g.rarity];
   el("mgift-to").textContent = giftRecipient;
@@ -5785,12 +5852,12 @@ function sendGift(){
   g.sold = (g.sold||0)+1;
   // add to my gifts
   if(!S.my_gifts) S.my_gifts=[];
-  S.my_gifts.push({id:g.id,icon:g.icon,name:g.name,rarity:g.rarity,from:"Вы",to:giftRecipient,date:now()});
+  S.my_gifts.push({id:g.id,icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,from:"Вы",to:giftRecipient,date:now()});
   // send as message in chat
   if(!S.messages[S.chat]) S.messages[S.chat]=[];
   const msg_ = el("mgift-msg")?.value||"";
   S.messages[S.chat].push({
-    id:nextId(),t:"gift",icon:g.icon,name:g.name,rarity:g.rarity,
+    id:nextId(),t:"gift",icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,
     msg:msg_,time:now(),to:giftRecipient
   });
   const ch=S.chats.find(c=>c.id===S.chat);
@@ -5822,12 +5889,12 @@ function renderMyGifts(){
   let html="";
   if(special.length){
     html+=`<div class="pgift-section"><div class="pgift-section-tit" style="color:var(--am)">✨ Особые подарки</div><div class="pgift-grid">`;
-    html+=special.map(g=>`<div class="pgift ${g.rarity}" title="${g.name} от ${g.from}" onclick="openMyGiftDetail(${g.id})">${g.icon}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
+    html+=special.map(g=>`<div class="pgift ${g.rarity}" title="${g.name} от ${g.from}" onclick="openMyGiftDetail(${g.id})">${giftVisual(g)}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
     html+=`</div></div>`;
   }
   if(common.length){
     html+=`<div class="pgift-section"><div class="pgift-section-tit" style="color:var(--tx3)">🎁 Обычные</div><div class="pgift-grid">`;
-    html+=common.map(g=>`<div class="pgift ${g.rarity}" title="${g.name} от ${g.from}" onclick="openMyGiftDetail(${g.id})">${g.icon}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
+    html+=common.map(g=>`<div class="pgift ${g.rarity}" title="${g.name} от ${g.from}" onclick="openMyGiftDetail(${g.id})">${giftVisual(g)}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
     html+=`</div></div>`;
   }
   showcase.style.flexWrap="";
@@ -6238,7 +6305,15 @@ function renderAdminGifts(){
       page.innerHTML = `
         <div class="atitle">🎁 Управление подарками</div><div class="asub2">Каталог, лимиты, эксклюзивы</div>
         <div class="asec"><div class="asect">➕ Добавить подарок</div>
-          <div class="frow"><div class="fg"><span class="fl">Иконка</span><input class="fii" id="ag-ico" value="🎁"></div><div class="fg"><span class="fl">Название</span><input class="fii" id="ag-nm" placeholder="Название"></div></div>
+          <div class="frow"><div class="fg"><span class="fl">Эмодзи (запасной вариант)</span><input class="fii" id="ag-ico" value="🎁"></div><div class="fg"><span class="fl">Название</span><input class="fii" id="ag-nm" placeholder="Название"></div></div>
+          <div class="frow s1"><div class="fg">
+            <span class="fl">Своя картинка/GIF (необязательно — если не загрузить, будет эмодзи)</span>
+            <label style="display:flex;align-items:center;gap:10px;margin-top:6px;border:1.5px dashed var(--brd);border-radius:10px;padding:10px;cursor:pointer;position:relative" id="ag-img-drop">
+              <div id="ag-img-preview" style="width:40px;height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--bg3);border-radius:8px">🎁</div>
+              <span id="ag-img-hint" style="font-size:12px;color:var(--tx3)">Нажми, чтобы выбрать файл</span>
+              <input type="file" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="previewAdminGiftImage(this)">
+            </label>
+          </div></div>
           <div class="frow"><div class="fg"><span class="fl">Цена CR</span><input class="fii" type="number" id="ag-price" value="100"></div><div class="fg"><span class="fl">Лимит (0=∞)</span><input class="fii" type="number" id="ag-limit" value="0"></div></div>
           <div class="frow s1"><div class="fg"><span class="fl">Редкость</span><select class="fsel" id="ag-rarity"><option value="common">Обычный</option><option value="rare">Редкий</option><option value="epic">Эпический</option><option value="legendary">Легендарный</option></select></div></div>
           <button class="xbtn gn" onclick="adminAddGift()">➕ Добавить</button>
@@ -6251,26 +6326,65 @@ function renderAdminGifts(){
   }
 }
 
+// Показывает картинку подарка, если она загружена, иначе эмодзи — единая точка для всех мест,
+// где отображается визуал подарка (магазин, детали, сообщение в чате, "мои подарки")
+function giftVisual(g){
+  if(g && g.imageUrl) return `<img src="${g.imageUrl}" style="width:100%;height:100%;object-fit:contain;display:block">`;
+  return (g && g.icon) || "🎁";
+}
+
 function renderAdminGiftsTable(){
   const t = document.getElementById("ag-tbl"); if(!t) return;
   t.innerHTML = S.gifts_catalog.map((g,i)=>`
-    <tr><td>${g.icon} ${g.name}</td><td style="color:var(--cr)">💎 ${g.price}</td>
+    <tr><td>${g.imageUrl?`<span style="display:inline-block;width:20px;height:20px;vertical-align:middle;margin-right:4px">${giftVisual(g)}</span>`:g.icon} ${g.name}</td><td style="color:var(--cr)">💎 ${g.price}</td>
     <td>${g.limit||"∞"}</td><td>${g.sold}</td>
     <td><span class="bg bga">${g.rarity}</span></td>
     <td><button class="xbtn rd" style="padding:3px 7px;font-size:10px" onclick="S.gifts_catalog.splice(${i},1);renderAdminGiftsTable();saveState()">✕</button></td></tr>
   `).join("");
 }
 
-function adminAddGift(){
+let adminGiftImageFile=null;
+function previewAdminGiftImage(inp){
+  if(!inp.files[0]) return;
+  adminGiftImageFile=inp.files[0];
+  const url=URL.createObjectURL(adminGiftImageFile);
+  el("ag-img-preview").innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:contain;border-radius:8px">`;
+  el("ag-img-hint").textContent=adminGiftImageFile.name;
+}
+
+async function adminAddGift(){
   const ico=el("ag-ico")?.value||"🎁";
   const nm=el("ag-nm")?.value?.trim();
   const price=parseInt(el("ag-price")?.value)||100;
   const limit=parseInt(el("ag-limit")?.value)||0;
   const rarity=el("ag-rarity")?.value||"common";
   if(!nm){showToast("❌ Введите название");return;}
-  S.gifts_catalog.push({id:nextId(),name:nm,icon:ico,price,limit:limit||null,sold:0,rarity,color:"var(--cr)"});
+
+  let imageUrl=null;
+  if(adminGiftImageFile){
+    showToast("⏳ Загружаем картинку...");
+    try{
+      const fd=new FormData();
+      fd.append("file",adminGiftImageFile);
+      const t=getToken();
+      const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.success) throw new Error(data.error||"Не удалось загрузить файл");
+      imageUrl=data.url;
+    }catch(e){
+      console.error("gift image upload error:",e);
+      showToast("⚠️ Картинку загрузить не удалось — подарок сохранён с эмодзи");
+    }
+  }
+
+  S.gifts_catalog.push({id:nextId(),name:nm,icon:ico,imageUrl,price,limit:limit||null,sold:0,rarity,color:"var(--cr)"});
   renderAdminGiftsTable();
   saveState();
+  // Сбрасываем форму
+  adminGiftImageFile=null;
+  el("ag-img-preview").innerHTML="🎁";
+  el("ag-img-hint").textContent="Нажми, чтобы выбрать файл";
+  if(el("ag-nm")) el("ag-nm").value="";
   showToast("🎁 Подарок добавлен!");
 }
 
@@ -6680,6 +6794,14 @@ applyTheme(S.theme||"dark");
     <div class="perm-tgl" id="poll-lock" onclick="this.classList.toggle('on')"></div>
   </div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-poll-create')">Отмена</button><button class="xbtn gn" onclick="submitPoll()">✅ Создать</button></div>
+</div></div>
+
+<!-- MODAL: JOIN BY LINK -->
+<div class="movl" id="m-join-link"><div class="modal">
+  <div class="mtit">🔗 Войти по ссылке</div>
+  <div class="msub">Вставь ссылку-приглашение или код</div>
+  <div class="frow s1"><div class="fg"><input class="fii" id="join-link-inp" placeholder="nexus.app/join/xxxxxxxx"></div></div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-join-link')">Отмена</button><button class="xbtn gn" onclick="doJoinByLink()">Войти</button></div>
 </div></div>
 
 <!-- MODAL: ARCHIVE -->
