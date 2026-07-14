@@ -4709,6 +4709,7 @@ async function doCreateGroup(){
   const memberIds=[];
   selected.forEach(cid=>{
     const c=(S.contacts||[]).find(x=>String(x.id)===cid) || S.chats.find(x=>String(x.withUserId)===cid);
+    console.log("🔍 Ищу участника, cid:", cid, "→ найден:", c ? (c.nm+" (withUserId:"+c.withUserId+")") : "НЕ НАЙДЕН");
     if(c){
       const nm2=c.nm, col2=c.col||0, uname2=c.uname||"";
       members.push({id:cid, nm:nm2, uname:uname2, col:col2, role:"member", perms:memberPerms()});
