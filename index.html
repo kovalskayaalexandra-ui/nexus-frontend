@@ -759,6 +759,7 @@ tr:hover td{background:var(--bg3)}
     </div>
     <button class="abtn" id="t-btnsnd" onclick="sendCode()">Отправить код</button>
     <button class="abtn sec" onclick="showA('auth-welcome')">← Назад</button>
+    <div style="text-align:center;margin-top:12px;font-size:12.5px;color:var(--tx3);cursor:pointer" onclick="openPasswordLogin()">🔐 Войти по паролю вместо SMS</div>
   </div>
 </div>
 
@@ -777,6 +778,49 @@ tr:hover td{background:var(--bg3)}
     <div class="otimer">Повторная отправка через <span id="otc">60</span> сек.</div>
     <button class="abtn" onclick="verifyCode()">Подтвердить</button>
     <button class="abtn sec" onclick="showA('auth-phone')">← Назад</button>
+  </div>
+</div>
+
+<div class="auth" id="auth-password">
+  <div class="abox">
+    <div class="alogo">⬡ Nexus</div>
+    <div class="atitle">Вход по паролю</div>
+    <div class="asub">Для аккаунтов с включённой двухфакторной защитой</div>
+    <label class="fl">Телефон</label>
+    <input class="fii" id="pl-phone" placeholder="+7 999 000 0000" style="margin-bottom:10px">
+    <label class="fl">Пароль</label>
+    <input class="fii" type="password" id="pl-password" style="margin-bottom:10px">
+    <div id="pl-2fa-row" style="display:none">
+      <label class="fl">Код из приложения или резервный код</label>
+      <input class="fii" id="pl-2fa-code" placeholder="123456 или XXXX-XXXX" style="margin-bottom:10px">
+    </div>
+    <button class="abtn" onclick="doPasswordLogin()">Войти</button>
+    <button class="abtn sec" onclick="showA('auth-phone')">← Назад</button>
+  </div>
+</div>
+
+<div class="auth" id="auth-2fa-mandatory">
+  <div class="abox">
+    <div class="alogo">⬡ Nexus</div>
+    <div class="atitle">🔐 Нужна двухфакторная защита</div>
+    <div class="asub">Для этого аккаунта обязательна 2FA — без неё нельзя продолжить. Отсканируй QR в Google Authenticator/Яндекс Ключ и т.п.</div>
+    <div style="display:flex;justify-content:center;margin:14px 0">
+      <img id="m2fa-qr" style="width:180px;height:180px;border-radius:10px;background:#fff;padding:8px">
+    </div>
+    <div style="text-align:center;font-size:11px;color:var(--tx3);margin-bottom:14px">Не сканируется? Введи вручную: <span id="m2fa-secret" style="color:var(--tx2);font-family:monospace"></span></div>
+    <label class="fl">Код из приложения</label>
+    <input class="fii" id="m2fa-code" placeholder="123456" style="margin-bottom:14px">
+    <button class="abtn" onclick="confirmMandatory2FA()">Подтвердить и войти</button>
+  </div>
+</div>
+
+<div class="auth" id="auth-2fa-mandatory-codes">
+  <div class="abox">
+    <div class="alogo">⬡ Nexus</div>
+    <div class="atitle">✅ 2FA включена</div>
+    <div class="asub">Сохрани эти резервные коды в надёжном месте — они покажутся только один раз. Каждый работает один раз, если потеряешь доступ к приложению-аутентификатору.</div>
+    <div id="m2fa-backup-list" style="background:var(--bg3);border-radius:10px;padding:12px;font-family:monospace;font-size:13px;line-height:1.9;margin:14px 0;text-align:center"></div>
+    <button class="abtn" onclick="finishMandatory2FALogin()">Я сохранил(а) коды — войти</button>
   </div>
 </div>
 
@@ -1030,6 +1074,10 @@ tr:hover td{background:var(--bg3)}
       </div>
       <div class="settings-row" onclick="openSessions()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(56,189,248,.1)">📲</div><div><div class="settings-row-label">Активные сессии</div><div class="settings-row-sub">Устройства и выход</div></div></div>
+        <div class="settings-row-arrow">›</div>
+      </div>
+      <div class="settings-row" onclick="openSecurity()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(248,113,113,.1)">🛡️</div><div><div class="settings-row-label">Безопасность</div><div class="settings-row-sub" id="security-sub">Пароль, двухфакторная защита</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
     </div>
@@ -2178,6 +2226,94 @@ function oNext(i){ if(el("o"+i).value&&i<4)el("o"+(i+1)).focus(); chkOTP(); }
 function oBk(e,i){ if(e.key==="Backspace"&&!el("o"+i).value&&i>0)el("o"+(i-1)).focus(); }
 function chkOTP(){ let c="";for(let i=0;i<5;i++)c+=el("o"+i).value; if(c.length===5)setTimeout(verifyCode,200); }
 
+let _mandatory2FAData=null; // {setupToken, phone} — временное состояние на время обязательной настройки
+
+async function doPasswordLogin(){
+  const phone=el("pl-phone")?.value?.trim();
+  const password=el("pl-password")?.value;
+  const code=el("pl-2fa-code")?.value?.trim();
+  if(!phone||!password){ showToast("❌ Введите телефон и пароль"); return; }
+
+  const body={phone, password};
+  if(code){
+    // Резервный код обычно в формате XXXX-XXXX, TOTP — просто 6 цифр
+    if(/^\d{6}$/.test(code)) body.totpCode=code; else body.backupCode=code;
+  }
+
+  try{
+    const data=await apiPost("/api/auth/login-password", body);
+
+    // Для этого аккаунта (owner/admin) обязательна 2FA, но она ещё не настроена —
+    // сразу продолжаем настройку, не давая просто "войти без нее"
+    if(data.requires_2fa_setup){
+      _mandatory2FAData={setupToken:data.setupToken, phone};
+      setToken(data.setupToken);
+      showToast("🔐 Для этого аккаунта обязательна двухфакторная защита");
+      try{
+        const setupData=await apiPost("/api/auth/2fa/setup", {}, true);
+        el("m2fa-qr").src=setupData.qrCode;
+        el("m2fa-secret").textContent=setupData.secret;
+        el("m2fa-code").value="";
+        showA("auth-2fa-mandatory");
+      }catch(e){ showToast("❌ Не удалось начать настройку 2FA"); }
+      return;
+    }
+
+    if(!data.success){
+      if(data.requires_2fa){
+        el("pl-2fa-row").style.display="block";
+        showToast("🔐 Введите код 2FA");
+        return;
+      }
+      showToast("❌ "+(data.error||"Не удалось войти"));
+      return;
+    }
+    setToken(data.token);
+    S.user={
+      id:data.user.id, name:data.user.name||"", uname:data.user.username||"",
+      bio:data.user.bio||"", phone:data.user.phone||phone, avatar:data.user.avatar||"",
+      initials:(data.user.name||"Я").slice(0,2).toUpperCase(), role:data.user.role||"user",
+      balance_cr:data.user.balance||0, has_password:true, totp_enabled:!!data.user.totp_enabled,
+    };
+    saveState(); loginOK();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function confirmMandatory2FA(){
+  const totpCode=el("m2fa-code")?.value?.trim();
+  if(!totpCode){ showToast("❌ Введи код из приложения"); return; }
+  try{
+    const data=await apiPost("/api/auth/2fa/verify", {totpCode}, true);
+    if(!data.success){ showToast("❌ Неверный код"); return; }
+    // Бэкенд при обязательной настройке сразу довыдаёт полноценный токен и юзера
+    if(data.token){
+      setToken(data.token);
+      S.user={
+        id:data.user.id, name:data.user.name||"", uname:data.user.username||"",
+        bio:data.user.bio||"", phone:data.user.phone||_mandatory2FAData?.phone||"",
+        avatar:data.user.avatar||"", initials:(data.user.name||"Я").slice(0,2).toUpperCase(),
+        role:data.user.role||"user", balance_cr:data.user.balance||0,
+        has_password:true, totp_enabled:true,
+      };
+      saveState();
+    }
+    el("m2fa-backup-list").innerHTML=(data.backupCodes||[]).map(c=>`<div>${c}</div>`).join("");
+    showA("auth-2fa-mandatory-codes");
+  }catch(e){ showToast("❌ "+(e.message||"Неверный код")); }
+}
+
+function finishMandatory2FALogin(){
+  _mandatory2FAData=null;
+  loginOK();
+}
+
+function openPasswordLogin(){
+  if(el("pl-phone") && !el("pl-phone").value) el("pl-phone").value=S.phone||"";
+  el("pl-2fa-row").style.display="none";
+  el("pl-2fa-code").value="";
+  showA("auth-password");
+}
+
 async function verifyCode(){
   let c=""; for(let i=0;i<5;i++) c+=el("o"+i).value;
   if(c.length<5){showToast("❌ "+T("otptit"));return;}
@@ -2188,7 +2324,15 @@ async function verifyCode(){
 
   try {
     const data = await apiPost("/api/auth/verify-code", { phone: S.phone, code: c });
-    if(!data.success){ showToast("❌ "+(data.error||"Неверный код")); if(btn){btn.disabled=false;btn.textContent=T("btnvfy");} return; }
+    if(!data.success){
+      if(data.requires_password_login){
+        showToast("🛡️ На этом аккаунте включена 2FA — войдите по паролю");
+        if(btn){btn.disabled=false;btn.textContent=T("btnvfy");}
+        openPasswordLogin();
+        return;
+      }
+      showToast("❌ "+(data.error||"Неверный код")); if(btn){btn.disabled=false;btn.textContent=T("btnvfy");} return;
+    }
 
     setToken(data.token);
 
@@ -2203,6 +2347,8 @@ async function verifyCode(){
         initials: (data.user.name||"Я").slice(0,2).toUpperCase(),
         role: data.user.role||"user",
         balance_cr: data.user.balance||0,
+        has_password: !!data.user.has_password,
+        totp_enabled: !!data.user.totp_enabled,
       };
     }
 
@@ -4698,9 +4844,106 @@ function savePrivacy(){ S.privacy={phone:el("priv-phone")?.value,online:el("priv
 function saveNotif(){ S.notifSettings={push:el("notif-push")?.checked,sound:el("notif-sound")?.checked,preview:el("notif-preview")?.checked}; saveState(); }
 function applyTheme(t){ S.theme=t; saveState(); showToast("🎨 Тема: "+t); if(t==="amoled"){document.documentElement.style.setProperty("--bg","#000");document.documentElement.style.setProperty("--bg2","#050508");}else{document.documentElement.style.setProperty("--bg","#0d0f14");document.documentElement.style.setProperty("--bg2","#13151c");} }
 function openChangePhone(){ showToast("📱 Смена номера — введите новый номер на экране входа"); }
-function openSessions(){ renderSessions(); el("m-sessions").classList.add("on"); }
-function renderSessions(){ el("sessions-list").innerHTML=(S.sessions||[]).map((s,i)=>`<div class="wi"><div class="wiico" style="background:rgba(108,99,255,.1)">📱</div><div style="flex:1"><div class="winm">${s.device}</div><div class="wiad">${s.ip} · ${s.date}</div></div>${s.active?'<span class="bg bgg">Текущее</span>':`<button class="xbtn rd" style="padding:3px 9px;font-size:11px" onclick="S.sessions.splice(${i},1);renderSessions();saveState()">✕</button>`}</div>`).join(""); }
-function terminateAllSessions(){ S.sessions=S.sessions.filter(s=>s.active); renderSessions(); saveState(); showToast("✅ Все сессии завершены"); }
+function openSecurity(){
+  el("sec-current-pass-row").style.display = S.user?.has_password ? "block" : "none";
+  el("sec-pass-status").textContent = S.user?.has_password ? "✅ Пароль установлен" : "⚠️ Пароль ещё не установлен — вход только по SMS";
+  el("sec-current-pass").value=""; el("sec-new-pass").value="";
+  el("sec-2fa-off").style.display = S.user?.totp_enabled ? "none" : "block";
+  el("sec-2fa-setup").style.display = "none";
+  el("sec-2fa-backup").style.display = "none";
+  el("sec-2fa-on").style.display = S.user?.totp_enabled ? "block" : "none";
+  if(el("security-sub")) el("security-sub").textContent = (S.user?.has_password?"Пароль установлен":"Пароль не задан")+(S.user?.totp_enabled?" · 2FA включена":"");
+  el("m-security").classList.add("on");
+}
+
+async function doSetPassword(){
+  const currentPassword=el("sec-current-pass").value;
+  const newPassword=el("sec-new-pass").value;
+  if(!newPassword || newPassword.length<8){ showToast("❌ Пароль должен быть не короче 8 символов"); return; }
+  try{
+    await apiPost("/api/auth/set-password", {currentPassword, newPassword}, true);
+    S.user.has_password=true; saveState();
+    showToast("✅ Пароль сохранён");
+    openSecurity();
+  }catch(e){ showToast("❌ "+(e.message||"Не удалось сохранить пароль")); }
+}
+
+async function start2FASetup(){
+  try{
+    const data=await apiPost("/api/auth/2fa/setup", {}, true);
+    el("sec-2fa-qr").src=data.qrCode;
+    el("sec-2fa-secret").textContent=data.secret;
+    el("sec-2fa-code").value="";
+    el("sec-2fa-off").style.display="none";
+    el("sec-2fa-setup").style.display="block";
+  }catch(e){ showToast("❌ "+(e.message||"Не удалось начать настройку 2FA")); }
+}
+
+async function confirm2FASetup(){
+  const totpCode=el("sec-2fa-code").value?.trim();
+  if(!totpCode){ showToast("❌ Введи код из приложения"); return; }
+  try{
+    const data=await apiPost("/api/auth/2fa/verify", {totpCode}, true);
+    S.user.totp_enabled=true; saveState();
+    el("sec-2fa-setup").style.display="none";
+    el("sec-2fa-backup-list").innerHTML=data.backupCodes.map(c=>`<div>${c}</div>`).join("");
+    el("sec-2fa-backup").style.display="block";
+    showToast("✅ 2FA включена!");
+  }catch(e){ showToast("❌ "+(e.message||"Неверный код")); }
+}
+
+async function disable2FA(){
+  const password=el("sec-2fa-disable-pass").value;
+  if(!password){ showToast("❌ Введи пароль"); return; }
+  if(!confirm("Отключить двухфакторную защиту?")) return;
+  try{
+    await apiPost("/api/auth/2fa/disable", {password}, true);
+    S.user.totp_enabled=false; saveState();
+    showToast("✅ 2FA отключена");
+    openSecurity();
+  }catch(e){ showToast("❌ "+(e.message||"Неверный пароль")); }
+}
+
+async function openSessions(){
+  el("m-sessions").classList.add("on");
+  el("sessions-list").innerHTML=`<div style="text-align:center;padding:20px;color:var(--tx3)">Загрузка…</div>`;
+  try{
+    const data=await apiGet("/api/auth/sessions");
+    S.realSessions=data.sessions||[];
+    S.currentSessionId=data.currentSessionId;
+    renderSessions();
+  }catch(e){
+    console.warn("load sessions error:",e);
+    el("sessions-list").innerHTML=`<div style="text-align:center;padding:20px;color:var(--tx3)">Не удалось загрузить сессии</div>`;
+  }
+}
+function renderSessions(){
+  const list=S.realSessions||[];
+  if(!list.length){ el("sessions-list").innerHTML=`<div style="text-align:center;padding:20px;color:var(--tx3)">Нет активных сессий</div>`; return; }
+  el("sessions-list").innerHTML=list.map(s=>{
+    const isCurrent=s.id===S.currentSessionId;
+    const device=(s.device_info||"Неизвестное устройство").slice(0,60);
+    const when=new Date(s.last_active_at).toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+    return `<div class="wi"><div class="wiico" style="background:rgba(108,99,255,.1)">📱</div><div style="flex:1"><div class="winm">${escHtml(device)}</div><div class="wiad">${s.ip_address||"?"} · ${when}</div></div>${isCurrent?'<span class="bg bgg">Текущее</span>':`<button class="xbtn rd" style="padding:3px 9px;font-size:11px" onclick="revokeSession('${s.id}')">✕</button>`}</div>`;
+  }).join("");
+}
+async function revokeSession(id){
+  try{
+    await apiDelete("/api/auth/sessions/"+id);
+    S.realSessions=(S.realSessions||[]).filter(s=>s.id!==id);
+    renderSessions();
+    showToast("✅ Сессия завершена");
+  }catch(e){ showToast("❌ Не удалось завершить сессию"); }
+}
+async function terminateAllSessions(){
+  if(!confirm("Выйти на всех устройствах, кроме этого?")) return;
+  try{
+    await apiDelete("/api/auth/sessions");
+    S.realSessions=(S.realSessions||[]).filter(s=>s.id===S.currentSessionId);
+    renderSessions();
+    showToast("✅ Вы вышли на всех остальных устройствах");
+  }catch(e){ showToast("❌ Не удалось завершить сессии"); }
+}
 function openBlockedList(){ showToast("🚫 Заблокированных: "+(S.blocked?.length||0)); }
 // ── СКАЧИВАНИЕ МЕДИА (фото/видео/аудио/голосовые/кружочки/файлы) ────────────
 // Обычная ссылка <a download> не всегда срабатывает для файлов с другого домена
@@ -6966,6 +7209,48 @@ applyTheme(S.theme||"dark");
     <button class="xbtn sec" onclick="closeM('m-user-info')">Закрыть</button>
     <button class="xbtn gn" id="ui-edit-btn" style="display:none" onclick="closeM('m-user-info');openChannelSettings()">✏️ Изменить</button>
   </div>
+</div></div>
+
+<!-- MODAL: SECURITY -->
+<div class="movl" id="m-security"><div class="modal">
+  <div class="mtit">🛡️ Безопасность</div>
+
+  <div class="settings-section" style="margin:0 0 14px">
+    <div class="settings-section-title">Пароль</div>
+    <div id="sec-pass-status" style="font-size:12px;color:var(--tx3);margin-bottom:10px"></div>
+    <div class="frow s1" id="sec-current-pass-row" style="display:none"><div class="fg"><span class="fl">Текущий пароль</span><input class="fii" type="password" id="sec-current-pass"></div></div>
+    <div class="frow s1"><div class="fg"><span class="fl">Новый пароль (мин. 8 символов)</span><input class="fii" type="password" id="sec-new-pass"></div></div>
+    <button class="xbtn gn" style="width:100%" onclick="doSetPassword()">Сохранить пароль</button>
+  </div>
+
+  <div class="settings-section" style="margin:0 0 14px">
+    <div class="settings-section-title">Двухфакторная аутентификация (2FA)</div>
+    <div id="sec-2fa-off">
+      <div style="font-size:12px;color:var(--tx3);margin-bottom:10px">Дополнительный код из приложения-аутентификатора (Google Authenticator, Яндекс Ключ и т.п.) — даже если пароль украдут, войти без него не смогут.</div>
+      <button class="xbtn gn" style="width:100%" onclick="start2FASetup()">Включить 2FA</button>
+    </div>
+    <div id="sec-2fa-setup" style="display:none">
+      <div style="text-align:center;margin-bottom:10px">
+        <img id="sec-2fa-qr" style="width:180px;height:180px;border-radius:10px;background:#fff;padding:8px">
+        <div style="font-size:11px;color:var(--tx3);margin-top:6px">Отсканируй QR в приложении-аутентификаторе, или введи код вручную:</div>
+        <div id="sec-2fa-secret" style="font-family:monospace;font-size:12px;background:var(--bg3);padding:6px 10px;border-radius:6px;margin-top:6px;word-break:break-all"></div>
+      </div>
+      <div class="frow s1"><div class="fg"><span class="fl">Код из приложения</span><input class="fii" id="sec-2fa-code" placeholder="123456" maxlength="6"></div></div>
+      <button class="xbtn gn" style="width:100%" onclick="confirm2FASetup()">Подтвердить и включить</button>
+    </div>
+    <div id="sec-2fa-backup" style="display:none">
+      <div style="font-size:12px;color:var(--rd);font-weight:600;margin-bottom:6px">⚠️ Сохрани эти резервные коды — они показываются только один раз! Пригодятся, если потеряешь телефон с приложением-аутентификатором.</div>
+      <div id="sec-2fa-backup-list" style="font-family:monospace;font-size:12.5px;background:var(--bg3);padding:10px;border-radius:8px;line-height:1.8"></div>
+      <button class="xbtn sec" style="width:100%;margin-top:8px" onclick="el('sec-2fa-backup').style.display='none';openSecurity()">Я сохранил(а) коды</button>
+    </div>
+    <div id="sec-2fa-on" style="display:none">
+      <div style="font-size:12px;color:var(--gn);margin-bottom:10px">✅ 2FA включена — аккаунт под дополнительной защитой</div>
+      <div class="frow s1"><div class="fg"><span class="fl">Пароль (чтобы отключить)</span><input class="fii" type="password" id="sec-2fa-disable-pass"></div></div>
+      <button class="xbtn rd" style="width:100%" onclick="disable2FA()">Отключить 2FA</button>
+    </div>
+  </div>
+
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-security')">Закрыть</button></div>
 </div></div>
 
 <!-- MODAL: ARCHIVE -->
