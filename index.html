@@ -1222,6 +1222,7 @@ tr:hover td{background:var(--bg3)}
     <div class="asb">
       <div class="asbtitle">Dev Panel</div>
       <div class="ani on" onclick="aPage(this,'overview')">📊 Обзор</div>
+      <div class="ani" onclick="aPage(this,'official')">📢 Nexus Official</div>
       <div class="ani" onclick="aPage(this,'currency')">💎 Crystals</div>
       <div class="ani" onclick="aPage(this,'wallets')">💳 Кошельки</div>
       <div class="ani" onclick="aPage(this,'stickers')">🐱 Стикеры</div>
@@ -1253,6 +1254,25 @@ tr:hover td{background:var(--bg3)}
             <tr><td style="color:var(--acc2)">@igor_p</td><td>Покупка CR</td><td style="color:var(--cr)">+1000 💎</td><td><span class="bg bgg">OK</span></td></tr>
             <tr><td style="color:var(--acc2)">@svetlana</td><td>Стикер-пак</td><td style="color:var(--cr)">-45 💎</td><td><span class="bg bga">Ожидание</span></td></tr>
           </tbody></table></div>
+        </div>
+      </div>
+      <div class="apage" id="page-official">
+        <div class="atitle">📢 Nexus Official</div><div class="asub2">Опубликовать пост, который увидят все пользователи</div>
+        <div class="asec">
+          <div class="asect">Новый пост</div>
+          <div class="fg" style="margin-bottom:10px">
+            <span class="fl">Эмодзи (необязательно)</span>
+            <input class="fii" id="op-emoji" placeholder="📢" maxlength="4" style="width:70px">
+          </div>
+          <div class="fg" style="margin-bottom:10px">
+            <span class="fl">Текст поста</span>
+            <textarea class="fii" id="op-text" rows="4" placeholder="Что нового?"></textarea>
+          </div>
+          <button class="xbtn" onclick="publishOfficialPost()">📢 Опубликовать</button>
+        </div>
+        <div class="asec">
+          <div class="asect">Последние настоящие посты</div>
+          <div id="op-list" style="display:flex;flex-direction:column;gap:8px"></div>
         </div>
       </div>
       <div class="apage" id="page-currency">
@@ -2129,6 +2149,20 @@ function wsHandleMessage(msg){
       break;
     }
 
+    case "official.post": {
+      // Новый пост Nexus Official пришёл в реальном времени, пока приложение открыто
+      const post = msg.payload;
+      if(!realOfficialPosts.some(p=>p.id===post.id)){
+        realOfficialPosts.unshift(post);
+        const sch=S.chats.find(c=>c.id===88888);
+        if(sch){ sch.prev=(post.emoji||"📢")+" "+post.text; sch.time=now(); if(S.chat!==88888) sch.unread=(sch.unread||0)+1; }
+        renderChats(); saveState();
+        if(el("screen-official")?.classList.contains("on")) openOfficialChannel();
+        if(S.chat!==88888 && sch) showNotif(sch, (post.emoji||"📢")+" "+post.text);
+      }
+      break;
+    }
+
     case "support.message": {
       // Реальное системное уведомление NexusSupport (например, о покупке) —
       // пришло по WebSocket в реальном времени, пока приложение открыто.
@@ -2526,6 +2560,7 @@ function loginOK(){
   }, 300);
 
   loadSupportMessages();
+  loadOfficialPosts();
 
   // Загружаем реальные чаты из БД
   setTimeout(loadChatsFromDB, 600);
@@ -6012,6 +6047,7 @@ if(S.loggedIn){
       })
       .catch(()=>{});
     loadSupportMessages();
+    loadOfficialPosts();
   }
 } else {
   el("auth-welcome").classList.add("on");
@@ -7039,12 +7075,58 @@ function formatPostDateBadge(d){ return d.getDate()+" "+RU_MONTHS[d.getMonth()];
 function formatPostTime(d){ return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
 function formatPostDateShort(d){ return String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0"); }
 
+// Публикация нового поста через Dev Panel — только для платформенных админов
+// (проверяется и на фронтенде для UX, и обязательно на сервере — фронтенд-проверку
+// нельзя считать защитой, это просто чтобы не обмануть себя же лишним запросом).
+async function publishOfficialPost(){
+  const text=(el("op-text")?.value||"").trim();
+  const emoji=(el("op-emoji")?.value||"📢").trim()||"📢";
+  if(!text){ showToast("❌ Введите текст поста"); return; }
+  try{
+    const data=await apiPost("/api/official/posts", {text, emoji}, true);
+    if(!data || !data.success){
+      showToast("❌ "+(data&&data.error||"Не удалось опубликовать"));
+      return;
+    }
+    if(el("op-text")) el("op-text").value="";
+    showToast("✅ Пост опубликован");
+    loadOfficialPosts();
+  }catch(e){
+    showToast("❌ Нет связи с сервером");
+  }
+}
+
+// Подтягивает настоящие посты с сервера — и для списка в самом Dev Panel,
+// и подмешивает их в сам канал Nexus Official поверх демо-постов OFFICIAL_POSTS.
+let realOfficialPosts=[];
+async function loadOfficialPosts(){
+  if(!getToken()) return;
+  try{
+    const data=await apiGet("/api/official/posts");
+    realOfficialPosts=(data && data.posts) || [];
+    const list=el("op-list");
+    if(list){
+      list.innerHTML = realOfficialPosts.length
+        ? realOfficialPosts.map(p=>`<div style="padding:10px 12px;background:var(--bg3);border-radius:10px;font-size:12.5px"><div style="margin-bottom:4px">${p.emoji} ${escHtml(p.text)}</div><div style="color:var(--tx3);font-size:11px">${new Date(p.created_at).toLocaleString("ru")} · 👁 ${p.views||0}</div></div>`).join("")
+        : `<div style="color:var(--tx3);font-size:12px">Пока нет настоящих постов</div>`;
+    }
+    if(el("official-posts")) openOfficialChannel();
+  }catch(e){ /* тихо игнорируем — демо-посты всё равно покажутся */ }
+}
+
 function openOfficialChannel(){
   const posts = el("official-posts"); if(!posts) return;
   if(!S.officialPostReactions) S.officialPostReactions={};
   let lastDateKey=null;
   let html="";
-  OFFICIAL_POSTS.forEach(p=>{
+  // Реальные посты (из БД, публикуются через Dev Panel) объединяем с демо —
+  // у реальных нет живых реакций (это не строилось на сервере), только счётчик
+  // просмотров. Сортируем всё вместе по дате, самые новые сверху.
+  const realAsPosts = realOfficialPosts.map(p=>({
+    id: p.id, text: p.text, emoji: p.emoji, views: p.views||0, ts: p.created_at, reactions: [], isReal: true
+  }));
+  const allPosts = [...realAsPosts, ...OFFICIAL_POSTS].sort((a,b)=>new Date(b.ts)-new Date(a.ts));
+  allPosts.forEach(p=>{
     const d=new Date(p.ts);
     const dateKey=d.toDateString();
     if(dateKey!==lastDateKey){
