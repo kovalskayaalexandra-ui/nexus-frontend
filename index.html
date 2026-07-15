@@ -1267,8 +1267,12 @@ tr:hover td{background:var(--bg3)}
             <span class="fl">Текст поста</span>
             <textarea class="fii" id="op-text" rows="4" placeholder="Что нового?"></textarea>
           </div>
-          <button class="xbtn" onclick="publishOfficialPost()">📢 Опубликовать</button>
-          <div style="font-size:11px;color:var(--tx3);margin-top:8px">Результат смотрите прямо в чате «Nexus Official» в сайдбаре — отдельного списка здесь больше нет, чтобы не дублировать.</div>
+          <button class="xbtn" id="op-submit-btn" onclick="publishOfficialPost()">📢 Опубликовать</button>
+          <button class="xbtn sec" id="op-cancel-edit-btn" onclick="cancelEditOfficialPost()" style="display:none">Отмена</button>
+        </div>
+        <div class="asec">
+          <div class="asect">Опубликованные посты — редактировать / удалить</div>
+          <div id="op-list" style="display:flex;flex-direction:column;gap:8px"></div>
         </div>
       </div>
       <div class="apage" id="page-currency">
@@ -2128,16 +2132,20 @@ function wsHandleMessage(msg){
     }
 
     case "chat.updated": {
-      const { chatId, name, description, avatar, username } = msg.payload;
+      const { chatId, name, description, avatar, username, restrictSendMessages } = msg.payload;
       const ch=S.chats.find(c=>c.id===chatId);
       if(ch){
         if(name){ ch.nm=name; ch.ini=name.slice(0,2).toUpperCase(); }
         if(description!==undefined) ch.desc=description;
         if(avatar!==undefined) ch.avatar=avatar;
         if(username!==undefined) ch.uname=username;
+        if(restrictSendMessages!==undefined) ch.restrictSendMessages=restrictSendMessages;
         if(S.chat===chatId){
           if(el("chnm")) el("chnm").textContent=ch.nm;
           updateChatAvatarDisplays(ch);
+          // Если сейчас смотрим именно этот чат — сразу прячем/возвращаем поле
+          // ввода, не дожидаясь повторного открытия чата или перезагрузки.
+          if(restrictSendMessages!==undefined) updateInputPermissionUI(ch);
         }
         renderChats(); saveState();
       }
@@ -2172,6 +2180,32 @@ function wsHandleMessage(msg){
         if(S.chat===88888) renderMsgs();
         renderChats(); saveState();
         if(S.chat!==88888 && sch) showNotif(sch, (post.emoji||"📢")+" "+post.text);
+      }
+      break;
+    }
+
+    case "official.post.updated": {
+      // Пост Nexus Official отредактирован через Dev Panel — пересобираем
+      // сообщения чата 88888 целиком, проще, чем искать нужное сообщение вручную.
+      const post = msg.payload;
+      const idx = realOfficialPosts.findIndex(p=>p.id===post.id);
+      if(idx!==-1) realOfficialPosts[idx]=post; else realOfficialPosts.unshift(post);
+      if(S.chats.find(c=>c.id===88888)){
+        S.messages[88888] = buildOfficialMessages();
+        if(S.chat===88888) renderMsgs();
+        renderChats(); saveState();
+      }
+      break;
+    }
+
+    case "official.post.deleted": {
+      // Пост Nexus Official удалён через Dev Panel
+      const { id } = msg.payload;
+      realOfficialPosts = realOfficialPosts.filter(p=>p.id!==id);
+      if(S.chats.find(c=>c.id===88888)){
+        S.messages[88888] = buildOfficialMessages();
+        if(S.chat===88888) renderMsgs();
+        renderChats(); saveState();
       }
       break;
     }
@@ -2978,26 +3012,7 @@ function openChat(id){
   // restore draft
   const inp=el("minput"); if(inp){setInputText(ch.draft||""); }
 
-  // Кто может писать в этом чате:
-  //  - NexusSupport — никто, только quick-кнопки
-  //  - Канал — только owner/admin (как в Telegram, это и есть смысл канала)
-  //  - Группа с восстановлением "только админы" (restrictSendMessages) — тоже только owner/admin
-  //  - Иначе — можно всем (обычная группа/личный чат)
-  const myRole = myRoleIn(ch);
-  const isOwnerOrAdmin = myRole==="owner" || myRole==="admin";
-  const isSupportChat = ch.id===99999;
-  const isChannelReadOnly = ch.type==="channels" && !isOwnerOrAdmin;
-  const isGroupRestricted = ch.type==="groups" && ch.restrictSendMessages && !isOwnerOrAdmin;
-  const hideInput = isSupportChat || isChannelReadOnly || isGroupRestricted;
-
-  const ibar=document.querySelector(".ibar");
-  if(ibar) ibar.style.display = hideInput ? "none" : "";
-
-  if(isChannelReadOnly) showReadOnlyNotice("🔒 Только владелец и админы канала могут отправлять сообщения");
-  else if(isGroupRestricted) showReadOnlyNotice("🔒 Только админы группы могут отправлять сообщения");
-  else hideReadOnlyNotice();
-
-  if(isSupportChat) setTimeout(renderSupportQuick, 50);
+  updateInputPermissionUI(ch);
 
   // pinned messages (multiple)
   renderPinbar();
@@ -3552,6 +3567,11 @@ async function toggleRestrictSendMessages(elm){
     ch.restrictSendMessages = newVal;
     saveState();
     showToast(newVal ? "🔒 Только админы могут писать" : "✅ Могут писать все участники");
+    // Остальным участникам нужно узнать об этом немедленно, а не только
+    // при их следующей перезагрузке — иначе поле ввода не спрячется/не
+    // появится у них в реальном времени.
+    const memberIds = getChatMemberIds(ch);
+    wsSendReliable({type:"chat.updated", payload:{chatId:ch.id, restrictSendMessages:newVal, memberIds}});
   }catch(e){
     elm.classList.toggle("on", !newVal); // откат
     showToast("❌ Нет связи с сервером");
@@ -6587,6 +6607,33 @@ function openSupport(){
 
 // Плашка вместо поля ввода — для тех, кому в этом чате нельзя писать
 // (не-админ в канале, участник группы с включённым ограничением).
+// Кто может писать в этом чате — вынесено отдельно от openChat(), чтобы можно
+// было применить изменение права (например, пришедшее по WebSocket от другого
+// участника) БЕЗ побочных эффектов полного переоткрытия чата — оно бы заново
+// сохраняло/чистило черновик текста, перезагружало сообщения и т.п.
+//  - NexusSupport — никто, только quick-кнопки
+//  - Канал — только owner/admin (как в Telegram, это и есть смысл канала)
+//  - Группа с включённым "только админы" (restrictSendMessages) — тоже только owner/admin
+//  - Иначе — можно всем (обычная группа/личный чат)
+function updateInputPermissionUI(ch){
+  if(!ch) return;
+  const myRole = myRoleIn(ch);
+  const isOwnerOrAdmin = myRole==="owner" || myRole==="admin";
+  const isSupportChat = ch.id===99999;
+  const isChannelReadOnly = ch.type==="channels" && !isOwnerOrAdmin;
+  const isGroupRestricted = ch.type==="groups" && ch.restrictSendMessages && !isOwnerOrAdmin;
+  const hideInput = isSupportChat || isChannelReadOnly || isGroupRestricted;
+
+  const ibar=document.querySelector(".ibar");
+  if(ibar) ibar.style.display = hideInput ? "none" : "";
+
+  if(isChannelReadOnly) showReadOnlyNotice("🔒 Только владелец и админы канала могут отправлять сообщения");
+  else if(isGroupRestricted) showReadOnlyNotice("🔒 Только админы группы могут отправлять сообщения");
+  else hideReadOnlyNotice();
+
+  if(isSupportChat) setTimeout(renderSupportQuick, 50);
+}
+
 function showReadOnlyNotice(text){
   let bar = document.getElementById("readonly-notice");
   const ibar = document.querySelector(".ibar");
@@ -7146,21 +7193,60 @@ function formatPostDateBadge(d){ return d.getDate()+" "+RU_MONTHS[d.getMonth()];
 function formatPostTime(d){ return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
 function formatPostDateShort(d){ return String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0"); }
 
-// Публикация нового поста через Dev Panel — только для платформенных админов
-// (проверяется и на фронтенде для UX, и обязательно на сервере — фронтенд-проверку
-// нельзя считать защитой, это просто чтобы не обмануть себя же лишним запросом).
+// Публикация/редактирование поста через Dev Panel — только для платформенных
+// админов (проверяется и на фронтенде для UX, и обязательно на сервере —
+// фронтенд-проверку нельзя считать защитой, это просто чтобы не слать
+// заведомо обречённый запрос).
+let editingOfficialPostId = null;
+
 async function publishOfficialPost(){
   const text=(el("op-text")?.value||"").trim();
   const emoji=(el("op-emoji")?.value||"📢").trim()||"📢";
   if(!text){ showToast("❌ Введите текст поста"); return; }
   try{
-    const data=await apiPost("/api/official/posts", {text, emoji}, true);
+    const data = editingOfficialPostId
+      ? await apiPatch("/api/official/posts/"+editingOfficialPostId, {text, emoji}, true)
+      : await apiPost("/api/official/posts", {text, emoji}, true);
     if(!data || !data.success){
-      showToast("❌ "+(data&&data.error||"Не удалось опубликовать"));
+      showToast("❌ "+(data&&data.error||"Не удалось сохранить"));
       return;
     }
-    if(el("op-text")) el("op-text").value="";
-    showToast("✅ Пост опубликован");
+    showToast(editingOfficialPostId ? "✅ Пост обновлён" : "✅ Пост опубликован");
+    cancelEditOfficialPost();
+    loadOfficialPosts();
+  }catch(e){
+    showToast("❌ Нет связи с сервером");
+  }
+}
+
+function startEditOfficialPost(id){
+  const p = realOfficialPosts.find(x=>x.id===id);
+  if(!p) return;
+  editingOfficialPostId = id;
+  if(el("op-text")) el("op-text").value = p.text;
+  if(el("op-emoji")) el("op-emoji").value = p.emoji;
+  if(el("op-submit-btn")) el("op-submit-btn").textContent = "💾 Сохранить изменения";
+  if(el("op-cancel-edit-btn")) el("op-cancel-edit-btn").style.display = "inline-block";
+}
+
+function cancelEditOfficialPost(){
+  editingOfficialPostId = null;
+  if(el("op-text")) el("op-text").value = "";
+  if(el("op-emoji")) el("op-emoji").value = "";
+  if(el("op-submit-btn")) el("op-submit-btn").textContent = "📢 Опубликовать";
+  if(el("op-cancel-edit-btn")) el("op-cancel-edit-btn").style.display = "none";
+}
+
+async function deleteOfficialPost(id){
+  if(!confirm("Удалить этот пост насовсем?")) return;
+  try{
+    const data = await apiDelete("/api/official/posts/"+id);
+    if(!data || !data.success){
+      showToast("❌ "+(data&&data.error||"Не удалось удалить"));
+      return;
+    }
+    showToast("🗑️ Пост удалён");
+    if(editingOfficialPostId===id) cancelEditOfficialPost();
     loadOfficialPosts();
   }catch(e){
     showToast("❌ Нет связи с сервером");
@@ -7200,8 +7286,24 @@ async function loadOfficialPosts(){
   try{
     const data=await apiGet("/api/official/posts");
     realOfficialPosts=(data && data.posts) || [];
+    const list=el("op-list");
+    if(list){
+      list.innerHTML = realOfficialPosts.length
+        ? realOfficialPosts.map(p=>`
+          <div style="padding:10px 12px;background:var(--bg3);border-radius:10px;font-size:12.5px">
+            <div style="margin-bottom:4px">${p.emoji} ${escHtml(p.text)}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div style="color:var(--tx3);font-size:11px">${new Date(p.created_at).toLocaleString("ru")} · 👁 ${p.views||0}</div>
+              <div style="display:flex;gap:6px">
+                <button class="rp-action-btn" style="width:auto;padding:4px 9px;font-size:11px" onclick="startEditOfficialPost('${p.id}')">✏️ Изменить</button>
+                <button class="rp-action-btn" style="width:auto;padding:4px 9px;font-size:11px;color:var(--rd)" onclick="deleteOfficialPost('${p.id}')">🗑️ Удалить</button>
+              </div>
+            </div>
+          </div>`).join("")
+        : `<div style="color:var(--tx3);font-size:12px">Пока нет настоящих постов</div>`;
+    }
     // Пересобираем сообщения чата 88888 целиком (демо + актуальные реальные посты) —
-    // Nexus Official работает как обычный канал, отдельного списка/экрана для этого нет.
+    // Nexus Official работает как обычный канал, отдельного экрана для этого нет.
     if(S.chats.find(c=>c.id===88888)){
       S.messages[88888] = buildOfficialMessages();
       saveState();
