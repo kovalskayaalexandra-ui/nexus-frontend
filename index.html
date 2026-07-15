@@ -1799,6 +1799,22 @@ setInterval(_save, 3000); // backup save every 3s
 function T(k){ const l=LANGS[S.lang]; return l?(l.t[k]||k):k; }
 function el(id){ return document.getElementById(id); }
 function now(){ const d=new Date(); return d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"); }
+
+// Настоящая, пересчитываемая подпись даты — "Сегодня"/"Вчера"/"14 июля", а не
+// зашитый навсегда текст. Сравнивает КАЛЕНДАРНЫЙ день метки времени с сегодняшним
+// днём заново при каждой отрисовке — поэтому корректно "стареет" сама.
+const RU_MONTHS=["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+function getDateLabel(ts){
+  if(!ts) return "Сегодня"; // нет метки — считаем текущим днём (резерв для старых записей)
+  const d=new Date(ts);
+  const today=new Date();
+  const yesterday=new Date(); yesterday.setDate(today.getDate()-1);
+  const sameDay=(a,b)=>a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();
+  if(sameDay(d,today)) return "Сегодня";
+  if(sameDay(d,yesterday)) return "Вчера";
+  const withYear = d.getFullYear()!==today.getFullYear() ? " "+d.getFullYear() : "";
+  return d.getDate()+" "+RU_MONTHS[d.getMonth()]+withYear;
+}
 let _idSeq = Date.now();
 function nextId(){ return ++_idSeq; }
 function colBg(i){ return COLS[i%COLS.length]; }
@@ -1842,9 +1858,22 @@ function detectLang(){
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────
-function showA(id){ document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on")); el(id)&&el(id).classList.add("on"); }
+// Логотип/название в самом приложении — кириллица для России (ФЗ №168 от 24.06.2025,
+// требует русский язык в интерфейсах приложений; латиница остаётся для всех остальных)
+function detectIsRussianRegion(){
+  if(S.user?.phone) return S.user.phone.replace(/[^\d+]/g,"").startsWith("+7");
+  const csel=el("csel1");
+  if(csel && csel.value) return csel.value==="+7";
+  return (navigator.language||"").toLowerCase().startsWith("ru");
+}
+function updateLogoText(){
+  const text = detectIsRussianRegion() ? "⬡ НЕКСУС" : "⬡ Nexus";
+  document.querySelectorAll(".logo, .alogo").forEach(elm=>{ elm.textContent = text; });
+}
 
-function fillCSEL(){ ["csel1","csel2"].forEach(id=>{ const s=el(id);if(!s)return; s.innerHTML=COUNTRIES.map(c=>`<option value="${c.c}">${c.f} ${c.c}</option>`).join(""); }); }
+function showA(id){ document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on")); el(id)&&el(id).classList.add("on"); updateLogoText(); }
+
+function fillCSEL(){ ["csel1","csel2"].forEach(id=>{ const s=el(id);if(!s)return; s.innerHTML=COUNTRIES.map(c=>`<option value="${c.c}">${c.f} ${c.c}</option>`).join(""); s.onchange=updateLogoText; }); }
 
 let otmr=null;
 // ── API CONFIG ────────────────────────────────────────────────
@@ -1963,6 +1992,7 @@ function wsHandleMessage(msg){
         col: ch?.col || 0,
         tx: text,
         time: time ? new Date(time).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : now(),
+        ts: time ? new Date(time).getTime() : Date.now(),
         read: S.chat === chatId
       };
       if(msgType==="sticker"){
@@ -2062,6 +2092,15 @@ function wsHandleMessage(msg){
       S.friend_stories[fromUserId].items=S.friend_stories[fromUserId].items.filter(s=>Date.now()<s.expires);
       renderStoriesBar(); saveState();
       showToast(`📖 ${fromName} опубликовал(а) сторис`);
+      break;
+    }
+
+    case "message.viewed": {
+      const { chatId, messageId, views } = msg.payload;
+      const m=(S.messages[chatId]||[]).find(x=>x.dbId===messageId);
+      if(m) m.views=views;
+      const span=document.querySelector(`[data-views-for="${messageId}"]`);
+      if(span) span.textContent=views.toLocaleString("ru");
       break;
     }
 
@@ -2406,6 +2445,7 @@ function loginOK(){
   S.loggedIn=true; saveState();
   document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on"));
   updateUserUI(); renderChats(); openChat(S.chat||1); updBal();
+  updateLogoText();
   // Подключаем WebSocket
   setTimeout(wsConnect, 300);
   checkPendingJoinLink();
@@ -2427,7 +2467,7 @@ function loginOK(){
     if(!S.chats.find(c=>c.id===99999)){
       const ch={id:99999,nm:"NexusSupport 🤖",ini:"NS",col:6,online:true,prev:"Чем могу помочь?",time:now(),unread:1,type:"personal",pinned:false,muted:false,blocked:false,draft:""};
       S.chats.push(ch);
-      S.messages[99999]=[{id:1,t:"date",tx:"Сегодня"},{id:2,t:"in",fr:"NS",col:6,tx:SUPPORT_GREET,time:now(),isSupport:true}];
+      S.messages[99999]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NS",col:6,tx:SUPPORT_GREET,time:now(),isSupport:true}];
       saveState(); renderChats();
     }
   }, 300);
@@ -2541,6 +2581,8 @@ async function loadMessagesFromDB(chatId){
         fr: dbMsg.sender_name ? dbMsg.sender_name.slice(0,2).toUpperCase() : "?",
         tx: dbMsg.text || "",
         time: new Date(dbMsg.created_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}),
+        ts: new Date(dbMsg.created_at).getTime(),
+        views: dbMsg.views||0,
         read: isMe ? !!dbMsg.read_at : true,
         edited: !!dbMsg.edited_at
       };
@@ -2843,12 +2885,36 @@ function ticksHTML(m){
   }
   return '<svg class="mtick" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 }
+// Достраивает список сообщений разделителями дат ПРЯМО ПЕРЕД отрисовкой — по
+// настоящим меткам времени, а не по тому, что когда-то было вручную вставлено.
+// Работает для любого чата, включая личные, где раньше дат не было вообще.
+function buildRenderList(msgs){
+  const out=[]; let lastDayKey=null;
+  msgs.forEach(m=>{
+    if(m.t==="date"){
+      out.push(m);
+      if(m.ts) lastDayKey=new Date(m.ts).toDateString();
+      return;
+    }
+    if(m.ts){
+      const dayKey=new Date(m.ts).toDateString();
+      if(dayKey!==lastDayKey){
+        out.push({id:"auto-date-"+m.id, t:"date", ts:m.ts});
+        lastDayKey=dayKey;
+      }
+    }
+    out.push(m);
+  });
+  return out;
+}
+
 function renderMsgs(){
   const c=el("msgs"); c.innerHTML="";
-  renderUnknownBar(S.chats.find(x=>x.id===S.chat));
-  renderRightPanelMedia(S.chats.find(x=>x.id===S.chat));
-  (S.messages[S.chat]||[]).filter(m=>!m._deletedForAll && !m._deletedForMe).forEach(m=>{
-    if(m.t==="date"){const d=document.createElement("div");d.className="ddiv";d.innerHTML=`<span>${m.tx}</span>`;c.appendChild(d);return;}
+  const curCh=S.chats.find(x=>x.id===S.chat);
+  renderUnknownBar(curCh);
+  renderRightPanelMedia(curCh);
+  buildRenderList((S.messages[S.chat]||[]).filter(m=>!m._deletedForAll && !m._deletedForMe)).forEach(m=>{
+    if(m.t==="date"){const d=document.createElement("div");d.className="ddiv";d.innerHTML=`<span>${m.ts?getDateLabel(m.ts):m.tx}</span>`;c.appendChild(d);return;}
     if(m.t==="sys"){const s=document.createElement("div");s.className="sysmsg";s.textContent=m.tx;c.appendChild(s);return;}
     const row=document.createElement("div");
     row.className="mrow "+((m.t==="out"||(m.t==="gift"&&m.out))?"out":"in")+(S.selectedMsgs.includes(m.id)?" selected":"");
@@ -2936,7 +3002,8 @@ function renderMsgs(){
       const rawForPreview=(m.tx||"").replace(/\[[^\]]+\]\(https?:\/\/[^\s)]+\)/g,"");
       const urlMatch=rawForPreview.match(/https?:\/\/[^\s]+/);
       if(urlMatch)bc+=`<div class="lnkprev" style="cursor:pointer" onclick="window.open('${urlMatch[0].replace(/'/g,"%27")}','_blank')"><div class="lnktitle">🔗 ${urlMatch[0].replace(/https?:\/\//,"").slice(0,40)}</div><div class="lnkdesc">Открыть ссылку</div></div>`;
-      bc+=`<div class="mt">${m.time||""}${m.t==="out"?ticksHTML(m):""}</div>`;
+      const viewsHTML = (curCh?.type==="channels" && m.dbId) ? ` · 👁 <span data-views-for="${m.dbId}">${(m.views||0).toLocaleString("ru")}</span>` : "";
+      bc+=`<div class="mt">${m.time||""}${viewsHTML}${m.t==="out"?ticksHTML(m):""}</div>`;
       if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${r.e} ${r.c}</div>`).join("")}</div>`;
       if(m.edited)bc+='';
       h+=`<div class="bub${m.edited?" edited":""}${m.videoCircle?" vc-bub":""}" oncontextmenu="showCtx(event,${m.id})" ontouchstart="lpStart(event,${m.id})" ontouchend="lpEnd()" ontouchmove="lpEnd()">${bc}</div>`;
@@ -2944,6 +3011,29 @@ function renderMsgs(){
     row.innerHTML=h; c.appendChild(row);
   });
   c.scrollTop=c.scrollHeight;
+  if(curCh?.type==="channels") countChannelViews(curCh);
+}
+
+// Засчитывает просмотр постов канала — один раз на сообщение за сессию,
+// чтобы не спамить сервер повторными вызовами при каждой перерисовке
+let _viewedThisSession=new Set();
+async function countChannelViews(ch){
+  const msgs=(S.messages[ch.id]||[]).filter(m=>m.dbId && m.t!=="out" && !_viewedThisSession.has(m.dbId));
+  for(const m of msgs){
+    _viewedThisSession.add(m.dbId);
+    try{
+      const data=await apiPost("/api/messages/"+m.dbId+"/view", {}, true);
+      if(data?.success){
+        m.views=data.views;
+        const span=document.querySelector(`[data-views-for="${m.dbId}"]`);
+        if(span) span.textContent=data.views.toLocaleString("ru");
+        if(data.counted){
+          const memberIds=getChatMemberIds(ch);
+          wsSendReliable({type:"message.viewed", payload:{chatId:ch.id, messageId:m.dbId, views:data.views, memberIds}});
+        }
+      }
+    }catch(e){ console.warn("view count error:",e); }
+  }
 }
 
 // ── SEND / EDIT ──────────────────────────────────────────────
@@ -3286,7 +3376,7 @@ function sendMsg(){
   // ── Избранное (Saved Messages) — просто сохраняем, без ответов ──
   if(S.chat === 77777){
     if(!S.messages[77777]) S.messages[77777]=[];
-    S.messages[77777].push({id:nextId(),t:"out",tx:txt,time:now(),read:true});
+    S.messages[77777].push({id:nextId(),t:"out",tx:txt,time:now(),ts:Date.now(),read:true});
     setInputText(""); aResize(inp);
     const sch=S.chats.find(c=>c.id===77777);
     if(sch){sch.prev=txt;sch.time=now();}
@@ -3297,7 +3387,7 @@ function sendMsg(){
   // ── Support bot interception ──
   if(S.chat === 99999){
     if(!S.messages[99999]) S.messages[99999]=[];
-    S.messages[99999].push({id:nextId(),t:"out",tx:txt,time:now(),read:true});
+    S.messages[99999].push({id:nextId(),t:"out",tx:txt,time:now(),ts:Date.now(),read:true});
     setInputText(""); aResize(inp);
     const sch=S.chats.find(c=>c.id===99999);
     if(sch){sch.prev=txt;sch.time=now();}
@@ -3323,7 +3413,7 @@ function sendMsg(){
     cancelEdit(); setInputText(""); aResize(inp); renderMsgs(); saveState(); return;
   }
 
-  const msg={id:nextId(),t:"out",tx:txt,time:tm,read:false};
+  const msg={id:nextId(),t:"out",tx:txt,time:tm,ts:Date.now(),read:false};
   // Если пишем от имени канала — помечаем
   if(S.sendAsChannel && canSendAsChannelHere()){
     const chan=S.chats.find(c=>c.id===S.sendAsChannel);
@@ -5186,7 +5276,7 @@ async function doCreateGroup(){
 
   const newChat={id:realId||nextId(),nm:nm,ini:nm.slice(0,2).toUpperCase(),col:Math.floor(Math.random()*COLS.length),online:false,prev:isChannel?"Канал создан":"Группа создана",time:now(),unread:0,type:isChannel?"channels":"groups",mbrs:members.length,members:members,memberIds:memberIds,myRole:"owner",mine:isChannel,pinned:false,muted:false,blocked:false,draft:"",inviteLink:serverInviteLink,isPrivate:false};
   S.chats.unshift(newChat);
-  if(!S.messages[newChat.id])S.messages[newChat.id]=[{id:nextId(),t:"sys",tx:isChannel?"Вы создали канал «"+nm+"»":"Вы создали группу «"+nm+"»"},{id:nextId(),t:"date",tx:"Сегодня"}];
+  if(!S.messages[newChat.id])S.messages[newChat.id]=[{id:nextId(),t:"sys",tx:isChannel?"Вы создали канал «"+nm+"»":"Вы создали группу «"+nm+"»"},{id:nextId(),t:"date",tx:"Сегодня",ts:Date.now()}];
   closeM("m-group"); renderChats(); openChat(newChat.id); saveState();
   showToast(isChannel ? "📢 Канал «"+nm+"» создан!" : "👥 Группа «"+nm+"» создана!");
 
@@ -5616,6 +5706,7 @@ if(S.loggedIn){
     saveState();
   }
   updateUserUI(); renderChats(); openChat(S.chat||1); updBal();
+  updateLogoText();
   setTimeout(showNotif,5000);
   // Подключаем WebSocket при старте если уже залогинены
   setTimeout(wsConnect, 500);
@@ -5629,6 +5720,7 @@ if(S.loggedIn){
   }
 } else {
   el("auth-welcome").classList.add("on");
+  updateLogoText();
 }
 
 setInterval(()=>{if(S.loggedIn&&Math.random()>.75)showNotif();},20000);
@@ -5974,7 +6066,7 @@ function openSupport(){
     ch = {id:99999, nm:"NexusSupport 🤖", ini:"NS", col:6, online:true, prev:"Напишите нам!", time:now(), unread:1, type:"personal", pinned:true, muted:false, blocked:false, draft:""};
     S.chats.unshift(ch);
     S.messages[99999] = [
-      {id:1, t:"date", tx:"Сегодня"},
+      {id:1, t:"date", tx:"Сегодня", ts:Date.now()},
       {id:2, t:"in", fr:"NS", col:6, tx:SUPPORT_GREET, time:now(), isSupport:true},
     ];
     saveState();
@@ -6097,7 +6189,7 @@ if(S.loggedIn){
     if(!S.chats.find(c=>c.id===99999)){
       const ch = {id:99999,nm:"NexusSupport 🤖",ini:"NS",col:6,online:true,prev:"Чем могу помочь?",time:now(),unread:1,type:"personal",pinned:false,muted:false,blocked:false,draft:""};
       S.chats.push(ch);
-      S.messages[99999]=[{id:1,t:"date",tx:"Сегодня"},{id:2,t:"in",fr:"NS",col:6,tx:SUPPORT_GREET,time:now(),isSupport:true}];
+      S.messages[99999]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NS",col:6,tx:SUPPORT_GREET,time:now(),isSupport:true}];
       saveState(); renderChats();
     }
   }, 400);
@@ -6513,23 +6605,41 @@ function deleteMyStory(id){
 //  OFFICIAL NEXUS CHANNEL
 // ══════════════════════════════════════════════════
 const OFFICIAL_POSTS = [
-  {id:1,text:"⬡ **Nexus Messenger v3.0** — крупное обновление!\n\nДобавили: VIP подписку, Сторис, бота поддержки, подарки и многое другое! Обновляйтесь и пишите нам обратную связь 🚀",emoji:"🎉",views:14382,time:"07.06.2026",reactions:[{e:"🔥",c:892},{e:"❤️",c:654},{e:"👍",c:431}]},
-  {id:2,text:"💎 **Crystals теперь можно дарить!**\n\nОтправляйте подарки друзьям прямо в чате. Редкие и эксклюзивные подарки уже в магазине.",emoji:"🎁",views:8921,time:"06.06.2026",reactions:[{e:"🎉",c:445},{e:"💎",c:312}]},
-  {id:3,text:"📖 **Сторис для VIP пользователей**\n\nТеперь с VIP можно публиковать несколько сторис, а VIP-админы каналов — до 10. Сторис живут 24 часа.",emoji:"📖",views:6540,time:"05.06.2026",reactions:[{e:"⭐",c:234},{e:"👍",c:189}]},
-  {id:4,text:"✅ **Верификация каналов открыта!**\n\nПодайте заявку через @NexusVerify и получите синюю галочку. Рассматриваем в течение 3-7 дней.",emoji:"✅",views:5120,time:"04.06.2026",reactions:[{e:"❤️",c:156},{e:"🔥",c:98}]},
+  {id:1,text:"⬡ **Nexus Messenger v3.0** — крупное обновление!\n\nДобавили: VIP подписку, Сторис, бота поддержки, подарки и многое другое! Обновляйтесь и пишите нам обратную связь 🚀",emoji:"🎉",views:14382,ts:"2026-06-07T14:20:00",reactions:[{e:"🔥",c:892},{e:"❤️",c:654},{e:"👍",c:431}]},
+  {id:2,text:"💎 **Crystals теперь можно дарить!**\n\nОтправляйте подарки друзьям прямо в чате. Редкие и эксклюзивные подарки уже в магазине.",emoji:"🎁",views:8921,ts:"2026-06-07T09:05:00",reactions:[{e:"🎉",c:445},{e:"💎",c:312}]},
+  {id:3,text:"📖 **Сторис для VIP пользователей**\n\nТеперь с VIP можно публиковать несколько сторис, а VIP-админы каналов — до 10. Сторис живут 24 часа.",emoji:"📖",views:6540,ts:"2026-06-05T18:40:00",reactions:[{e:"⭐",c:234},{e:"👍",c:189}]},
+  {id:4,text:"✅ **Верификация каналов открыта!**\n\nПодайте заявку через @NexusVerify и получите синюю галочку. Рассматриваем в течение 3-7 дней.",emoji:"✅",views:5120,ts:"2026-06-04T11:15:00",reactions:[{e:"❤️",c:156},{e:"🔥",c:98}]},
 ];
+
+// Компактное число просмотров как в Telegram — 14.4K вместо 14382
+function formatViews(n){
+  if(n>=1000000) return (n/1000000).toFixed(1).replace(/\.0$/,"")+"M";
+  if(n>=1000) return (n/1000).toFixed(1).replace(/\.0$/,"")+"K";
+  return String(n);
+}
+function formatPostDateBadge(d){ return d.getDate()+" "+RU_MONTHS[d.getMonth()]; }
+function formatPostTime(d){ return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
+function formatPostDateShort(d){ return String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0"); }
 
 function openOfficialChannel(){
   const posts = el("official-posts"); if(!posts) return;
   if(!S.officialPostReactions) S.officialPostReactions={};
-  posts.innerHTML = OFFICIAL_POSTS.map(p=>{
+  let lastDateKey=null;
+  let html="";
+  OFFICIAL_POSTS.forEach(p=>{
+    const d=new Date(p.ts);
+    const dateKey=d.toDateString();
+    if(dateKey!==lastDateKey){
+      html+=`<div style="display:flex;justify-content:center;margin:14px 0 10px"><div style="background:var(--bg3);color:var(--tx2);font-size:11.5px;font-weight:600;padding:5px 14px;border-radius:20px">${formatPostDateBadge(d)}</div></div>`;
+      lastDateKey=dateKey;
+    }
     const myReacted=S.officialPostReactions[p.id]||[];
     const reactionsHtml=p.reactions.map(r=>{
       const mine=myReacted.includes(r.e);
       const count=r.c+(mine?1:0);
       return `<div class="rxn${mine?" m":""}" onclick="togglePostReaction(${p.id},'${r.e}')">${r.e} ${count}</div>`;
     }).join("");
-    return `
+    html+=`
     <div class="nexus-official-post">
       <div class="nop-header">
         <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--acc),var(--acc2));display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">⬡</div>
@@ -6538,19 +6648,21 @@ function openOfficialChannel(){
             <span style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px">Nexus Official</span>
             <div class="verify-badge"><span class="verify-tick">✅</span><div class="verify-tooltip">Официальный канал Nexus</div></div>
           </div>
-          <div style="font-size:10.5px;color:var(--tx3)">${p.time}</div>
         </div>
         <div style="font-size:22px">${p.emoji}</div>
       </div>
       <div style="font-size:13px;line-height:1.6;white-space:pre-line">${p.text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')}</div>
-      <div class="nop-views">
-        <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        ${p.views.toLocaleString("ru")} просмотров
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <div style="display:flex;gap:5px;flex-wrap:wrap">${reactionsHtml}</div>
+        <div class="nop-views" style="flex-shrink:0;white-space:nowrap">
+          <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          ${formatViews(p.views)}&nbsp;&nbsp;${formatPostTime(d)}
+        </div>
       </div>
-      <div style="display:flex;gap:5px;margin-top:8px">${reactionsHtml}</div>
     </div>
   `;
-  }).join("");
+  });
+  posts.innerHTML=html;
   el("screen-official").classList.add("on");
 }
 
