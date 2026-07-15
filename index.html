@@ -2582,6 +2582,8 @@ async function loadChatsFromDB(){
           existing.nm = otherUser.name;
           existing.ini = otherUser.name.slice(0,2).toUpperCase();
         }
+        existing.myRole = dbChat.my_role || existing.myRole;
+        existing.restrictSendMessages = !!dbChat.restrict_send_messages;
       } else {
         // Добавляем новый чат из БД
         S.chats.push({
@@ -2600,6 +2602,7 @@ async function loadChatsFromDB(){
           draft: "",
           dbId: dbChat.id,
           myRole: dbChat.my_role,
+          restrictSendMessages: !!dbChat.restrict_send_messages,
           withUserId: otherUser ? otherUser.userId : undefined,
           memberIds: !isPersonal ? others.map(m => m.userId) : undefined
         });
@@ -2903,13 +2906,26 @@ function openChat(id){
   // restore draft
   const inp=el("minput"); if(inp){setInputText(ch.draft||""); }
 
-  // NexusSupport — нельзя писать свободный текст, только тематические кнопки.
-  // Прячем всю панель ввода (форматирование/вложения/микрофон и т.д. там всё
-  // равно не работают в этом чате — см. блокировки ниже по файлу), и всегда
-  // показываем актуальные quick-кнопки при каждом открытии этого чата.
+  // Кто может писать в этом чате:
+  //  - NexusSupport — никто, только quick-кнопки
+  //  - Канал — только owner/admin (как в Telegram, это и есть смысл канала)
+  //  - Группа с восстановлением "только админы" (restrictSendMessages) — тоже только owner/admin
+  //  - Иначе — можно всем (обычная группа/личный чат)
+  const myRole = myRoleIn(ch);
+  const isOwnerOrAdmin = myRole==="owner" || myRole==="admin";
+  const isSupportChat = ch.id===99999;
+  const isChannelReadOnly = ch.type==="channels" && !isOwnerOrAdmin;
+  const isGroupRestricted = ch.type==="groups" && ch.restrictSendMessages && !isOwnerOrAdmin;
+  const hideInput = isSupportChat || isChannelReadOnly || isGroupRestricted;
+
   const ibar=document.querySelector(".ibar");
-  if(ibar) ibar.style.display = (ch.id===99999) ? "none" : "";
-  if(ch.id===99999) setTimeout(renderSupportQuick, 50);
+  if(ibar) ibar.style.display = hideInput ? "none" : "";
+
+  if(isChannelReadOnly) showReadOnlyNotice("🔒 Только владелец и админы канала могут отправлять сообщения");
+  else if(isGroupRestricted) showReadOnlyNotice("🔒 Только админы группы могут отправлять сообщения");
+  else hideReadOnlyNotice();
+
+  if(isSupportChat) setTimeout(renderSupportQuick, 50);
 
   // pinned messages (multiple)
   renderPinbar();
@@ -6436,6 +6452,25 @@ function openSupport(){
   // Show quick reply buttons after render
   setTimeout(renderSupportQuick, 100);
   loadSupportMessages();
+}
+
+// Плашка вместо поля ввода — для тех, кому в этом чате нельзя писать
+// (не-админ в канале, участник группы с включённым ограничением).
+function showReadOnlyNotice(text){
+  let bar = document.getElementById("readonly-notice");
+  const ibar = document.querySelector(".ibar");
+  if(!bar){
+    bar = document.createElement("div");
+    bar.id = "readonly-notice";
+    bar.style.cssText = "padding:13px 16px;text-align:center;color:var(--tx3);font-size:12.5px;border-top:1px solid var(--brd)";
+    if(ibar && ibar.parentNode) ibar.parentNode.insertBefore(bar, ibar);
+  }
+  bar.textContent = text;
+  bar.style.display = "block";
+}
+function hideReadOnlyNotice(){
+  const bar = document.getElementById("readonly-notice");
+  if(bar) bar.style.display = "none";
 }
 
 function renderSupportQuick(){
