@@ -2088,6 +2088,24 @@ function wsHandleMessage(msg){
       break;
     }
 
+    case "chat.updated": {
+      const { chatId, name, description, avatar, username } = msg.payload;
+      const ch=S.chats.find(c=>c.id===chatId);
+      if(ch){
+        if(name){ ch.nm=name; ch.ini=name.slice(0,2).toUpperCase(); }
+        if(description!==undefined) ch.desc=description;
+        if(avatar!==undefined) ch.avatar=avatar;
+        if(username!==undefined) ch.uname=username;
+        if(S.chat===chatId){
+          if(el("chnm")) el("chnm").textContent=ch.nm;
+          const chav=el("chav");
+          if(chav){ chav.style.background=ch.avatar?"none":colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?"; }
+        }
+        renderChats(); saveState();
+      }
+      break;
+    }
+
     case "message.viewed": {
       const { chatId, messageId, views } = msg.payload;
       const m=(S.messages[chatId]||[]).find(x=>x.dbId===messageId);
@@ -3086,6 +3104,7 @@ function openChannelSettings(){
     avBtn.style.background = ch.avatar ? "none" : colBg(ch.col);
   }
   chSetAvatarData = ch.avatar || "";
+  chSetAvatarFile = null;
 
   el("chset-allowpost-row").style.display = isChannel ? "flex" : "none";
   if(isChannel){
@@ -3274,8 +3293,10 @@ function isReactionAllowed(chatId, emoji){
 }
 
 let chSetAvatarData="";
+let chSetAvatarFile=null;
 function previewChSetAvatar(inp){
   if(!inp.files[0])return;
+  chSetAvatarFile=inp.files[0];
   const r=new FileReader();
   r.onload=e=>{
     chSetAvatarData=e.target.result;
@@ -3288,7 +3309,7 @@ function previewChSetAvatar(inp){
   r.readAsDataURL(inp.files[0]);
 }
 
-function saveChatInfo(){
+async function saveChatInfo(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
   const myRole=myRoleIn(ch);
   if((ch.type==="groups"||ch.type==="channels") && !ch.mine && myRole!=="owner" && myRole!=="admin"){ showToast("🔒 Нет прав редактировать этот чат"); return; }
@@ -3300,11 +3321,33 @@ function saveChatInfo(){
     const clash=S.chats.find(c=>c.id!==ch.id && c.uname && c.uname.toLowerCase()===uname.toLowerCase());
     if(clash){ showToast("❌ Этот username уже занят другим чатом"); return; }
   }
+  const desc=el("chset-desc")?.value?.trim()||"";
+
+  // Если выбрали новую картинку — грузим её по-настоящему через /api/upload,
+  // раньше аватар группы/канала вообще никуда не отправлялся, только локально
+  let avatarUrl=ch.avatar||"";
+  if(chSetAvatarFile){
+    showToast("⏳ Загружаем аватар...");
+    try{
+      const fd=new FormData();
+      fd.append("file",chSetAvatarFile);
+      const t=getToken();
+      const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.success) throw new Error(data.error||"Не удалось загрузить файл");
+      avatarUrl=data.url;
+    }catch(e){
+      console.error("chat avatar upload error:",e);
+      showToast("⚠️ Не удалось загрузить аватар — остальное сохранено");
+    }
+  }
+
   ch.nm=nm;
   ch.ini=nm.slice(0,2).toUpperCase();
   ch.uname=uname;
-  ch.desc=el("chset-desc")?.value?.trim()||"";
-  ch.avatar=chSetAvatarData||"";
+  ch.desc=desc;
+  ch.avatar=avatarUrl;
+  chSetAvatarFile=null;
   closeM("m-chsettings");
   renderChats();
   if(S.chat===ch.id){
@@ -3314,6 +3357,17 @@ function saveChatInfo(){
   }
   saveState();
   showToast("✅ Изменения сохранены");
+
+  // Реально сохраняем на сервере и уведомляем всех участников — раньше изменения
+  // оставались только локально у того, кто редактировал, даже сам редактор терял
+  // их при входе с другого устройства
+  if(typeof ch.id==="string" && ch.id.length>10){
+    try{
+      await apiPatch("/api/chats/"+ch.id, {name:nm, description:desc, avatar:avatarUrl, username:uname||null}, true);
+      const memberIds=getChatMemberIds(ch);
+      wsSendReliable({type:"chat.updated", payload:{chatId:ch.id, name:nm, description:desc, avatar:avatarUrl, username:uname||null, memberIds}});
+    }catch(e){ console.warn("save chat info to server error:",e); }
+  }
 }
 
 function toggleChSetting(key,elm){
@@ -4985,10 +5039,12 @@ function openEditProfile(){
   if(el("prof-uname"))el("prof-uname").value=u.uname||"";
   if(el("prof-bio"))el("prof-bio").value=u.bio||"";
   profAvatarData=u.avatar||"";
+  profAvatarFile=null;
   el("m-profile").classList.add("on");
 }
-function previewProfAvatar(inp){ if(!inp.files[0])return; const r=new FileReader();r.onload=e=>{profAvatarData=e.target.result;const av=el("prof-av-btn");if(av)av.innerHTML=`<img src="${profAvatarData}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;};r.readAsDataURL(inp.files[0]); }
-function saveProfile(){
+let profAvatarFile=null;
+function previewProfAvatar(inp){ if(!inp.files[0])return; profAvatarFile=inp.files[0]; const r=new FileReader();r.onload=e=>{profAvatarData=e.target.result;const av=el("prof-av-btn");if(av)av.innerHTML=`<img src="${profAvatarData}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;};r.readAsDataURL(inp.files[0]); }
+async function saveProfile(){
   const nm=(el("prof-name")?.value||"").trim(); if(!nm){showToast("❌ Имя не может быть пустым");return;}
   const uname=(el("prof-uname")?.value||"").replace("@","").replace(/[^a-z0-9_]/gi,"");
   const bio=el("prof-bio")?.value||"";
@@ -4996,11 +5052,31 @@ function saveProfile(){
   // Запоминаем, что было ДО правки — если сервер откажет, вернём как было
   const prevUser={...S.user};
 
-  S.user={...S.user,name:nm,uname:uname,bio:bio,avatar:profAvatarData,initials:nm.slice(0,2).toUpperCase()};
-  closeM("m-profile"); updateUserUI(); openSettings(); saveState(); showToast("✅ Профиль сохранён");
+  // Если выбрали новый файл аватара — сначала грузим его по-настоящему через /api/upload,
+  // а не отправляем гигантский base64 напрямую (раньше аватар вообще никуда не грузился)
+  let avatarUrl=S.user?.avatar||"";
+  if(profAvatarFile){
+    showToast("⏳ Загружаем аватар...");
+    try{
+      const fd=new FormData();
+      fd.append("file",profAvatarFile);
+      const t=getToken();
+      const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.success) throw new Error(data.error||"Не удалось загрузить файл");
+      avatarUrl=data.url;
+    }catch(e){
+      console.error("avatar upload error:",e);
+      showToast("⚠️ Не удалось загрузить аватар — остальное сохранено");
+    }
+  }
 
-  // Сохраняем на сервере — иначе новое имя/юзернейм не найти через поиск у других пользователей
-  apiPatch("/api/users/me", {name:nm, username:uname || null, bio:bio}, true)
+  S.user={...S.user,name:nm,uname:uname,bio:bio,avatar:avatarUrl,initials:nm.slice(0,2).toUpperCase()};
+  closeM("m-profile"); updateUserUI(); openSettings(); saveState(); showToast("✅ Профиль сохранён");
+  profAvatarFile=null;
+
+  // Сохраняем на сервере — иначе новое имя/юзернейм/аватар не увидят другие пользователи
+  apiPatch("/api/users/me", {name:nm, username:uname || null, bio:bio, avatar:avatarUrl}, true)
     .then(d=>{
       if(!d?.success){
         // Сервер отклонил — откатываем локальные изменения и заново открываем окно
