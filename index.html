@@ -2114,6 +2114,24 @@ function wsHandleMessage(msg){
       break;
     }
 
+    case "support.message": {
+      // Реальное системное уведомление NexusSupport (например, о покупке) —
+      // пришло по WebSocket в реальном времени, пока приложение открыто.
+      const { id: serverId, text, createdAt } = msg.payload;
+      if(!S.messages[99999]) S.messages[99999]=[];
+      const already = S.messages[99999].some(m=>m.serverId===serverId);
+      if(!already){
+        const d = createdAt ? new Date(createdAt) : new Date();
+        S.messages[99999].push({id:nextId(), serverId, t:"in", fr:"NS", col:6, tx:text, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), isSupport:true});
+        const sch=S.chats.find(c=>c.id===99999);
+        if(sch){ sch.prev=text; sch.time=now(); if(S.chat!==99999) sch.unread=(sch.unread||0)+1; }
+        if(S.chat===99999){ renderMsgs(); markChatAsRead(99999); }
+        renderChats(); saveState();
+        if(S.chat!==99999 && sch) showNotif(sch, text);
+      }
+      break;
+    }
+
     case "vip.gifted": {
       const { chatId, planId, fromName } = msg.payload;
       const plan=VIP_PLANS.find(p=>p.id===planId);
@@ -2491,6 +2509,8 @@ function loginOK(){
       saveState(); renderChats();
     }
   }, 300);
+
+  loadSupportMessages();
 
   // Загружаем реальные чаты из БД
   setTimeout(loadChatsFromDB, 600);
@@ -2882,6 +2902,14 @@ function openChat(id){
 
   // restore draft
   const inp=el("minput"); if(inp){setInputText(ch.draft||""); }
+
+  // NexusSupport — нельзя писать свободный текст, только тематические кнопки.
+  // Прячем всю панель ввода (форматирование/вложения/микрофон и т.д. там всё
+  // равно не работают в этом чате — см. блокировки ниже по файлу), и всегда
+  // показываем актуальные quick-кнопки при каждом открытии этого чата.
+  const ibar=document.querySelector(".ibar");
+  if(ibar) ibar.style.display = (ch.id===99999) ? "none" : "";
+  if(ch.id===99999) setTimeout(renderSupportQuick, 50);
 
   // pinned messages (multiple)
   renderPinbar();
@@ -4854,8 +4882,10 @@ function renderRightPanelMedia(ch){
     if(used.length){
       rpStk.innerHTML=used.map(sk=>`<div style="font-size:32px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--bg3);cursor:pointer" onclick="sendSticker('${sk}')" title="Отправить ещё раз">${sk}</div>`).join("");
     } else {
-      // В этом чате стикеров ещё не было — ярлыки паков, открывают панель выбора
-      rpStk.innerHTML=(S.packs||[]).slice(0,4).map(p=>`<div style="font-size:32px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--bg3);cursor:pointer" onclick="toggleMP('stickers')">${p.stickers[0]}</div>`).join("");
+      // В этом чате стикеров ещё не было — показываем понятный плейсхолдер
+      // (раньше тут были превью первых 4 паков — выглядело как рабочие
+      // быстрые кнопки, а на деле просто открывали общий выбор стикеров)
+      rpStk.innerHTML=`<div style="width:100%;color:var(--tx3);font-size:12px;text-align:center;padding:10px 0">Стикеры появятся здесь</div>`;
     }
   }
 
@@ -5941,6 +5971,7 @@ if(S.loggedIn){
         saveState(); updateUserUI(); updBal();
       })
       .catch(()=>{});
+    loadSupportMessages();
   }
 } else {
   el("auth-welcome").classList.add("on");
@@ -6361,6 +6392,32 @@ const SUPPORT_FALLBACK = [
 
 let supportChatId = null;
 
+// Подтягивает реальные системные уведомления (о покупках и т.п.) с сервера
+// и подмешивает их в локальный чат 99999 — на случай, если они пришли,
+// пока приложение было закрыто (WS-пуш их бы тогда не доставил).
+async function loadSupportMessages(){
+  if(!getToken()) return;
+  try{
+    const data = await apiGet("/api/support/messages");
+    const serverMsgs = (data && data.messages) || [];
+    if(!serverMsgs.length) return;
+    if(!S.messages[99999]) S.messages[99999]=[];
+    const existingIds = new Set(S.messages[99999].filter(m=>m.serverId).map(m=>m.serverId));
+    let added=false;
+    serverMsgs.forEach(sm=>{
+      if(existingIds.has(sm.id)) return;
+      const d=new Date(sm.created_at);
+      S.messages[99999].push({id:nextId(), serverId:sm.id, t:"in", fr:"NS", col:6, tx:sm.text, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), isSupport:true});
+      added=true;
+    });
+    if(added){
+      S.messages[99999].sort((a,b)=>(a.ts||0)-(b.ts||0));
+      saveState();
+      if(S.chat===99999) renderMsgs();
+    }
+  }catch(e){ /* тихо игнорируем — не критично для остальной работы приложения */ }
+}
+
 function openSupport(){
   // find or create support chat
   let ch = S.chats.find(c=>c.nm==="NexusSupport 🤖");
@@ -6378,6 +6435,7 @@ function openSupport(){
   renderChats();
   // Show quick reply buttons after render
   setTimeout(renderSupportQuick, 100);
+  loadSupportMessages();
 }
 
 function renderSupportQuick(){
