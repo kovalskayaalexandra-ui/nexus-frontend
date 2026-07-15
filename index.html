@@ -1478,6 +1478,10 @@ tr:hover td{background:var(--bg3)}
     <span class="perm-label">Писать от имени канала в чатах<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Разрешить админам писать в личных чатах и группах от имени этого канала</div></span>
     <div class="perm-tgl" id="chset-allowpost" onclick="toggleChSetting('allowPostInChats',this)"></div>
   </div>
+  <div class="perm-row" id="chset-restrict-row">
+    <span class="perm-label">Только админы могут писать<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Остальные участники смогут только читать (как в Telegram)</div></span>
+    <div class="perm-tgl" id="chset-restrict" onclick="toggleRestrictSendMessages(this)"></div>
+  </div>
   <div class="perm-row">
     <span class="perm-label">Реакции<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Разрешить участникам ставить реакции на сообщения/посты</div></span>
     <div class="perm-tgl" id="chset-reactions-enabled" onclick="toggleChSetting('reactionsEnabled',this)"></div>
@@ -3095,11 +3099,13 @@ function renderMsgs(){
       h+=`<div class="vbub" oncontextmenu="showCtx(event,${m.id})"><div class="pbtn" onclick="tPlay(this)"><svg width="11" height="11" fill="white" viewBox="0 0 24 24"><path d="m5 3 14 9-14 9V3z"/></svg></div><div class="wf">${bars}</div><div class="vd">${m.dur||"0:00"}</div></div>`;
     }else{
       let bc="";
-      // Имя отправителя — как в Telegram, показываем только в ГРУППАХ (в личных
-      // чатах и так понятно, кто пишет; в каналах — наоборот, вместо конкретного
-      // автора всегда показывается сам канал, m.frName для них уже null).
+      // Имя над сообщением — в ГРУППЕ это реальный автор, в КАНАЛЕ это сам
+      // канал (не конкретный админ, который нажал "отправить" — как у
+      // "Топор+" в референсе: имя канала текстом над каждым постом).
       if(m.t!=="out" && curCh?.type==="groups" && m.frName && !m.asChannel){
         bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${colBg(m.col||0)}">${escHtml(m.frName)}</div>`;
+      } else if(m.t!=="out" && curCh?.type==="channels" && !m.asChannel){
+        bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${colBg(m.col||0)}">${escHtml(curCh.nm||"Канал")}</div>`;
       }
       if(m.asChannel)bc+=`<div class="as-channel-tag"><div class="sas-av" style="background:${colBg(m.asChannel.col)};width:18px;height:18px;font-size:9px">${m.asChannel.ini}</div>📢 ${m.asChannel.nm}</div>`;
       if(m.fwd)bc+=`<div class="as-channel-tag" style="opacity:.8">↪️ Переслано от <b style="margin-left:3px">${escHtml(m.fwd.fromName)}</b></div>`;
@@ -3261,6 +3267,14 @@ function openChannelSettings(){
   } else {
     el("chsettings-name").textContent="";
   }
+  // "Только админы могут писать" — только для групп (каналы и так всегда
+  // закрыты для обычных участников по умолчанию, там это не нужно).
+  // Значение берём из настоящего поля с сервера (ch.restrictSendMessages),
+  // а не из локального S.channelSettings — этот переключатель реально
+  // сохраняется через API, не просто визуальный.
+  const restrictRow=el("chset-restrict-row");
+  if(restrictRow) restrictRow.style.display = isChannel ? "none" : "flex";
+  if(el("chset-restrict")) el("chset-restrict").classList.toggle("on", !!ch.restrictSendMessages);
   if(!S.channelSettings[ch.id]) S.channelSettings[ch.id]={};
   const reactEnabled=S.channelSettings[ch.id].reactionsEnabled!==false;
   el("chset-reactions-enabled").classList.toggle("on",reactEnabled);
@@ -3513,6 +3527,34 @@ async function saveChatInfo(){
       const memberIds=getChatMemberIds(ch);
       wsSendReliable({type:"chat.updated", payload:{chatId:ch.id, name:nm, description:desc, avatar:avatarUrl, username:uname||null, memberIds}});
     }catch(e){ console.warn("save chat info to server error:",e); }
+  }
+}
+
+// В отличие от toggleChSetting() (чисто локальная, для визуальных настроек типа
+// реакций) — это реально сохраняется на сервере через PATCH /api/chats/:id,
+// потому что от этого зависит настоящая проверка прав в messages.js.
+async function toggleRestrictSendMessages(elm){
+  const ch=S.chats.find(c=>c.id===S.chat);
+  if(!ch) return;
+  const isRealChat = typeof ch.id==="string" && ch.id.length>10;
+  if(!isRealChat){ showToast("❌ Доступно только для настоящих групп"); return; }
+
+  const newVal = !ch.restrictSendMessages;
+  elm.classList.toggle("on", newVal); // сразу отражаем в интерфейсе, откатим если не сохранится
+
+  try{
+    const data = await apiPatch("/api/chats/"+ch.id, {restrictSendMessages: newVal}, true);
+    if(!data || !data.success){
+      elm.classList.toggle("on", !newVal); // откат
+      showToast("❌ "+(data&&data.error||"Не удалось сохранить"));
+      return;
+    }
+    ch.restrictSendMessages = newVal;
+    saveState();
+    showToast(newVal ? "🔒 Только админы могут писать" : "✅ Могут писать все участники");
+  }catch(e){
+    elm.classList.toggle("on", !newVal); // откат
+    showToast("❌ Нет связи с сервером");
   }
 }
 
