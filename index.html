@@ -881,7 +881,6 @@ tr:hover td{background:var(--bg3)}
       <div class="nbtn" style="color:var(--am);border-color:rgba(251,191,36,.3)" onclick="openVIP()">👑 VIP</div>
       <div class="nbtn" onclick="openSupport()">💬 Поддержка</div>
       <div class="nbtn" onclick="openGifts()" style="color:var(--gr)">🎁 Подарки</div>
-      <div class="nbtn" onclick="openOfficialChannel()" style="color:var(--acc3)">⬡ Новости</div>
       <div class="nbtn" id="t-devp" onclick="openAdmin()">⚙️ Dev Panel</div>
       <div class="nbtn" onclick="openLP()" style="min-width:auto;padding:5px 9px" id="appflag">🇷🇺</div>
       <div class="upill" onclick="openSettings()">
@@ -1269,10 +1268,7 @@ tr:hover td{background:var(--bg3)}
             <textarea class="fii" id="op-text" rows="4" placeholder="Что нового?"></textarea>
           </div>
           <button class="xbtn" onclick="publishOfficialPost()">📢 Опубликовать</button>
-        </div>
-        <div class="asec">
-          <div class="asect">Последние настоящие посты</div>
-          <div id="op-list" style="display:flex;flex-direction:column;gap:8px"></div>
+          <div style="font-size:11px;color:var(--tx3);margin-top:8px">Результат смотрите прямо в чате «Nexus Official» в сайдбаре — отдельного списка здесь больше нет, чтобы не дублировать.</div>
         </div>
       </div>
       <div class="apage" id="page-currency">
@@ -2158,14 +2154,23 @@ function wsHandleMessage(msg){
     }
 
     case "official.post": {
-      // Новый пост Nexus Official пришёл в реальном времени, пока приложение открыто
+      // Новый пост Nexus Official пришёл в реальном времени, пока приложение открыто —
+      // добавляем как обычное входящее сообщение в чат 88888 (отдельного экрана больше нет).
       const post = msg.payload;
       if(!realOfficialPosts.some(p=>p.id===post.id)){
         realOfficialPosts.unshift(post);
+        if(!S.messages[88888]) S.messages[88888]=[];
+        const d = post.created_at ? new Date(post.created_at) : new Date();
+        S.messages[88888].push({
+          id: nextId(), serverId: post.id, dbId: post.id, t: "in",
+          tx: (post.emoji?post.emoji+" ":"")+post.text,
+          time: d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"),
+          ts: d.getTime(), views: post.views||0,
+        });
         const sch=S.chats.find(c=>c.id===88888);
         if(sch){ sch.prev=(post.emoji||"📢")+" "+post.text; sch.time=now(); if(S.chat!==88888) sch.unread=(sch.unread||0)+1; }
+        if(S.chat===88888) renderMsgs();
         renderChats(); saveState();
-        if(el("screen-official")?.classList.contains("on")) openOfficialChannel();
         if(S.chat!==88888 && sch) showNotif(sch, (post.emoji||"📢")+" "+post.text);
       }
       break;
@@ -2556,6 +2561,7 @@ function loginOK(){
     }
     if(!S.chats.find(c=>c.id===88888)){
       S.chats.push({id:88888,nm:"Nexus Official ✅",ini:"NO",col:4,online:false,prev:"🎉 Nexus v3.0 — крупное обновление!",time:"сейчас",unread:4,type:"channels",pinned:false,muted:false,blocked:false,draft:"",official:true});
+      S.messages[88888] = buildOfficialMessages();
       saveState(); renderChats();
     }
     renderStoriesBar();
@@ -2911,12 +2917,6 @@ function globalSearch(v){
 
 // ── OPEN CHAT ──────────────────────────────────────────────────
 function openChat(id){
-  // Nexus Official — это не переписка, а витрина постов (как канал в Telegram
-  // без комментариев). Клик по нему откуда угодно (сайдбар, поиск и т.п.)
-  // должен вести на настоящую ленту, а не на обычный экран чата — там ему и
-  // взяться неоткуда, это не настоящий чат в БД.
-  if(id===88888){ openOfficialChannel(); return; }
-
   // save draft of previous chat
   const prev=S.chats.find(c=>c.id===S.chat);
   if(prev){ prev.draft=getInputText(); }
@@ -7170,18 +7170,43 @@ async function publishOfficialPost(){
 // Подтягивает настоящие посты с сервера — и для списка в самом Dev Panel,
 // и подмешивает их в сам канал Nexus Official поверх демо-постов OFFICIAL_POSTS.
 let realOfficialPosts=[];
+
+// Превращает демо-посты (OFFICIAL_POSTS) и настоящие посты (realOfficialPosts)
+// в обычные сообщения чата 88888 — Nexus Official теперь работает как любой
+// другой канал, без отдельного экрана: те же сообщения, та же лента.
+function buildOfficialMessages(){
+  const demo = OFFICIAL_POSTS.map(p=>{
+    const d = new Date(p.ts);
+    return {
+      id: nextId(), serverId: "demo-"+p.id, t: "in",
+      tx: (p.emoji?p.emoji+" ":"")+p.text,
+      time: d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"),
+      ts: d.getTime(), views: p.views||0,
+    };
+  });
+  const real = realOfficialPosts.map(p=>{
+    const d = new Date(p.created_at);
+    return {
+      id: nextId(), serverId: p.id, dbId: p.id, t: "in",
+      tx: (p.emoji?p.emoji+" ":"")+p.text,
+      time: d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"),
+      ts: d.getTime(), views: p.views||0,
+    };
+  });
+  return [...demo, ...real].sort((a,b)=>(a.ts||0)-(b.ts||0));
+}
 async function loadOfficialPosts(){
   if(!getToken()) return;
   try{
     const data=await apiGet("/api/official/posts");
     realOfficialPosts=(data && data.posts) || [];
-    const list=el("op-list");
-    if(list){
-      list.innerHTML = realOfficialPosts.length
-        ? realOfficialPosts.map(p=>`<div style="padding:10px 12px;background:var(--bg3);border-radius:10px;font-size:12.5px"><div style="margin-bottom:4px">${p.emoji} ${escHtml(p.text)}</div><div style="color:var(--tx3);font-size:11px">${new Date(p.created_at).toLocaleString("ru")} · 👁 ${p.views||0}</div></div>`).join("")
-        : `<div style="color:var(--tx3);font-size:12px">Пока нет настоящих постов</div>`;
+    // Пересобираем сообщения чата 88888 целиком (демо + актуальные реальные посты) —
+    // Nexus Official работает как обычный канал, отдельного списка/экрана для этого нет.
+    if(S.chats.find(c=>c.id===88888)){
+      S.messages[88888] = buildOfficialMessages();
+      saveState();
+      if(S.chat===88888) renderMsgs();
     }
-    if(el("official-posts")) openOfficialChannel();
   }catch(e){ /* тихо игнорируем — демо-посты всё равно покажутся */ }
 }
 
