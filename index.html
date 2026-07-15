@@ -1931,7 +1931,6 @@ function wsSend(data){
 // где потеря сообщения из-за случайного переподключения WebSocket особенно заметна
 function wsSendReliable(data, attempt=1){
   const ok=wsSend(data);
-  console.log(`📤 wsSendReliable (${data.type}), попытка ${attempt}:`, ok?"✅ отправлено":"❌ соединение не готово");
   if(!ok && attempt<15){
     setTimeout(()=>wsSendReliable(data, attempt+1), 5000); // до ~70 секунд суммарно
   }
@@ -1941,7 +1940,6 @@ function wsHandleMessage(msg){
   switch(msg.type){
 
     case "auth.ok":
-      console.log("✅ WS авторизован:", msg.userId);
       break;
 
     case "auth.error":
@@ -4842,42 +4840,121 @@ function blockUser(){
     renderChats(); showToast("🚫 "+ch.nm+" заблокирован"); saveState();
   }
 }
+// Считает реальное количество разных типов вложений в истории чата
+function countChatContent(msgs){
+  const c={photos:0,videos:0,files:0,links:0,voice:0,audio:0,gifts:0,polls:0};
+  msgs.forEach(m=>{
+    if(m.img) c.photos++;
+    if(m.video||m.videoCircle) c.videos++;
+    if(m.file) c.files++;
+    if(m.voice) c.voice++;
+    if(m.audio) c.audio++;
+    if(m.t==="gift") c.gifts++;
+    if(m.poll) c.polls++;
+    if(m.tx && /https?:\/\//.test(m.tx)) c.links++;
+  });
+  return c;
+}
+function uiStatRow(icon,label,count){
+  if(!count) return "";
+  return `<div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--brd);cursor:pointer" onclick="closeM('m-user-info')">
+    <span style="font-size:16px;width:20px;text-align:center;flex-shrink:0">${icon}</span>
+    <span style="font-size:13.5px;color:var(--acc2)">${count.toLocaleString("ru")} ${label}</span>
+  </div>`;
+}
+function uiActionBtn(icon,label,onclick){
+  return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border-radius:10px;background:var(--bg3);cursor:pointer" onclick="${onclick}">
+    <span style="font-size:16px">${icon}</span><span style="font-size:10.5px;color:var(--tx2)">${label}</span>
+  </div>`;
+}
+
 function openChatInfo(){
   const ch = S.chats.find(c => c.id === S.chat); if(!ch) return;
   if(ch.id===88888){ openOfficialChannel(); return; }
 
   const av=el("ui-avatar");
-  av.style.background=colBg(ch.col);
   av.innerHTML = ch.avatar ? `<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">` : (ch.ini||"?");
   el("ui-name").textContent = ch.nm;
-  el("ui-uname").textContent = ch.uname ? "@"+ch.uname : "";
+  el("ui-uname-row").style.display="none";
   el("ui-bio-row").style.display="none";
   el("ui-gifts-row").style.display="none";
-  el("ui-edit-btn").style.display="none";
+  el("ui-members-row").style.display="none";
+  el("ui-bottom-actions").innerHTML="";
+
+  const msgs=S.messages[ch.id]||[];
+  const counts=countChatContent(msgs);
+  const statsHTML=[
+    uiStatRow("🖼️","фото",counts.photos),
+    uiStatRow("🎥","видео",counts.videos),
+    uiStatRow("📎","файлов",counts.files),
+    uiStatRow("🔗","ссылок",counts.links),
+    uiStatRow("🎤","голосовых",counts.voice),
+    uiStatRow("🎵","аудиофайлов",counts.audio),
+    uiStatRow("📊","опросов",counts.polls),
+  ].join("");
+  el("ui-stats-list").innerHTML=statsHTML;
+
+  const isSystem=isSystemChat(ch.id);
 
   if(ch.type==="personal"){
     el("ui-status").textContent = ch.online ? "в сети" : "был(а) недавно";
+    el("ui-uname").textContent = ch.uname ? "@"+ch.uname : "";
+    if(ch.uname) el("ui-uname-row").style.display="block";
 
-    // Подтягиваем "о себе" с сервера, если это реальный собеседник
+    el("ui-actions").innerHTML = isSystem ? "" : [
+      uiActionBtn("💬","Чат",`closeM('m-user-info')`),
+      uiActionBtn(ch.muted?"🔔":"🔕",ch.muted?"Вкл. звук":"Без звука",`muteChat();openChatInfo()`),
+      uiActionBtn("📞","Звонок",`closeM('m-user-info');showToast('📞 Звонки — скоро')`),
+      uiActionBtn("⋯","Ещё",`closeM('m-user-info')`),
+    ].join("");
+
     if(ch.withUserId){
       apiGet("/api/users/"+ch.withUserId).then(d=>{
         if(d.user?.bio){ el("ui-bio").textContent=d.user.bio; el("ui-bio-row").style.display="block"; }
       }).catch(()=>{});
     }
 
-    // Подарки — берём прямо из истории переписки с этим человеком (свои и полученные)
-    const gifts=(S.messages[ch.id]||[]).filter(m=>m.t==="gift");
+    const gifts=msgs.filter(m=>m.t==="gift");
     if(gifts.length){
       el("ui-gifts-grid").innerHTML = gifts.map(g=>`<div class="pgift ${g.rarity||"common"}" title="${escHtml(g.name)}" onclick="closeM('m-user-info');showToast('🎁 '+'${escHtml(g.name).replace(/'/g,"\\'")}')">${giftVisual(g)}</div>`).join("");
       el("ui-gifts-row").style.display="block";
     }
+
+    if(!isSystem){
+      el("ui-bottom-actions").innerHTML=`
+        <div style="padding:12px 16px;border-bottom:1px solid var(--brd);cursor:pointer;color:var(--rd);font-size:13.5px" onclick="closeM('m-user-info');blockUser()">🚫 Заблокировать</div>`;
+    }
   } else {
-    // Группа/канал — упрощённая информация
-    el("ui-status").textContent = (ch.mbrs||0)+" участник"+((ch.mbrs||0)%10===1&&(ch.mbrs||0)!==11?"":"ов");
+    // Группа/канал
+    const mbrs=ch.mbrs||0;
+    el("ui-status").textContent = mbrs+" участник"+(mbrs%10===1&&mbrs!==11?"":"ов");
+    if(ch.uname){ el("ui-uname").textContent="@"+ch.uname; el("ui-uname-row").style.display="block"; }
     if(ch.desc){ el("ui-bio").textContent=ch.desc; el("ui-bio-row").style.display="block"; }
 
     const myRole=myRoleIn(ch);
-    if(ch.mine || myRole==="owner" || myRole==="admin") el("ui-edit-btn").style.display="block";
+    const canEdit = !isSystem && (ch.mine||myRole==="owner"||myRole==="admin");
+    const actions=[uiActionBtn(ch.muted?"🔔":"🔕",ch.muted?"Вкл. звук":"Без звука",`muteChat();openChatInfo()`)];
+    if(ch.type==="groups") actions.push(uiActionBtn("👥","Участники",`closeM('m-user-info');openMembers()`));
+    if(canEdit) actions.push(uiActionBtn("⚙️","Управление",`closeM('m-user-info');openChannelSettings()`));
+    actions.push(uiActionBtn("⋯","Ещё",`closeM('m-user-info')`));
+    el("ui-actions").innerHTML = isSystem ? "" : actions.join("");
+
+    if(!isSystem){
+      el("ui-members-row").style.display="block";
+      el("ui-members-row").innerHTML = uiStatRow("👥",mbrs%10===1&&mbrs!==11?"подписчик":"подписчиков",mbrs);
+
+      const gifts=msgs.filter(m=>m.t==="gift");
+      if(gifts.length){
+        el("ui-gifts-grid").innerHTML = gifts.map(g=>`<div class="pgift ${g.rarity||"common"}" title="${escHtml(g.name)}">${giftVisual(g)}</div>`).join("");
+        el("ui-gifts-row").style.display="block";
+      }
+
+      const isOwner=ch.mine||myRole==="owner";
+      let bottomHTML="";
+      if(canEdit) bottomHTML+=`<div style="padding:12px 16px;border-bottom:1px solid var(--brd);cursor:pointer;color:var(--acc2);font-size:13.5px" onclick="closeM('m-user-info');openChannelSettings()">✏️ Изменить</div>`;
+      bottomHTML+=`<div style="padding:12px 16px;border-bottom:1px solid var(--brd);cursor:pointer;color:var(--rd);font-size:13.5px" onclick="closeM('m-user-info');deleteChatCompletely()">${isOwner?"🗑️ Удалить "+(ch.type==="channels"?"канал":"группу"):"🚪 Покинуть "+(ch.type==="channels"?"канал":"группу")}</div>`;
+      el("ui-bottom-actions").innerHTML=bottomHTML;
+    }
   }
 
   el("m-user-info").classList.add("on");
@@ -7296,24 +7373,42 @@ applyTheme(S.theme||"dark");
 </div></div>
 
 <!-- MODAL: USER/CHAT INFO -->
-<div class="movl" id="m-user-info"><div class="modal">
-  <div style="display:flex;flex-direction:column;align-items:center;padding:6px 0 16px">
-    <div id="ui-avatar" style="width:84px;height:84px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;margin-bottom:10px;overflow:hidden"></div>
-    <div id="ui-name" style="font-family:'Syne',sans-serif;font-weight:700;font-size:18px;text-align:center"></div>
-    <div id="ui-uname" style="color:var(--acc2);font-size:13px;margin-top:2px"></div>
-    <div id="ui-status" style="color:var(--tx3);font-size:12.5px;margin-top:4px"></div>
+<div class="movl" id="m-user-info"><div class="modal" style="padding:0;overflow:hidden;max-width:360px">
+  <!-- Градиентная шапка -->
+  <div id="ui-header" style="position:relative;padding:20px 20px 16px;background:linear-gradient(135deg,var(--acc2),var(--acc3));display:flex;flex-direction:column;align-items:center">
+    <div onclick="closeM('m-user-info')" style="position:absolute;top:12px;right:12px;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.25);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px">✕</div>
+    <div id="ui-avatar" style="width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;margin-bottom:10px;overflow:hidden;background:rgba(255,255,255,.2);color:#fff;border:2px solid rgba(255,255,255,.4)"></div>
+    <div id="ui-name" style="font-family:'Syne',sans-serif;font-weight:700;font-size:17px;text-align:center;color:#fff">Имя</div>
+    <div id="ui-status" style="color:rgba(255,255,255,.85);font-size:12px;margin-top:3px"></div>
   </div>
-  <div id="ui-bio-row" style="padding:10px 0;border-top:1px solid var(--brd);display:none">
-    <div style="font-size:11px;color:var(--tx3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.03em">О себе</div>
-    <div id="ui-bio" style="font-size:13px;line-height:1.5"></div>
-  </div>
-  <div id="ui-gifts-row" style="padding:10px 0;border-top:1px solid var(--brd);display:none">
-    <div style="font-size:11px;color:var(--tx3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">🎁 Подарки</div>
-    <div id="ui-gifts-grid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
-  </div>
-  <div class="macts">
-    <button class="xbtn sec" onclick="closeM('m-user-info')">Закрыть</button>
-    <button class="xbtn gn" id="ui-edit-btn" style="display:none" onclick="closeM('m-user-info');openChannelSettings()">✏️ Изменить</button>
+
+  <!-- Кнопки действий -->
+  <div id="ui-actions" style="display:flex;gap:6px;padding:12px 16px;border-bottom:1px solid var(--brd)"></div>
+
+  <div style="max-height:400px;overflow-y:auto">
+    <div id="ui-uname-row" style="padding:10px 16px;border-bottom:1px solid var(--brd);display:none">
+      <div id="ui-uname" style="color:var(--acc2);font-size:13.5px"></div>
+      <div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Имя пользователя</div>
+    </div>
+    <div id="ui-bio-row" style="padding:10px 16px;border-bottom:1px solid var(--brd);display:none">
+      <div id="ui-bio" style="font-size:13px;line-height:1.5"></div>
+      <div style="font-size:10.5px;color:var(--tx3);margin-top:2px">О себе</div>
+    </div>
+
+    <!-- Разбивка по контенту -->
+    <div id="ui-stats-list"></div>
+
+    <!-- Подписчики/админы (группы/каналы) -->
+    <div id="ui-members-row" style="display:none"></div>
+
+    <!-- Подарки -->
+    <div id="ui-gifts-row" style="padding:12px 16px;border-bottom:1px solid var(--brd);display:none">
+      <div style="font-size:11px;color:var(--tx3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">🎁 Подарки</div>
+      <div id="ui-gifts-grid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+
+    <!-- Нижние действия (изменить/покинуть/удалить/заблокировать) -->
+    <div id="ui-bottom-actions"></div>
   </div>
 </div></div>
 
