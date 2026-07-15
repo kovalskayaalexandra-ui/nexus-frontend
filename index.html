@@ -2098,8 +2098,7 @@ function wsHandleMessage(msg){
         if(username!==undefined) ch.uname=username;
         if(S.chat===chatId){
           if(el("chnm")) el("chnm").textContent=ch.nm;
-          const chav=el("chav");
-          if(chav){ chav.style.background=ch.avatar?"none":colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?"; }
+          updateChatAvatarDisplays(ch);
         }
         renderChats(); saveState();
       }
@@ -2426,7 +2425,17 @@ function previewRegAvatar(inp){ if(!inp.files[0])return; const r=new FileReader(
 async function doReg(){
   const nm=el("rname").value.trim(); if(!nm){showToast("❌ Введите имя");return;}
   const ph=el("rphinp").value.replace(/\D/g,""); if(!ph||ph.length<6){showToast("❌ Введите номер");return;}
-  const uname=(el("runame").value.replace("@","")||nm.toLowerCase().replace(/\s+/g,"_")).replace(/[^a-z0-9_]/gi,"");
+  const rawUname=el("runame").value.trim();
+  let uname;
+  if(rawUname){
+    const unameCheck=validateUsername(rawUname); if(!unameCheck.ok) return;
+    uname=unameCheck.value;
+  } else {
+    // Username не ввели явно — автогенерация из имени. Тут молча вырезаем
+    // недопустимые символы (кириллицу и т.п.), это не то, что пользователь
+    // явно набирал, поэтому ошибку по этому поводу показывать не за что
+    uname=nm.toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/gi,"") || "user"+Math.floor(Math.random()*100000);
+  }
   const bio=el("rbio").value.trim();
 
   const btn=document.querySelector("#auth-register .abtn");
@@ -2489,6 +2498,17 @@ function loginOK(){
 // Точечное обновление имени/аватара собеседника — вызывается при каждом открытии
 // чата, чтобы смена имени на другой стороне подтягивалась без полной перезагрузки
 // страницы (loadChatsFromDB запускается только один раз при старте приложения)
+// Обновляет аватар чата сразу везде, где он может отображаться — в шапке чата
+// и в правой панели. Раньше это обновлялось по отдельности в разных местах,
+// и правая панель стабильно "забывалась".
+function updateChatAvatarDisplays(ch){
+  if(!ch) return;
+  const chav=el("chav");
+  if(chav){ chav.style.background=ch.avatar?"none":colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?"; }
+  const rpav=el("rpav");
+  if(rpav){ rpav.style.background=ch.avatar?"none":colBg(ch.col); rpav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?"; }
+}
+
 async function refreshChatPeerInfo(ch){
   if(!ch || ch.type!=="personal" || !ch.withUserId) return;
   try{
@@ -2505,10 +2525,7 @@ async function refreshChatPeerInfo(ch){
     const newAvatar=u.avatar||u.avatar_url||"";
     if(newAvatar!==(ch.avatar||"")){
       ch.avatar=newAvatar;
-      if(S.chat===ch.id){
-        const chav=el("chav");
-        if(chav){ chav.style.background=ch.avatar?"none":colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:(ch.ini||"?"); }
-      }
+      if(S.chat===ch.id) updateChatAvatarDisplays(ch);
       changed=true;
     }
     if(changed){ renderChats(); saveState(); }
@@ -3315,7 +3332,8 @@ async function saveChatInfo(){
   if((ch.type==="groups"||ch.type==="channels") && !ch.mine && myRole!=="owner" && myRole!=="admin"){ showToast("🔒 Нет прав редактировать этот чат"); return; }
   const nm=el("chset-name")?.value?.trim();
   if(!nm){ showToast("❌ Название не может быть пустым"); return; }
-  const uname=(el("chset-uname")?.value||"").replace("@","").replace(/[^a-z0-9_]/gi,"");
+  const unameCheck=validateUsername(el("chset-uname")?.value); if(!unameCheck.ok) return;
+  const uname=unameCheck.value;
   // Проверка уникальности юзернейма среди других своих чатов (пока чисто локально)
   if(uname){
     const clash=S.chats.find(c=>c.id!==ch.id && c.uname && c.uname.toLowerCase()===uname.toLowerCase());
@@ -3352,8 +3370,7 @@ async function saveChatInfo(){
   renderChats();
   if(S.chat===ch.id){
     if(el("chnm")) el("chnm").textContent=ch.nm;
-    const chav=el("chav");
-    if(chav){ chav.style.background=ch.avatar?"none":colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?"; }
+    updateChatAvatarDisplays(ch);
   }
   saveState();
   showToast("✅ Изменения сохранены");
@@ -5043,10 +5060,25 @@ function openEditProfile(){
   el("m-profile").classList.add("on");
 }
 let profAvatarFile=null;
+// Проверяет username — только латиница/цифры/подчёркивание, как в Telegram.
+// Возвращает {ok:true, value} или {ok:false} с показом понятной ошибки —
+// раньше недопустимые символы просто молча вырезались, а сохранение всё
+// равно докладывало об успехе, даже если результат не совпадал с введённым
+function validateUsername(raw){
+  const stripped=(raw||"").replace("@","").trim();
+  if(!stripped) return {ok:true, value:""}; // пустой username — можно, необязательное поле
+  if(!/^[a-zA-Z0-9_]+$/.test(stripped)){
+    showToast("❌ Username — только латинские буквы, цифры и _ (без пробелов, без кириллицы)");
+    return {ok:false};
+  }
+  return {ok:true, value:stripped};
+}
+
 function previewProfAvatar(inp){ if(!inp.files[0])return; profAvatarFile=inp.files[0]; const r=new FileReader();r.onload=e=>{profAvatarData=e.target.result;const av=el("prof-av-btn");if(av)av.innerHTML=`<img src="${profAvatarData}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;};r.readAsDataURL(inp.files[0]); }
 async function saveProfile(){
   const nm=(el("prof-name")?.value||"").trim(); if(!nm){showToast("❌ Имя не может быть пустым");return;}
-  const uname=(el("prof-uname")?.value||"").replace("@","").replace(/[^a-z0-9_]/gi,"");
+  const unameCheck=validateUsername(el("prof-uname")?.value); if(!unameCheck.ok) return;
+  const uname=unameCheck.value;
   const bio=el("prof-bio")?.value||"";
 
   // Запоминаем, что было ДО правки — если сервер откажет, вернём как было
@@ -5395,8 +5427,9 @@ function createChannel(){
 function renderGroupMembers(){
   const list=(S.contacts||[]).length ? S.contacts : S.chats.filter(c=>c.withUserId && c.type==="personal");
   el("grp-members-list").innerHTML=list.map(c=>{
-    const id=c.withUserId||c.id, nm=c.nm, col=c.col||0, uname=c.uname||"";
-    return `<div class="contact-item" style="margin-bottom:4px"><input type="checkbox" id="grpm-${id}" style="margin-right:8px"><label for="grpm-${id}" style="display:flex;align-items:center;gap:8px;cursor:pointer"><div class="contact-av" style="width:32px;height:32px;border-radius:50%;background:${colBg(col)};display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff">${nm[0]}</div><div><div class="contact-nm">${nm}</div>${uname?`<div class="contact-ph">@${uname}</div>`:""}</div></label></div>`;
+    const id=c.withUserId||c.id, nm=c.nm, col=c.col||0, uname=c.uname||"", avatar=c.avatar||"";
+    const avHTML=avatar?`<img src="${avatar}" style="width:100%;height:100%;object-fit:cover">`:nm[0];
+    return `<div class="contact-item" style="margin-bottom:4px"><input type="checkbox" id="grpm-${id}" style="margin-right:8px"><label for="grpm-${id}" style="display:flex;align-items:center;gap:8px;cursor:pointer"><div class="contact-av" style="width:32px;height:32px;border-radius:50%;background:${avatar?"none":colBg(col)};display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;overflow:hidden">${avHTML}</div><div><div class="contact-nm">${nm}</div>${uname?`<div class="contact-ph">@${uname}</div>`:""}</div></label></div>`;
   }).join("") || `<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пока не с кем создать группу — сначала начни с кем-нибудь чат</div>`;
 }
 async function doCreateGroup(){
