@@ -2476,12 +2476,24 @@ async function refreshChatPeerInfo(ch){
   try{
     const data=await apiGet("/api/users/"+ch.withUserId);
     const u=data.user;
-    if(u && u.name && u.name!==ch.nm){
+    if(!u) return;
+    let changed=false;
+    if(u.name && u.name!==ch.nm){
       ch.nm=u.name;
       ch.ini=u.name.slice(0,2).toUpperCase();
       if(S.chat===ch.id && el("chnm")) el("chnm").textContent=ch.nm;
-      renderChats(); saveState();
+      changed=true;
     }
+    const newAvatar=u.avatar||u.avatar_url||"";
+    if(newAvatar!==(ch.avatar||"")){
+      ch.avatar=newAvatar;
+      if(S.chat===ch.id){
+        const chav=el("chav");
+        if(chav){ chav.style.background=ch.avatar?"none":colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:(ch.ini||"?"); }
+      }
+      changed=true;
+    }
+    if(changed){ renderChats(); saveState(); }
   }catch(e){ console.warn("refresh peer info error:", e); }
 }
 
