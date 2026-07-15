@@ -2331,6 +2331,7 @@ async function doPasswordLogin(){
       initials:(data.user.name||"Я").slice(0,2).toUpperCase(), role:data.user.role||"user",
       balance_cr:data.user.balance||0, has_password:true, totp_enabled:!!data.user.totp_enabled,
     };
+    S.bal = S.user.balance_cr; // реальный баланс с сервера, а не демо-заглушка
     saveState(); loginOK();
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
@@ -2351,6 +2352,7 @@ async function confirmMandatory2FA(){
         role:data.user.role||"user", balance_cr:data.user.balance||0,
         has_password:true, totp_enabled:true,
       };
+      S.bal = S.user.balance_cr; // реальный баланс с сервера, а не демо-заглушка
       saveState();
     }
     el("m2fa-backup-list").innerHTML=(data.backupCodes||[]).map(c=>`<div>${c}</div>`).join("");
@@ -2406,6 +2408,7 @@ async function verifyCode(){
         has_password: !!data.user.has_password,
         totp_enabled: !!data.user.totp_enabled,
       };
+      S.bal = S.user.balance_cr; // реальный баланс с сервера, а не демо-заглушка
     }
 
     if(data.isNew){
@@ -5830,7 +5833,26 @@ function renderStore(){
   el("stkst").innerHTML=S.packs.map(p=>{const owned=p.free||S.owned.includes(p.id);return`<div class="scard"><div class="scprev">${p.stickers.slice(0,4).map(s=>`<span>${s}</span>`).join("")}</div><div class="scbot"><div><div class="scnm">${p.nm}</div><div class="scdesc">${p.desc}</div></div><button class="scbuy${owned?" owned":""}" ${owned?"disabled":""} onclick="${owned?"":` openStkModal(${p.id})`}">${owned?(p.free?"Бесплатно":"✓ Куплено"):`💎 ${p.price} CR`}</button></div></div>`;}).join("");
 }
 function openBuyM(cr,price,sym){ S.buyPkg={cr,price}; el("mbpkg").textContent=cr.toLocaleString()+" CR"; el("mbcr").textContent=cr.toLocaleString()+" 💎"; el("mbpr").textContent=price+" "+sym; el("m-buy").classList.add("on"); }
-function completeBuy(){ if(!S.buyPkg)return; S.bal+=S.buyPkg.cr; updBal(); closeM("m-buy"); showToast("🎉 +"+S.buyPkg.cr.toLocaleString()+" CR!"); S.buyPkg=null; saveState(); if(el("screen-store").classList.contains("on"))renderStore(); }
+
+// cr → productKey в каталоге бэкенда (services/payments/products.js) — суммы совпадают 1-в-1 с S.coinPkgs
+const CR_TO_PRODUCT_KEY = {100:"cr_100",250:"cr_250",500:"cr_500",1000:"cr_1000",2500:"cr_2500",5000:"cr_5000"};
+
+async function completeBuy(){
+  if(!S.buyPkg) return;
+  const productKey = CR_TO_PRODUCT_KEY[S.buyPkg.cr];
+  if(!productKey){ showToast("❌ Неизвестный пакет"); return; }
+  showToast("⏳ Переход к оплате...");
+  try{
+    const data = await apiPost("/api/payments/create", { productKey }, true);
+    if(data && data.paymentUrl){
+      location.href = data.paymentUrl; // уходим на страницу оплаты Тинькофф/Stripe
+    } else {
+      showToast("❌ "+(data&&data.error||"Не удалось создать платёж"));
+    }
+  } catch(e){
+    showToast("❌ Нет связи с сервером");
+  }
+}
 function openStkModal(id){ const p=S.packs.find(x=>x.id===id);if(!p)return; S.buySP=id; el("msttit").textContent="🐱 "+p.nm; el("mstnm").textContent=p.nm; el("mstcnt").textContent=p.stickers.length+" шт."; el("mstpr").textContent=p.price+" 💎 CR"; el("mstbal").textContent=S.bal.toLocaleString()+" 💎"; el("mstrem").textContent=(S.bal-p.price).toLocaleString()+" 💎"; el("m-stk").classList.add("on"); }
 function completeStkBuy(){ const p=S.packs.find(x=>x.id===S.buySP);if(!p){closeM("m-stk");return;} if(S.bal<p.price){showToast("❌ Недостаточно CR");closeM("m-stk");return;} S.bal-=p.price;S.owned.push(p.id);updBal();closeM("m-stk");showToast("🎉 "+p.nm+"!");saveState();if(el("screen-store").classList.contains("on"))renderStore(); }
 
@@ -5899,13 +5921,38 @@ if(S.loggedIn){
   if(getToken()){
     fetch(API_URL+"/api/users/me",{headers:{"Authorization":"Bearer "+getToken()}})
       .then(r=>r.ok?r.json():null)
-      .then(data=>{ if(data&&data.id){ S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr}}; saveState(); updateUserUI(); } })
+      .then(data=>{
+        if(!data||!data.id) return;
+        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr}};
+        S.bal = data.balance_cr!=null ? data.balance_cr : S.bal; // баланс — источник правды сервер
+        // Реальный VIP-статус с сервера (vip_plan/vip_until из миграции платежей).
+        // Раньше VIP жил только в localStorage — теперь синхронизируем при каждом заходе.
+        if(data.vip_plan){
+          const active = !data.vip_until || new Date(data.vip_until) > new Date();
+          S.vip = active ? {
+            active:true, plan:data.vip_plan,
+            until: data.vip_until ? new Date(data.vip_until).toLocaleDateString("ru") : "Навсегда",
+          } : {active:false};
+        } else {
+          S.vip = {active:false};
+        }
+        saveState(); updateUserUI(); updBal();
+      })
       .catch(()=>{});
   }
 } else {
   el("auth-welcome").classList.add("on");
   updateLogoText();
 }
+
+// Возврат со страницы оплаты Тинькофф/Stripe (?payment=success|cancelled в URL).
+// Сам баланс/VIP подтянутся фоновым запросом к /api/users/me чуть выше —
+// тут только сообщаем пользователю и убираем параметр из адресной строки.
+(function(){
+  const paymentStatus = new URLSearchParams(location.search).get("payment");
+  if(paymentStatus==="success"){ showToast("✅ Оплата прошла! Обновляем баланс..."); history.replaceState(null,"",location.pathname); }
+  else if(paymentStatus==="cancelled"){ showToast("❌ Оплата отменена"); history.replaceState(null,"",location.pathname); }
+})();
 
 setInterval(()=>{if(S.loggedIn&&Math.random()>.75)showNotif();},20000);
 
@@ -5962,8 +6009,12 @@ function renderVIPScreen(){
       <div style="font-size:12px;color:var(--tx2)">До: ${S.vip.until||"Навсегда"}</div>
     </div>
   ` : `
-    <div style="text-align:center;padding:14px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:12px;margin-bottom:20px">
+    <div style="text-align:center;padding:14px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:12px;margin-bottom:14px">
       <div style="font-size:11.5px;color:var(--am)">У вас нет VIP. Выберите план ниже 👇</div>
+    </div>
+    <div style="text-align:center;margin-bottom:20px">
+      <button class="xbtn sec" style="font-size:11.5px;padding:8px 14px" onclick="buyVIPDirect('vip_month')">💳 Купить за ₽/$ напрямую (1 мес.)</button>
+      <button class="xbtn sec" style="font-size:11.5px;padding:8px 14px;margin-left:6px" onclick="buyVIPDirect('vip_year')">💳 За 1 год</button>
     </div>
   `;
 
@@ -6014,9 +6065,22 @@ function confirmGiftVip(planId, price){
   el("conf-title").textContent="🎁 Подарить VIP?";
   el("conf-body").textContent=`${plan.label} для ${recipient.nm} — спишется ${price.toLocaleString()} CR с твоего баланса.`;
   el("conf-ok").textContent="Подарить";
-  el("conf-ok").onclick=()=>{
-    S.bal-=price;
-    updBal(); saveState(); closeM("m-confirm");
+  el("conf-ok").onclick=async ()=>{
+    closeM("m-confirm");
+    showToast("⏳ Отправка подарка...");
+    let data;
+    try{
+      data = await apiPost("/api/vip/buy-with-cr", { planId, recipientUserId: recipient.userId }, true);
+    } catch(e){
+      showToast("❌ Нет связи с сервером");
+      return;
+    }
+    if(!data || !data.success){
+      showToast("❌ "+(data&&data.error||"Не удалось подарить VIP"));
+      return;
+    }
+    S.bal = data.newBalance;
+    updBal(); saveState();
 
     // Показываем сообщение о подарке в чате с этим человеком, если он есть
     let ch=S.chats.find(c=>c.withUserId===recipient.userId);
@@ -6044,15 +6108,28 @@ function buyVIP(planId, price){
   el("conf-title").textContent = "👑 Активировать VIP?";
   el("conf-body").textContent = `${plan.label} за ${price.toLocaleString()} CR. Будет списано с баланса.`;
   el("conf-ok").textContent = "Активировать";
-  el("conf-ok").onclick = ()=>{
-    S.bal -= price;
+  el("conf-ok").onclick = async ()=>{
+    closeM("m-confirm");
+    showToast("⏳ Активация...");
+    let data;
+    try{
+      data = await apiPost("/api/vip/buy-with-cr", { planId }, true);
+    } catch(e){
+      showToast("❌ Нет связи с сервером");
+      return;
+    }
+    if(!data || !data.success){
+      showToast("❌ "+(data&&data.error||"Не удалось активировать VIP"));
+      return;
+    }
+    S.bal = data.newBalance; // баланс — то, что реально списал сервер, а не наша прикидка
     const until = planId==="forever" ? "Навсегда" : planId==="year"
       ? new Date(Date.now()+365*86400000).toLocaleDateString("ru")
       : new Date(Date.now()+30*86400000).toLocaleDateString("ru");
     S.vip = {active:true, plan:planId, until, activatedAt: Date.now()};
     // unlock all sticker packs
     S.packs.forEach(p=>{ if(!S.owned.includes(p.id)) S.owned.push(p.id); });
-    updBal(); saveState(); closeM("m-confirm");
+    updBal(); saveState();
     renderVIPScreen();
     updateUserUI();
     renderStoriesBar();   // обновляем строку сторис (теперь "+ Моя" вместо "👑 VIP")
@@ -6061,6 +6138,21 @@ function buyVIP(planId, price){
     setTimeout(()=>{ viewMyStories(0); },1200);
   };
   el("m-confirm").classList.add("on");
+}
+
+// ── Прямая покупка VIP за деньги, в обход Crystals (быстрый путь) ──
+async function buyVIPDirect(productKey){
+  showToast("⏳ Переход к оплате...");
+  try{
+    const data = await apiPost("/api/payments/create", { productKey }, true);
+    if(data && data.paymentUrl){
+      location.href = data.paymentUrl;
+    } else {
+      showToast("❌ "+(data&&data.error||"Не удалось создать платёж"));
+    }
+  } catch(e){
+    showToast("❌ Нет связи с сервером");
+  }
 }
 
 // ══════════════════════════════════════════════════
