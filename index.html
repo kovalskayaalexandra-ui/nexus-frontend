@@ -3194,10 +3194,13 @@ function renderMsgs(){
 }
 
 // Засчитывает просмотр постов канала — один раз на сообщение за сессию,
-// чтобы не спамить сервер повторными вызовами при каждой перерисовке
+// чтобы не спамить сервер повторными вызовами при каждой перерисовке.
+// Раньше исключались свои же сообщения (t==="out") — теперь автор тоже
+// засчитывается как зритель, если сам открывает свой канал (см. правку в
+// messages.js — там убрано серверное исключение автора).
 let _viewedThisSession=new Set();
 async function countChannelViews(ch){
-  const msgs=(S.messages[ch.id]||[]).filter(m=>m.dbId && m.t!=="out" && !_viewedThisSession.has(m.dbId));
+  const msgs=(S.messages[ch.id]||[]).filter(m=>m.dbId && !_viewedThisSession.has(m.dbId));
   for(const m of msgs){
     _viewedThisSession.add(m.dbId);
     try{
