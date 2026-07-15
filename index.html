@@ -1815,6 +1815,15 @@ function getDateLabel(ts){
 let _idSeq = Date.now();
 function nextId(){ return ++_idSeq; }
 function colBg(i){ return COLS[i%COLS.length]; }
+// Устойчивый (одинаковый на всех устройствах) цвет для конкретного человека —
+// в отличие от цвета чата, который у группы/канала один на всех отправителей.
+function colorFromId(id){
+  if(!id) return 0;
+  let hash=0;
+  const s=String(id);
+  for(let i=0;i<s.length;i++){ hash=(hash*31+s.charCodeAt(i))|0; }
+  return Math.abs(hash);
+}
 function avatarHTML(av, ini, col, size=43){
   if(av) return `<img src="${av}" style="width:100%;height:100%;object-fit:cover">`;
   return ini||"?";
@@ -1947,7 +1956,7 @@ function wsHandleMessage(msg){
       break;
 
     case "message.new": {
-      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, poll, contact, spoiler, waveform, gift, msgType } = msg.payload;
+      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, poll, contact, spoiler, waveform, gift, msgType, asChannel, senderName } = msg.payload;
       // Не добавляем своё же сообщение (оно уже есть локально)
       if(senderId === S.user?.id) break;
       // Защита от "пустых" сообщений (например, если у собеседника не удалась загрузка файла)
@@ -1982,8 +1991,14 @@ function wsHandleMessage(msg){
       const newMsg = {
         id: nextId(), wsId: id, dbId: id,
         t: "in",
-        fr: ch?.ini?.[0] || "?",
-        col: ch?.col || 0,
+        // ⚠️ Раньше тут была иконка/цвет самого ЧАТА (ch.ini/ch.col) — в личных
+        // чатах это случайно совпадало с собеседником, а в группах/каналах у
+        // ЛЮБОГО входящего сообщения показывалась одна и та же иконка группы,
+        // кто бы его ни написал. Теперь — реальный отправитель.
+        fr: (senderName || ch?.ini || "?")[0],
+        frName: senderName || null,
+        col: colorFromId(senderId),
+        asChannel: asChannel || undefined,
         tx: text,
         time: time ? new Date(time).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : now(),
         ts: time ? new Date(time).getTime() : Date.now(),
@@ -2642,6 +2657,9 @@ async function loadMessagesFromDB(chatId){
         dbId: dbMsg.id,
         t: isMe ? "out" : "in",
         fr: dbMsg.sender_name ? dbMsg.sender_name.slice(0,2).toUpperCase() : "?",
+        frName: dbMsg.sender_name || null,
+        col: colorFromId(dbMsg.user_id),
+        asChannel: dbMsg.as_channel || undefined,
         tx: dbMsg.text || "",
         time: new Date(dbMsg.created_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}),
         ts: new Date(dbMsg.created_at).getTime(),
@@ -3027,6 +3045,12 @@ function renderMsgs(){
       h+=`<div class="vbub" oncontextmenu="showCtx(event,${m.id})"><div class="pbtn" onclick="tPlay(this)"><svg width="11" height="11" fill="white" viewBox="0 0 24 24"><path d="m5 3 14 9-14 9V3z"/></svg></div><div class="wf">${bars}</div><div class="vd">${m.dur||"0:00"}</div></div>`;
     }else{
       let bc="";
+      // Имя отправителя — как в Telegram, показываем только во входящих сообщениях
+      // в группах/каналах (в личных чатах и так понятно, кто пишет). Если сообщение
+      // подписано как "от канала" — не дублируем, там уже есть метка канала ниже.
+      if(m.t!=="out" && (curCh?.type==="groups"||curCh?.type==="channels") && m.frName && !m.asChannel){
+        bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${colBg(m.col||0)}">${escHtml(m.frName)}</div>`;
+      }
       if(m.asChannel)bc+=`<div class="as-channel-tag"><div class="sas-av" style="background:${colBg(m.asChannel.col)};width:18px;height:18px;font-size:9px">${m.asChannel.ini}</div>📢 ${m.asChannel.nm}</div>`;
       if(m.fwd)bc+=`<div class="as-channel-tag" style="opacity:.8">↪️ Переслано от <b style="margin-left:3px">${escHtml(m.fwd.fromName)}</b></div>`;
       if(m.reply)bc+=`<div class="rprev"><div class="rprevnm">${m.reply.fr}</div><div class="rprevtx">${m.reply.tx}</div></div>`;
@@ -3557,12 +3581,12 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds){
   let dbId=null;
   if(typeof chatId === "string" && chatId.length > 10){
     try{
-      const d=await apiPost("/api/messages", {chatId, text: txt}, true);
+      const d=await apiPost("/api/messages", {chatId, text: txt, asChannel: msg.asChannel||null}, true);
       dbId=d?.message?.id||null;
       if(dbId){ msg.dbId=dbId; saveState(); }
     }catch(e){ console.warn("save msg error:", e); }
   }
-  const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, memberIds, id:dbId } });
+  const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, memberIds, id:dbId, asChannel: msg.asChannel||null, senderName: S.user?.name||"" } });
 
   // Если WS не подключён — показываем локальный авто-ответ (демо)
   if(!sent){
@@ -3598,7 +3622,7 @@ async function sendSticker(sk){
       const dbId=d?.message?.id||null;
       if(dbId){ localMsg.dbId=dbId; saveState(); }
       const memberIds=getChatMemberIds(ch);
-      wsSendReliable({type:"message.send", payload:{chatId, text:sk, msgType:"sticker", memberIds, id:dbId}});
+      wsSendReliable({type:"message.send", payload:{chatId, text:sk, msgType:"sticker", memberIds, id:dbId, senderName: S.user?.name||""}});
     }catch(e){ console.warn("send sticker error:", e); }
   }
 }
@@ -3718,7 +3742,7 @@ async function submitPoll(){
       if(dbId){ msg.dbId=dbId; saveState(); }
     }catch(e){ console.warn("save msg error:",e); }
   }
-  wsSend({type:"message.send",payload:{chatId,text:"",memberIds,poll,id:dbId}});
+  wsSend({type:"message.send",payload:{chatId,text:"",memberIds,poll,id:dbId,senderName: S.user?.name||""}});
 }
 function voteWord(n){
   const n10=n%10, n100=n%100;
@@ -3819,7 +3843,7 @@ async function sendContactMsg(userId,nm,col,uname){
       if(dbId){ msg.dbId=dbId; saveState(); }
     }catch(e){ console.warn("save msg error:",e); }
   }
-  wsSend({type:"message.send",payload:{chatId,text:"",memberIds,contact,id:dbId}});
+  wsSend({type:"message.send",payload:{chatId,text:"",memberIds,contact,id:dbId,senderName: S.user?.name||""}});
 }
 
 function openImgViewer(url){
@@ -4244,7 +4268,7 @@ async function sendWithAttachment(caption){
     }
     wsSend({
       type:"message.send",
-      payload:{chatId,text:caption||"",memberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler,waveform:att.waveform||null,id:dbId}
+      payload:{chatId,text:caption||"",memberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler,waveform:att.waveform||null,id:dbId,senderName: S.user?.name||""}
     });
   }catch(err){
     console.error("upload error:",err);
@@ -6742,7 +6766,7 @@ async function sendGift(){
       const dbId=d?.message?.id||null;
       if(dbId){ localMsg.dbId=dbId; saveState(); }
       const memberIds=getChatMemberIds(ch);
-      wsSendReliable({type:"message.send", payload:{chatId, text:"", memberIds, gift:giftData, id:dbId}});
+      wsSendReliable({type:"message.send", payload:{chatId, text:"", memberIds, gift:giftData, id:dbId, senderName: S.user?.name||""}});
     }catch(e){ console.warn("send gift error:", e); }
   }
 }
