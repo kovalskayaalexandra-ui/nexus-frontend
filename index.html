@@ -2026,7 +2026,7 @@ function wsHandleMessage(msg){
       if(ch){ ch.prev = prevTx; ch.time = now(); if(S.chat !== chatId) ch.unread = (ch.unread||0)+1; }
       if(S.chat === chatId) { renderMsgs(); markChatAsRead(chatId); }
       renderChats(); saveState();
-      if(!ch?.muted && S.chat !== chatId) showNotif();
+      if(!ch?.muted && S.chat !== chatId) showNotif(ch, prevTx);
       break;
     }
 
@@ -2471,7 +2471,6 @@ function loginOK(){
   setTimeout(wsConnect, 300);
   checkPendingJoinLink();
   setTimeout(()=>{ el("ver-banner").classList.add("on"); setTimeout(()=>el("ver-banner").classList.remove("on"),5000); },1500);
-  setTimeout(showNotif,4000);
   // official channel + stories bar + support bot
   setTimeout(()=>{
     // Избранное (Saved Messages) — чат "сам себе", всегда первый служебный
@@ -3532,7 +3531,7 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds){
       if(!S.messages[chatId])S.messages[chatId]=[];
       S.messages[chatId].push(rep); if(ch){ch.prev=rep.tx;ch.time=tm;}
       if(S.chat===chatId) renderMsgs();
-      renderChats(); if(!ch?.muted)showNotif(); saveState();
+      renderChats(); if(!ch?.muted)showNotif(ch, rep.tx); saveState();
     },1800);
   }
 }
@@ -5792,14 +5791,17 @@ function startCall(type){
 function endCall(){ el("call-screen").classList.remove("on"); clearInterval(callTimer); showToast("📵 Звонок завершён"); }
 
 // ── NOTIFICATION ──────────────────────────────────────────────
-function showNotif(){
+// Показывает всплывающее уведомление о РЕАЛЬНОМ событии — вызывающий код
+// обязан передать настоящие chat и текст. Раньше функция сама выбирала
+// случайный чат и случайный текст из фиксированного списка — из-за этого
+// уведомления показывались вообще без повода, по таймеру, не привязанные
+// ни к какому реальному сообщению.
+function showNotif(chat, previewText){
   if(!S.notifSettings?.push)return;
-  const ch=S.chats.find(x=>x.id!==S.chat&&x.online&&!x.muted)||S.chats.find(x=>!x.muted);
-  if(!ch)return;
-  const nav=el("nnav"); if(nav){nav.style.background=colBg(ch.col);nav.textContent=ch.ini||"?";}
-  if(el("nnm"))el("nnm").textContent=ch.nm;
-  const msgs=["Новое сообщение","Прислал стикер 🐱","Упомянул вас","Реакция 🔥","Привет!","Ты видел это? 👀"];
-  if(el("ntx"))el("ntx").textContent=msgs[Math.floor(Math.random()*msgs.length)];
+  if(!chat)return;
+  const nav=el("nnav"); if(nav){nav.style.background=colBg(chat.col);nav.textContent=chat.ini||"?";}
+  if(el("nnm"))el("nnm").textContent=chat.nm;
+  if(el("ntx"))el("ntx").textContent=previewText||"Новое сообщение";
   const n=el("notif"); n.classList.add("on"); setTimeout(()=>n.classList.remove("on"),3500);
 }
 
@@ -5913,7 +5915,6 @@ if(S.loggedIn){
   }
   updateUserUI(); renderChats(); openChat(S.chat||1); updBal();
   updateLogoText();
-  setTimeout(showNotif,5000);
   // Подключаем WebSocket при старте если уже залогинены
   setTimeout(wsConnect, 500);
   checkPendingJoinLink();
@@ -5921,7 +5922,8 @@ if(S.loggedIn){
   if(getToken()){
     fetch(API_URL+"/api/users/me",{headers:{"Authorization":"Bearer "+getToken()}})
       .then(r=>r.ok?r.json():null)
-      .then(data=>{
+      .then(resp=>{
+        const data = resp && resp.user; // GET /api/users/me отдаёт { user: {...} }, не плоский объект
         if(!data||!data.id) return;
         S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr}};
         S.bal = data.balance_cr!=null ? data.balance_cr : S.bal; // баланс — источник правды сервер
@@ -5945,16 +5947,40 @@ if(S.loggedIn){
   updateLogoText();
 }
 
+// Повторные попытки получить актуальный баланс/VIP после возврата с оплаты.
+// Тинькофф/Stripe шлют вебхук примерно одновременно с редиректом браузера —
+// сервер может ещё не успеть обработать его к моменту, когда страница уже
+// загрузилась. Один запрос мог поймать старое значение — тут пробуем
+// несколько раз с паузой, тот же принцип, что у wsSendReliable.
+async function pollBalanceAfterPayment(){
+  for(let i=0; i<6; i++){
+    await new Promise(r=>setTimeout(r, 2000));
+    try{
+      const resp = await apiGet("/api/users/me");
+      const data = resp && resp.user;
+      if(!data) continue;
+      S.user = {...S.user, balance_cr:data.balance_cr};
+      S.bal = data.balance_cr!=null ? data.balance_cr : S.bal;
+      if(data.vip_plan){
+        const active = !data.vip_until || new Date(data.vip_until) > new Date();
+        S.vip = active ? {
+          active:true, plan:data.vip_plan,
+          until: data.vip_until ? new Date(data.vip_until).toLocaleDateString("ru") : "Навсегда",
+        } : {active:false};
+      }
+      saveState(); updateUserUI(); updBal();
+    }catch(e){ /* пробуем ещё раз на следующей итерации */ }
+  }
+}
+
 // Возврат со страницы оплаты Тинькофф/Stripe (?payment=success|cancelled в URL).
-// Сам баланс/VIP подтянутся фоновым запросом к /api/users/me чуть выше —
-// тут только сообщаем пользователю и убираем параметр из адресной строки.
+// Обычное фоновое обновление профиля (чуть выше) даёт один быстрый снимок —
+// pollBalanceAfterPayment() досогласовывает баланс, если вебхук ещё в пути.
 (function(){
   const paymentStatus = new URLSearchParams(location.search).get("payment");
-  if(paymentStatus==="success"){ showToast("✅ Оплата прошла! Обновляем баланс..."); history.replaceState(null,"",location.pathname); }
+  if(paymentStatus==="success"){ showToast("✅ Оплата прошла! Обновляем баланс..."); history.replaceState(null,"",location.pathname); pollBalanceAfterPayment(); }
   else if(paymentStatus==="cancelled"){ showToast("❌ Оплата отменена"); history.replaceState(null,"",location.pathname); }
 })();
-
-setInterval(()=>{if(S.loggedIn&&Math.random()>.75)showNotif();},20000);
 
 // ══════════════════════════════════════════════════
 //  VIP / PREMIUM SYSTEM
