@@ -2680,6 +2680,9 @@ async function loadChatsFromDB(){
           existing.nm = otherUser.name;
           existing.ini = otherUser.name.slice(0,2).toUpperCase();
         }
+        // ⚠️ Раньше аватар собеседника вообще не подтягивался сюда — сервер его
+        // отдаёт (other_members[].avatar), просто фронтенд его не читал.
+        if(isPersonal && otherUser?.avatar!==undefined) existing.avatar = otherUser.avatar || "";
         existing.myRole = dbChat.my_role || existing.myRole;
         existing.restrictSendMessages = !!dbChat.restrict_send_messages;
       } else {
@@ -2690,6 +2693,7 @@ async function loadChatsFromDB(){
           ini: (displayName||"Ч").slice(0,2).toUpperCase(),
           col: Math.floor(Math.random()*8),
           online: false,
+          avatar: isPersonal ? (otherUser?.avatar || "") : "",
           prev: dbChat.last_message || "",
           time: dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : "",
           unread: 0,
