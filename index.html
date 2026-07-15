@@ -1754,19 +1754,16 @@ function loadState(){
   // как мы защитили системные чаты от удаления), обычная перезагрузка страницы его не
   // возвращала. Теперь проверяется при каждой загрузке состояния.
   if(S.chats && !S.chats.find(c=>c.id===77777)){
-    console.log("🔧 Избранное отсутствует, восстанавливаю...");
     S.chats.push({id:77777,nm:"⭐ Избранное",ini:"⭐",col:2,online:false,prev:"Сохранённые сообщения",time:"",unread:0,type:"personal",pinned:true,muted:false,blocked:false,draft:"",saved:true});
     if(!S.messages) S.messages={};
     if(!S.messages[77777]) S.messages[77777]=[{id:1,t:"sys",tx:"Это ваше Избранное — сохраняйте сюда важные сообщения, ссылки и заметки. Видите только вы."}];
   } else {
-    console.log("ℹ️ Избранное на месте, id 77777 найден:", !!S.chats?.find(c=>c.id===77777));
   }
   // На случай, если системные чаты успели получить blocked/archived ДО того, как мы
   // защитили их от этого — снимаем флаги принудительно при каждой загрузке
   [77777,88888,99999].forEach(sid=>{
     const sc=S.chats?.find(c=>c.id===sid);
     if(sc && (sc.blocked||sc.archived)){
-      console.log("🔧 Снимаю blocked/archived с системного чата", sid);
       sc.blocked=false; sc.archived=false;
     }
   });
@@ -1941,7 +1938,6 @@ function wsSendReliable(data, attempt=1){
 }
 
 function wsHandleMessage(msg){
-  console.log("📥 WS получено:", msg.type, msg.payload);
   switch(msg.type){
 
     case "auth.ok":
@@ -2084,7 +2080,6 @@ function wsHandleMessage(msg){
 
     case "story.received": {
       const { story, fromUserId, fromName, fromCol, fromIni } = msg.payload;
-      console.log("📥 Получена сторис от:", fromName, fromUserId, story);
       if(!S.friend_stories) S.friend_stories={};
       if(!S.friend_stories[fromUserId]) S.friend_stories[fromUserId]={name:fromName, col:fromCol||0, ini:fromIni||"?", items:[]};
       S.friend_stories[fromUserId].name=fromName; // на случай смены имени
@@ -2131,7 +2126,6 @@ function wsHandleMessage(msg){
 
     case "chat.deleted": {
       const { chatId } = msg.payload;
-      console.log("📥 Получено удаление чата:", chatId);
       S.chats = S.chats.filter(c => c.id !== chatId);
       delete S.messages[chatId];
       if(S.chat === chatId) openChat(77777);
@@ -2187,7 +2181,6 @@ function wsSendTyping(){
   const ch = S.chats.find(c => c.id === S.chat);
   if(!ch) return;
   const memberIds = getChatMemberIds(ch);
-  console.log("📤 Отправляю typing.start, memberIds:", memberIds, "withUserId чата:", ch.withUserId);
   wsSend({ type: "typing.start", payload: { chatId: S.chat, memberIds } });
 }
 
@@ -3122,7 +3115,6 @@ function deleteGroupFromSettings(){
   const chatId=S.chat;
   const isRealChat = typeof chatId==="string" && chatId.length>10;
   const memberIds = getChatMemberIds(ch);
-  console.log("📤 Удаляю группу/канал, chatId:", chatId, "isRealChat:", isRealChat, "memberIds:", memberIds, "ch.members:", ch.members, "ch.memberIds:", ch.memberIds);
 
   closeM("m-chsettings");
   S.chats = S.chats.filter(c => c.id !== chatId);
@@ -3443,7 +3435,6 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds){
       if(dbId){ msg.dbId=dbId; saveState(); }
     }catch(e){ console.warn("save msg error:", e); }
   }
-  console.log("📤 Отправляю сообщение, chatId:", chatId, "memberIds:", memberIds, "withUserId чата:", ch?.withUserId);
   const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, memberIds, id:dbId } });
 
   // Если WS не подключён — показываем локальный авто-ответ (демо)
@@ -3487,7 +3478,6 @@ async function sendSticker(sk){
 
 function hKey(e){ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();} }
 function onInput(elm){
-  console.log("⌨️ onInput сработал, wsConnected:", wsConnected);
   aResize(elm);
   cleanupEmptyFormatSpans();
   if(wsConnected) wsSendTyping();
@@ -4923,7 +4913,6 @@ function saveProfile(){
   // Сохраняем на сервере — иначе новое имя/юзернейм не найти через поиск у других пользователей
   apiPatch("/api/users/me", {name:nm, username:uname || null, bio:bio}, true)
     .then(d=>{
-      console.log("📥 Ответ сервера на сохранение профиля:", d);
       if(!d?.success){
         // Сервер отклонил — откатываем локальные изменения и заново открываем окно
         // редактирования с правильными (откаченными) значениями, а не оставляем
@@ -5256,7 +5245,6 @@ async function doCreateGroup(){
   const memberIds=[];
   selected.forEach(cid=>{
     const c=(S.contacts||[]).find(x=>String(x.id)===cid) || S.chats.find(x=>String(x.withUserId)===cid);
-    console.log("🔍 Ищу участника, cid:", cid, "→ найден:", c ? (c.nm+" (withUserId:"+c.withUserId+")") : "НЕ НАЙДЕН");
     if(c){
       const nm2=c.nm, col2=c.col||0, uname2=c.uname||"";
       members.push({id:cid, nm:nm2, uname:uname2, col:col2, role:"member", perms:memberPerms()});
@@ -5265,11 +5253,9 @@ async function doCreateGroup(){
   });
 
   showToast("⏳ Создаём...");
-  console.log("📤 Создаю группу, выбранные id (selected):", selected, "итоговые memberIds:", memberIds, "все чаты с withUserId:", S.chats.filter(c=>c.withUserId).map(c=>({nm:c.nm, withUserId:c.withUserId})));
   let realId=null;
   try{
     const data=await apiPost("/api/chats", {type:isChannel?"channels":"groups", name:nm, description:desc, memberIds}, true);
-    console.log("📥 Ответ сервера на создание группы:", data);
     realId=data?.chat?.id || null;
     var serverInviteLink=data?.chat?.invite_link || null;
   }catch(e){ console.warn("create chat on server error:", e); }
@@ -6485,8 +6471,7 @@ function previewStoryMedia(inp, kind){
 // в реальном времени, без сохранения на сервере (как и сам объект сторис)
 function notifyFriendsAboutStory(story){
   const memberIds=S.chats.filter(c=>c.withUserId).map(c=>c.withUserId);
-  console.log("📤 Уведомляю друзей о новой сторис, memberIds:", memberIds);
-  if(!memberIds.length){ console.log("⚠️ Некому отправлять — нет чатов с withUserId"); return; }
+  if(!memberIds.length) return;
   wsSendReliable({type:"story.new", payload:{
     story:{id:story.id, type:story.type, bg:story.bg, text:story.text, emoji:story.emoji, mediaUrl:story.mediaUrl, caption:story.caption, created:story.created, expires:story.expires, channel:story.channel||null},
     memberIds,
