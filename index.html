@@ -2907,6 +2907,12 @@ function globalSearch(v){
 
 // ── OPEN CHAT ──────────────────────────────────────────────────
 function openChat(id){
+  // Nexus Official — это не переписка, а витрина постов (как канал в Telegram
+  // без комментариев). Клик по нему откуда угодно (сайдбар, поиск и т.п.)
+  // должен вести на настоящую ленту, а не на обычный экран чата — там ему и
+  // взяться неоткуда, это не настоящий чат в БД.
+  if(id===88888){ openOfficialChannel(); return; }
+
   // save draft of previous chat
   const prev=S.chats.find(c=>c.id===S.chat);
   if(prev){ prev.draft=getInputText(); }
