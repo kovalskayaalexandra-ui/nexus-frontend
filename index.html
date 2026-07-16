@@ -1274,6 +1274,14 @@ tr:hover td{background:var(--bg3)}
           <div class="asect">Опубликованные посты — редактировать / удалить</div>
           <div id="op-list" style="display:flex;flex-direction:column;gap:8px"></div>
         </div>
+        <div class="asec">
+          <div class="asect">👋 Приветствие новым пользователям</div>
+          <div class="asub2" style="margin:-4px 0 10px">Личное сообщение от Nexus Official — придёт автоматически каждому новому пользователю сразу после регистрации</div>
+          <div class="fg" style="margin-bottom:10px">
+            <textarea class="fii" id="welcome-msg-text" rows="4" placeholder="Загрузка..."></textarea>
+          </div>
+          <button class="xbtn" onclick="saveWelcomeMessage()">💾 Сохранить</button>
+        </div>
       </div>
       <div class="apage" id="page-currency">
         <div class="atitle">💎 Crystals</div><div class="asub2">Настройка валюты</div>
@@ -2222,6 +2230,24 @@ function wsHandleMessage(msg){
         S.messages[88888] = buildOfficialMessages();
         if(S.chat===88888) renderMsgs();
         renderChats(); saveState();
+      }
+      break;
+    }
+
+    case "official.personal_message": {
+      // Личное сообщение "от Nexus Official" (например, приветствие при
+      // регистрации) — видно только этому пользователю, не всем разом
+      const msg2 = msg.payload;
+      if(!officialPersonalMessages.some(p=>p.id===msg2.id)){
+        officialPersonalMessages.push(msg2);
+        if(S.chats.find(c=>c.id===88888)){
+          S.messages[88888] = buildOfficialMessages();
+          const sch=S.chats.find(c=>c.id===88888);
+          if(sch){ sch.prev="📢 "+msg2.text; sch.time=now(); if(S.chat!==88888) sch.unread=(sch.unread||0)+1; }
+          if(S.chat===88888) renderMsgs();
+          renderChats(); saveState();
+          if(S.chat!==88888 && sch) showNotif(sch, "📢 "+msg2.text);
+        }
       }
       break;
     }
@@ -6275,7 +6301,7 @@ function initAdmin(){
   renderCurrs();renderPkgEd();renderWallets();renderUsers();renderSPAdmin();renderKeys();renderBots();renderWH();renderLngs();
   if(el("bal-admin"))el("bal-admin").textContent=S.bal.toLocaleString();
   // new sections
-  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();},100);
+  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();loadWelcomeMessage();},100);
 }
 function renderCurrs(){ const e=el("currs");if(!e)return; e.innerHTML=CURRENCIES.map(c=>`<div class="copt${S.currency===c.code?" on":""}" onclick="selCurr('${c.code}')"><div class="cflag">${c.flag}</div><div class="ccode">${c.sym} ${c.code}</div><div class="cname">${c.nm}</div><div class="crate">1 CR = ${c.rate} ${c.code}</div></div>`).join(""); }
 function selCurr(code){ S.currency=code;const c=CURRENCIES.find(x=>x.code===code);if(c){S.rate=c.rate;if(el("crinp"))el("crinp").value=c.rate;updRate(c.rate);}renderCurrs();showToast("Валюта → "+code);saveState(); }
@@ -7454,6 +7480,32 @@ function formatPostDateShort(d){ return String(d.getDate()).padStart(2,"0")+"."+
 // заведомо обречённый запрос).
 let editingOfficialPostId = null;
 
+// Приветственное сообщение новым пользователям — текст редактируется тут,
+// а рассылается уже на бэкенде при регистрации (auth.js), не отсюда
+async function loadWelcomeMessage(){
+  const ta=el("welcome-msg-text");
+  if(!ta) return;
+  try{
+    const data=await apiGet("/api/settings/welcome-message");
+    if(data && data.text!=null) ta.value=data.text;
+  }catch(e){ ta.placeholder="Не удалось загрузить"; }
+}
+
+async function saveWelcomeMessage(){
+  const text=(el("welcome-msg-text")?.value||"").trim();
+  if(!text){ showToast("❌ Текст не может быть пустым"); return; }
+  try{
+    const data=await apiPatch("/api/settings/welcome-message", {text}, true);
+    if(!data || !data.success){
+      showToast("❌ "+(data&&data.error||"Не удалось сохранить"));
+      return;
+    }
+    showToast("✅ Приветствие сохранено");
+  }catch(e){
+    showToast("❌ Нет связи с сервером");
+  }
+}
+
 async function publishOfficialPost(){
   const text=(el("op-text")?.value||"").trim();
   const emoji=(el("op-emoji")?.value||"📢").trim()||"📢";
@@ -7511,10 +7563,15 @@ async function deleteOfficialPost(id){
 // Подтягивает настоящие посты с сервера — и для списка в самом Dev Panel,
 // и подмешивает их в сам канал Nexus Official поверх демо-постов OFFICIAL_POSTS.
 let realOfficialPosts=[];
+// Личные сообщения "от Nexus Official" конкретно этому пользователю (сейчас —
+// приветствие при регистрации) — в отличие от realOfficialPosts, эти НЕ
+// видны другим людям, только тому, кому адресованы
+let officialPersonalMessages=[];
 
-// Превращает демо-посты (OFFICIAL_POSTS) и настоящие посты (realOfficialPosts)
-// в обычные сообщения чата 88888 — Nexus Official теперь работает как любой
-// другой канал, без отдельного экрана: те же сообщения, та же лента.
+// Превращает демо-посты (OFFICIAL_POSTS), настоящие посты (realOfficialPosts)
+// и личные сообщения (officialPersonalMessages) в обычные сообщения чата
+// 88888 — Nexus Official теперь работает как любой другой канал, без
+// отдельного экрана: те же сообщения, та же лента.
 function buildOfficialMessages(){
   const demo = OFFICIAL_POSTS.map(p=>{
     const d = new Date(p.ts);
@@ -7534,13 +7591,26 @@ function buildOfficialMessages(){
       ts: d.getTime(), views: p.views||0,
     };
   });
-  return [...demo, ...real].sort((a,b)=>(a.ts||0)-(b.ts||0));
+  const personal = officialPersonalMessages.map(p=>{
+    const d = new Date(p.created_at);
+    return {
+      id: nextId(), serverId: "personal-"+p.id, t: "in",
+      tx: p.text,
+      time: d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"),
+      ts: d.getTime(),
+    };
+  });
+  return [...demo, ...real, ...personal].sort((a,b)=>(a.ts||0)-(b.ts||0));
 }
 async function loadOfficialPosts(){
   if(!getToken()) return;
   try{
     const data=await apiGet("/api/official/posts");
     realOfficialPosts=(data && data.posts) || [];
+    try{
+      const pdata=await apiGet("/api/official/personal-messages");
+      officialPersonalMessages=(pdata && pdata.messages) || [];
+    }catch(e){ /* тихо игнорируем — публичные посты всё равно покажутся */ }
     const list=el("op-list");
     if(list){
       list.innerHTML = realOfficialPosts.length
