@@ -75,7 +75,20 @@ button,input,textarea,select{font-family:inherit}
 .li-nat{font-size:10.5px;color:var(--tx3)}
 
 /* ═══ TOPBAR ═══ */
-.topbar{height:58px;background:var(--bg2);border-bottom:1px solid var(--brd);display:flex;align-items:center;
+.topbar{
+  /* Верхняя панель остаётся тёмной независимо от активной темы (по просьбе
+     Александры — контраст и меньше "давит на глаза", чем сплошной белый).
+     Переопределяем переменные ЛОКАЛЬНО внутри блока — все дочерние элементы
+     (кнопки, текст, поиск, логотип), которые и так используют var(--tx),
+     var(--bg3) и т.п., автоматически возьмут тёмные значения по каскаду CSS,
+     не нужно трогать стиль каждой кнопки по отдельности */
+  --bg:#121620; --bg2:#171b28; --bg3:#1e2332; --bg4:#262c40;
+  --brd:rgba(255,255,255,.08); --brd2:rgba(255,255,255,.16);
+  --acc:#6c63ff; --acc2:#a78bfa; --acc3:#38bdf8;
+  --gr:#34d399; --rd:#f87171; --am:#fbbf24;
+  --cr:#67e8f9; --cr2:#0891b2;
+  --tx:#eef0f6; --tx2:#9aa0bb; --tx3:#666c8c;
+  height:58px;background:var(--bg2);border-bottom:1px solid var(--brd);display:flex;align-items:center;
   padding:0 14px;gap:9px;flex-shrink:0;z-index:100}
 .logo{font-family:"Syne",sans-serif;font-weight:800;font-size:20px;
   background:linear-gradient(135deg,var(--acc2),var(--acc3));-webkit-background-clip:text;-webkit-text-fill-color:transparent;
