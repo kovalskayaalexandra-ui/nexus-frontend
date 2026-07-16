@@ -1408,7 +1408,7 @@ tr:hover td{background:var(--bg3)}
     <div class="prow"><div class="plbl">К оплате</div><div class="pval" id="mbpr">—</div></div>
   </div>
   <select class="fii" id="mbuy-method" style="width:100%;margin-bottom:10px"><option>💳 Банковская карта / СБП</option><option>💰 ЮMoney</option><option>₿ Крипто</option></select>
-  <div class="macts" id="mbuy-actions"><button class="xbtn sec" onclick="closeM('m-buy');resetBuyModalUI()">Отмена</button><button class="xbtn cr" onclick="completeBuy()">✅ Оплатить</button></div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-buy');resetBuyModalUI()">Отмена</button><button class="xbtn cr" id="mbuy-pay-btn" onclick="completeBuy()">✅ Оплатить</button></div>
   <!-- Сюда встраивается форма оплаты Тинькофф (карта/СБП) прямо на нашей странице,
        без ухода на securepay.tinkoff.ru — см. startTinkoffWidgetPayment() -->
   <div id="tinkoff-widget-container" style="display:none;min-height:320px;margin-top:6px"></div>
@@ -1418,7 +1418,7 @@ tr:hover td{background:var(--bg3)}
 <div class="movl" id="m-vip-direct"><div class="modal">
   <div class="mtit">👑 Покупка VIP</div>
   <div class="msub" id="vip-direct-label">Оформление...</div>
-  <div class="macts" id="vip-direct-actions"><button class="xbtn sec" onclick="closeM('m-vip-direct');resetVipDirectModalUI()">Отмена</button></div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-vip-direct');resetVipDirectModalUI()">Отмена</button></div>
   <div id="vip-direct-widget-container" style="display:none;min-height:320px;margin-top:6px"></div>
   <div id="vip-direct-widget-status" style="display:none;text-align:center;font-size:12.5px;color:var(--tx3);margin-top:8px">⏳ Проверяем статус оплаты...</div>
 </div></div>
@@ -6096,9 +6096,11 @@ async function getTinkoffPublicKey(){
 }
 
 // Показывает встроенную форму оплаты внутри уже открытой модалки.
-// opts: { productKey, summaryId, actionsId, containerId, statusId, onDone }
+// opts: { productKey, summaryId, payBtnId, containerId, statusId, onDone }
+// ⚠️ Кнопку "Отмена" НЕ прячем никогда — иначе человеку некуда деться,
+// если передумал или форма не грузится (уже наступали на эти грабли)
 async function startTinkoffWidgetPayment(opts){
-  const { productKey, summaryId, actionsId, containerId, statusId, onDone } = opts;
+  const { productKey, summaryId, payBtnId, containerId, statusId, onDone } = opts;
   const container = el(containerId);
   if(!container) return;
 
@@ -6106,7 +6108,7 @@ async function startTinkoffWidgetPayment(opts){
     const [terminalKey] = await Promise.all([getTinkoffPublicKey(), loadTinkoffWidgetScript()]);
 
     if(el(summaryId)) el(summaryId).style.display="none";
-    if(el(actionsId)) el(actionsId).style.display="none";
+    if(el(payBtnId)) el(payBtnId).style.display="none";
     container.style.display="block";
     container.innerHTML="";
 
@@ -6140,7 +6142,7 @@ async function startTinkoffWidgetPayment(opts){
 function resetBuyModalUI(){
   stopTinkoffPolling();
   if(el("mbuy-summary")) el("mbuy-summary").style.display="";
-  if(el("mbuy-actions")) el("mbuy-actions").style.display="";
+  if(el("mbuy-pay-btn")) el("mbuy-pay-btn").style.display="";
   const c=el("tinkoff-widget-container"); if(c){ c.style.display="none"; c.innerHTML=""; }
   if(el("tinkoff-widget-status")) el("tinkoff-widget-status").style.display="none";
 }
@@ -6160,7 +6162,7 @@ async function completeBuy(){
     // RU — встроенный виджет, форма карты/СБП остаётся на нашей странице
     startTinkoffWidgetPayment({
       productKey,
-      summaryId: "mbuy-summary", actionsId: "mbuy-actions",
+      summaryId: "mbuy-summary", payBtnId: "mbuy-pay-btn",
       containerId: "tinkoff-widget-container", statusId: "tinkoff-widget-status",
       onDone: ()=>{
         closeM("m-buy"); resetBuyModalUI();
@@ -6505,7 +6507,6 @@ function buyVIP(planId, price){
 // ── Прямая покупка VIP за деньги, в обход Crystals (быстрый путь) ──
 function resetVipDirectModalUI(){
   stopTinkoffPolling();
-  if(el("vip-direct-actions")) el("vip-direct-actions").style.display="";
   const c=el("vip-direct-widget-container"); if(c){ c.style.display="none"; c.innerHTML=""; }
   if(el("vip-direct-widget-status")) el("vip-direct-widget-status").style.display="none";
 }
@@ -6520,7 +6521,7 @@ async function buyVIPDirect(productKey){
     el("m-vip-direct").classList.add("on");
     startTinkoffWidgetPayment({
       productKey,
-      summaryId: null, actionsId: "vip-direct-actions",
+      summaryId: null, payBtnId: null,
       containerId: "vip-direct-widget-container", statusId: "vip-direct-widget-status",
       onDone: ()=>{
         closeM("m-vip-direct"); resetVipDirectModalUI();
