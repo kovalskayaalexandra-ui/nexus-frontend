@@ -1407,7 +1407,11 @@ tr:hover td{background:var(--bg3)}
     <div class="psep"></div>
     <div class="prow"><div class="plbl">К оплате</div><div class="pval" id="mbpr">—</div></div>
   </div>
-  <select class="fii" id="mbuy-method" style="width:100%;margin-bottom:10px"><option>💳 Банковская карта / СБП</option><option>💰 ЮMoney</option><option>₿ Крипто</option></select>
+  <select class="fii" id="mbuy-method" style="width:100%;margin-bottom:10px">
+    <option value="tinkoff">💳 Банковская карта / СБП</option>
+    <option value="yookassa">🌍 Карта МИР для СНГ (Беларусь, Казахстан и др.)</option>
+    <option value="crypto" disabled>₿ Крипто (скоро)</option>
+  </select>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-buy');resetBuyModalUI()">Отмена</button><button class="xbtn cr" id="mbuy-pay-btn" onclick="completeBuy()">✅ Оплатить</button></div>
   <!-- Сюда встраивается форма оплаты Тинькофф (карта/СБП) прямо на нашей странице,
        без ухода на securepay.tinkoff.ru — см. startTinkoffWidgetPayment() -->
@@ -6151,6 +6155,21 @@ async function completeBuy(){
   if(!S.buyPkg) return;
   const productKey = CR_TO_PRODUCT_KEY[S.buyPkg.cr];
   if(!productKey){ showToast("❌ Неизвестный пакет"); return; }
+
+  const method = el("mbuy-method")?.value || "tinkoff";
+
+  // ЮKassa — выбирается явно пользователем (для карты МИР из СНГ), не по
+  // автоопределению региона. Обычный редирект, без встроенного виджета.
+  if(method==="yookassa"){
+    showToast("⏳ Переход к оплате...");
+    try{
+      const data = await apiPost("/api/payments/create", { productKey, provider:"yookassa" }, true);
+      if(data && data.paymentUrl){ location.href = data.paymentUrl; }
+      else { showToast("❌ "+(data&&data.error||"Не удалось создать платёж")); }
+    }catch(e){ showToast("❌ Нет связи с сервером"); }
+    return;
+  }
+  if(method==="crypto"){ showToast("₿ Оплата криптой пока в разработке"); return; }
 
   // Убеждаемся, что знаем актуальный регион оплаты — если ещё не подтянулся
   // в фоне (например, сразу после свежего логина), спросим сейчас явно.
