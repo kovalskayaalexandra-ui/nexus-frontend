@@ -8,13 +8,13 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0d0f14;--bg2:#13151c;--bg3:#1a1d28;--bg4:#21253a;
-  --brd:rgba(255,255,255,.07);--brd2:rgba(255,255,255,.14);
+  --bg:#121620;--bg2:#171b28;--bg3:#1e2332;--bg4:#262c40;
+  --brd:rgba(255,255,255,.08);--brd2:rgba(255,255,255,.16);
   --acc:#6c63ff;--acc2:#a78bfa;--acc3:#38bdf8;
   --gr:#34d399;--rd:#f87171;--am:#fbbf24;
   --cr:#67e8f9;--cr2:#0891b2;
-  --tx:#e8eaf0;--tx2:#9499b3;--tx3:#5a6080;
-  --in:#1e2235;--out:#4c3f9e;
+  --tx:#eef0f6;--tx2:#9aa0bb;--tx3:#666c8c;
+  --in:#242940;--out:#54479c;
 }
 html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:var(--bg);color:var(--tx)}
 button,input,textarea,select{font-family:inherit}
@@ -5344,7 +5344,49 @@ async function saveProfile(){
 }
 function savePrivacy(){ S.privacy={phone:el("priv-phone")?.value,online:el("priv-online")?.value,e2e:el("priv-e2e")?.checked}; saveState(); showToast("✅ Приватность сохранена"); }
 function saveNotif(){ S.notifSettings={push:el("notif-push")?.checked,sound:el("notif-sound")?.checked,preview:el("notif-preview")?.checked}; saveState(); }
-function applyTheme(t){ S.theme=t; saveState(); showToast("🎨 Тема: "+t); if(t==="amoled"){document.documentElement.style.setProperty("--bg","#000");document.documentElement.style.setProperty("--bg2","#050508");}else{document.documentElement.style.setProperty("--bg","#0d0f14");document.documentElement.style.setProperty("--bg2","#13151c");} }
+// Три полноценных набора значений — раньше переключались только --bg/--bg2,
+// AMOLED и "остальное" делили одни и те же тёмные цвета, светлой темы
+// физически не было. Тёмная палитра заодно пересмотрена — менее чёрная,
+// ближе по духу к Telegram (сине-серая, а не почти-чёрная).
+const THEME_PALETTES = {
+  dark: {
+    bg:"#121620", bg2:"#171b28", bg3:"#1e2332", bg4:"#262c40",
+    brd:"rgba(255,255,255,.08)", brd2:"rgba(255,255,255,.16)",
+    acc:"#6c63ff", acc2:"#a78bfa", acc3:"#38bdf8",
+    gr:"#34d399", rd:"#f87171", am:"#fbbf24",
+    cr:"#67e8f9", cr2:"#0891b2",
+    tx:"#eef0f6", tx2:"#9aa0bb", tx3:"#666c8c",
+    in:"#242940", out:"#54479c",
+  },
+  amoled: {
+    bg:"#000000", bg2:"#050508", bg3:"#0e1017", bg4:"#181b26",
+    brd:"rgba(255,255,255,.08)", brd2:"rgba(255,255,255,.16)",
+    acc:"#6c63ff", acc2:"#a78bfa", acc3:"#38bdf8",
+    gr:"#34d399", rd:"#f87171", am:"#fbbf24",
+    cr:"#67e8f9", cr2:"#0891b2",
+    tx:"#eef0f6", tx2:"#9aa0bb", tx3:"#666c8c",
+    in:"#15182a", out:"#4c3f9e",
+  },
+  light: {
+    bg:"#ffffff", bg2:"#f7f8fa", bg3:"#eef0f4", bg4:"#e2e5ec",
+    brd:"rgba(0,0,0,.08)", brd2:"rgba(0,0,0,.14)",
+    // Акценты чуть глубже, чем в тёмной версии — бледные пастельные тона,
+    // хорошо читаемые на тёмном фоне, на белом теряют контраст
+    acc:"#6c63ff", acc2:"#8b7cf6", acc3:"#0ea5e9",
+    gr:"#16a34a", rd:"#dc2626", am:"#d97706",
+    cr:"#0891b2", cr2:"#0e7490",
+    tx:"#1a1d29", tx2:"#5c6178", tx3:"#8b90a3",
+    in:"#f1f2f6", out:"#e3e0ff",
+  },
+};
+
+function applyTheme(t){
+  const palette = THEME_PALETTES[t] || THEME_PALETTES.dark;
+  S.theme=t; saveState(); showToast("🎨 Тема: "+t);
+  Object.entries(palette).forEach(([key,val])=>{
+    document.documentElement.style.setProperty("--"+key, val);
+  });
+}
 function openChangePhone(){ showToast("📱 Смена номера — введите новый номер на экране входа"); }
 function openSecurity(){
   el("sec-current-pass-row").style.display = S.user?.has_password ? "block" : "none";
