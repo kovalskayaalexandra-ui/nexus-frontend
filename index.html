@@ -6298,6 +6298,15 @@ if(S.loggedIn){
         const data = resp && resp.user; // GET /api/users/me отдаёт { user: {...} }, не плоский объект
         if(!data||!data.id) return;
         S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region}};
+        // Зарубежным пользователям (не +7) незачем видеть цены в рублях —
+        // переключаем на доллар автоматически, но только если валюта ещё
+        // стоит на дефолтной RUB (не трогаем, если человек сам её менял —
+        // определить это со 100% точностью нельзя, RUB как раз и есть
+        // дефолт до любого выбора, это разумный компромисс).
+        if(data.billing_region==="intl" && S.currency==="RUB"){
+          const usd=CURRENCIES.find(c=>c.code==="USD");
+          if(usd){ S.currency="USD"; S.rate=usd.rate; }
+        }
         S.bal = data.balance_cr!=null ? data.balance_cr : S.bal; // баланс — источник правды сервер
         // Реальный VIP-статус с сервера (vip_plan/vip_until из миграции платежей).
         // Раньше VIP жил только в localStorage — теперь синхронизируем при каждом заходе.
