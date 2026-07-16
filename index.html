@@ -1401,14 +1401,26 @@ tr:hover td{background:var(--bg3)}
 <div class="movl" id="m-buy"><div class="modal">
   <div class="mtit">💎 Купить Crystals</div>
   <div class="msub">Мгновенное зачисление</div>
-  <div class="psumm">
+  <div class="psumm" id="mbuy-summary">
     <div class="prow"><div class="plbl">Пакет</div><div class="pval" id="mbpkg">500 CR</div></div>
     <div class="prow"><div class="plbl">Crystals</div><div class="pval cr" id="mbcr">500 💎</div></div>
     <div class="psep"></div>
     <div class="prow"><div class="plbl">К оплате</div><div class="pval" id="mbpr">—</div></div>
   </div>
-  <select class="fii" style="width:100%;margin-bottom:10px"><option>💳 Банковская карта</option><option>📱 СБП</option><option>💰 ЮMoney</option><option>₿ Крипто</option></select>
-  <div class="macts"><button class="xbtn sec" onclick="closeM('m-buy')">Отмена</button><button class="xbtn cr" onclick="completeBuy()">✅ Оплатить</button></div>
+  <select class="fii" id="mbuy-method" style="width:100%;margin-bottom:10px"><option>💳 Банковская карта / СБП</option><option>💰 ЮMoney</option><option>₿ Крипто</option></select>
+  <div class="macts" id="mbuy-actions"><button class="xbtn sec" onclick="closeM('m-buy');resetBuyModalUI()">Отмена</button><button class="xbtn cr" onclick="completeBuy()">✅ Оплатить</button></div>
+  <!-- Сюда встраивается форма оплаты Тинькофф (карта/СБП) прямо на нашей странице,
+       без ухода на securepay.tinkoff.ru — см. startTinkoffWidgetPayment() -->
+  <div id="tinkoff-widget-container" style="display:none;min-height:320px;margin-top:6px"></div>
+  <div id="tinkoff-widget-status" style="display:none;text-align:center;font-size:12.5px;color:var(--tx3);margin-top:8px">⏳ Проверяем статус оплаты...</div>
+</div></div>
+
+<div class="movl" id="m-vip-direct"><div class="modal">
+  <div class="mtit">👑 Покупка VIP</div>
+  <div class="msub" id="vip-direct-label">Оформление...</div>
+  <div class="macts" id="vip-direct-actions"><button class="xbtn sec" onclick="closeM('m-vip-direct');resetVipDirectModalUI()">Отмена</button></div>
+  <div id="vip-direct-widget-container" style="display:none;min-height:320px;margin-top:6px"></div>
+  <div id="vip-direct-widget-status" style="display:none;text-align:center;font-size:12.5px;color:var(--tx3);margin-top:8px">⏳ Проверяем статус оплаты...</div>
 </div></div>
 
 <div class="movl" id="m-stk"><div class="modal">
@@ -6037,15 +6049,134 @@ function openBuyM(cr,price,sym){ S.buyPkg={cr,price}; el("mbpkg").textContent=cr
 // cr → productKey в каталоге бэкенда (services/payments/products.js) — суммы совпадают 1-в-1 с S.coinPkgs
 const CR_TO_PRODUCT_KEY = {100:"cr_100",250:"cr_250",500:"cr_500",1000:"cr_1000",2500:"cr_2500",5000:"cr_5000"};
 
+// ═══════════════════════════════════════════════════════════════
+// Встроенный виджет оплаты Тинькофф — форма ввода карты появляется прямо
+// в модалке на нашей странице (iframe на домен Тинькофф, это требование
+// безопасности/PCI DSS, не редиректом на весь экран). Основано на публичной
+// документации developer.tbank.ru — сам скрипт не документирует событие
+// "оплата прошла" достаточно чётко, поэтому проверяем через опрос нашего
+// же бэкенда (GET /api/payments/:id/status), а не полагаемся на него.
+// ═══════════════════════════════════════════════════════════════
+let _tinkoffWidgetScriptLoaded = false;
+function loadTinkoffWidgetScript(){
+  return new Promise((resolve, reject)=>{
+    if(_tinkoffWidgetScriptLoaded && window.PaymentIntegration){ resolve(); return; }
+    const s = document.createElement("script");
+    s.src = "https://integrationjs.t-static.ru/integration.js";
+    s.async = true;
+    s.onload = ()=>{ _tinkoffWidgetScriptLoaded = true; resolve(); };
+    s.onerror = ()=> reject(new Error("Не удалось загрузить форму оплаты"));
+    document.body.appendChild(s);
+  });
+}
+
+let _tinkoffPollTimer = null;
+function stopTinkoffPolling(){ if(_tinkoffPollTimer){ clearInterval(_tinkoffPollTimer); _tinkoffPollTimer=null; } }
+
+function pollTinkoffPaymentStatus(orderId, onConfirmed){
+  stopTinkoffPolling();
+  let attempts = 0;
+  _tinkoffPollTimer = setInterval(async ()=>{
+    attempts++;
+    if(attempts>90){ stopTinkoffPolling(); return; } // ~7.5 минут максимум, потом просто перестаём спрашивать
+    try{
+      const data = await apiGet("/api/payments/"+orderId+"/status");
+      if(data && data.status==="confirmed"){ stopTinkoffPolling(); onConfirmed(); }
+    }catch(e){ /* пробуем ещё раз на следующем тике */ }
+  }, 5000);
+}
+
+let _tinkoffPublicKeyCache = null;
+async function getTinkoffPublicKey(){
+  if(_tinkoffPublicKeyCache) return _tinkoffPublicKeyCache;
+  const data = await apiGet("/api/payments/tinkoff-public-key");
+  if(!data || !data.terminalKey) throw new Error("Оплата картой временно недоступна");
+  _tinkoffPublicKeyCache = data.terminalKey;
+  return _tinkoffPublicKeyCache;
+}
+
+// Показывает встроенную форму оплаты внутри уже открытой модалки.
+// opts: { productKey, summaryId, actionsId, containerId, statusId, onDone }
+async function startTinkoffWidgetPayment(opts){
+  const { productKey, summaryId, actionsId, containerId, statusId, onDone } = opts;
+  const container = el(containerId);
+  if(!container) return;
+
+  try{
+    const [terminalKey] = await Promise.all([getTinkoffPublicKey(), loadTinkoffWidgetScript()]);
+
+    if(el(summaryId)) el(summaryId).style.display="none";
+    if(el(actionsId)) el(actionsId).style.display="none";
+    container.style.display="block";
+    container.innerHTML="";
+
+    await window.PaymentIntegration.init({
+      terminalKey,
+      product: "eacq",
+      features: {
+        iframe: {
+          container,
+          paymentStartCallback: async ()=>{
+            const data = await apiPost("/api/payments/create", { productKey }, true);
+            if(!data || !data.paymentUrl) throw new Error(data && data.error || "Не удалось создать платёж");
+            if(el(statusId)) el(statusId).style.display="block";
+            pollTinkoffPaymentStatus(data.orderId, ()=>{
+              if(el(statusId)) el(statusId).style.display="none";
+              onDone();
+            });
+            return data.paymentUrl;
+          },
+        },
+      },
+    });
+  }catch(e){
+    showToast("❌ "+(e.message||"Не удалось открыть форму оплаты"));
+    resetBuyModalUI();
+  }
+}
+
+// Возвращает модалку покупки Crystals в исходное состояние — используется
+// и при отмене, и при ошибке загрузки виджета
+function resetBuyModalUI(){
+  stopTinkoffPolling();
+  if(el("mbuy-summary")) el("mbuy-summary").style.display="";
+  if(el("mbuy-actions")) el("mbuy-actions").style.display="";
+  const c=el("tinkoff-widget-container"); if(c){ c.style.display="none"; c.innerHTML=""; }
+  if(el("tinkoff-widget-status")) el("tinkoff-widget-status").style.display="none";
+}
+
 async function completeBuy(){
   if(!S.buyPkg) return;
   const productKey = CR_TO_PRODUCT_KEY[S.buyPkg.cr];
   if(!productKey){ showToast("❌ Неизвестный пакет"); return; }
+
+  // Убеждаемся, что знаем актуальный регион оплаты — если ещё не подтянулся
+  // в фоне (например, сразу после свежего логина), спросим сейчас явно.
+  if(!S.user?.billing_region){
+    try{ const me=await apiGet("/api/users/me"); if(me?.user) S.user.billing_region=me.user.billing_region; }catch(e){}
+  }
+
+  if(S.user?.billing_region === "ru"){
+    // RU — встроенный виджет, форма карты/СБП остаётся на нашей странице
+    startTinkoffWidgetPayment({
+      productKey,
+      summaryId: "mbuy-summary", actionsId: "mbuy-actions",
+      containerId: "tinkoff-widget-container", statusId: "tinkoff-widget-status",
+      onDone: ()=>{
+        closeM("m-buy"); resetBuyModalUI();
+        showToast("✅ Оплата прошла! Баланс обновится через секунду...");
+        pollBalanceAfterPayment();
+      }
+    });
+    return;
+  }
+
+  // INTL (Stripe) — пока обычный редирект, как и раньше
   showToast("⏳ Переход к оплате...");
   try{
     const data = await apiPost("/api/payments/create", { productKey }, true);
     if(data && data.paymentUrl){
-      location.href = data.paymentUrl; // уходим на страницу оплаты Тинькофф/Stripe
+      location.href = data.paymentUrl;
     } else {
       showToast("❌ "+(data&&data.error||"Не удалось создать платёж"));
     }
@@ -6128,7 +6259,7 @@ if(S.loggedIn){
       .then(resp=>{
         const data = resp && resp.user; // GET /api/users/me отдаёт { user: {...} }, не плоский объект
         if(!data||!data.id) return;
-        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr}};
+        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region}};
         S.bal = data.balance_cr!=null ? data.balance_cr : S.bal; // баланс — источник правды сервер
         // Реальный VIP-статус с сервера (vip_plan/vip_until из миграции платежей).
         // Раньше VIP жил только в localStorage — теперь синхронизируем при каждом заходе.
@@ -6372,7 +6503,34 @@ function buyVIP(planId, price){
 }
 
 // ── Прямая покупка VIP за деньги, в обход Crystals (быстрый путь) ──
+function resetVipDirectModalUI(){
+  stopTinkoffPolling();
+  if(el("vip-direct-actions")) el("vip-direct-actions").style.display="";
+  const c=el("vip-direct-widget-container"); if(c){ c.style.display="none"; c.innerHTML=""; }
+  if(el("vip-direct-widget-status")) el("vip-direct-widget-status").style.display="none";
+}
+
 async function buyVIPDirect(productKey){
+  if(!S.user?.billing_region){
+    try{ const me=await apiGet("/api/users/me"); if(me?.user) S.user.billing_region=me.user.billing_region; }catch(e){}
+  }
+
+  if(S.user?.billing_region === "ru"){
+    if(el("vip-direct-label")) el("vip-direct-label").textContent = productKey==="vip_year" ? "VIP на 1 год" : "VIP на 1 месяц";
+    el("m-vip-direct").classList.add("on");
+    startTinkoffWidgetPayment({
+      productKey,
+      summaryId: null, actionsId: "vip-direct-actions",
+      containerId: "vip-direct-widget-container", statusId: "vip-direct-widget-status",
+      onDone: ()=>{
+        closeM("m-vip-direct"); resetVipDirectModalUI();
+        showToast("✅ Оплата прошла! Баланс обновится через секунду...");
+        pollBalanceAfterPayment();
+      }
+    });
+    return;
+  }
+
   showToast("⏳ Переход к оплате...");
   try{
     const data = await apiPost("/api/payments/create", { productKey }, true);
