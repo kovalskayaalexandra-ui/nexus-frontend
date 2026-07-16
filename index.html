@@ -1410,7 +1410,6 @@ tr:hover td{background:var(--bg3)}
   <select class="fii" id="mbuy-method" style="width:100%;margin-bottom:10px" onchange="updateBuyMethodHint()">
     <option value="tinkoff">💳 Банковская карта / СБП</option>
     <option value="yookassa">🌍 Карта МИР для СНГ (Беларусь, Казахстан и др.)</option>
-    <option value="crypto" disabled>₿ Крипто (скоро)</option>
   </select>
   <div id="mbuy-method-hint" style="display:none;font-size:12px;color:var(--tx3);background:var(--bg3);border-radius:10px;padding:10px 12px;margin:-2px 0 10px;line-height:1.5"></div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-buy');resetBuyModalUI()">Отмена</button><button class="xbtn cr" id="mbuy-pay-btn" onclick="completeBuy()">✅ Оплатить</button></div>
@@ -5368,15 +5367,18 @@ const THEME_PALETTES = {
     in:"#15182a", out:"#4c3f9e",
   },
   light: {
-    bg:"#ffffff", bg2:"#f7f8fa", bg3:"#eef0f4", bg4:"#e2e5ec",
-    brd:"rgba(0,0,0,.08)", brd2:"rgba(0,0,0,.14)",
+    bg:"#ffffff", bg2:"#f2f3f7", bg3:"#e4e7ee", bg4:"#d3d7e2",
+    brd:"rgba(0,0,0,.10)", brd2:"rgba(0,0,0,.16)",
     // Акценты чуть глубже, чем в тёмной версии — бледные пастельные тона,
     // хорошо читаемые на тёмном фоне, на белом теряют контраст
     acc:"#6c63ff", acc2:"#8b7cf6", acc3:"#0ea5e9",
     gr:"#16a34a", rd:"#dc2626", am:"#d97706",
     cr:"#0891b2", cr2:"#0e7490",
     tx:"#1a1d29", tx2:"#5c6178", tx3:"#8b90a3",
-    in:"#f1f2f6", out:"#e3e0ff",
+    // Пузыри сообщений — раньше были почти неотличимы от белого фона
+    // переписки (#f1f2f6 на #ffffff — разница пара процентов яркости).
+    // Теперь заметно светлее фона, но не сливаются с ним
+    in:"#e9ebf2", out:"#e0dbff",
   },
 };
 
@@ -6228,7 +6230,7 @@ async function completeBuy(){
     }catch(e){ showToast("❌ Нет связи с сервером"); }
     return;
   }
-  if(method==="crypto"){ showToast("₿ Оплата криптой пока в разработке"); return; }
+  if(method==="crypto"){ showToast("₿ Оплата криптой пока в разработке"); return; } // ⚠️ мёртвый код — пункта в списке больше нет, оставлен на случай, если он появится снова
 
   // Убеждаемся, что знаем актуальный регион оплаты — если ещё не подтянулся
   // в фоне (например, сразу после свежего логина), спросим сейчас явно.
