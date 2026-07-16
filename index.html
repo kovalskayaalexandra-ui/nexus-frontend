@@ -3247,9 +3247,25 @@ function renderMsgs(){
 let _viewedThisSession=new Set();
 async function countChannelViews(ch){
   const msgs=(S.messages[ch.id]||[]).filter(m=>m.dbId && !_viewedThisSession.has(m.dbId));
+  // ⚠️ Посты Nexus Official живут в отдельной таблице official_posts, не в
+  // messages — у них свой собственный эндпоинт просмотров. Раньше сюда
+  // всегда стучались в /api/messages/:id/view, для чата 88888 это всегда
+  // било мимо (404, тихо игнорировалось) — счётчик там никогда не рос.
+  const isOfficial = ch.id===88888;
   for(const m of msgs){
     _viewedThisSession.add(m.dbId);
     try{
+      if(isOfficial){
+        const data=await apiPost("/api/official/posts/"+m.dbId+"/view", {}, true);
+        if(data?.success){
+          m.views=data.views;
+          const rp=realOfficialPosts.find(p=>p.id===m.dbId);
+          if(rp) rp.views=data.views; // чтобы buildOfficialMessages() не сбросил счётчик при пересборке
+          const span=document.querySelector(`[data-views-for="${m.dbId}"]`);
+          if(span) span.textContent=data.views.toLocaleString("ru");
+        }
+        continue;
+      }
       const data=await apiPost("/api/messages/"+m.dbId+"/view", {}, true);
       if(data?.success){
         m.views=data.views;
