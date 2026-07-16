@@ -1407,11 +1407,12 @@ tr:hover td{background:var(--bg3)}
     <div class="psep"></div>
     <div class="prow"><div class="plbl">К оплате</div><div class="pval" id="mbpr">—</div></div>
   </div>
-  <select class="fii" id="mbuy-method" style="width:100%;margin-bottom:10px">
+  <select class="fii" id="mbuy-method" style="width:100%;margin-bottom:10px" onchange="updateBuyMethodHint()">
     <option value="tinkoff">💳 Банковская карта / СБП</option>
     <option value="yookassa">🌍 Карта МИР для СНГ (Беларусь, Казахстан и др.)</option>
     <option value="crypto" disabled>₿ Крипто (скоро)</option>
   </select>
+  <div id="mbuy-method-hint" style="display:none;font-size:12px;color:var(--tx3);background:var(--bg3);border-radius:10px;padding:10px 12px;margin:-2px 0 10px;line-height:1.5"></div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-buy');resetBuyModalUI()">Отмена</button><button class="xbtn cr" id="mbuy-pay-btn" onclick="completeBuy()">✅ Оплатить</button></div>
   <!-- Сюда встраивается форма оплаты Тинькофф (карта/СБП) прямо на нашей странице,
        без ухода на securepay.tinkoff.ru — см. startTinkoffWidgetPayment() -->
@@ -6048,7 +6049,7 @@ function renderStore(){
   el("cpkgs").innerHTML=S.coinPkgs.map(p=>{const price=(p.cr*S.rate).toFixed(0);return`<div class="cpkg${p.pop?" pop":""}" onclick="openBuyM(${p.cr},${price},'${curr.sym}')">${p.pop?`<div class="pkgb">✨ Хит</div>`:""}<div class="pkgico">💎</div><div class="pkgamt">${p.cr.toLocaleString()}</div><div class="pkgpr">${price} ${curr.sym}</div>${p.bonus?`<div class="pkgbo">+${p.bonus} CR</div>`:""}</div>`;}).join("");
   el("stkst").innerHTML=S.packs.map(p=>{const owned=p.free||S.owned.includes(p.id);return`<div class="scard"><div class="scprev">${p.stickers.slice(0,4).map(s=>`<span>${s}</span>`).join("")}</div><div class="scbot"><div><div class="scnm">${p.nm}</div><div class="scdesc">${p.desc}</div></div><button class="scbuy${owned?" owned":""}" ${owned?"disabled":""} onclick="${owned?"":` openStkModal(${p.id})`}">${owned?(p.free?"Бесплатно":"✓ Куплено"):`💎 ${p.price} CR`}</button></div></div>`;}).join("");
 }
-function openBuyM(cr,price,sym){ S.buyPkg={cr,price}; el("mbpkg").textContent=cr.toLocaleString()+" CR"; el("mbcr").textContent=cr.toLocaleString()+" 💎"; el("mbpr").textContent=price+" "+sym; el("m-buy").classList.add("on"); }
+function openBuyM(cr,price,sym){ S.buyPkg={cr,price}; el("mbpkg").textContent=cr.toLocaleString()+" CR"; el("mbcr").textContent=cr.toLocaleString()+" 💎"; el("mbpr").textContent=price+" "+sym; if(el("mbuy-method")) el("mbuy-method").value="tinkoff"; updateBuyMethodHint(); el("m-buy").classList.add("on"); }
 
 // cr → productKey в каталоге бэкенда (services/payments/products.js) — суммы совпадают 1-в-1 с S.coinPkgs
 const CR_TO_PRODUCT_KEY = {100:"cr_100",250:"cr_250",500:"cr_500",1000:"cr_1000",2500:"cr_2500",5000:"cr_5000"};
@@ -6149,6 +6150,22 @@ function resetBuyModalUI(){
   if(el("mbuy-pay-btn")) el("mbuy-pay-btn").style.display="";
   const c=el("tinkoff-widget-container"); if(c){ c.style.display="none"; c.innerHTML=""; }
   if(el("tinkoff-widget-status")) el("tinkoff-widget-status").style.display="none";
+}
+
+// Пояснение под выпадающим списком способа оплаты — особенно важно для
+// ЮKassa: их страница не подписывает пункт явно как "карта МИР", просто
+// показывает общий пункт "Банковская карта" — без подсказки не очевидно,
+// куда именно вводить карту МИР.
+function updateBuyMethodHint(){
+  const method = el("mbuy-method")?.value;
+  const hint = el("mbuy-method-hint");
+  if(!hint) return;
+  if(method==="yookassa"){
+    hint.style.display="block";
+    hint.innerHTML = "💡 На следующей странице выберите пункт «Банковская карта» — карта МИР вводится туда же, как обычная карта, отдельного пункта для неё там нет.";
+  } else {
+    hint.style.display="none";
+  }
 }
 
 async function completeBuy(){
