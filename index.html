@@ -1314,7 +1314,7 @@ tr:hover td{background:var(--bg3)}
             <div style="font-size:10.5px;color:var(--tx3)">100 CR = <span id="rateprev" style="color:var(--cr)">80.00 ₽</span></div>
           </div>
         </div>
-        <div class="asec"><div class="asect">📦 Пакеты</div><div id="pkged"></div><button class="xbtn sec" style="margin-top:8px" onclick="addPkg()">+ Добавить</button></div>
+        <div class="asec"><div class="asect">📦 Пакеты</div><div id="pkged"></div></div>
       </div>
       <div class="apage" id="page-wallets">
         <div class="atitle">💳 Кошельки</div><div class="asub2">Распределение выручки</div>
@@ -6197,8 +6197,9 @@ function renderStore(){
       price=(p.cr*S.rate).toFixed(0);
     }
     const pop=popMap[p.cr];
+    const discountBadge = (realCrystalCatalog && p.discountPercent>0) ? `<div class="pkgb" style="background:var(--rd);color:#fff">-${p.discountPercent}%</div>` : "";
     const priceHtml = basePrice ? `<span style="text-decoration:line-through;color:var(--tx3);font-size:11px;margin-right:4px">${basePrice}</span>${price} ${curr.sym}` : `${price} ${curr.sym}`;
-    return `<div class="cpkg${pop?" pop":""}" onclick="openBuyM(${p.cr},${price},'${curr.sym}')">${pop?`<div class="pkgb">✨ Хит</div>`:""}<div class="pkgico">💎</div><div class="pkgamt">${p.cr.toLocaleString()}</div><div class="pkgpr">${priceHtml}</div>${p.bonus?`<div class="pkgbo">+${p.bonus} CR</div>`:""}</div>`;
+    return `<div class="cpkg${pop?" pop":""}" onclick="openBuyM(${p.cr},${price},'${curr.sym}')">${discountBadge||(pop?`<div class="pkgb">✨ Хит</div>`:"")}<div class="pkgico">💎</div><div class="pkgamt">${p.cr.toLocaleString()}</div><div class="pkgpr">${priceHtml}</div>${p.bonus?`<div class="pkgbo">+${p.bonus} CR</div>`:""}</div>`;
   }).join("");
   el("stkst").innerHTML=S.packs.map(p=>{const owned=p.free||S.owned.includes(p.id);return`<div class="scard"><div class="scprev">${p.stickers.slice(0,4).map(s=>`<span>${s}</span>`).join("")}</div><div class="scbot"><div><div class="scnm">${p.nm}</div><div class="scdesc">${p.desc}</div></div><button class="scbuy${owned?" owned":""}" ${owned?"disabled":""} onclick="${owned?"":` openStkModal(${p.id})`}">${owned?(p.free?"Бесплатно":"✓ Куплено"):`💎 ${p.price} CR`}</button></div></div>`;}).join("");
 }
@@ -6215,7 +6216,14 @@ let realCrystalCatalog = null;
 async function loadCrystalCatalog(){
   try{
     const data=await apiGet("/api/payments/catalog");
-    if(data && data.products && data.products.length) realCrystalCatalog=data.products;
+    if(data && data.products && data.products.length){
+      realCrystalCatalog=data.products;
+      // ⚠️ Если Магазин уже был открыт ДО того, как пришёл ответ с сервера
+      // (обычная гонка при быстром старте) — он успел отрисоваться со
+      // старыми локальными ценами и сам по себе не обновится. Перерисовываем
+      // явно, раз каталог всё-таки пришёл, пусть и чуть позже.
+      if(el("screen-store")?.classList.contains("on")) renderStore();
+    }
   }catch(e){ /* останется null — витрина упадёт на старый плоский курс */ }
 }
 
@@ -6479,7 +6487,8 @@ async function saveProductPrice(key, patch){
     showToast("❌ Нет связи с сервером");
   }
 }
-function addPkg(){ S.coinPkgs.push({cr:500,price:400,bonus:null,pop:false});renderPkgEd();saveState();showToast("Пакет добавлен"); }
+// addPkg() убрана — писала в S.coinPkgs, отвязанный от реальной оплаты
+// локальный массив (см. правку редактора цен Crystals выше)
 function renderWallets(){ const e=el("wlist");if(!e)return; e.innerHTML=S.wallets.map((w,i)=>`<div class="wi"><div class="wiico" style="background:${w.col}20;color:${w.col}">${w.ico}</div><div style="flex:1"><div class="winm">${w.nm}</div><div class="wiad">${w.addr}</div></div><input class="fii" type="number" value="${w.pct}" style="width:55px;flex-shrink:0" onchange="S.wallets[${i}].pct=+this.value;updWPct();saveState()" min="0" max="100"><span style="color:var(--tx2)">%</span></div>`).join(""); updWPct(); }
 function updWPct(){ const t=S.wallets.reduce((s,w)=>s+w.pct,0);if(el("pctbar"))el("pctbar").style.width=Math.min(t,100)+"%";if(el("pctlbl"))el("pctlbl").textContent=S.wallets.map(w=>w.nm.split(" ")[0]+": "+w.pct+"%").join(" · "); }
 function addWallet(){ S.wallets.push({nm:"Новый получатель",ico:"💳",addr:"Реквизиты",pct:0,col:"#6c63ff"});renderWallets();saveState(); }
