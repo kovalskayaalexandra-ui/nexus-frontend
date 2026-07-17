@@ -1255,25 +1255,20 @@ tr:hover td{background:var(--bg3)}
     </div>
     <div class="acnt">
       <div class="apage on" id="page-overview">
-        <div class="atitle">📊 Обзор</div><div class="asub2">Nexus Messenger v2.0</div>
+        <div class="atitle">📊 Обзор</div><div class="asub2">Nexus Messenger</div>
         <div class="agrid">
-          <div class="scard2"><div class="scl">👥 Пользователей</div><div class="scv" id="stat-users">14 382</div><div class="scch">↑ +8.4%</div></div>
-          <div class="scard2"><div class="scl">💎 CR сегодня</div><div class="scv" style="color:var(--cr)" id="stat-cr">48 200</div><div class="scch">↑ +12%</div></div>
-          <div class="scard2"><div class="scl">💰 Выручка</div><div class="scv" style="color:var(--am)">38 560 ₽</div><div class="scch">↑ +9.3%</div></div>
-          <div class="scard2"><div class="scl">🐱 Стикеров куплено</div><div class="scv">1 847</div><div class="scch">↑ +22%</div></div>
-          <div class="scard2"><div class="scl">📨 Сообщений/день</div><div class="scv">2.4M</div><div class="scch">↑ +3.2%</div></div>
-          <div class="scard2"><div class="scl">🌍 Языков</div><div class="scv">14</div><div class="scch">Все активны</div></div>
+          <div class="scard2"><div class="scl">👥 Пользователей</div><div class="scv" id="stat-users">—</div></div>
+          <div class="scard2"><div class="scl">💰 Выручка всего</div><div class="scv" style="color:var(--am)" id="stat-revenue">—</div></div>
+          <div class="scard2"><div class="scl">📨 Сообщений сегодня</div><div class="scv" id="stat-msgs-today">—</div></div>
+          <div class="scard2"><div class="scl">🌍 Языков</div><div class="scv" id="stat-langs">—</div><div class="scch">Все активны</div></div>
         </div>
-        <div class="asec"><div class="asect">📈 CR за 7 дней</div>
-          <div class="mchart"><div class="mcb" style="height:48%"></div><div class="mcb" style="height:66%"></div><div class="mcb" style="height:39%"></div><div class="mcb" style="height:90%"></div><div class="mcb" style="height:81%"></div><div class="mcb" style="height:100%"></div><div class="mcb" style="height:95%"></div></div>
-          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--tx3);margin-top:4px"><span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span></div>
+        <div class="asec"><div class="asect">📈 Выручка за 7 дней (₽)</div>
+          <div class="mchart" id="overview-chart"></div>
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--tx3);margin-top:4px" id="overview-chart-labels"></div>
         </div>
-        <div class="asec"><div class="asect">🕐 Транзакции</div>
-          <div class="tw"><table><thead><tr><th>Пользователь</th><th>Действие</th><th>CR</th><th>Статус</th></tr></thead><tbody>
-            <tr><td style="color:var(--acc2)">@alex_s</td><td>Покупка CR</td><td style="color:var(--cr)">+500 💎</td><td><span class="bg bgg">OK</span></td></tr>
-            <tr><td style="color:var(--acc2)">@maria_k</td><td>Стикер-пак</td><td style="color:var(--cr)">-50 💎</td><td><span class="bg bgg">OK</span></td></tr>
-            <tr><td style="color:var(--acc2)">@igor_p</td><td>Покупка CR</td><td style="color:var(--cr)">+1000 💎</td><td><span class="bg bgg">OK</span></td></tr>
-            <tr><td style="color:var(--acc2)">@svetlana</td><td>Стикер-пак</td><td style="color:var(--cr)">-45 💎</td><td><span class="bg bga">Ожидание</span></td></tr>
+        <div class="asec"><div class="asect">🕐 Последние платежи</div>
+          <div class="tw"><table><thead><tr><th>Телефон</th><th>Товар</th><th>Сумма</th><th>Статус</th></tr></thead><tbody id="overview-transactions">
+            <tr><td colspan="4" style="color:var(--tx3);text-align:center;padding:14px">Загрузка...</td></tr>
           </tbody></table></div>
         </div>
       </div>
@@ -1367,17 +1362,12 @@ tr:hover td{background:var(--bg3)}
         <div class="asec"><div class="asect">📡 Активные</div><div id="whlist"><div style="color:var(--tx3);font-size:11.5px">Нет вебхуков</div></div></div>
       </div>
       <div class="apage" id="page-settings">
-        <div class="atitle">⚙️ Настройки платформы</div><div class="asub2">Глобальные параметры</div>
+        <div class="atitle">⚙️ Настройки платформы</div><div class="asub2">Глобальные параметры — сохраняются по-настоящему, на сервере</div>
         <div class="asec"><div class="asect">🔧 Основные</div>
-          <div class="trow"><div><div class="trl">Регистрация открыта</div></div><label class="toggle"><input type="checkbox" checked><span class="ts"></span></label></div>
-          <div class="trow"><div><div class="trl">Продажа Crystals</div></div><label class="toggle"><input type="checkbox" checked><span class="ts"></span></label></div>
-          <div class="trow"><div><div class="trl">Стикер-магазин</div></div><label class="toggle"><input type="checkbox" checked><span class="ts"></span></label></div>
-          <div class="trow"><div><div class="trl">E2E шифрование</div></div><label class="toggle"><input type="checkbox" checked><span class="ts"></span></label></div>
-          <div class="trow"><div><div class="trl">Режим обслуживания</div></div><label class="toggle"><input type="checkbox"><span class="ts"></span></label></div>
-        </div>
-        <div class="asec"><div class="asect">🎨 Брендинг</div>
-          <div class="frow"><div class="fg"><span class="fl">Название</span><input class="fii" value="Nexus Messenger"></div><div class="fg"><span class="fl">Слоган</span><input class="fii" value="Общайся без границ"></div></div>
-          <button class="xbtn" onclick="showToast('Сохранено ✓')">Сохранить</button>
+          <div class="trow"><div><div class="trl">Регистрация открыта</div><div style="font-size:11px;color:var(--tx3)">Реально блокирует новых пользователей на сервере</div></div><label class="toggle"><input type="checkbox" id="pf-registration_open" onchange="togglePlatformFlag('registration_open',this.checked)"><span class="ts"></span></label></div>
+          <div class="trow"><div><div class="trl">Продажа Crystals</div><div style="font-size:11px;color:var(--tx3)">Реально блокирует покупку CR-пакетов (не VIP)</div></div><label class="toggle"><input type="checkbox" id="pf-crystals_sale_enabled" onchange="togglePlatformFlag('crystals_sale_enabled',this.checked)"><span class="ts"></span></label></div>
+          <div class="trow"><div><div class="trl">Стикер-магазин</div><div style="font-size:11px;color:var(--tx3)">⚠️ Сохраняется по-настоящему, но пока не подключена проверка везде, где покупаются стикеры</div></div><label class="toggle"><input type="checkbox" id="pf-sticker_shop_enabled" onchange="togglePlatformFlag('sticker_shop_enabled',this.checked)"><span class="ts"></span></label></div>
+          <div class="trow"><div><div class="trl">Режим обслуживания</div><div style="font-size:11px;color:var(--tx3)">Блокирует вход всем, кроме админов — показывает экран "технические работы"</div></div><label class="toggle"><input type="checkbox" id="pf-maintenance_mode" onchange="togglePlatformFlag('maintenance_mode',this.checked)"><span class="ts"></span></label></div>
         </div>
       </div>
     </div>
@@ -6364,11 +6354,48 @@ function completeStkBuy(){ const p=S.packs.find(x=>x.id===S.buySP);if(!p){closeM
 
 // ── ADMIN ──────────────────────────────────────────────────
 function aPage(e,page){ document.querySelectorAll(".ani").forEach(x=>x.classList.remove("on")); e.classList.add("on"); document.querySelectorAll(".apage").forEach(x=>x.classList.remove("on")); el("page-"+page).classList.add("on"); }
+// Реальная статистика Обзора — раньше все цифры были вписаны прямо в HTML
+// руками и никогда не менялись, что бы ни происходило в приложении
+async function loadOverviewStats(){
+  try{
+    const data=await apiGet("/api/admin/overview");
+    if(!data) return;
+    if(el("stat-users")) el("stat-users").textContent=data.totalUsers.toLocaleString("ru");
+    if(el("stat-revenue")) el("stat-revenue").textContent=Math.round(data.totalRevenueRub).toLocaleString("ru")+" ₽";
+    if(el("stat-msgs-today")) el("stat-msgs-today").textContent=data.messagesToday.toLocaleString("ru");
+    if(el("stat-langs")) el("stat-langs").textContent=Object.keys(LANGS).length;
+
+    // График за 7 дней — достраиваем дни без платежей нулями, сервер отдаёт
+    // только те дни, где реально что-то было
+    const byDay={};
+    (data.revenueByDay||[]).forEach(r=>{ byDay[new Date(r.day).toISOString().slice(0,10)]=parseFloat(r.total); });
+    const days=[], values=[];
+    for(let i=6;i>=0;i--){
+      const d=new Date(); d.setDate(d.getDate()-i);
+      days.push(d);
+      values.push(byDay[d.toISOString().slice(0,10)]||0);
+    }
+    const maxVal=Math.max(...values, 1);
+    const chart=el("overview-chart");
+    if(chart) chart.innerHTML=values.map(v=>`<div class="mcb" style="height:${Math.max(4,Math.round(v/maxVal*100))}%" title="${Math.round(v)} ₽"></div>`).join("");
+    const labels=el("overview-chart-labels");
+    if(labels) labels.innerHTML=days.map(d=>`<span>${WEEKDAY_SHORT[d.getDay()]}</span>`).join("");
+
+    const tbody=el("overview-transactions");
+    if(tbody){
+      tbody.innerHTML=(data.recentPayments||[]).length
+        ? data.recentPayments.map(p=>`<tr><td style="color:var(--acc2)">${p.phone||"—"}</td><td>${p.product_key}</td><td style="color:var(--cr)">${p.amount} ${p.currency==="RUB"?"₽":p.currency}</td><td><span class="bg ${p.status==="confirmed"?"bgg":p.status==="pending"?"bga":"bgr"}">${p.status}</span></td></tr>`).join("")
+        : `<tr><td colspan="4" style="color:var(--tx3);text-align:center;padding:14px">Платежей ещё не было</td></tr>`;
+    }
+  }catch(e){ console.warn("overview stats error:", e); }
+}
+
 function initAdmin(){
   renderCurrs();renderPkgEd();renderWallets();renderUsers();renderSPAdmin();renderKeys();renderBots();renderWH();renderLngs();
   if(el("bal-admin"))el("bal-admin").textContent=S.bal.toLocaleString();
   // new sections
-  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();loadWelcomeMessage();},100);
+  loadOverviewStats();
+  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();loadWelcomeMessage();loadPlatformFlags();},100);
 }
 function renderCurrs(){ const e=el("currs");if(!e)return; e.innerHTML=CURRENCIES.map(c=>`<div class="copt${S.currency===c.code?" on":""}" onclick="selCurr('${c.code}')"><div class="cflag">${c.flag}</div><div class="ccode">${c.sym} ${c.code}</div><div class="cname">${c.nm}</div><div class="crate">1 CR = ${c.rate} ${c.code}</div></div>`).join(""); }
 function selCurr(code){ S.currency=code;const c=CURRENCIES.find(x=>x.code===code);if(c){S.rate=c.rate;if(el("crinp"))el("crinp").value=c.rate;updRate(c.rate);}renderCurrs();showToast("Валюта → "+code);saveState(); }
@@ -7549,6 +7576,35 @@ let editingOfficialPostId = null;
 
 // Приветственное сообщение новым пользователям — текст редактируется тут,
 // а рассылается уже на бэкенде при регистрации (auth.js), не отсюда
+// Переключатели платформы (Настройки) — раньше были чисто декоративными,
+// теперь реально сохраняются на сервере и часть из них реально что-то
+// проверяет (регистрация, продажа Crystals — см. auth.js/payments.js)
+async function loadPlatformFlags(){
+  try{
+    const data=await apiGet("/api/settings/platform");
+    if(!data || !data.flags) return;
+    Object.entries(data.flags).forEach(([key,val])=>{
+      const cb=el("pf-"+key);
+      if(cb) cb.checked=!!val;
+    });
+  }catch(e){ /* тихо игнорируем — просто останутся не отмеченными */ }
+}
+
+async function togglePlatformFlag(key, value){
+  try{
+    const data=await apiPatch("/api/settings/platform", {key, value}, true);
+    if(!data || !data.success){
+      showToast("❌ "+(data&&data.error||"Не удалось сохранить"));
+      const cb=el("pf-"+key); if(cb) cb.checked=!value; // откатываем визуально
+      return;
+    }
+    showToast("✅ Сохранено");
+  }catch(e){
+    showToast("❌ Нет связи с сервером");
+    const cb=el("pf-"+key); if(cb) cb.checked=!value;
+  }
+}
+
 async function loadWelcomeMessage(){
   const ta=el("welcome-msg-text");
   if(!ta) return;
@@ -8055,6 +8111,23 @@ function approveCustomPack(i){
 
 applyTheme(S.theme||"dark");
 
+// Режим обслуживания — блокирует доступ всем, кроме админов, показывает
+// экран "Технические работы" вместо обычного приложения. Публичный
+// эндпоинт (без авторизации), потому что должен сработать и для тех, кто
+// ещё даже не залогинен. При сетевой ошибке — НЕ блокируем никого (лучше
+// пропустить лишний раз, чем ошибочно закрыть доступ всем из-за сбоя сети).
+(async function checkMaintenanceMode(){
+  try{
+    const res=await fetch(API_URL+"/api/settings/maintenance-status");
+    const data=await res.json();
+    if(data && data.maintenanceMode && S.user?.role!=="admin"){
+      if(el("screen-main")) el("screen-main").style.display="none";
+      document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on"));
+      if(el("screen-maintenance")) el("screen-maintenance").classList.add("on");
+    }
+  }catch(e){ /* сеть подвела — не блокируем никого */ }
+})();
+
 // Перетаскиваемая граница между списком чатов и окном переписки — как в
 // Telegram. Ширину запоминаем в S.sbWidth, чтобы не сбрасывалась при
 // каждой перезагрузке страницы.
@@ -8326,6 +8399,12 @@ applyTheme(S.theme||"dark");
 </div>
 
 <!-- ══ NEXUS OFFICIAL CHANNEL SCREEN ══ -->
+<div class="screen" id="screen-maintenance" style="align-items:center;justify-content:center;text-align:center;padding:30px">
+  <div style="font-size:52px;margin-bottom:16px">🔧</div>
+  <div style="font-size:22px;font-weight:800;margin-bottom:10px">Технические работы</div>
+  <div style="color:var(--tx2);max-width:340px;line-height:1.5">Мы улучшаем Nexus и скоро вернёмся. Попробуйте зайти чуть позже.</div>
+</div>
+
 <div class="screen" id="screen-official">
   <div class="topbar">
     <div class="logo" onclick="el('screen-official').classList.remove('on')">⬡ Nexus</div>
