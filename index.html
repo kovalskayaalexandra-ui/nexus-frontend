@@ -544,6 +544,10 @@ body.select-mode .msel-check{display:flex}
 .asb{width:210px;background:var(--bg2);border-right:1px solid var(--brd);padding:14px 7px;flex-shrink:0;overflow-y:auto}
 .asbtitle{font-family:"Syne",sans-serif;font-weight:800;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx3);padding:3px 9px;margin-bottom:7px}
 .ani{display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:8px;cursor:pointer;font-size:12.5px;color:var(--tx2);transition:all .15s;margin-bottom:2px}
+/* Раздел ещё не доработан — зачёркнуто и приглушено, чтобы не тратить время
+   на тестирование того, что заведомо не готово. Убираю этот класс по мере
+   того, как довожу каждый раздел до реального состояния. */
+.ani-todo{text-decoration:line-through;opacity:.45}
 .ani:hover{background:var(--bg3);color:var(--tx)}
 .ani.on{background:rgba(108,99,255,.14);color:var(--acc2)}
 .acnt{flex:1;overflow-y:auto;padding:22px}
@@ -1245,12 +1249,12 @@ tr:hover td{background:var(--bg3)}
       <div class="ani on" onclick="aPage(this,'overview')">📊 Обзор</div>
       <div class="ani" onclick="aPage(this,'official')">📢 Nexus Official</div>
       <div class="ani" onclick="aPage(this,'currency')">💎 Crystals</div>
-      <div class="ani" onclick="aPage(this,'wallets')">💳 Кошельки</div>
-      <div class="ani" onclick="aPage(this,'stickers')">🐱 Стикеры</div>
-      <div class="ani" onclick="aPage(this,'users')">👥 Пользователи</div>
-      <div class="ani" onclick="aPage(this,'langs')">🌍 Языки</div>
-      <div class="ani" onclick="aPage(this,'bots')">🤖 Боты и API</div>
-      <div class="ani" onclick="aPage(this,'webhooks')">🔗 Вебхуки</div>
+      <div class="ani ani-todo" onclick="aPage(this,'wallets')">💳 Кошельки</div>
+      <div class="ani ani-todo" onclick="aPage(this,'stickers')">🐱 Стикеры</div>
+      <div class="ani ani-todo" onclick="aPage(this,'users')">👥 Пользователи</div>
+      <div class="ani ani-todo" onclick="aPage(this,'langs')">🌍 Языки</div>
+      <div class="ani ani-todo" onclick="aPage(this,'bots')">🤖 Боты и API</div>
+      <div class="ani ani-todo" onclick="aPage(this,'webhooks')">🔗 Вебхуки</div>
       <div class="ani" onclick="aPage(this,'settings')">⚙️ Настройки</div>
     </div>
     <div class="acnt">
@@ -6183,16 +6187,18 @@ function renderStore(){
   const popMap={}; S.coinPkgs.forEach(p=>{ popMap[p.cr]=!!p.pop; });
   const pkgsToShow=realCrystalCatalog || S.coinPkgs;
   el("cpkgs").innerHTML=pkgsToShow.map(p=>{
-    let price;
+    let price, basePrice=null;
     if(realCrystalCatalog){
-      if(S.currency==="RUB") price=Math.round(p.ru.amount);
-      else if(S.currency==="USD") price=p.intl.amount;
-      else price=Math.round(p.ru.amount*(curr.rate/rubRate));
+      if(S.currency==="RUB"){ price=Math.round(p.ru.amount); basePrice=Math.round(p.ruBaseAmount); }
+      else if(S.currency==="USD"){ price=p.intl.amount; basePrice=p.intlBaseAmount; }
+      else{ price=Math.round(p.ru.amount*(curr.rate/rubRate)); basePrice=Math.round(p.ruBaseAmount*(curr.rate/rubRate)); }
+      if(!p.discountPercent) basePrice=null; // без активной скидки зачёркнутую цену не показываем
     } else {
       price=(p.cr*S.rate).toFixed(0);
     }
     const pop=popMap[p.cr];
-    return `<div class="cpkg${pop?" pop":""}" onclick="openBuyM(${p.cr},${price},'${curr.sym}')">${pop?`<div class="pkgb">✨ Хит</div>`:""}<div class="pkgico">💎</div><div class="pkgamt">${p.cr.toLocaleString()}</div><div class="pkgpr">${price} ${curr.sym}</div>${p.bonus?`<div class="pkgbo">+${p.bonus} CR</div>`:""}</div>`;
+    const priceHtml = basePrice ? `<span style="text-decoration:line-through;color:var(--tx3);font-size:11px;margin-right:4px">${basePrice}</span>${price} ${curr.sym}` : `${price} ${curr.sym}`;
+    return `<div class="cpkg${pop?" pop":""}" onclick="openBuyM(${p.cr},${price},'${curr.sym}')">${pop?`<div class="pkgb">✨ Хит</div>`:""}<div class="pkgico">💎</div><div class="pkgamt">${p.cr.toLocaleString()}</div><div class="pkgpr">${priceHtml}</div>${p.bonus?`<div class="pkgbo">+${p.bonus} CR</div>`:""}</div>`;
   }).join("");
   el("stkst").innerHTML=S.packs.map(p=>{const owned=p.free||S.owned.includes(p.id);return`<div class="scard"><div class="scprev">${p.stickers.slice(0,4).map(s=>`<span>${s}</span>`).join("")}</div><div class="scbot"><div><div class="scnm">${p.nm}</div><div class="scdesc">${p.desc}</div></div><button class="scbuy${owned?" owned":""}" ${owned?"disabled":""} onclick="${owned?"":` openStkModal(${p.id})`}">${owned?(p.free?"Бесплатно":"✓ Куплено"):`💎 ${p.price} CR`}</button></div></div>`;}).join("");
 }
@@ -6446,14 +6452,15 @@ async function renderPkgEd(){
   try{
     const data=await apiGet("/api/admin/products");
     const products=((data && data.products) || []).filter(p=>p.type==="cr");
-    e.innerHTML=`<div class="tw"><table><thead><tr><th>CR</th><th>Цена ₽</th><th>Цена $</th><th>Бонус</th></tr></thead><tbody>${products.map(p=>`
+    e.innerHTML=`<div class="tw"><table><thead><tr><th>CR</th><th>Цена ₽</th><th>Цена $</th><th>Бонус</th><th>Скидка %</th></tr></thead><tbody>${products.map(p=>`
       <tr>
         <td>${p.cr_amount}</td>
         <td><input class="fii" type="number" value="${p.ru_amount}" style="width:80px" onchange="saveProductPrice('${p.key}',{ruAmount:+this.value})"> ₽</td>
         <td><input class="fii" type="number" value="${p.intl_amount}" style="width:70px" onchange="saveProductPrice('${p.key}',{intlAmount:+this.value})"> $</td>
         <td><input class="fii" type="number" value="${p.bonus_cr||0}" style="width:70px" onchange="saveProductPrice('${p.key}',{bonusCr:+this.value})"></td>
+        <td><input class="fii" type="number" min="0" max="100" value="${p.discount_percent||0}" style="width:60px" onchange="saveProductPrice('${p.key}',{discountPercent:+this.value})"> %</td>
       </tr>`).join("")}</tbody></table></div>
-      <div style="font-size:11px;color:var(--tx3);margin-top:8px">Сохраняется сразу — это те же цены, что видит покупатель на витрине и что реально спишется при оплате.</div>`;
+      <div style="font-size:11px;color:var(--tx3);margin-top:8px">Сохраняется сразу — это те же цены, что видит покупатель на витрине и что реально спишется при оплате. Цены выше — базовые (до скидки), скидка применяется поверх них автоматически.</div>`;
   }catch(err){
     e.innerHTML=`<div style="color:var(--rd);font-size:12px">Не удалось загрузить цены</div>`;
   }
@@ -8016,7 +8023,7 @@ function renderAdminGifts(){
   if(asb && !document.getElementById("ani-gifts")){
     const div = document.createElement("div");
     div.id = "ani-gifts";
-    div.className = "ani";
+    div.className = "ani ani-todo";
     div.onclick = ()=>aPage(div,"gifts");
     div.textContent = "🎁 Подарки";
     asb.appendChild(div);
@@ -8117,7 +8124,7 @@ function renderAdminVerifications(){
   if(asb && !document.getElementById("ani-verify")){
     const div = document.createElement("div");
     div.id = "ani-verify";
-    div.className = "ani";
+    div.className = "ani ani-todo";
     div.onclick = ()=>aPage(div,"verify");
     div.textContent = "✅ Верификация";
     asb.appendChild(div);
@@ -8141,7 +8148,7 @@ function renderAdminCustomPacks(){
   if(asb && !document.getElementById("ani-custpacks")){
     const div = document.createElement("div");
     div.id = "ani-custpacks";
-    div.className = "ani";
+    div.className = "ani ani-todo";
     div.onclick = ()=>aPage(div,"custpacks");
     div.textContent = "🎨 Паки юзеров";
     asb.appendChild(div);
