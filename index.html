@@ -2663,6 +2663,7 @@ function loginOK(){
 
   loadSupportMessages();
   loadOfficialPosts();
+  loadCrystalCatalog();
 
   // Загружаем реальные чаты из БД
   setTimeout(loadChatsFromDB, 600);
@@ -6173,13 +6174,44 @@ function renderStore(){
   const curr=CURRENCIES.find(c=>c.code===S.currency)||CURRENCIES[0];
   if(el("crrate"))el("crrate").textContent=S.rate.toFixed(2);
   if(el("crrsym"))el("crrsym").textContent=curr.sym;
-  el("cpkgs").innerHTML=S.coinPkgs.map(p=>{const price=(p.cr*S.rate).toFixed(0);return`<div class="cpkg${p.pop?" pop":""}" onclick="openBuyM(${p.cr},${price},'${curr.sym}')">${p.pop?`<div class="pkgb">✨ Хит</div>`:""}<div class="pkgico">💎</div><div class="pkgamt">${p.cr.toLocaleString()}</div><div class="pkgpr">${price} ${curr.sym}</div>${p.bonus?`<div class="pkgbo">+${p.bonus} CR</div>`:""}</div>`;}).join("");
+  // ⚠️ Раньше цена всегда считалась от плоского курса (cr * rate), полностью
+  // игнорируя пакетные скидки/бонусы — реальная цена могла ощутимо
+  // отличаться от показанной. Теперь берём настоящие цены из БД
+  // (realCrystalCatalog), а плоский курс — только запасной вариант, если
+  // каталог почему-то не загрузился.
+  const rubRate=CURRENCIES.find(c=>c.code==="RUB")?.rate||0.8;
+  const popMap={}; S.coinPkgs.forEach(p=>{ popMap[p.cr]=!!p.pop; });
+  const pkgsToShow=realCrystalCatalog || S.coinPkgs;
+  el("cpkgs").innerHTML=pkgsToShow.map(p=>{
+    let price;
+    if(realCrystalCatalog){
+      if(S.currency==="RUB") price=Math.round(p.ru.amount);
+      else if(S.currency==="USD") price=p.intl.amount;
+      else price=Math.round(p.ru.amount*(curr.rate/rubRate));
+    } else {
+      price=(p.cr*S.rate).toFixed(0);
+    }
+    const pop=popMap[p.cr];
+    return `<div class="cpkg${pop?" pop":""}" onclick="openBuyM(${p.cr},${price},'${curr.sym}')">${pop?`<div class="pkgb">✨ Хит</div>`:""}<div class="pkgico">💎</div><div class="pkgamt">${p.cr.toLocaleString()}</div><div class="pkgpr">${price} ${curr.sym}</div>${p.bonus?`<div class="pkgbo">+${p.bonus} CR</div>`:""}</div>`;
+  }).join("");
   el("stkst").innerHTML=S.packs.map(p=>{const owned=p.free||S.owned.includes(p.id);return`<div class="scard"><div class="scprev">${p.stickers.slice(0,4).map(s=>`<span>${s}</span>`).join("")}</div><div class="scbot"><div><div class="scnm">${p.nm}</div><div class="scdesc">${p.desc}</div></div><button class="scbuy${owned?" owned":""}" ${owned?"disabled":""} onclick="${owned?"":` openStkModal(${p.id})`}">${owned?(p.free?"Бесплатно":"✓ Куплено"):`💎 ${p.price} CR`}</button></div></div>`;}).join("");
 }
 function openBuyM(cr,price,sym){ S.buyPkg={cr,price}; el("mbpkg").textContent=cr.toLocaleString()+" CR"; el("mbcr").textContent=cr.toLocaleString()+" 💎"; el("mbpr").textContent=price+" "+sym; if(el("mbuy-method")) el("mbuy-method").value="tinkoff"; updateBuyMethodHint(); el("m-buy").classList.add("on"); }
 
 // cr → productKey в каталоге бэкенда (services/payments/products.js) — суммы совпадают 1-в-1 с S.coinPkgs
 const CR_TO_PRODUCT_KEY = {100:"cr_100",250:"cr_250",500:"cr_500",1000:"cr_1000",2500:"cr_2500",5000:"cr_5000"};
+
+// Настоящий каталог цен Crystals из БД (та же таблица, что редактирует
+// админ и откуда берётся реальная сумма при оплате). Загружается один раз
+// при старте — не критично, если немного устареет за сессию, цена всё
+// равно окончательно проверяется на сервере в момент оплаты.
+let realCrystalCatalog = null;
+async function loadCrystalCatalog(){
+  try{
+    const data=await apiGet("/api/payments/catalog");
+    if(data && data.products && data.products.length) realCrystalCatalog=data.products;
+  }catch(e){ /* останется null — витрина упадёт на старый плоский курс */ }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // Встроенный виджет оплаты Тинькофф — форма ввода карты появляется прямо
@@ -6400,7 +6432,46 @@ function initAdmin(){
 function renderCurrs(){ const e=el("currs");if(!e)return; e.innerHTML=CURRENCIES.map(c=>`<div class="copt${S.currency===c.code?" on":""}" onclick="selCurr('${c.code}')"><div class="cflag">${c.flag}</div><div class="ccode">${c.sym} ${c.code}</div><div class="cname">${c.nm}</div><div class="crate">1 CR = ${c.rate} ${c.code}</div></div>`).join(""); }
 function selCurr(code){ S.currency=code;const c=CURRENCIES.find(x=>x.code===code);if(c){S.rate=c.rate;if(el("crinp"))el("crinp").value=c.rate;updRate(c.rate);}renderCurrs();showToast("Валюта → "+code);saveState(); }
 function updRate(v){ S.rate=parseFloat(v)||0.8;const curr=CURRENCIES.find(c=>c.code===S.currency)||CURRENCIES[0];if(el("rateprev"))el("rateprev").textContent=(100*S.rate).toFixed(2)+" "+curr.sym;if(el("crrate"))el("crrate").textContent=S.rate.toFixed(2);saveState(); }
-function renderPkgEd(){ const e=el("pkged");if(!e)return; e.innerHTML=`<div class="tw"><table><thead><tr><th>CR</th><th>Цена</th><th>Бонус</th><th></th></tr></thead><tbody>${S.coinPkgs.map((p,i)=>`<tr><td><input class="fii" value="${p.cr}" style="width:70px" onchange="S.coinPkgs[${i}].cr=+this.value;saveState()"></td><td><input class="fii" value="${p.price}" style="width:70px" onchange="S.coinPkgs[${i}].price=+this.value;saveState()"> ₽</td><td><input class="fii" value="${p.bonus||""}" style="width:80px" onchange="S.coinPkgs[${i}].bonus=this.value||null;saveState()"></td><td><button class="xbtn rd" style="padding:4px 8px;font-size:11px" onclick="S.coinPkgs.splice(${i},1);renderPkgEd();saveState()">✕</button></td></tr>`).join("")}</tbody></table></div>`; }
+// ⚠️ Раньше это правило ТОЛЬКО локальный S.coinPkgs в браузере этого
+// админа — никак не влияло на реальную сумму при оплате (та бралась из
+// отдельного, никак не связанного файла на сервере). Теперь читает и
+// пишет ту же таблицу products, откуда сервер реально берёт цену —
+// изменение тут сразу видно всем и сразу списывается по-новому.
+// ⚠️ Добавлять/удалять пакеты пока нельзя — только менять цену/бонус у
+// уже существующих (ключи пакетов зашиты и на фронтенде, и в логике
+// оплаты, добавление нового пакета — отдельная, более крупная задача).
+async function renderPkgEd(){
+  const e=el("pkged"); if(!e) return;
+  e.innerHTML=`<div style="color:var(--tx3);font-size:12px;padding:10px 0">Загрузка...</div>`;
+  try{
+    const data=await apiGet("/api/admin/products");
+    const products=((data && data.products) || []).filter(p=>p.type==="cr");
+    e.innerHTML=`<div class="tw"><table><thead><tr><th>CR</th><th>Цена ₽</th><th>Цена $</th><th>Бонус</th></tr></thead><tbody>${products.map(p=>`
+      <tr>
+        <td>${p.cr_amount}</td>
+        <td><input class="fii" type="number" value="${p.ru_amount}" style="width:80px" onchange="saveProductPrice('${p.key}',{ruAmount:+this.value})"> ₽</td>
+        <td><input class="fii" type="number" value="${p.intl_amount}" style="width:70px" onchange="saveProductPrice('${p.key}',{intlAmount:+this.value})"> $</td>
+        <td><input class="fii" type="number" value="${p.bonus_cr||0}" style="width:70px" onchange="saveProductPrice('${p.key}',{bonusCr:+this.value})"></td>
+      </tr>`).join("")}</tbody></table></div>
+      <div style="font-size:11px;color:var(--tx3);margin-top:8px">Сохраняется сразу — это те же цены, что видит покупатель на витрине и что реально спишется при оплате.</div>`;
+  }catch(err){
+    e.innerHTML=`<div style="color:var(--rd);font-size:12px">Не удалось загрузить цены</div>`;
+  }
+}
+
+async function saveProductPrice(key, patch){
+  try{
+    const data=await apiPatch("/api/admin/products/"+key, patch, true);
+    if(!data || !data.success){
+      showToast("❌ "+(data&&data.error||"Не удалось сохранить"));
+      return;
+    }
+    showToast("✅ Цена сохранена");
+    realCrystalCatalog=null; // сбрасываем локальный кэш витрины, подтянется заново при следующем открытии Магазина
+  }catch(e){
+    showToast("❌ Нет связи с сервером");
+  }
+}
 function addPkg(){ S.coinPkgs.push({cr:500,price:400,bonus:null,pop:false});renderPkgEd();saveState();showToast("Пакет добавлен"); }
 function renderWallets(){ const e=el("wlist");if(!e)return; e.innerHTML=S.wallets.map((w,i)=>`<div class="wi"><div class="wiico" style="background:${w.col}20;color:${w.col}">${w.ico}</div><div style="flex:1"><div class="winm">${w.nm}</div><div class="wiad">${w.addr}</div></div><input class="fii" type="number" value="${w.pct}" style="width:55px;flex-shrink:0" onchange="S.wallets[${i}].pct=+this.value;updWPct();saveState()" min="0" max="100"><span style="color:var(--tx2)">%</span></div>`).join(""); updWPct(); }
 function updWPct(){ const t=S.wallets.reduce((s,w)=>s+w.pct,0);if(el("pctbar"))el("pctbar").style.width=Math.min(t,100)+"%";if(el("pctlbl"))el("pctlbl").textContent=S.wallets.map(w=>w.nm.split(" ")[0]+": "+w.pct+"%").join(" · "); }
@@ -6488,6 +6559,7 @@ if(S.loggedIn){
       .catch(()=>{});
     loadSupportMessages();
     loadOfficialPosts();
+    loadCrystalCatalog();
   }
 } else {
   el("auth-welcome").classList.add("on");
