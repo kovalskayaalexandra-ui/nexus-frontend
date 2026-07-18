@@ -6215,7 +6215,7 @@ const CR_TO_PRODUCT_KEY = {100:"cr_100",250:"cr_250",500:"cr_500",1000:"cr_1000"
 let realCrystalCatalog = null;
 async function loadCrystalCatalog(){
   try{
-    const data=await apiGet("/api/payments/catalog");
+    const data=await apiGet("/api/payments/catalog?_t="+Date.now());
     if(data && data.products && data.products.length){
       realCrystalCatalog=data.products;
       // ⚠️ Если Магазин уже был открыт ДО того, как пришёл ответ с сервера
@@ -6458,7 +6458,7 @@ async function renderPkgEd(){
   const e=el("pkged"); if(!e) return;
   e.innerHTML=`<div style="color:var(--tx3);font-size:12px;padding:10px 0">Загрузка...</div>`;
   try{
-    const data=await apiGet("/api/admin/products");
+    const data=await apiGet("/api/admin/products?_t="+Date.now());
     const products=((data && data.products) || []).filter(p=>p.type==="cr");
     e.innerHTML=`<div class="tw"><table><thead><tr><th>CR</th><th>Цена ₽</th><th>Цена $</th><th>Бонус</th><th>Скидка %</th></tr></thead><tbody>${products.map(p=>`
       <tr>
