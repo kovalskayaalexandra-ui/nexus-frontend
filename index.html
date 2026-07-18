@@ -2181,7 +2181,7 @@ function wsHandleMessage(msg){
         if(username!==undefined) ch.uname=username;
         if(restrictSendMessages!==undefined) ch.restrictSendMessages=restrictSendMessages;
         if(S.chat===chatId){
-          if(el("chnm")) el("chnm").textContent=ch.nm;
+          if(el("chnm")) el("chnm").textContent=chatDisplayName(ch);
           updateChatAvatarDisplays(ch);
           // Если сейчас смотрим именно этот чат — сразу прячем/возвращаем поле
           // ввода, не дожидаясь повторного открытия чата или перезагрузки.
@@ -2688,6 +2688,13 @@ function updateChatAvatarDisplays(ch){
   if(rpav){ rpav.style.background=ch.avatar?"none":colBg(ch.col); rpav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?"; }
 }
 
+// Имя чата для отображения в шапке — с короной VIP, если у собеседника
+// (в личном чате) активна подписка. Простой текст, без HTML — используется
+// в местах с .textContent
+function chatDisplayName(ch){
+  return ch.nm + (ch.peerVip ? " 👑" : "");
+}
+
 async function refreshChatPeerInfo(ch){
   if(!ch || ch.type!=="personal" || !ch.withUserId) return;
   try{
@@ -2698,7 +2705,6 @@ async function refreshChatPeerInfo(ch){
     if(u.name && u.name!==ch.nm){
       ch.nm=u.name;
       ch.ini=u.name.slice(0,2).toUpperCase();
-      if(S.chat===ch.id && el("chnm")) el("chnm").textContent=ch.nm;
       changed=true;
     }
     const newAvatar=u.avatar||u.avatar_url||"";
@@ -2707,6 +2713,13 @@ async function refreshChatPeerInfo(ch){
       if(S.chat===ch.id) updateChatAvatarDisplays(ch);
       changed=true;
     }
+    // Корона VIP рядом с именем — реальный статус собеседника, не свой
+    const peerIsVip = !!(u.vip_plan && (!u.vip_until || new Date(u.vip_until) > new Date()));
+    if(peerIsVip !== !!ch.peerVip){
+      ch.peerVip = peerIsVip;
+      changed=true;
+    }
+    if(S.chat===ch.id && el("chnm")) el("chnm").textContent=chatDisplayName(ch);
     if(changed){ renderChats(); saveState(); }
   }catch(e){ console.warn("refresh peer info error:", e); }
 }
@@ -2957,7 +2970,7 @@ function renderChats(filter=""){
     const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:(ch.ini||"?");
     d.innerHTML=`<div class="chav" style="background:${colBg(ch.col)}">${avHTML}${ch.online?'<div class="odot"></div>':""}</div>
     <div class="cinfo" style="flex:1;overflow:hidden">
-      <div class="cnm">${ch.nm}${ch.muted?' <span style="font-size:10px;opacity:.5">🔇</span>':""}</div>
+      <div class="cnm">${ch.nm}${ch.peerVip?' <span title="VIP" style="font-size:11px">👑</span>':""}${ch.muted?' <span style="font-size:10px;opacity:.5">🔇</span>':""}</div>
       <div class="cprev">${ch._typing?'<span class="typing-label">печатает...</span>':(ch.draft?'<span class="draft-label">Черновик: </span>'+ch.draft:ch.prev)}</div>
     </div>
     <div class="cmeta">
@@ -3044,7 +3057,7 @@ function openChat(id){
   ch.unread=0; renderChats();
 
   const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
-  if(el("chnm"))el("chnm").textContent=ch.nm;
+  if(el("chnm"))el("chnm").textContent=chatDisplayName(ch);
   const st=el("chst");
   if(ch.type==="groups"){if(st){st.textContent=(ch.mbrs||4)+T("members");st.className="chst off";}}
   else if(ch.online){if(st){st.textContent=T("online");st.className="chst";}}
@@ -3629,7 +3642,7 @@ async function saveChatInfo(){
   closeM("m-chsettings");
   renderChats();
   if(S.chat===ch.id){
-    if(el("chnm")) el("chnm").textContent=ch.nm;
+    if(el("chnm")) el("chnm").textContent=chatDisplayName(ch);
     updateChatAvatarDisplays(ch);
   }
   saveState();
