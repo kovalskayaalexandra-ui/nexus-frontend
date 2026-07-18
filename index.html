@@ -1249,7 +1249,7 @@ tr:hover td{background:var(--bg3)}
       <div class="ani on" onclick="aPage(this,'overview')">📊 Обзор</div>
       <div class="ani" onclick="aPage(this,'official')">📢 Nexus Official</div>
       <div class="ani" onclick="aPage(this,'currency')">💎 Crystals</div>
-      <div class="ani ani-todo" onclick="aPage(this,'wallets')">💳 Кошельки</div>
+      <div class="ani" onclick="aPage(this,'wallets')">💳 Кошельки</div>
       <div class="ani ani-todo" onclick="aPage(this,'stickers')">🐱 Стикеры</div>
       <div class="ani ani-todo" onclick="aPage(this,'users')">👥 Пользователи</div>
       <div class="ani ani-todo" onclick="aPage(this,'langs')">🌍 Языки</div>
@@ -1317,9 +1317,9 @@ tr:hover td{background:var(--bg3)}
         <div class="asec"><div class="asect">📦 Пакеты</div><div id="pkged"></div></div>
       </div>
       <div class="apage" id="page-wallets">
-        <div class="atitle">💳 Кошельки</div><div class="asub2">Распределение выручки</div>
+        <div class="atitle">💳 Кошельки</div><div class="asub2">Заметка для себя — куда условно относить процент выручки. ⚠️ Реально деньги не двигает: они идут напрямую на счёт, привязанный к Тинькофф/ЮKassa, это просто инструмент планирования, сохранённый на сервере</div>
         <div class="asec"><div class="asect">🏦 Получатели</div><div id="wlist"></div>
-          <div style="display:flex;gap:8px;margin-top:10px"><button class="xbtn" onclick="addWallet()">+ Добавить</button><button class="xbtn sec" onclick="showToast('Сохранено ✓')">Сохранить</button></div>
+          <div style="display:flex;gap:8px;margin-top:10px"><button class="xbtn" onclick="addWallet()">+ Добавить</button><button class="xbtn sec" onclick="saveWallets()">💾 Сохранить</button></div>
           <div class="pbar" style="margin-top:12px"><div class="pfill" id="pctbar" style="width:100%"></div></div>
           <div style="font-size:10.5px;color:var(--tx3);margin-top:4px" id="pctlbl"></div>
         </div>
@@ -1692,9 +1692,7 @@ const DEFAULT_STATE = {
   apiKeys: [],
   webhooks: [],
   wallets: [
-    {nm:"Основной счёт",ico:"🏦",addr:"Сбербанк",pct:80,col:"#67e8f9"},
-    {nm:"Партнёр LLC",ico:"🤝",addr:"PayPal: partner@nexus.io",pct:15,col:"#a78bfa"},
-    {nm:"Резервный",ico:"🛡️",addr:"USDT TRC-20",pct:5,col:"#34d399"}
+    {nm:"Основной счёт",ico:"🏦",addr:"",pct:100,col:"#67e8f9"}
   ],
   packs: [
     {id:1,nm:"Котики Chibi 🐱",desc:"Милые котики на каждый день",stickers:["🐱","😺","😸","😹","😻","🙀","😿","😾","🐈","🐾","😼","🐈‍⬛","🫶","💕","🌸"],price:0,sold:4820,free:true},
@@ -6502,9 +6500,43 @@ async function saveProductPrice(key, patch){
 }
 // addPkg() убрана — писала в S.coinPkgs, отвязанный от реальной оплаты
 // локальный массив (см. правку редактора цен Crystals выше)
-function renderWallets(){ const e=el("wlist");if(!e)return; e.innerHTML=S.wallets.map((w,i)=>`<div class="wi"><div class="wiico" style="background:${w.col}20;color:${w.col}">${w.ico}</div><div style="flex:1"><div class="winm">${w.nm}</div><div class="wiad">${w.addr}</div></div><input class="fii" type="number" value="${w.pct}" style="width:55px;flex-shrink:0" onchange="S.wallets[${i}].pct=+this.value;updWPct();saveState()" min="0" max="100"><span style="color:var(--tx2)">%</span></div>`).join(""); updWPct(); }
+// ⚠️ Раньше это правило ТОЛЬКО локальный S.wallets — редактировался только
+// процент, имя/адрес были захардкожены (включая фейковый "PayPal: partner@
+// nexus.io", которого никогда не существовало). Теперь загружается и
+// сохраняется на сервере, все поля реально редактируемые. Но это ВСЁ РАВНО
+// не двигает настоящие деньги — см. предупреждение в подзаголовке страницы.
+async function renderWallets(){
+  const e=el("wlist"); if(!e) return;
+  try{
+    const data=await apiGet("/api/settings/wallets");
+    S.wallets = (data && data.wallets && data.wallets.length) ? data.wallets : S.wallets;
+  }catch(err){ /* не удалось — покажем то, что уже есть локально (или дефолт) */ }
+  e.innerHTML=S.wallets.map((w,i)=>`
+    <div class="wi" style="flex-wrap:wrap;gap:6px">
+      <input class="fii" value="${w.ico}" style="width:36px;text-align:center;flex-shrink:0" onchange="S.wallets[${i}].ico=this.value">
+      <input class="fii" value="${w.nm}" style="width:120px" placeholder="Название" onchange="S.wallets[${i}].nm=this.value">
+      <input class="fii" value="${w.addr}" style="flex:1;min-width:120px" placeholder="Реквизиты" onchange="S.wallets[${i}].addr=this.value">
+      <input class="fii" type="number" value="${w.pct}" style="width:55px;flex-shrink:0" onchange="S.wallets[${i}].pct=+this.value;updWPct()" min="0" max="100">
+      <span style="color:var(--tx2)">%</span>
+      <button class="xbtn rd" style="padding:4px 8px;font-size:11px" onclick="removeWallet(${i})">✕</button>
+    </div>`).join("");
+  updWPct();
+}
+
+async function saveWallets(){
+  try{
+    const data=await apiPatch("/api/settings/wallets", {wallets:S.wallets}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); return; }
+    showToast("✅ Сохранено");
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+function removeWallet(i){
+  S.wallets.splice(i,1);
+  renderWallets();
+}
 function updWPct(){ const t=S.wallets.reduce((s,w)=>s+w.pct,0);if(el("pctbar"))el("pctbar").style.width=Math.min(t,100)+"%";if(el("pctlbl"))el("pctlbl").textContent=S.wallets.map(w=>w.nm.split(" ")[0]+": "+w.pct+"%").join(" · "); }
-function addWallet(){ S.wallets.push({nm:"Новый получатель",ico:"💳",addr:"Реквизиты",pct:0,col:"#6c63ff"});renderWallets();saveState(); }
+function addWallet(){ S.wallets.push({nm:"Новый получатель",ico:"💳",addr:"",pct:0,col:"#6c63ff"});renderWallets(); }
 function renderUsers(){ const e=el("usrtbl");if(!e)return; e.innerHTML=[["@dev_user","Admin",S.bal,320,"ru","Активен"],["@alex_s","User",580,180,"en","Активен"],["@igor_p","Developer",2100,850,"de","Активен"],["@svetlana","User",150,40,"fr","Заблокирован"],["@tanaka_h","User",380,90,"ja","Активен"],["@kim_m","User",210,55,"ko","Активен"],["@hassan_a","User",450,120,"ar","Активен"]].map(([u,r,b,s,l,st])=>`<tr><td style="color:var(--acc2);font-weight:500">${u}</td><td><span class="bg ${r==="Admin"?"bgr":r==="Developer"?"bga":"bgg"}">${r}</span></td><td style="color:var(--cr)">💎 ${Number(b).toLocaleString()}</td><td>${LANGS[l]?.flag||"🌍"} ${l.toUpperCase()}</td><td style="color:var(--tx3)">2026</td><td><span class="bg ${st==="Активен"?"bgg":"bgr"}">${st}</span></td><td><button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="showToast('Ред.')">✏️</button></td></tr>`).join(""); }
 function renderSPAdmin(){ const e=el("sptbl");if(!e)return; e.innerHTML=S.packs.map(p=>`<tr><td><strong>${p.nm}</strong></td><td>${p.stickers.slice(0,3).join(" ")}</td><td style="color:var(--cr)">${p.free?"Бесплатно":"💎 "+p.price}</td><td>${p.sold}</td><td style="color:var(--gr)">💎 ${p.sold*(p.price||0)}</td><td><button class="xbtn sec" style="padding:3px 8px;font-size:10px">✏️</button></td></tr>`).join(""); }
 function createSP(){ const nm=el("spnm")?.value;const desc=el("spdesc")?.value;const price=parseInt(el("spprice")?.value)||50;const emojis=el("spemoji")?.value.split(",").map(e=>e.trim()).filter(Boolean)||[];if(!nm||!emojis.length){showToast("❌ Заполните поля");return;} S.packs.push({id:nextId(),nm,desc:desc||"Авторский пак",stickers:emojis,price,sold:0});renderSPAdmin();saveState();showToast("🐱 Пак создан!"); }
