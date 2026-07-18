@@ -6549,7 +6549,7 @@ async function loadStickerPacks(){
     const data=await apiGet("/api/sticker-packs");
     if(data && data.packs && data.packs.length){
       S.packs = data.packs.map(p=>({
-        id:p.id, nm:p.nm, desc:p.desc, stickers:p.stickers,
+        id:p.id, nm:p.nm, desc:p.description, stickers:p.stickers,
         price:p.price, free:p.is_free,
       }));
     }
@@ -6605,7 +6605,7 @@ async function createSP(){
   const emojis=el("spemoji")?.value.split(",").map(e=>e.trim()).filter(Boolean)||[];
   if(!nm||!emojis.length){ showToast("❌ Заполните поля"); return; }
   try{
-    const data=await apiPost("/api/sticker-packs", {nm, desc:desc||"Авторский пак", stickers:emojis, price, isFree:price===0}, true);
+    const data=await apiPost("/api/sticker-packs", {nm, description:desc||"Авторский пак", stickers:emojis, price, isFree:price===0}, true);
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось создать")); return; }
     showToast("🐱 Пак создан!");
     renderSPAdmin();
