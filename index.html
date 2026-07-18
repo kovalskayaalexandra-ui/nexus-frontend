@@ -1250,7 +1250,7 @@ tr:hover td{background:var(--bg3)}
       <div class="ani" onclick="aPage(this,'official')">📢 Nexus Official</div>
       <div class="ani" onclick="aPage(this,'currency')">💎 Crystals</div>
       <div class="ani" onclick="aPage(this,'wallets')">💳 Кошельки</div>
-      <div class="ani ani-todo" onclick="aPage(this,'stickers')">🐱 Стикеры</div>
+      <div class="ani" onclick="aPage(this,'stickers')">🐱 Стикеры</div>
       <div class="ani ani-todo" onclick="aPage(this,'users')">👥 Пользователи</div>
       <div class="ani ani-todo" onclick="aPage(this,'langs')">🌍 Языки</div>
       <div class="ani ani-todo" onclick="aPage(this,'bots')">🤖 Боты и API</div>
@@ -2666,6 +2666,7 @@ function loginOK(){
   loadSupportMessages();
   loadOfficialPosts();
   loadCrystalCatalog();
+  loadStickerPacks();
 
   // Загружаем реальные чаты из БД
   setTimeout(loadChatsFromDB, 600);
@@ -6538,8 +6539,78 @@ function removeWallet(i){
 function updWPct(){ const t=S.wallets.reduce((s,w)=>s+w.pct,0);if(el("pctbar"))el("pctbar").style.width=Math.min(t,100)+"%";if(el("pctlbl"))el("pctlbl").textContent=S.wallets.map(w=>w.nm.split(" ")[0]+": "+w.pct+"%").join(" · "); }
 function addWallet(){ S.wallets.push({nm:"Новый получатель",ico:"💳",addr:"",pct:0,col:"#6c63ff"});renderWallets(); }
 function renderUsers(){ const e=el("usrtbl");if(!e)return; e.innerHTML=[["@dev_user","Admin",S.bal,320,"ru","Активен"],["@alex_s","User",580,180,"en","Активен"],["@igor_p","Developer",2100,850,"de","Активен"],["@svetlana","User",150,40,"fr","Заблокирован"],["@tanaka_h","User",380,90,"ja","Активен"],["@kim_m","User",210,55,"ko","Активен"],["@hassan_a","User",450,120,"ar","Активен"]].map(([u,r,b,s,l,st])=>`<tr><td style="color:var(--acc2);font-weight:500">${u}</td><td><span class="bg ${r==="Admin"?"bgr":r==="Developer"?"bga":"bgg"}">${r}</span></td><td style="color:var(--cr)">💎 ${Number(b).toLocaleString()}</td><td>${LANGS[l]?.flag||"🌍"} ${l.toUpperCase()}</td><td style="color:var(--tx3)">2026</td><td><span class="bg ${st==="Активен"?"bgg":"bgr"}">${st}</span></td><td><button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="showToast('Ред.')">✏️</button></td></tr>`).join(""); }
-function renderSPAdmin(){ const e=el("sptbl");if(!e)return; e.innerHTML=S.packs.map(p=>`<tr><td><strong>${p.nm}</strong></td><td>${p.stickers.slice(0,3).join(" ")}</td><td style="color:var(--cr)">${p.free?"Бесплатно":"💎 "+p.price}</td><td>${p.sold}</td><td style="color:var(--gr)">💎 ${p.sold*(p.price||0)}</td><td><button class="xbtn sec" style="padding:3px 8px;font-size:10px">✏️</button></td></tr>`).join(""); }
-function createSP(){ const nm=el("spnm")?.value;const desc=el("spdesc")?.value;const price=parseInt(el("spprice")?.value)||50;const emojis=el("spemoji")?.value.split(",").map(e=>e.trim()).filter(Boolean)||[];if(!nm||!emojis.length){showToast("❌ Заполните поля");return;} S.packs.push({id:nextId(),nm,desc:desc||"Авторский пак",stickers:emojis,price,sold:0});renderSPAdmin();saveState();showToast("🐱 Пак создан!"); }
+// Настоящий каталог стикер-паков из БД (та же таблица, что видит и
+// Магазин) — раньше это был чисто локальный S.packs, редактор и витрина
+// были никак не связаны. "Продано"/"Выручка" пока честно показываем как
+// "—" — реального учёта покупок ещё нет (отдельная, уже записанная в
+// бэклог задача — стикеры пока покупаются только локально).
+async function loadStickerPacks(){
+  try{
+    const data=await apiGet("/api/sticker-packs");
+    if(data && data.packs && data.packs.length){
+      S.packs = data.packs.map(p=>({
+        id:p.id, nm:p.nm, desc:p.desc, stickers:p.stickers,
+        price:p.price, free:p.is_free,
+      }));
+    }
+  }catch(e){ /* не удалось — останется локальный дефолт */ }
+}
+
+async function renderSPAdmin(){
+  const e=el("sptbl"); if(!e) return;
+  await loadStickerPacks();
+  e.innerHTML=S.packs.map(p=>`<tr>
+    <td><strong>${p.nm}</strong></td>
+    <td>${p.stickers.slice(0,3).join(" ")}</td>
+    <td style="color:var(--cr)">${p.free?"Бесплатно":"💎 "+p.price}</td>
+    <td title="Учёт покупок ещё не реализован">—</td>
+    <td title="Учёт покупок ещё не реализован">—</td>
+    <td style="white-space:nowrap">
+      <button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="editSP(${p.id})">✏️</button>
+      <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="deleteSP(${p.id})">✕</button>
+    </td>
+  </tr>`).join("");
+}
+
+async function editSP(id){
+  const p=S.packs.find(x=>x.id===id);
+  if(!p) return;
+  const newName=prompt("Название пака:", p.nm);
+  if(newName===null) return;
+  const newPriceStr=prompt("Цена (CR), 0 = бесплатно:", p.price);
+  if(newPriceStr===null) return;
+  const newPrice=parseInt(newPriceStr)||0;
+  try{
+    const data=await apiPatch("/api/sticker-packs/"+id, {nm:newName, price:newPrice, isFree:newPrice===0}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); return; }
+    showToast("✅ Пак обновлён");
+    renderSPAdmin();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function deleteSP(id){
+  if(!confirm("Удалить пак безвозвратно? Это затронет всех пользователей.")) return;
+  try{
+    const data=await apiDelete("/api/sticker-packs/"+id);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось удалить")); return; }
+    showToast("✅ Пак удалён");
+    renderSPAdmin();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function createSP(){
+  const nm=el("spnm")?.value;
+  const desc=el("spdesc")?.value;
+  const price=parseInt(el("spprice")?.value)||50;
+  const emojis=el("spemoji")?.value.split(",").map(e=>e.trim()).filter(Boolean)||[];
+  if(!nm||!emojis.length){ showToast("❌ Заполните поля"); return; }
+  try{
+    const data=await apiPost("/api/sticker-packs", {nm, desc:desc||"Авторский пак", stickers:emojis, price, isFree:price===0}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось создать")); return; }
+    showToast("🐱 Пак создан!");
+    renderSPAdmin();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
 function renderLngs(){ const e=el("lngtbl");if(!e)return; const data=[["ru","🇷🇺","Русский",4820,"33.5"],["en","🇬🇧","English",3640,"25.3"],["de","🇩🇪","Deutsch",1180,"8.2"],["fr","🇫🇷","Français",980,"6.8"],["es","🇪🇸","Español",860,"6.0"],["tr","🇹🇷","Türkçe",720,"5.0"],["ar","🇸🇦","العربية",580,"4.0"],["zh","🇨🇳","中文",520,"3.6"],["it","🇮🇹","Italiano",410,"2.8"],["pt","🇧🇷","Português",380,"2.6"],["ja","🇯🇵","日本語",340,"2.4"],["ko","🇰🇷","한국어",280,"1.9"],["uk","🇺🇦","Українська",210,"1.5"],["pl","🇵🇱","Polski",180,"1.2"]]; e.innerHTML=data.map(([c,f,n,u,p])=>`<tr><td>${f} ${n}</td><td><span class="bg bgc">${c.toUpperCase()}</span></td><td>${parseInt(u).toLocaleString()}</td><td><div style="display:flex;align-items:center;gap:5px"><div style="width:60px;height:4px;background:var(--bg4);border-radius:2px"><div style="width:${Math.min(parseFloat(p)*2.7,100)}%;height:100%;background:var(--cr);border-radius:2px"></div></div>${p}%</div></td><td><span class="bg bgg">Активен</span></td><td><button class="xbtn sec" style="padding:2px 7px;font-size:9.5px" onclick="S.lang='${c}';applyLang();renderChats();renderMsgs();saveState();showToast('${LANGS[c]?.flag||""} ${n}')">↩️ Применить</button></td></tr>`).join(""); }
 let akc=1;
 function renderKeys(){ const e=el("akeys");if(!e)return; if(!S.apiKeys.length){e.innerHTML='<div style="color:var(--tx3);font-size:11.5px">Нет ключей</div>';return;} e.innerHTML=S.apiKeys.map((k,i)=>`<div style="margin-bottom:8px"><div style="font-size:10.5px;color:var(--tx2);margin-bottom:3px">🔑 ${k.nm} · <span style="color:var(--acc2)">${k.perms}</span></div><div class="akrow"><div class="akval">${k.key}</div><div class="akcpy" onclick="navigator.clipboard.writeText('${k.key}').catch(()=>{});showToast('Скопировано')">Копировать</div><button class="xbtn rd" style="padding:4px 8px;font-size:11px" onclick="S.apiKeys.splice(${i},1);renderKeys();saveState()">✕</button></div></div>`).join(""); }
@@ -6621,6 +6692,7 @@ if(S.loggedIn){
     loadSupportMessages();
     loadOfficialPosts();
     loadCrystalCatalog();
+    loadStickerPacks();
   }
 } else {
   el("auth-welcome").classList.add("on");
