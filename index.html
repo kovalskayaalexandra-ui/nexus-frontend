@@ -1325,11 +1325,16 @@ tr:hover td{background:var(--bg3)}
         </div>
       </div>
       <div class="apage" id="page-stickers">
-        <div class="atitle">🐱 Стикеры</div><div class="asub2">Управление chibi-паками</div>
+        <div class="atitle">🐱 Стикеры</div><div class="asub2">Управление паками — настоящие картинки, как в Telegram</div>
         <div class="asec"><div class="asect">➕ Создать пак</div>
           <div class="frow"><div class="fg"><span class="fl">Название</span><input class="fii" id="spnm" placeholder="Котики"></div><div class="fg"><span class="fl">Описание</span><input class="fii" id="spdesc"></div></div>
-          <div class="frow"><div class="fg"><span class="fl">Цена (CR)</span><input class="fii" type="number" id="spprice" value="50"></div><div class="fg"><span class="fl">Эмодзи (через запятую)</span><input class="fii" id="spemoji" value="🐱,🐶,🐸,🐨,🦊"></div></div>
-          <button class="xbtn gn" onclick="createSP()">🐱 Создать</button>
+          <div class="fg"><span class="fl">Цена (CR, 0 = бесплатно)</span><input class="fii" type="number" id="spprice" value="50"></div>
+          <div class="fg" style="margin-top:8px">
+            <span class="fl">Картинки стикеров (можно выбрать сразу несколько)</span>
+            <input type="file" id="spfiles" accept="image/*" multiple onchange="handleStickerFiles(event)">
+            <div id="spfilespreview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+          </div>
+          <button class="xbtn gn" style="margin-top:10px" onclick="createSP()">🐱 Создать</button>
         </div>
         <div class="asec"><div class="asect">📦 Все паки</div><div class="tw"><table><thead><tr><th>Пак</th><th>Стикеры</th><th>Цена</th><th>Куплено</th><th>Выручка</th><th></th></tr></thead><tbody id="sptbl"></tbody></table></div></div>
       </div>
@@ -3195,7 +3200,7 @@ function renderMsgs(){
     if(m.t!=="date"&&m.t!=="sys")h+=`<div class="msel-check">${S.selectedMsgs.includes(m.id)?"✓":""}</div>`;
     if(m.t!=="out" && !(m.t==="gift"&&m.out))h+=`<div class="mav" style="background:${m.frAvatar?"none":colBg(m.col||0)};padding:0;overflow:hidden">${m.frAvatar?`<img src="${m.frAvatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(m.fr?m.fr[0]:"?")}</div>`;
     if(m.t==="sk"){
-      h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="lpStart(event,${m.id})" ontouchend="lpEnd()" ontouchmove="lpEnd()">${m.sk}</div>`;
+      h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="lpStart(event,${m.id})" ontouchend="lpEnd()" ontouchmove="lpEnd()">${isStickerImg(m.sk)?`<img src="${m.sk}" style="width:150px;height:150px;object-fit:contain">`:m.sk}</div>`;
     }else if(m.t==="gift"){
       const rc={common:"var(--tx2)",rare:"var(--acc2)",epic:"var(--gr)",legendary:"var(--am)"};
       h+=`<div class="gift-bubble r-${m.rarity||"common"}" onclick="showToast('🎁 '+'${escHtml(m.name||"").replace(/'/g,"\\'")}')">`
@@ -4525,7 +4530,7 @@ function renderMP(mode){
   else{
     c.innerHTML=`<div class="spwrap">${S.packs.map(p=>{
       const owned=p.free||S.owned.includes(p.id);
-      const stks=p.stickers.slice(0,5).map(s=>`<div class="sitem${owned?"":' lk'}" ${owned?`onclick="sendSticker('${s}')"`:""}>${s}</div>`).join("");
+      const stks=p.stickers.slice(0,5).map(s=>`<div class="sitem${owned?"":' lk'}" ${owned?`onclick="sendSticker('${s}')"`:""}>${isStickerImg(s)?`<img src="${s}" style="width:100%;height:100%;object-fit:contain">`:s}</div>`).join("");
       return`<div><div class="sphdr"><div class="spnm">${p.nm}</div>${owned?'<span style="font-size:10px;color:var(--gr)">✓</span>':`<div class="splk" onclick="openStkModal(${p.id})">💎 ${p.price} CR</div>`}</div><div class="srow">${stks}</div></div>`;
     }).join("")}</div>`;
   }
@@ -6213,7 +6218,7 @@ function renderStore(){
     const priceHtml = basePrice ? `<span style="text-decoration:line-through;color:var(--tx3);font-size:11px;margin-right:4px">${basePrice}</span>${price} ${curr.sym}` : `${price} ${curr.sym}`;
     return `<div class="cpkg${pop?" pop":""}" onclick="openBuyM(${p.cr},${price},'${curr.sym}')">${discountBadge||(pop?`<div class="pkgb">✨ Хит</div>`:"")}<div class="pkgico">💎</div><div class="pkgamt">${p.cr.toLocaleString()}</div><div class="pkgpr">${priceHtml}</div>${p.bonus?`<div class="pkgbo">+${p.bonus} CR</div>`:""}</div>`;
   }).join("");
-  el("stkst").innerHTML=S.packs.map(p=>{const owned=p.free||S.owned.includes(p.id);return`<div class="scard"><div class="scprev">${p.stickers.slice(0,4).map(s=>`<span>${s}</span>`).join("")}</div><div class="scbot"><div><div class="scnm">${p.nm}</div><div class="scdesc">${p.desc}</div></div><button class="scbuy${owned?" owned":""}" ${owned?"disabled":""} onclick="${owned?"":` openStkModal(${p.id})`}">${owned?(p.free?"Бесплатно":"✓ Куплено"):`💎 ${p.price} CR`}</button></div></div>`;}).join("");
+  el("stkst").innerHTML=S.packs.map(p=>{const owned=p.free||S.owned.includes(p.id);const prev=p.stickers.slice(0,4).map(s=>isStickerImg(s)?`<img src="${s}" style="width:28px;height:28px;object-fit:contain">`:`<span>${s}</span>`).join("");return`<div class="scard"><div class="scprev">${prev}</div><div class="scbot"><div><div class="scnm">${p.nm}</div><div class="scdesc">${p.desc}</div></div><button class="scbuy${owned?" owned":""}" ${owned?"disabled":""} onclick="${owned?"":` openStkModal(${p.id})`}">${owned?(p.free?"Бесплатно":"✓ Куплено"):`💎 ${p.price} CR`}</button></div></div>`;}).join("");
 }
 function openBuyM(cr,price,sym){ S.buyPkg={cr,price}; el("mbpkg").textContent=cr.toLocaleString()+" CR"; el("mbcr").textContent=cr.toLocaleString()+" 💎"; el("mbpr").textContent=price+" "+sym; if(el("mbuy-method")) el("mbuy-method").value="tinkoff"; updateBuyMethodHint(); el("m-buy").classList.add("on"); }
 
@@ -6544,6 +6549,11 @@ function renderUsers(){ const e=el("usrtbl");if(!e)return; e.innerHTML=[["@dev_u
 // были никак не связаны. "Продано"/"Выручка" пока честно показываем как
 // "—" — реального учёта покупок ещё нет (отдельная, уже записанная в
 // бэклог задача — стикеры пока покупаются только локально).
+// Стикер теперь может быть настоящей картинкой (ссылка на загруженный
+// файл) вместо обычного эмодзи-символа — старые паки остаются эмодзи
+// (обратная совместимость), новые создаются загрузкой картинок.
+function isStickerImg(s){ return typeof s==="string" && (s.startsWith("http")||s.startsWith("data:")); }
+
 async function loadStickerPacks(){
   try{
     const data=await apiGet("/api/sticker-packs");
@@ -6559,9 +6569,13 @@ async function loadStickerPacks(){
 async function renderSPAdmin(){
   const e=el("sptbl"); if(!e) return;
   await loadStickerPacks();
-  e.innerHTML=S.packs.map(p=>`<tr>
+  e.innerHTML=S.packs.map(p=>{
+    const preview = isStickerImg(p.stickers[0])
+      ? p.stickers.slice(0,3).map(s=>`<img src="${s}" style="width:24px;height:24px;object-fit:contain;vertical-align:middle">`).join("")
+      : p.stickers.slice(0,3).join(" ");
+    return `<tr>
     <td><strong>${p.nm}</strong></td>
-    <td>${p.stickers.slice(0,3).join(" ")}</td>
+    <td>${preview}</td>
     <td style="color:var(--cr)">${p.free?"Бесплатно":"💎 "+p.price}</td>
     <td title="Учёт покупок ещё не реализован">—</td>
     <td title="Учёт покупок ещё не реализован">—</td>
@@ -6569,7 +6583,8 @@ async function renderSPAdmin(){
       <button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="editSP(${p.id})">✏️</button>
       <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="deleteSP(${p.id})">✕</button>
     </td>
-  </tr>`).join("");
+  </tr>`;
+  }).join("");
 }
 
 async function editSP(id){
@@ -6598,16 +6613,49 @@ async function deleteSP(id){
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
+// Собранные ссылки на загруженные картинки для нового пака — копятся тут,
+// пока форма открыта, отправляются все разом при "Создать"
+let pendingStickerUrls=[];
+
+async function handleStickerFiles(event){
+  const files=Array.from(event.target.files||[]);
+  if(!files.length) return;
+  const preview=el("spfilespreview");
+  showToast("⏳ Загружаем "+files.length+" картинок...");
+  for(const file of files){
+    try{
+      const fd=new FormData();
+      fd.append("file", file);
+      const t=getToken();
+      const res=await fetch(API_URL+"/api/upload", {method:"POST", headers:t?{"Authorization":"Bearer "+t}:{}, body:fd});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok || !data.success) throw new Error(data.error||"Не удалось загрузить");
+      pendingStickerUrls.push(data.url);
+      if(preview){
+        const img=document.createElement("img");
+        img.src=data.url;
+        img.style.cssText="width:48px;height:48px;object-fit:contain;border-radius:8px;background:var(--bg3)";
+        preview.appendChild(img);
+      }
+    }catch(e){ showToast("❌ Не удалось загрузить одну из картинок"); }
+  }
+  showToast("✅ Загружено "+pendingStickerUrls.length+" картинок");
+  event.target.value=""; // разрешает выбрать те же файлы ещё раз при необходимости
+}
+
 async function createSP(){
   const nm=el("spnm")?.value;
   const desc=el("spdesc")?.value;
-  const price=parseInt(el("spprice")?.value)||50;
-  const emojis=el("spemoji")?.value.split(",").map(e=>e.trim()).filter(Boolean)||[];
-  if(!nm||!emojis.length){ showToast("❌ Заполните поля"); return; }
+  const price=parseInt(el("spprice")?.value)||0;
+  if(!nm || !pendingStickerUrls.length){ showToast("❌ Впишите название и загрузите хотя бы одну картинку"); return; }
   try{
-    const data=await apiPost("/api/sticker-packs", {nm, description:desc||"Авторский пак", stickers:emojis, price, isFree:price===0}, true);
+    const data=await apiPost("/api/sticker-packs", {nm, description:desc||"Авторский пак", stickers:pendingStickerUrls, price, isFree:price===0}, true);
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось создать")); return; }
     showToast("🐱 Пак создан!");
+    pendingStickerUrls=[];
+    if(el("spfilespreview")) el("spfilespreview").innerHTML="";
+    if(el("spnm")) el("spnm").value="";
+    if(el("spdesc")) el("spdesc").value="";
     renderSPAdmin();
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
