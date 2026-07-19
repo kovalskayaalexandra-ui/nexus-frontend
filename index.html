@@ -1254,7 +1254,7 @@ tr:hover td{background:var(--bg3)}
       <div class="ani" onclick="aPage(this,'currency')">💎 Crystals</div>
       <div class="ani" onclick="aPage(this,'wallets')">💳 Кошельки</div>
       <div class="ani" onclick="aPage(this,'stickers')">🐱 Стикеры</div>
-      <div class="ani ani-todo" onclick="aPage(this,'users')">👥 Пользователи</div>
+      <div class="ani" onclick="aPage(this,'users')">👥 Пользователи</div>
       <div class="ani ani-todo" onclick="aPage(this,'langs')">🌍 Языки</div>
       <div class="ani ani-todo" onclick="aPage(this,'bots')">🤖 Боты и API</div>
       <div class="ani ani-todo" onclick="aPage(this,'webhooks')">🔗 Вебхуки</div>
@@ -1343,8 +1343,8 @@ tr:hover td{background:var(--bg3)}
       </div>
       <div class="apage" id="page-users">
         <div class="atitle">👥 Пользователи</div><div class="asub2">Управление аккаунтами</div>
-        <div style="display:flex;gap:8px;margin-bottom:14px"><input class="fii" style="max-width:220px" placeholder="Поиск..."><select class="fsel" style="width:140px"><option>Все роли</option><option>Admin</option><option>Developer</option><option>User</option></select></div>
-        <div class="tw"><table><thead><tr><th>Пользователь</th><th>Роль</th><th>CR</th><th>Язык</th><th>Рег.</th><th>Статус</th><th></th></tr></thead><tbody id="usrtbl"></tbody></table></div>
+        <div style="display:flex;gap:8px;margin-bottom:14px"><input class="fii" style="max-width:220px" id="usr-search" placeholder="Поиск по имени/username/телефону..." oninput="debounceRenderUsers()"><select class="fsel" style="width:140px" id="usr-role-filter" onchange="renderUsers()"><option value="all">Все роли</option><option value="admin">Admin</option><option value="moderator">Moderator</option><option value="user">User</option></select></div>
+        <div class="tw"><table><thead><tr><th>Пользователь</th><th>Роль</th><th>CR</th><th>VIP</th><th>Регистрация</th><th></th></tr></thead><tbody id="usrtbl"></tbody></table></div>
       </div>
       <div class="apage" id="page-langs">
         <div class="atitle">🌍 Языки</div><div class="asub2">14 языков · Автоопределение по IP</div>
@@ -4160,7 +4160,7 @@ async function computeWaveform(blob, barsCount=40){
 
 async function toggleVoiceRecording(){
   if(voiceRecorder && voiceRecorder.state==="recording"){ stopVoiceRecording(); return; }
-  if(S.chat===77777||S.chat===99999){ showToast("🎤 Голосовые здесь недоступны"); return; }
+  if(S.chat===99999){ showToast("🎤 Голосовые здесь недоступны"); return; }
   try{
     voiceStream=await navigator.mediaDevices.getUserMedia({audio:true});
   }catch(e){
@@ -4283,7 +4283,7 @@ const VC_MAX_SEC=60; // как в Telegram — максимум минута
 let vcRecorder=null, vcChunks=[], vcStream=null, vcStartTs=0, vcTimerInt=null, vcRecording=false;
 
 async function openVideoCircleRecorder(){
-  if(S.chat===77777||S.chat===99999){ showToast("⭕ Видео-кружочки здесь недоступны"); return; }
+  if(S.chat===99999){ showToast("⭕ Видео-кружочки здесь недоступны"); return; }
   try{
     vcStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:400,height:400},audio:true});
   }catch(e){
@@ -6615,7 +6615,59 @@ function removeWallet(i){
 }
 function updWPct(){ const t=S.wallets.reduce((s,w)=>s+w.pct,0);if(el("pctbar"))el("pctbar").style.width=Math.min(t,100)+"%";if(el("pctlbl"))el("pctlbl").textContent=S.wallets.map(w=>w.nm.split(" ")[0]+": "+w.pct+"%").join(" · "); }
 function addWallet(){ S.wallets.push({nm:"Новый получатель",ico:"💳",addr:"",pct:0,col:"#6c63ff"});renderWallets(); }
-function renderUsers(){ const e=el("usrtbl");if(!e)return; e.innerHTML=[["@dev_user","Admin",S.bal,320,"ru","Активен"],["@alex_s","User",580,180,"en","Активен"],["@igor_p","Developer",2100,850,"de","Активен"],["@svetlana","User",150,40,"fr","Заблокирован"],["@tanaka_h","User",380,90,"ja","Активен"],["@kim_m","User",210,55,"ko","Активен"],["@hassan_a","User",450,120,"ar","Активен"]].map(([u,r,b,s,l,st])=>`<tr><td style="color:var(--acc2);font-weight:500">${u}</td><td><span class="bg ${r==="Admin"?"bgr":r==="Developer"?"bga":"bgg"}">${r}</span></td><td style="color:var(--cr)">💎 ${Number(b).toLocaleString()}</td><td>${LANGS[l]?.flag||"🌍"} ${l.toUpperCase()}</td><td style="color:var(--tx3)">2026</td><td><span class="bg ${st==="Активен"?"bgg":"bgr"}">${st}</span></td><td><button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="showToast('Ред.')">✏️</button></td></tr>`).join(""); }
+// ⚠️ Раньше это была захардкоженная таблица (@alex_s, @igor_p и т.п.),
+// выдуманная целиком — ни один из этих пользователей не существовал.
+// Теперь реальный список из БД, с поиском и фильтром по роли.
+let _usrSearchTimer=null;
+function debounceRenderUsers(){
+  clearTimeout(_usrSearchTimer);
+  _usrSearchTimer=setTimeout(renderUsers, 350); // не дёргаем сервер на каждое нажатие клавиши
+}
+
+async function renderUsers(){
+  const e=el("usrtbl"); if(!e) return;
+  const search=el("usr-search")?.value||"";
+  const role=el("usr-role-filter")?.value||"all";
+  e.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--tx3);padding:14px">Загрузка...</td></tr>`;
+  try{
+    const params=new URLSearchParams();
+    if(search) params.set("search",search);
+    if(role!=="all") params.set("role",role);
+    const data=await apiGet("/api/admin/users?"+params.toString());
+    const users=(data && data.users)||[];
+    if(!users.length){
+      e.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--tx3);padding:14px">Никого не найдено</td></tr>`;
+      return;
+    }
+    e.innerHTML=users.map(u=>{
+      const isVip=u.vip_plan && (!u.vip_until || new Date(u.vip_until)>new Date());
+      const roleBadge=u.role==="admin"?"bgr":u.role==="moderator"?"bga":"bgg";
+      const regDate=u.created_at ? new Date(u.created_at).toLocaleDateString("ru") : "—";
+      return `<tr>
+        <td style="color:var(--acc2);font-weight:500">${u.username?"@"+u.username:(u.name||u.phone||"—")}</td>
+        <td><span class="bg ${roleBadge}">${u.role}</span></td>
+        <td style="color:var(--cr)">💎 ${Number(u.balance_cr||0).toLocaleString()}</td>
+        <td>${isVip?"👑":"—"}</td>
+        <td style="color:var(--tx3)">${regDate}</td>
+        <td><button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="editUserRole('${u.id}','${u.role}')">✏️</button></td>
+      </tr>`;
+    }).join("");
+  }catch(err){
+    e.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить</td></tr>`;
+  }
+}
+
+async function editUserRole(userId, currentRole){
+  const newRole=prompt("Роль пользователя (user / moderator / admin):", currentRole);
+  if(newRole===null || newRole===currentRole) return;
+  if(!["user","moderator","admin"].includes(newRole)){ showToast("❌ Роль может быть только user, moderator или admin"); return; }
+  try{
+    const data=await apiPatch("/api/users/"+userId+"/role", {role:newRole}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось изменить роль")); return; }
+    showToast("✅ Роль обновлена");
+    renderUsers();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
 // Настоящий каталог стикер-паков из БД (та же таблица, что видит и
 // Магазин) — раньше это был чисто локальный S.packs, редактор и витрина
 // были никак не связаны. "Продано"/"Выручка" пока честно показываем как
