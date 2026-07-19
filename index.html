@@ -1381,6 +1381,11 @@ tr:hover td{background:var(--bg3)}
           <div class="trow"><div><div class="trl">Стикер-магазин</div><div style="font-size:11px;color:var(--tx3)">⚠️ Сохраняется по-настоящему, но пока не подключена проверка везде, где покупаются стикеры</div></div><label class="toggle"><input type="checkbox" id="pf-sticker_shop_enabled" onchange="togglePlatformFlag('sticker_shop_enabled',this.checked)"><span class="ts"></span></label></div>
           <div class="trow"><div><div class="trl">Режим обслуживания</div><div style="font-size:11px;color:var(--tx3)">Блокирует вход всем, кроме админов — показывает экран "технические работы"</div></div><label class="toggle"><input type="checkbox" id="pf-maintenance_mode" onchange="togglePlatformFlag('maintenance_mode',this.checked)"><span class="ts"></span></label></div>
         </div>
+        <div class="asec"><div class="asect">👑 Видимые VIP-планы</div><div class="asub2" style="margin:-4px 0 10px">Скрытые планы никуда не пропадают, просто не показываются на экране VIP — можно вернуть в любой момент</div>
+          <div class="trow"><div class="trl">VIP на 1 месяц</div><label class="toggle"><input type="checkbox" id="vipvis-month" onchange="toggleVipVisibility('month',this.checked)"><span class="ts"></span></label></div>
+          <div class="trow"><div class="trl">VIP на 1 год</div><label class="toggle"><input type="checkbox" id="vipvis-year" onchange="toggleVipVisibility('year',this.checked)"><span class="ts"></span></label></div>
+          <div class="trow"><div class="trl">VIP навсегда</div><label class="toggle"><input type="checkbox" id="vipvis-forever" onchange="toggleVipVisibility('forever',this.checked)"><span class="ts"></span></label></div>
+        </div>
       </div>
     </div>
   </div>
@@ -2110,7 +2115,7 @@ function wsHandleMessage(msg){
         S.my_gifts.push({id:nextId(),msgId:id,icon:gift.icon,imageUrl:gift.imageUrl||null,name:gift.name,rarity:gift.rarity,from:ch?.nm||"Пользователь",to:"Вы",date:now()});
       }
       S.messages[chatId].push(newMsg);
-      const prevTx = msgType==="sticker" ? "Стикер "+text : mediaUrl ? (mediaType==="image" ? "📷 Фото" : mediaType==="video" ? "🎥 Видео" : mediaType==="videoCircle" ? "⭕ Видео-кружочек" : mediaType==="voice" ? "🎤 Голосовое" : mediaType==="audio" ? "🎵 "+(fileName||"Аудио") : "📎 "+(fileName||"Файл"))
+      const prevTx = msgType==="sticker" ? "🐱 Стикер"+(isStickerImg(text)?"":" "+text) : mediaUrl ? (mediaType==="image" ? "📷 Фото" : mediaType==="video" ? "🎥 Видео" : mediaType==="videoCircle" ? "⭕ Видео-кружочек" : mediaType==="voice" ? "🎤 Голосовое" : mediaType==="audio" ? "🎵 "+(fileName||"Аудио") : "📎 "+(fileName||"Файл"))
         : poll ? "📊 "+poll.question
         : contact ? "👤 "+(contact.nm||"Контакт")
         : gift ? "🎁 Подарок: "+gift.name
@@ -2678,6 +2683,7 @@ function loginOK(){
   loadOfficialPosts();
   loadCrystalCatalog();
   loadStickerPacks();
+  loadVipVisibility();
 
   // Загружаем реальные чаты из БД
   setTimeout(loadChatsFromDB, 600);
@@ -2844,6 +2850,7 @@ async function loadMessagesFromDB(chatId){
       if(dbMsg.type==="sticker"){
         m.t="sk";
         m.sk=dbMsg.text;
+        m.out=isMe;
       } else if(dbMsg.media_url){
         if(dbMsg.media_type==="image"){ m.img=dbMsg.media_url; if(dbMsg.spoiler) m.spoiler=true; }
         else if(dbMsg.media_type==="video"){ m.video=dbMsg.media_url; if(dbMsg.spoiler) m.spoiler=true; }
@@ -3194,7 +3201,7 @@ function renderMsgs(){
     if(m.t==="date"){const d=document.createElement("div");d.className="ddiv";d.innerHTML=`<span>${m.ts?getDateLabel(m.ts):m.tx}</span>`;c.appendChild(d);return;}
     if(m.t==="sys"){const s=document.createElement("div");s.className="sysmsg";s.textContent=m.tx;c.appendChild(s);return;}
     const row=document.createElement("div");
-    row.className="mrow "+((m.t==="out"||(m.t==="gift"&&m.out))?"out":"in")+(S.selectedMsgs.includes(m.id)?" selected":"");
+    row.className="mrow "+((m.t==="out"||(m.t==="gift"&&m.out)||(m.t==="sk"&&m.out))?"out":"in")+(S.selectedMsgs.includes(m.id)?" selected":"");
     row.dataset.id=m.id;
     // В режиме выделения клик по строке переключает выбор
     if(S.selectMode){
@@ -3204,7 +3211,7 @@ function renderMsgs(){
     let h="";
     // Чекбокс для режима выделения
     if(m.t!=="date"&&m.t!=="sys")h+=`<div class="msel-check">${S.selectedMsgs.includes(m.id)?"✓":""}</div>`;
-    if(m.t!=="out" && !(m.t==="gift"&&m.out))h+=`<div class="mav" style="background:${m.frAvatar?"none":colBg(m.col||0)};padding:0;overflow:hidden">${m.frAvatar?`<img src="${m.frAvatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(m.fr?m.fr[0]:"?")}</div>`;
+    if(m.t!=="out" && !(m.t==="gift"&&m.out) && !(m.t==="sk"&&m.out))h+=`<div class="mav" style="background:${m.frAvatar?"none":colBg(m.col||0)};padding:0;overflow:hidden">${m.frAvatar?`<img src="${m.frAvatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(m.fr?m.fr[0]:"?")}</div>`;
     if(m.t==="sk"){
       h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="lpStart(event,${m.id})" ontouchend="lpEnd()" ontouchmove="lpEnd()">${isStickerImg(m.sk)?`<img src="${m.sk}" style="width:150px;height:150px;object-fit:contain">`:m.sk}</div>`;
     }else if(m.t==="gift"){
@@ -3854,10 +3861,10 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds){
 async function sendSticker(sk){
   if(!S.messages[S.chat])S.messages[S.chat]=[];
   const tm=now(); const id=nextId();
-  const localMsg={id,t:"sk",sk,time:tm};
+  const localMsg={id,t:"sk",sk,out:true,time:tm};
   S.messages[S.chat].push(localMsg);
   const ch=S.chats.find(c=>c.id===S.chat);
-  if(ch){ch.prev="Стикер "+sk;ch.time=tm;ch.lastTs=Date.now();}
+  if(ch){ch.prev="🐱 Стикер"+(isStickerImg(sk)?"":" "+sk);ch.time=tm;ch.lastTs=Date.now();}
   renderMsgs(); closeMPanel(); renderChats(); saveState();
 
   // Раньше стикер оставался только локально у отправителя и никогда не доходил
@@ -4595,7 +4602,7 @@ function renderMP(mode){
   else{
     c.innerHTML=`<div class="spwrap">${S.packs.map(p=>{
       const owned=p.free||S.owned.includes(p.id);
-      const stks=p.stickers.slice(0,5).map(s=>`<div class="sitem${owned?"":' lk'}" ${owned?`onclick="sendSticker('${s}')"`:""}>${isStickerImg(s)?`<img src="${s}" style="width:100%;height:100%;object-fit:contain">`:s}</div>`).join("");
+      const stks=p.stickers.map(s=>`<div class="sitem${owned?"":' lk'}" ${owned?`onclick="sendSticker('${s}')"`:""}>${isStickerImg(s)?`<img src="${s}" style="width:100%;height:100%;object-fit:contain">`:s}</div>`).join("");
       return`<div><div class="sphdr"><div class="spnm">${p.nm}</div>${owned?'<span style="font-size:10px;color:var(--gr)">✓</span>':`<div class="splk" onclick="openStkModal(${p.id})">💎 ${p.price} CR</div>`}</div><div class="srow">${stks}</div></div>`;
     }).join("")}</div>`;
   }
@@ -6523,7 +6530,7 @@ function initAdmin(){
   if(el("bal-admin"))el("bal-admin").textContent=S.bal.toLocaleString();
   // new sections
   loadOverviewStats();
-  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();loadWelcomeMessage();loadPlatformFlags();},100);
+  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();loadWelcomeMessage();loadPlatformFlags();loadVipVisibilityToggles();},100);
 }
 function renderCurrs(){ const e=el("currs");if(!e)return; e.innerHTML=CURRENCIES.map(c=>`<div class="copt${S.currency===c.code?" on":""}" onclick="selCurr('${c.code}')"><div class="cflag">${c.flag}</div><div class="ccode">${c.sym} ${c.code}</div><div class="cname">${c.nm}</div><div class="crate">1 CR = ${c.rate} ${c.code}</div></div>`).join(""); }
 function selCurr(code){ S.currency=code;const c=CURRENCIES.find(x=>x.code===code);if(c){S.rate=c.rate;if(el("crinp"))el("crinp").value=c.rate;updRate(c.rate);}renderCurrs();showToast("Валюта → "+code);saveState(); }
@@ -6806,6 +6813,7 @@ if(S.loggedIn){
     loadOfficialPosts();
     loadCrystalCatalog();
     loadStickerPacks();
+    loadVipVisibility();
   }
 } else {
   el("auth-welcome").classList.add("on");
@@ -6857,6 +6865,19 @@ const VIP_PLANS = [
   {id:"forever",label:"VIP навсегда",  price:8000, icon:"♾️", badge:"∞", popular:false, hidden:true}
 ];
 
+// Видимость планов теперь управляется из Dev Panel (Настройки), не
+// захардкожена намертво — hidden выше просто дефолт на случай, если
+// сервер ещё не ответил
+async function loadVipVisibility(){
+  try{
+    const data=await apiGet("/api/settings/vip-visibility");
+    const vis=data && data.visibility;
+    if(!vis) return;
+    VIP_PLANS.forEach(p=>{ if(vis[p.id]!==undefined) p.hidden = !vis[p.id]; });
+    if(el("screen-vip")?.classList.contains("on")) renderVIPScreen();
+  }catch(e){ /* останется дефолт */ }
+}
+
 const VIP_PERKS = [
   {ico:"📖", title:"Сторис", desc:"Публикуй истории на 24 часа"},
   {ico:"🎭", title:"Анимированные аватары", desc:"GIF и анимация профиля"},
@@ -6904,8 +6925,7 @@ function renderVIPScreen(){
       <div style="font-size:11.5px;color:var(--am)">У вас нет VIP. Выберите план ниже 👇</div>
     </div>
     <div style="text-align:center;margin-bottom:20px">
-      <button class="xbtn sec" style="font-size:11.5px;padding:8px 14px" onclick="buyVIPDirect('vip_month')">💳 Купить за ₽/$ напрямую (1 мес.)</button>
-      <button class="xbtn sec" style="font-size:11.5px;padding:8px 14px;margin-left:6px" onclick="buyVIPDirect('vip_year')">💳 За 1 год</button>
+      ${VIP_PLANS.filter(p=>!p.hidden && p.id!=="forever").map(p=>`<button class="xbtn sec" style="font-size:11.5px;padding:8px 14px;margin-left:4px" onclick="buyVIPDirect('vip_${p.id}')">💳 ${p.badge}</button>`).join("")}
     </div>
   `;
 
@@ -7897,6 +7917,33 @@ let editingOfficialPostId = null;
 // Переключатели платформы (Настройки) — раньше были чисто декоративными,
 // теперь реально сохраняются на сервере и часть из них реально что-то
 // проверяет (регистрация, продажа Crystals — см. auth.js/payments.js)
+async function loadVipVisibilityToggles(){
+  try{
+    const data=await apiGet("/api/settings/vip-visibility");
+    const vis=data && data.visibility;
+    if(!vis) return;
+    ["month","year","forever"].forEach(id=>{
+      const cb=el("vipvis-"+id);
+      if(cb) cb.checked = vis[id]!==false;
+    });
+  }catch(e){ /* тихо игнорируем */ }
+}
+
+async function toggleVipVisibility(planId, visible){
+  try{
+    const data=await apiPatch("/api/settings/vip-visibility", {planId, visible}, true);
+    if(!data || !data.success){
+      showToast("❌ "+(data&&data.error||"Не удалось сохранить"));
+      const cb=el("vipvis-"+planId); if(cb) cb.checked=!visible;
+      return;
+    }
+    showToast("✅ Сохранено");
+    loadVipVisibility(); // применяем сразу и у себя, не только в базе
+  }catch(e){
+    showToast("❌ Нет связи с сервером");
+  }
+}
+
 async function loadPlatformFlags(){
   try{
     const data=await apiGet("/api/settings/platform");
