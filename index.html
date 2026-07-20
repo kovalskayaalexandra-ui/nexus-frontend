@@ -1380,6 +1380,7 @@ tr:hover td{background:var(--bg3)}
           <div class="trow"><div><div class="trl">Продажа Crystals</div><div style="font-size:11px;color:var(--tx3)">Реально блокирует покупку CR-пакетов (не VIP)</div></div><label class="toggle"><input type="checkbox" id="pf-crystals_sale_enabled" onchange="togglePlatformFlag('crystals_sale_enabled',this.checked)"><span class="ts"></span></label></div>
           <div class="trow"><div><div class="trl">Стикер-магазин</div><div style="font-size:11px;color:var(--tx3)">⚠️ Сохраняется по-настоящему, но пока не подключена проверка везде, где покупаются стикеры</div></div><label class="toggle"><input type="checkbox" id="pf-sticker_shop_enabled" onchange="togglePlatformFlag('sticker_shop_enabled',this.checked)"><span class="ts"></span></label></div>
           <div class="trow"><div><div class="trl">Режим обслуживания</div><div style="font-size:11px;color:var(--tx3)">Блокирует вход всем, кроме админов — показывает экран "технические работы"</div></div><label class="toggle"><input type="checkbox" id="pf-maintenance_mode" onchange="togglePlatformFlag('maintenance_mode',this.checked)"><span class="ts"></span></label></div>
+          <div class="trow"><div><div class="trl">Лимиты файлов по VIP (2GB/500MB)</div><div style="font-size:11px;color:var(--tx3)">⚠️ Включать только после переноса на российские сервера — сейчас Supabase Free всё равно не пропустит больше ~50MB</div></div><label class="toggle"><input type="checkbox" id="pf-vip_file_limits_active" onchange="togglePlatformFlag('vip_file_limits_active',this.checked)"><span class="ts"></span></label></div>
         </div>
         <div class="asec"><div class="asect">👑 Видимые VIP-планы</div><div class="asub2" style="margin:-4px 0 10px">Скрытые планы никуда не пропадают, просто не показываются на экране VIP — можно вернуть в любой момент</div>
           <div class="trow"><div class="trl">VIP на 1 месяц</div><label class="toggle"><input type="checkbox" id="vipvis-month" onchange="toggleVipVisibility('month',this.checked)"><span class="ts"></span></label></div>
@@ -1492,6 +1493,8 @@ tr:hover td{background:var(--bg3)}
     <div class="fg"><span class="fl">👑 Цвет имени (VIP)</span><input type="color" class="fii" id="prof-name-color" style="height:38px;padding:2px"></div>
   </div>
   <div id="prof-vip-perks-locked" style="display:none;font-size:11px;color:var(--tx3);margin:-6px 0 10px">👑 Эмодзи-статус и цвет имени — доступны только с активным VIP</div>
+  <div class="trow" id="prof-hide-lastseen-row"><div><div class="trl">👑 Скрыть время захода</div><div style="font-size:11px;color:var(--tx3)">Вы по-прежнему видите чужое, вас — никто</div></div><label class="toggle"><input type="checkbox" id="prof-hide-lastseen" onchange="toggleProfilePrivacy('hideLastSeen',this.checked)"><span class="ts"></span></label></div>
+  <div class="trow" id="prof-hide-phone-row"><div><div class="trl">👑 Скрыть номер телефона</div><div style="font-size:11px;color:var(--tx3)">Пока без эффекта — номер и так никому не показывается, задел на будущее</div></div><label class="toggle"><input type="checkbox" id="prof-hide-phone" onchange="toggleProfilePrivacy('hidePhone',this.checked)"><span class="ts"></span></label></div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-profile')">Отмена</button><button class="xbtn" onclick="saveProfile()">💾 Сохранить</button></div>
 </div></div>
 
@@ -5464,6 +5467,12 @@ function openEditProfile(){
   if(el("prof-status-emoji")) el("prof-status-emoji").disabled=!isVip;
   if(el("prof-name-color")) el("prof-name-color").disabled=!isVip;
   if(el("prof-vip-perks-row")) el("prof-vip-perks-row").style.opacity=isVip?"1":".45";
+  if(el("prof-hide-lastseen")) el("prof-hide-lastseen").checked=!!u.hideLastSeen;
+  if(el("prof-hide-lastseen")) el("prof-hide-lastseen").disabled=!isVip;
+  if(el("prof-hide-lastseen-row")) el("prof-hide-lastseen-row").style.opacity=isVip?"1":".45";
+  if(el("prof-hide-phone")) el("prof-hide-phone").checked=!!u.hidePhone;
+  if(el("prof-hide-phone")) el("prof-hide-phone").disabled=!isVip;
+  if(el("prof-hide-phone-row")) el("prof-hide-phone-row").style.opacity=isVip?"1":".45";
   if(el("prof-vip-perks-locked")) el("prof-vip-perks-locked").style.display=isVip?"none":"block";
   profAvatarData=u.avatar||"";
   profAvatarFile=null;
@@ -5482,6 +5491,23 @@ function validateUsername(raw){
     return {ok:false};
   }
   return {ok:true, value:stripped};
+}
+
+// Сохраняются сразу при переключении (не ждут общей кнопки "Сохранить") —
+// как и остальные тумблеры в приложении
+async function toggleProfilePrivacy(field, value){
+  try{
+    const body = field==="hideLastSeen" ? {hideLastSeen:value} : {hidePhone:value};
+    const data=await apiPatch("/api/users/me", body, true);
+    if(!data || !data.success){
+      showToast("❌ "+(data&&data.error||"Не удалось сохранить"));
+      const cbId = field==="hideLastSeen" ? "prof-hide-lastseen" : "prof-hide-phone";
+      const cb=el(cbId); if(cb) cb.checked=!value;
+      return;
+    }
+    S.user={...S.user, [field]:value}; saveState();
+    showToast("✅ Сохранено");
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
 function previewProfAvatar(inp){ if(!inp.files[0])return; profAvatarFile=inp.files[0]; const r=new FileReader();r.onload=e=>{profAvatarData=e.target.result;const av=el("prof-av-btn");if(av)av.innerHTML=`<img src="${profAvatarData}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;};r.readAsDataURL(inp.files[0]); }
@@ -6881,7 +6907,7 @@ if(S.loggedIn){
       .then(resp=>{
         const data = resp && resp.user; // GET /api/users/me отдаёт { user: {...} }, не плоский объект
         if(!data||!data.id) return;
-        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region,statusEmoji:data.status_emoji||S.user.statusEmoji,nameColor:data.name_color||S.user.nameColor}};
+        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region,statusEmoji:data.status_emoji||S.user.statusEmoji,nameColor:data.name_color||S.user.nameColor,hidePhone:!!data.hide_phone,hideLastSeen:!!data.hide_last_seen}};
         // Зарубежным пользователям (не +7) незачем видеть цены в рублях —
         // переключаем на доллар автоматически, но только если валюта ещё
         // стоит на дефолтной RUB (не трогаем, если человек сам её менял —
