@@ -1249,16 +1249,16 @@ tr:hover td{background:var(--bg3)}
   <div class="awrap">
     <div class="asb">
       <div class="asbtitle">Dev Panel</div>
-      <div class="ani on" onclick="aPage(this,'overview')">📊 Обзор</div>
-      <div class="ani" onclick="aPage(this,'official')">📢 Nexus Official</div>
-      <div class="ani" onclick="aPage(this,'currency')">💎 Crystals</div>
-      <div class="ani" onclick="aPage(this,'wallets')">💳 Кошельки</div>
-      <div class="ani" onclick="aPage(this,'stickers')">🐱 Стикеры</div>
-      <div class="ani" onclick="aPage(this,'users')">👥 Пользователи</div>
-      <div class="ani ani-todo" onclick="aPage(this,'langs')">🌍 Языки</div>
-      <div class="ani ani-todo" onclick="aPage(this,'bots')">🤖 Боты и API</div>
-      <div class="ani ani-todo" onclick="aPage(this,'webhooks')">🔗 Вебхуки</div>
-      <div class="ani" onclick="aPage(this,'settings')">⚙️ Настройки</div>
+      <div class="ani on" data-section="overview" onclick="aPage(this,'overview')">📊 Обзор</div>
+      <div class="ani" data-section="official" onclick="aPage(this,'official')">📢 Nexus Official</div>
+      <div class="ani" data-section="crystals" onclick="aPage(this,'currency')">💎 Crystals</div>
+      <div class="ani" data-section="wallets" onclick="aPage(this,'wallets')">💳 Кошельки</div>
+      <div class="ani" data-section="stickers" onclick="aPage(this,'stickers')">🐱 Стикеры</div>
+      <div class="ani" data-section="users" onclick="aPage(this,'users')">👥 Пользователи</div>
+      <div class="ani ani-todo" data-section="langs" onclick="aPage(this,'langs')">🌍 Языки</div>
+      <div class="ani ani-todo" data-section="bots" onclick="aPage(this,'bots')">🤖 Боты и API</div>
+      <div class="ani ani-todo" data-section="webhooks" onclick="aPage(this,'webhooks')">🔗 Вебхуки</div>
+      <div class="ani" data-section="settings" onclick="aPage(this,'settings')">⚙️ Настройки</div>
     </div>
     <div class="acnt">
       <div class="apage on" id="page-overview">
@@ -1344,7 +1344,7 @@ tr:hover td{background:var(--bg3)}
       <div class="apage" id="page-users">
         <div class="atitle">👥 Пользователи</div><div class="asub2">Управление аккаунтами</div>
         <div style="display:flex;gap:8px;margin-bottom:14px"><input class="fii" style="max-width:220px" id="usr-search" placeholder="Поиск по имени/username/телефону..." oninput="debounceRenderUsers()"><select class="fsel" style="width:140px" id="usr-role-filter" onchange="renderUsers()"><option value="all">Все роли</option><option value="admin">Admin</option><option value="moderator">Moderator</option><option value="user">User</option></select></div>
-        <div class="tw"><table><thead><tr><th>Пользователь</th><th>Роль</th><th>CR</th><th>VIP</th><th>Регистрация</th><th></th></tr></thead><tbody id="usrtbl"></tbody></table></div>
+        <div class="tw"><table><thead><tr><th>Пользователь</th><th>Телефон</th><th>Роль</th><th>CR</th><th>VIP</th><th>Регистрация</th><th></th></tr></thead><tbody id="usrtbl"></tbody></table></div>
       </div>
       <div class="apage" id="page-langs">
         <div class="atitle">🌍 Языки</div><div class="asub2">14 языков · Автоопределение по IP</div>
@@ -1385,6 +1385,9 @@ tr:hover td{background:var(--bg3)}
           <div class="trow"><div class="trl">VIP на 1 месяц</div><label class="toggle"><input type="checkbox" id="vipvis-month" onchange="toggleVipVisibility('month',this.checked)"><span class="ts"></span></label></div>
           <div class="trow"><div class="trl">VIP на 1 год</div><label class="toggle"><input type="checkbox" id="vipvis-year" onchange="toggleVipVisibility('year',this.checked)"><span class="ts"></span></label></div>
           <div class="trow"><div class="trl">VIP навсегда</div><label class="toggle"><input type="checkbox" id="vipvis-forever" onchange="toggleVipVisibility('forever',this.checked)"><span class="ts"></span></label></div>
+        </div>
+        <div class="asec"><div class="asect">🔐 Права модератора</div><div class="asub2" style="margin:-4px 0 10px">У admin всегда полный доступ ко всему — не настраивается. Отмечайте, какие разделы Dev Panel видит и может редактировать moderator</div>
+          <div id="role-perms-list" style="display:flex;flex-direction:column;gap:2px"></div>
         </div>
       </div>
     </div>
@@ -6530,7 +6533,7 @@ function initAdmin(){
   if(el("bal-admin"))el("bal-admin").textContent=S.bal.toLocaleString();
   // new sections
   loadOverviewStats();
-  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();loadWelcomeMessage();loadPlatformFlags();loadVipVisibilityToggles();},100);
+  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();loadWelcomeMessage();loadPlatformFlags();loadVipVisibilityToggles();loadRolePermissions();applyDevPanelPermissions();},100);
 }
 function renderCurrs(){ const e=el("currs");if(!e)return; e.innerHTML=CURRENCIES.map(c=>`<div class="copt${S.currency===c.code?" on":""}" onclick="selCurr('${c.code}')"><div class="cflag">${c.flag}</div><div class="ccode">${c.sym} ${c.code}</div><div class="cname">${c.nm}</div><div class="crate">1 CR = ${c.rate} ${c.code}</div></div>`).join(""); }
 function selCurr(code){ S.currency=code;const c=CURRENCIES.find(x=>x.code===code);if(c){S.rate=c.rate;if(el("crinp"))el("crinp").value=c.rate;updRate(c.rate);}renderCurrs();showToast("Валюта → "+code);saveState(); }
@@ -6628,7 +6631,7 @@ async function renderUsers(){
   const e=el("usrtbl"); if(!e) return;
   const search=el("usr-search")?.value||"";
   const role=el("usr-role-filter")?.value||"all";
-  e.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--tx3);padding:14px">Загрузка...</td></tr>`;
+  e.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--tx3);padding:14px">Загрузка...</td></tr>`;
   try{
     const params=new URLSearchParams();
     if(search) params.set("search",search);
@@ -6636,7 +6639,7 @@ async function renderUsers(){
     const data=await apiGet("/api/admin/users?"+params.toString());
     const users=(data && data.users)||[];
     if(!users.length){
-      e.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--tx3);padding:14px">Никого не найдено</td></tr>`;
+      e.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--tx3);padding:14px">Никого не найдено</td></tr>`;
       return;
     }
     e.innerHTML=users.map(u=>{
@@ -6644,7 +6647,8 @@ async function renderUsers(){
       const roleBadge=u.role==="admin"?"bgr":u.role==="moderator"?"bga":"bgg";
       const regDate=u.created_at ? new Date(u.created_at).toLocaleDateString("ru") : "—";
       return `<tr>
-        <td style="color:var(--acc2);font-weight:500">${u.username?"@"+u.username:(u.name||u.phone||"—")}</td>
+        <td style="color:var(--acc2);font-weight:500">${u.username?"@"+u.username:(u.name||"—")}</td>
+        <td style="color:var(--tx3);font-size:11.5px">${u.phone||"—"}</td>
         <td><span class="bg ${roleBadge}">${u.role}</span></td>
         <td style="color:var(--cr)">💎 ${Number(u.balance_cr||0).toLocaleString()}</td>
         <td>${isVip?"👑":"—"}</td>
@@ -6653,7 +6657,7 @@ async function renderUsers(){
       </tr>`;
     }).join("");
   }catch(err){
-    e.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить</td></tr>`;
+    e.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить</td></tr>`;
   }
 }
 
@@ -7969,6 +7973,60 @@ let editingOfficialPostId = null;
 // Переключатели платформы (Настройки) — раньше были чисто декоративными,
 // теперь реально сохраняются на сервере и часть из них реально что-то
 // проверяет (регистрация, продажа Crystals — см. auth.js/payments.js)
+// Названия разделов для отображения — соответствуют пунктам меню Dev Panel
+const SECTION_LABELS = {
+  overview:"📊 Обзор", official:"📢 Nexus Official", crystals:"💎 Crystals",
+  wallets:"💳 Кошельки", stickers:"🐱 Стикеры", users:"👥 Пользователи",
+  langs:"🌍 Языки", bots:"🤖 Боты и API", webhooks:"🔗 Вебхуки",
+  settings:"⚙️ Настройки", gifts:"🎁 Подарки", verification:"✅ Верификация",
+  custompacks:"🎨 Паки юзеров",
+};
+
+// Скрывает в меню Dev Panel те разделы, доступа к которым у текущей роли
+// нет. У admin — всегда полный доступ, эта проверка для него даже не
+// запускается.
+async function applyDevPanelPermissions(){
+  if(S.user?.role==="admin") return;
+  try{
+    const data=await apiGet("/api/settings/role-permissions");
+    const allowed=new Set((data && data.permissions && data.permissions[S.user?.role])||[]);
+    let activeWasHidden=false;
+    document.querySelectorAll(".ani[data-section]").forEach(el=>{
+      if(!allowed.has(el.dataset.section)){
+        if(el.classList.contains("on")) activeWasHidden=true;
+        el.style.display="none";
+      }
+    });
+    // Если сейчас открыт раздел, к которому доступ только что скрыли —
+    // переключаемся на первый доступный, чтобы не остаться на пустом экране
+    if(activeWasHidden){
+      const firstVisible=[...document.querySelectorAll(".ani[data-section]")].find(el=>el.style.display!=="none");
+      if(firstVisible) firstVisible.click();
+    }
+  }catch(e){ /* при ошибке сети — не блокируем, пусть меню останется как есть */ }
+}
+
+async function loadRolePermissions(){
+  const list=el("role-perms-list"); if(!list) return;
+  try{
+    const data=await apiGet("/api/settings/role-permissions");
+    const sections=(data && data.sections)||Object.keys(SECTION_LABELS);
+    const modAllowed=new Set((data && data.permissions && data.permissions.moderator)||[]);
+    list.innerHTML=sections.map(s=>`
+      <div class="trow"><div class="trl">${SECTION_LABELS[s]||s}</div>
+        <label class="toggle"><input type="checkbox" ${modAllowed.has(s)?"checked":""} onchange="toggleRolePermission('${s}',this.checked)"><span class="ts"></span></label>
+      </div>`).join("");
+  }catch(e){ list.innerHTML=`<div style="color:var(--rd);font-size:12px">Не удалось загрузить</div>`; }
+}
+
+async function toggleRolePermission(section, allowed){
+  try{
+    const data=await apiPatch("/api/settings/role-permissions", {role:"moderator", section, allowed}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); loadRolePermissions(); return; }
+    showToast("✅ Сохранено");
+  }catch(e){ showToast("❌ Нет связи с сервером"); loadRolePermissions(); }
+}
+
 async function loadVipVisibilityToggles(){
   try{
     const data=await apiGet("/api/settings/vip-visibility");
@@ -8362,6 +8420,7 @@ function renderAdminGifts(){
     const div = document.createElement("div");
     div.id = "ani-gifts";
     div.className = "ani ani-todo";
+    div.dataset.section = "gifts";
     div.onclick = ()=>aPage(div,"gifts");
     div.textContent = "🎁 Подарки";
     asb.appendChild(div);
@@ -8463,6 +8522,7 @@ function renderAdminVerifications(){
     const div = document.createElement("div");
     div.id = "ani-verify";
     div.className = "ani ani-todo";
+    div.dataset.section = "verification";
     div.onclick = ()=>aPage(div,"verify");
     div.textContent = "✅ Верификация";
     asb.appendChild(div);
@@ -8487,6 +8547,7 @@ function renderAdminCustomPacks(){
     const div = document.createElement("div");
     div.id = "ani-custpacks";
     div.className = "ani ani-todo";
+    div.dataset.section = "custompacks";
     div.onclick = ()=>aPage(div,"custpacks");
     div.textContent = "🎨 Паки юзеров";
     asb.appendChild(div);
