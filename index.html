@@ -1820,6 +1820,8 @@ const DEFAULT_STATE = {
   // my_gifts (это история уже ОТПРАВЛЕННЫХ подарков)
   gift_inventory: {},
   my_stories: [],
+  // Сторис от каналов — отдельно от личных, ключ — id канала
+  channel_stories: {},
   // Фича "писать от имени канала"
   sendAsChannel: null,         // id канала от имени которого пишем (null = пишем как я)
   channelSettings: {},         // настройки каналов: { channelId: { allowPostInChats: true } }
@@ -2239,6 +2241,18 @@ function wsHandleMessage(msg){
 
     case "story.received": {
       const { story, fromUserId, fromName, fromCol, fromIni } = msg.payload;
+      if(story.channel){
+        // Сторис от канала — складываем под самим каналом, не под тем, кто её опубликовал
+        if(!S.channel_stories) S.channel_stories={};
+        const cid=story.channel.id;
+        if(!S.channel_stories[cid]) S.channel_stories[cid]={name:story.channel.nm, col:story.channel.col||0, ini:story.channel.ini||"?", items:[]};
+        S.channel_stories[cid].name=story.channel.nm;
+        S.channel_stories[cid].items.push(story);
+        S.channel_stories[cid].items=S.channel_stories[cid].items.filter(s=>Date.now()<s.expires);
+        renderStoriesBar(); saveState();
+        showToast(`📖 ${story.channel.nm} опубликовал(а) сторис`);
+        break;
+      }
       if(!S.friend_stories) S.friend_stories={};
       if(!S.friend_stories[fromUserId]) S.friend_stories[fromUserId]={name:fromName, col:fromCol||0, ini:fromIni||"?", items:[]};
       S.friend_stories[fromUserId].name=fromName; // на случай смены имени
@@ -3344,12 +3358,89 @@ function retryFailedMsg(msgId){
   document.querySelectorAll(".failed-msg-menu").forEach(m=>m.remove());
   const m=(S.messages[S.chat]||[]).find(x=>x.id===msgId); if(!m) return;
   m.failed=false;
-  renderMsgs(); saveState();
   const ch=S.chats.find(c=>c.id===S.chat);
   const memberIds=getChatMemberIds(ch);
-  if(m.t==="out"){
-    sendTextToServer(m, m.tx, S.chat, ch, m.time, memberIds);
+  const chatId=S.chat;
+
+  if(m._retryAtt){ retryAttachmentMsg(m, chatId, ch, memberIds); return; }
+  if(m.t==="sk"){ retrySimpleMsg(m, chatId, ch, memberIds, {text:m.sk, type:"sticker"}, {text:m.sk, msgType:"sticker"}); return; }
+  if(m.poll){ retrySimpleMsg(m, chatId, ch, memberIds, {text:"", poll:m.poll}, {text:"", poll:m.poll}); return; }
+  if(m.contact){ retrySimpleMsg(m, chatId, ch, memberIds, {text:"", contact:m.contact}, {text:"", contact:m.contact}); return; }
+  if(m.t==="gift"){
+    const giftData={icon:m.icon,imageUrl:m.imageUrl||null,name:m.name,rarity:m.rarity,to:m.to,msg:m.msg||""};
+    retrySimpleMsg(m, chatId, ch, memberIds, {text:"", gift:giftData}, {text:"", gift:giftData});
+    return;
   }
+  renderMsgs(); saveState();
+  if(m.t==="out"){
+    sendTextToServer(m, m.tx, chatId, ch, m.time, memberIds);
+  }
+}
+
+// Общий повтор для стикеров/опросов/контактов/подарков — просто заново
+// шлём то, что уже хранится на самом сообщении
+// Несколько автоматических попыток с растущей паузой, прежде чем сдаться
+// и показать "?" — как в Telegram: сначала пробует незаметно сама,
+// пользователя беспокоит только после нескольких неудач подряд
+const AUTO_RETRY_DELAYS=[1500, 3000, 6000];
+async function attemptWithAutoRetry(m, doAttempt){
+  for(let i=0;i<=AUTO_RETRY_DELAYS.length;i++){
+    try{
+      const ok=await doAttempt();
+      if(ok) return true;
+    }catch(e){ console.warn("send attempt failed:",e); }
+    if(i<AUTO_RETRY_DELAYS.length){
+      await new Promise(r=>setTimeout(r, AUTO_RETRY_DELAYS[i]));
+    }
+  }
+  m.failed=true; renderMsgs(); saveState();
+  return false;
+}
+
+async function retrySimpleMsg(m, chatId, ch, memberIds, postBody, wsExtra){
+  renderMsgs(); saveState();
+  if(!(typeof chatId==="string" && chatId.length>10)) return;
+  await attemptWithAutoRetry(m, async ()=>{
+    const d=await apiPost("/api/messages", postBody, true);
+    if(!d || !d.success) return false;
+    const dbId=d?.message?.id||null;
+    if(dbId){ m.dbId=dbId; saveState(); }
+    wsSendReliable({type:"message.send", payload:{chatId, memberIds, id:dbId, senderName:S.user?.name||"", senderAvatar:S.user?.avatar||"", senderStatusEmoji:S.user?.statusEmoji||"", senderNameColor:S.user?.nameColor||"", ...wsExtra}});
+    return true;
+  });
+}
+
+// Повтор для медиа-вложений — файл уже когда-то выбрали, просто заново
+// пробуем загрузить и отправить с тем же файлом и подписью
+async function retryAttachmentMsg(m, chatId, ch, memberIds){
+  const att=m._retryAtt, caption=m._retryCaption;
+  m.uploading=true; m.failed=false;
+  renderMsgs(); saveState();
+  await attemptWithAutoRetry(m, async ()=>{
+    const fd=new FormData();
+    fd.append("file",att.file);
+    const t=getToken();
+    const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok||!data.success) throw new Error(data.error||"Не удалось загрузить файл");
+
+    m.uploading=false;
+    if(att.kind==="image") m.img=data.url;
+    else if(att.kind==="video") m.video=data.url;
+    else if(att.kind==="audio") m.audio.url=data.url;
+    else if(att.kind==="voice") m.voice.url=data.url;
+    else if(att.kind==="videoCircle") m.videoCircle.url=data.url;
+    else m.file.url=data.url;
+    renderMsgs(); saveState();
+
+    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler,waveform:att.waveform||null},true);
+    if(!d || !d.success) return false;
+    const dbId=d?.message?.id||null;
+    if(dbId){ m.dbId=dbId; saveState(); }
+    wsSend({type:"message.send",payload:{chatId,text:caption||"",memberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler,waveform:att.waveform||null,id:dbId,senderName:S.user?.name||"", senderAvatar:S.user?.avatar||"", senderStatusEmoji:S.user?.statusEmoji||"", senderNameColor:S.user?.nameColor||""}});
+    return true;
+  });
+  m.uploading=false;
 }
 
 function deleteFailedMsg(msgId){
@@ -3403,7 +3494,7 @@ function renderMsgs(){
     if(m.t!=="date"&&m.t!=="sys")h+=`<div class="msel-check">${S.selectedMsgs.includes(m.id)?"✓":""}</div>`;
     if(m.t!=="out" && !(m.t==="gift"&&m.out) && !(m.t==="sk"&&m.out))h+=`<div class="mav" style="background:${m.frAvatar?"none":colBg(m.col||0)};padding:0;overflow:hidden">${m.frAvatar?`<img src="${m.frAvatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(m.fr?m.fr[0]:"?")}</div>`;
     if(m.t==="sk"){
-      h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="lpStart(event,${m.id})" ontouchend="lpEnd()" ontouchmove="lpEnd()">${isStickerImg(m.sk)?`<img src="${m.sk}" style="width:150px;height:150px;object-fit:contain">`:m.sk}</div>`;
+      h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="lpStart(event,${m.id})" ontouchend="lpEnd()" ontouchmove="lpEnd()">${isStickerImg(m.sk)?`<img src="${m.sk}" style="width:150px;height:150px;object-fit:contain">`:m.sk}</div>${m.t==="sk"&&(m.failed||m.out)?`<div class="mt" style="justify-content:center">${m.time||""}${m.out?ticksHTML(m):""}</div>`:""}`;
     }else if(m.t==="gift"){
       const rc={common:"var(--tx2)",rare:"var(--acc2)",epic:"var(--gr)",legendary:"var(--am)"};
       h+=`<div class="gift-bubble r-${m.rarity||"common"}" onclick="showToast('🎁 '+'${escHtml(m.name||"").replace(/'/g,"\\'")}')">`
@@ -3411,7 +3502,7 @@ function renderMsgs(){
         +`<div><div class="gift-bub-nm">🎁 ${escHtml(m.name||"")}</div>`
         +`<div class="gift-bub-sub" style="color:${rc[m.rarity]||"var(--tx2)"}">→ ${escHtml(m.to||"")}</div>`
         +(m.msg?`<div class="gift-bub-sub">"${escHtml(m.msg)}"</div>`:"")
-        +`<div class="mt">${m.time||""}</div></div></div>`;
+        +`<div class="mt">${m.time||""}${m.out?ticksHTML(m):""}</div></div></div>`;
     }else if(m.t==="voice"){
       const bars=Array.from({length:17},(_,i)=>{const ht=4+Math.round(Math.sin(i*.8+1)*8+Math.random()*7);return`<div class="wb" style="height:${ht}px"></div>`;}).join("");
       h+=`<div class="vbub" oncontextmenu="showCtx(event,${m.id})"><div class="pbtn" onclick="tPlay(this)"><svg width="11" height="11" fill="white" viewBox="0 0 24 24"><path d="m5 3 14 9-14 9V3z"/></svg></div><div class="wf">${bars}</div><div class="vd">${m.dur||"0:00"}</div></div>`;
@@ -4044,16 +4135,14 @@ function sendMsg(){
 async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds){
   let dbId=null;
   if(typeof chatId === "string" && chatId.length > 10){
-    try{
+    const ok=await attemptWithAutoRetry(msg, async ()=>{
       const d=await apiPost("/api/messages", {chatId, text: txt, asChannel: msg.asChannel||null}, true);
+      if(!d || !d.success) return false;
       dbId=d?.message?.id||null;
-      if(!d || !d.success){ msg.failed=true; renderMsgs(); saveState(); return; }
       if(dbId){ msg.dbId=dbId; saveState(); }
-    }catch(e){
-      console.warn("save msg error:", e);
-      msg.failed=true; renderMsgs(); saveState();
-      return; // не рассылаем по WS то, что не сохранилось на сервере
-    }
+      return true;
+    });
+    if(!ok) return; // attemptWithAutoRetry уже пометил msg.failed и перерисовал
   }
   const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, memberIds, id:dbId, asChannel: msg.asChannel||null, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||"" } });
 
@@ -4085,15 +4174,8 @@ async function sendSticker(sk){
   // Раньше стикер оставался только локально у отправителя и никогда не доходил
   // до собеседника — та же болезнь, что уже чинили у голосовых/подарков
   const chatId=S.chat;
-  if(typeof chatId==="string" && chatId.length>10){
-    try{
-      const d=await apiPost("/api/messages", {chatId, text:sk, type:"sticker"}, true);
-      const dbId=d?.message?.id||null;
-      if(dbId){ localMsg.dbId=dbId; saveState(); }
-      const memberIds=getChatMemberIds(ch);
-      wsSendReliable({type:"message.send", payload:{chatId, text:sk, msgType:"sticker", memberIds, id:dbId, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||""}});
-    }catch(e){ console.warn("send sticker error:", e); }
-  }
+  const memberIds=getChatMemberIds(ch);
+  await retrySimpleMsg(localMsg, chatId, ch, memberIds, {chatId, text:sk, type:"sticker"}, {text:sk, msgType:"sticker"});
 }
 
 function hKey(e){ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();} }
@@ -4203,15 +4285,7 @@ async function submitPoll(){
 
   const curChat=S.chats.find(c=>c.id===chatId);
   const memberIds=getChatMemberIds(curChat);
-  let dbId=null;
-  if(typeof chatId==="string" && chatId.length>10){
-    try{
-      const d=await apiPost("/api/messages",{chatId,text:"",poll},true);
-      dbId=d?.message?.id||null;
-      if(dbId){ msg.dbId=dbId; saveState(); }
-    }catch(e){ console.warn("save msg error:",e); }
-  }
-  wsSend({type:"message.send",payload:{chatId,text:"",memberIds,poll,id:dbId,senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||""}});
+  await retrySimpleMsg(msg, chatId, curChat, memberIds, {chatId,text:"",poll}, {text:"",poll});
 }
 function voteWord(n){
   const n10=n%10, n100=n%100;
@@ -4304,15 +4378,7 @@ async function sendContactMsg(userId,nm,col,uname){
 
   const curChat=S.chats.find(c=>c.id===chatId);
   const memberIds=getChatMemberIds(curChat);
-  let dbId=null;
-  if(typeof chatId==="string" && chatId.length>10){
-    try{
-      const d=await apiPost("/api/messages",{chatId,text:"",contact},true);
-      dbId=d?.message?.id||null;
-      if(dbId){ msg.dbId=dbId; saveState(); }
-    }catch(e){ console.warn("save msg error:",e); }
-  }
-  wsSend({type:"message.send",payload:{chatId,text:"",memberIds,contact,id:dbId,senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||""}});
+  await retrySimpleMsg(msg, chatId, curChat, memberIds, {chatId,text:"",contact}, {text:"",contact});
 }
 
 function openImgViewer(url){
@@ -4748,6 +4814,7 @@ async function sendWithAttachment(caption){
   const localId=nextId();
   if(!S.messages[chatId])S.messages[chatId]=[];
   const msg={id:localId,t:"out",time:tm,read:false,uploading:true,tx:caption||""};
+  msg._retryAtt=att; msg._retryCaption=caption; // для повторной отправки, если что-то не долетит
   if(att.kind==="image"){ msg.img=att.previewUrl; if(att.spoiler) msg.spoiler=true; }
   else if(att.kind==="video"){ msg.video=att.previewUrl; if(att.spoiler) msg.spoiler=true; }
   else if(att.kind==="audio") msg.audio={url:att.previewUrl,name:att.file.name};
@@ -4761,49 +4828,9 @@ async function sendWithAttachment(caption){
   if(ch){ch.prev=caption?label+" · "+caption:label;ch.time=tm;ch.lastTs=Date.now();ch.draft="";}
   renderMsgs(); renderChats(); saveState();
 
-  try{
-    const fd=new FormData();
-    fd.append("file",att.file);
-    const t=getToken();
-    const res=await fetch(API_URL+"/api/upload",{
-      method:"POST",
-      headers: t?{"Authorization":"Bearer "+t}:{},
-      body: fd
-    });
-    const data=await res.json().catch(()=>({}));
-    if(!res.ok||!data.success) throw new Error(data.error||"Не удалось загрузить файл");
-
-    msg.uploading=false;
-    if(att.kind==="image") msg.img=data.url;
-    else if(att.kind==="video"){ URL.revokeObjectURL(att.previewUrl); msg.video=data.url; }
-    else if(att.kind==="audio"){ URL.revokeObjectURL(att.previewUrl); msg.audio.url=data.url; }
-    else if(att.kind==="voice"){ URL.revokeObjectURL(att.previewUrl); msg.voice.url=data.url; }
-    else if(att.kind==="videoCircle"){ URL.revokeObjectURL(att.previewUrl); msg.videoCircle.url=data.url; }
-    else msg.file.url=data.url;
-    renderMsgs(); saveState();
-
-    // Сначала сохраняем в БД (получаем настоящий id), потом рассылаем через WebSocket с этим id
-    const curChat=S.chats.find(c=>c.id===chatId);
-    const memberIds=getChatMemberIds(curChat);
-    let dbId=null;
-    if(typeof chatId==="string" && chatId.length>10){
-      try{
-        const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler,waveform:att.waveform||null},true);
-        dbId=d?.message?.id||null;
-        if(dbId){ msg.dbId=dbId; saveState(); }
-      }catch(e){ console.warn("save msg error:",e); }
-    }
-    wsSend({
-      type:"message.send",
-      payload:{chatId,text:caption||"",memberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler,waveform:att.waveform||null,id:dbId,senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||""}
-    });
-  }catch(err){
-    console.error("upload error:",err);
-    if((att.kind==="video"||att.kind==="audio"||att.kind==="voice"||att.kind==="videoCircle") && att.previewUrl) URL.revokeObjectURL(att.previewUrl);
-    S.messages[chatId]=S.messages[chatId].filter(m=>m.id!==localId);
-    renderMsgs(); saveState();
-    showToast("❌ "+(err.message||"Не удалось загрузить файл"));
-  }
+  const curChat=S.chats.find(c=>c.id===chatId);
+  const memberIds=getChatMemberIds(curChat);
+  await retryAttachmentMsg(msg, chatId, ch, memberIds);
 }
 
 // ── MEDIA PANEL ──────────────────────────────────────────────
@@ -7566,6 +7593,18 @@ function viewMyStories(startIndex){
   el("screen-stories").classList.add("on");
   startStoryTimer();
 }
+function viewChannelStories(channelId){
+  const data=S.channel_stories?.[channelId];
+  const items=(data?.items||[]).filter(s=>Date.now()<s.expires);
+  if(!items.length) return;
+  storyState.items=items;
+  storyState.index=0;
+  storyState.owner={channelId, name:data.name, col:data.col, ini:data.ini, mine:!!data.mine};
+  renderStory();
+  el("screen-stories").classList.add("on");
+  startStoryTimer();
+}
+
 function viewFriendStories(userId){
   const data=S.friend_stories?.[userId];
   const items=(data?.items||[]).filter(s=>Date.now()<s.expires);
@@ -7629,7 +7668,7 @@ function renderStory(){
     `<div class="sbar"><div class="sbar-fill" id="sbar-${i}" style="width:${i<storyState.index?100:0}%"></div></div>`
   ).join("");
   el("story-dots").innerHTML="";
-  el("story-del-btn").style.display = storyState.owner ? "none" : "flex";
+  el("story-del-btn").style.display = (!storyState.owner || storyState.owner.mine) ? "flex" : "none";
   el("story-add-btn").style.display = storyState.owner ? "none" : ((S.my_stories||[]).filter(x=>Date.now()<x.expires).length < storyLimit() ? "block" : "none");
 }
 
@@ -7658,13 +7697,23 @@ function prevStoryItem(){
 }
 
 function deleteCurrentStory(){
-  if(storyState.owner){ return; } // нельзя удалить чужую сторис
+  const isMyChannelStory = storyState.owner && storyState.owner.mine;
+  if(storyState.owner && !isMyChannelStory){ return; } // нельзя удалить чужую сторис
   const s=storyState.items[storyState.index];
   if(!s) return;
   if(!confirm("Удалить эту сторис?")) return;
-  S.my_stories=(S.my_stories||[]).filter(x=>x.id!==s.id);
+
+  if(isMyChannelStory){
+    const cid=storyState.owner.channelId;
+    if(S.channel_stories?.[cid]) S.channel_stories[cid].items=S.channel_stories[cid].items.filter(x=>x.id!==s.id);
+  } else {
+    S.my_stories=(S.my_stories||[]).filter(x=>x.id!==s.id);
+  }
   saveState(); renderStoriesBar();
-  const items=(S.my_stories||[]).filter(x=>Date.now()<x.expires);
+
+  const items=isMyChannelStory
+    ? (S.channel_stories?.[storyState.owner.channelId]?.items||[]).filter(x=>Date.now()<x.expires)
+    : (S.my_stories||[]).filter(x=>Date.now()<x.expires);
   if(!items.length){ closeStories(); showToast("🗑️ Сторис удалена"); return; }
   storyState.items=items;
   if(storyState.index>=items.length) storyState.index=items.length-1;
@@ -7929,6 +7978,15 @@ function purgeExpiredStories(){
       if(data.items.length===0) delete S.friend_stories[uid];
     });
   }
+  if(S.channel_stories){
+    Object.keys(S.channel_stories).forEach(cid=>{
+      const data=S.channel_stories[cid];
+      const before=(data.items||[]).length;
+      data.items=(data.items||[]).filter(s=>Date.now()<s.expires);
+      if(data.items.length!==before) changed=true;
+      if(data.items.length===0) delete S.channel_stories[cid];
+    });
+  }
   if(changed) saveState();
 }
 setInterval(purgeExpiredStories, 5*60*1000); // проверяем каждые 5 минут, пока приложение открыто
@@ -7970,6 +8028,13 @@ function renderStoriesBar(){
     return data.items.length>0;
   });
 
+  // Сторис каналов — и своих опубликованных, и полученных от каналов, на
+  // которые подписаны. Отдельно от личных сторис, как в Telegram.
+  const channelEntries=Object.entries(S.channel_stories||{}).filter(([cid,data])=>{
+    data.items=(data.items||[]).filter(s=>Date.now()<s.expires);
+    return data.items.length>0;
+  });
+
   bar.innerHTML = `
     <div class="story-av-wrap" onclick="${isVip?(myActiveStories.length>0?'viewMyStories(0)':'openStoryEditor()'):'openVIP()'}">
       <div class="story-ring${isVip?(myActiveStories.length>0?'':' vip-ring'):' locked-ring'}" ${isVip&&myActiveStories.length>0?`style="background:${buildStoryRingGradient(myActiveStories.length,'var(--am)','#ff6b6b')}"`:""}>
@@ -7979,6 +8044,14 @@ function renderStoriesBar(){
       </div>
       <div class="story-nm">${isVip?(myActiveStories.length>0?myStoryLabel:"+ Моя"):"👑 VIP"}</div>
     </div>
+    ${channelEntries.map(([cid,data])=>`
+      <div class="story-av-wrap" onclick="viewChannelStories('${cid}')">
+        <div class="story-ring" style="background:${buildStoryRingGradient(data.items.length,'var(--acc2)','var(--gr)')}">
+          <div class="story-av-inner" style="background:${colBg(data.col)};font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#fff">${data.ini}</div>
+        </div>
+        <div class="story-nm">${(data.name||"?").split(" ")[0]}${data.mine?" 📢":""}</div>
+      </div>
+    `).join("")}
     ${friendEntries.map(([uid,data])=>`
       <div class="story-av-wrap" onclick="viewFriendStories('${uid}')">
         <div class="story-ring" style="background:${buildStoryRingGradient(data.items.length)}">
@@ -8152,15 +8225,8 @@ async function sendGift(){
   // Реально сохраняем на сервере и доставляем собеседнику — раньше подарок оставался
   // только в браузере отправителя и никогда не долетал до получателя
   const chatId=S.chat;
-  if(typeof chatId==="string" && chatId.length>10){
-    try{
-      const d=await apiPost("/api/messages", {chatId, text:"", gift:giftData}, true);
-      const dbId=d?.message?.id||null;
-      if(dbId){ localMsg.dbId=dbId; saveState(); }
-      const memberIds=getChatMemberIds(ch);
-      wsSendReliable({type:"message.send", payload:{chatId, text:"", memberIds, gift:giftData, id:dbId, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||""}});
-    }catch(e){ console.warn("send gift error:", e); }
-  }
+  const memberIds=getChatMemberIds(ch);
+  await retrySimpleMsg(localMsg, chatId, ch, memberIds, {chatId, text:"", gift:giftData}, {text:"", gift:giftData});
 }
 
 // Купить подарок в свою коллекцию, не отправляя сразу — можно подарить
@@ -8178,7 +8244,7 @@ function buyGiftToInventory(){
 
 // Подарить что-то уже купленное из своей коллекции — тому же получателю,
 // на которого сейчас открыт экран подарков
-function giftFromInventory(giftId){
+async function giftFromInventory(giftId){
   const g = S.gifts_catalog.find(x=>x.id===giftId); if(!g) return;
   if(!S.gift_inventory || !S.gift_inventory[giftId]){ showToast("❌ У вас закончились эти подарки"); return; }
   S.gift_inventory[giftId]--;
@@ -8197,14 +8263,8 @@ function giftFromInventory(giftId){
   showToast("🎁 Подарили «"+g.name+"» из своей коллекции!");
 
   const chatId=S.chat;
-  if(typeof chatId==="string" && chatId.length>10){
-    apiPost("/api/messages", {chatId, text:"", gift:giftData}, true).then(d=>{
-      const dbId=d?.message?.id||null;
-      if(dbId){ localMsg.dbId=dbId; saveState(); }
-      const memberIds=getChatMemberIds(ch);
-      wsSendReliable({type:"message.send", payload:{chatId, text:"", memberIds, gift:giftData, id:dbId, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||""}});
-    }).catch(e=>console.warn("gift from inventory send error:",e));
-  }
+  const memberIds=getChatMemberIds(ch);
+  await retrySimpleMsg(localMsg, chatId, ch, memberIds, {chatId, text:"", gift:giftData}, {text:"", gift:giftData});
 }
 
 function renderGiftInventory(){
@@ -8353,11 +8413,21 @@ function previewStoryMedia(inp, kind){
 
 // Уведомляем всех, с кем есть чат ("друзья"), что опубликована новая сторис —
 // в реальном времени, без сохранения на сервере (как и сам объект сторис)
-function notifyFriendsAboutStory(story){
+function notifyAboutStory(story, channel){
+  if(channel){
+    const memberIds=getChatMemberIds(channel).filter(id=>id!==S.user?.id);
+    if(!memberIds.length) return;
+    wsSendReliable({type:"story.new", payload:{
+      story:{id:story.id, type:story.type, bg:story.bg, text:story.text, emoji:story.emoji, mediaUrl:story.mediaUrl, caption:story.caption, created:story.created, expires:story.expires, channel:story.channel},
+      memberIds,
+      fromUserId:S.user?.id, fromName:S.user?.name||"Пользователь", fromCol:0, fromIni:S.user?.initials||"?"
+    }});
+    return;
+  }
   const memberIds=S.chats.filter(c=>c.withUserId).map(c=>c.withUserId);
   if(!memberIds.length) return;
   wsSendReliable({type:"story.new", payload:{
-    story:{id:story.id, type:story.type, bg:story.bg, text:story.text, emoji:story.emoji, mediaUrl:story.mediaUrl, caption:story.caption, created:story.created, expires:story.expires, channel:story.channel||null},
+    story:{id:story.id, type:story.type, bg:story.bg, text:story.text, emoji:story.emoji, mediaUrl:story.mediaUrl, caption:story.caption, created:story.created, expires:story.expires, channel:null},
     memberIds,
     fromUserId:S.user?.id, fromName:S.user?.name||"Пользователь", fromCol:0, fromIni:S.user?.initials||"?"
   }});
@@ -8382,9 +8452,10 @@ async function publishStory(){
     expires: Date.now() + 24*60*60*1000, // 24h
     views: 0
   };
+  let publishingChannel=null;
   if(selectedStoryChannel){
-    const chan=S.chats.find(c=>c.id===selectedStoryChannel);
-    if(chan) story.channel={id:chan.id, nm:chan.nm, ini:chan.ini, col:chan.col};
+    publishingChannel=S.chats.find(c=>c.id===selectedStoryChannel);
+    if(publishingChannel) story.channel={id:publishingChannel.id, nm:publishingChannel.nm, ini:publishingChannel.ini, col:publishingChannel.col};
   }
 
   if(selectedStoryType==="photo"||selectedStoryType==="video"){
@@ -8392,8 +8463,7 @@ async function publishStory(){
     story.caption=capEl?.value?.trim()||"";
     story.mediaUrl=pendingStoryMedia.previewUrl; // локальное превью сразу, пока грузится
     story.uploading=true;
-    if(!S.my_stories) S.my_stories=[];
-    S.my_stories.push(story);
+    addStoryToOwnCollection(story, publishingChannel);
     closeM("m-story-editor");
     renderStoriesBar(); saveState();
     showToast("📖 Загружаем...");
@@ -8408,12 +8478,12 @@ async function publishStory(){
       story.mediaUrl=data.url;
       story.uploading=false;
       saveState();
-      notifyFriendsAboutStory(story);
+      notifyAboutStory(story, publishingChannel);
       const where = story.channel ? `в канал «${story.channel.nm}»` : "";
       showToast(`📖 Сторис опубликована ${where}!`);
     }catch(err){
       console.error("story upload error:",err);
-      S.my_stories=S.my_stories.filter(s=>s.id!==story.id);
+      removeStoryFromOwnCollection(story.id, publishingChannel);
       renderStoriesBar(); saveState();
       showToast("❌ "+(err.message||"Не удалось загрузить файл"));
     }
@@ -8421,14 +8491,32 @@ async function publishStory(){
     return;
   }
 
-  if(!S.my_stories) S.my_stories=[];
-  S.my_stories.push(story);
+  addStoryToOwnCollection(story, publishingChannel);
   closeM("m-story-editor");
   renderStoriesBar();
   saveState();
-  notifyFriendsAboutStory(story);
+  notifyAboutStory(story, publishingChannel);
   const where = story.channel ? `в канал «${story.channel.nm}»` : "";
   showToast(`📖 Сторис опубликована ${where}!`);
+}
+
+// Складывает сторис в правильное хранилище — личное или конкретного канала
+function addStoryToOwnCollection(story, channel){
+  if(channel){
+    if(!S.channel_stories) S.channel_stories={};
+    if(!S.channel_stories[channel.id]) S.channel_stories[channel.id]={name:channel.nm, col:channel.col, ini:channel.ini, items:[], mine:true};
+    S.channel_stories[channel.id].items.push(story);
+  } else {
+    if(!S.my_stories) S.my_stories=[];
+    S.my_stories.push(story);
+  }
+}
+function removeStoryFromOwnCollection(storyId, channel){
+  if(channel){
+    if(S.channel_stories?.[channel.id]) S.channel_stories[channel.id].items=S.channel_stories[channel.id].items.filter(s=>s.id!==storyId);
+  } else {
+    S.my_stories=(S.my_stories||[]).filter(s=>s.id!==storyId);
+  }
 }
 
 // renderStoriesBar stories count merged into original
