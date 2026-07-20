@@ -288,6 +288,11 @@ body.select-mode .msel-check{display:flex}
 .mrow.out .bub{background:var(--out);border-bottom-right-radius:3px}
 .bub.edited::after{content:" (ред.)";font-size:10px;color:rgba(255,255,255,.4)}
 .mt{font-size:9.5px;color:rgba(255,255,255,.35);margin-top:3px;display:flex;align-items:center;gap:3px}
+.mtick-failed{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--rd);color:#fff;font-size:10px;font-weight:800;cursor:pointer;flex-shrink:0}
+.failed-msg-menu{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:500;overflow:hidden;min-width:170px}
+.failed-msg-menu-item{padding:10px 14px;font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:8px}
+.failed-msg-menu-item:hover{background:var(--bg4)}
+.failed-msg-menu-item.rd{color:var(--rd)}
 .mrow.out .mt{justify-content:flex-end}
 .rxns{display:flex;gap:3px;margin-top:3px;flex-wrap:wrap}
 .rxn{background:var(--bg3);border:1px solid var(--brd);border-radius:999px;padding:2px 7px;font-size:11.5px;cursor:pointer;transition:background .1s;user-select:none}
@@ -1538,6 +1543,7 @@ tr:hover td{background:var(--bg3)}
   <div id="prof-vip-perks-locked" style="display:none;font-size:11px;color:var(--tx3);margin:-6px 0 10px">👑 Эмодзи-статус и цвет имени — доступны только с активным VIP</div>
   <div class="trow" id="prof-hide-lastseen-row"><div><div class="trl">👑 Скрыть время захода</div><div style="font-size:11px;color:var(--tx3)">Вы по-прежнему видите чужое, вас — никто</div></div><label class="toggle"><input type="checkbox" id="prof-hide-lastseen" onchange="toggleProfilePrivacy('hideLastSeen',this.checked)"><span class="ts"></span></label></div>
   <div class="trow" id="prof-hide-phone-row"><div><div class="trl">👑 Скрыть номер телефона</div><div style="font-size:11px;color:var(--tx3)">Пока без эффекта — номер и так никому не показывается, задел на будущее</div></div><label class="toggle"><input type="checkbox" id="prof-hide-phone" onchange="toggleProfilePrivacy('hidePhone',this.checked)"><span class="ts"></span></label></div>
+  <div class="trow" id="prof-block-vv-row"><div><div class="trl">👑 Запретить голосовые и видео от других</div><div style="font-size:11px;color:var(--tx3)">У тех, кто пишет вам, кнопки записи голосового/видео станут неактивны</div></div><label class="toggle"><input type="checkbox" id="prof-block-vv" onchange="toggleProfilePrivacy('blockVoiceVideo',this.checked)"><span class="ts"></span></label></div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-profile')">Отмена</button><button class="xbtn" onclick="saveProfile()">💾 Сохранить</button></div>
 </div></div>
 
@@ -1810,6 +1816,9 @@ const DEFAULT_STATE = {
     {id:18, name:"Алмазное сердце", icon:"💖", price:7500, limit:77, sold:60, rarity:"legendary", color:"linear-gradient(135deg,#f472b6,#ec4899)"},
   ],
   my_gifts: [],
+  // Купленные, но ещё не подаренные — {giftId: количество}. Отдельно от
+  // my_gifts (это история уже ОТПРАВЛЕННЫХ подарков)
+  gift_inventory: {},
   my_stories: [],
   // Фича "писать от имени канала"
   sendAsChannel: null,         // id канала от имени которого пишем (null = пишем как я)
@@ -2805,6 +2814,21 @@ function updateChatAvatarDisplays(ch){
 // Имя чата для отображения в шапке — с короной VIP и эмодзи-статусом,
 // если у собеседника (в личном чате) активна подписка. Простой текст, без
 // HTML — используется в местах с .textContent
+// Отключает кнопки записи голосового/видео-кружочка, если у собеседника
+// в этом личном чате включён запрет (VIP-привилегия). Вызывается и при
+// открытии чата, и при получении свежих данных о собеседнике.
+function applyVoiceVideoRestriction(blocked){
+  const micBtn=el("mic-btn"), vcBtn=el("vc-btn");
+  [micBtn, vcBtn].forEach(btn=>{
+    if(!btn) return;
+    btn.disabled=!!blocked;
+    btn.style.opacity=blocked?".35":"";
+    btn.style.cursor=blocked?"not-allowed":"";
+    btn.title=blocked?"Собеседник запретил голосовые и видео-сообщения":(btn===micBtn?"Голосовое сообщение":"Видео-кружочек");
+    btn.onclick=blocked?(()=>showToast("🔒 Собеседник запретил голосовые и видео-сообщения")):(btn===micBtn?toggleVoiceRecording:openVideoCircleRecorder);
+  });
+}
+
 function chatDisplayName(ch){
   return ch.nm + (ch.peerVip ? " 👑" : "") + (ch.peerStatusEmoji ? " "+ch.peerStatusEmoji : "");
 }
@@ -2836,11 +2860,15 @@ async function refreshChatPeerInfo(ch){
     // Эмодзи-статус и цвет имени — VIP-привилегии собеседника
     if((u.status_emoji||"")!==(ch.peerStatusEmoji||"")){ ch.peerStatusEmoji=u.status_emoji||""; changed=true; }
     if((u.name_color||"")!==(ch.peerNameColor||"")){ ch.peerNameColor=u.name_color||""; changed=true; }
+    // Запрет голосовых/видео — тоже VIP-привилегия собеседника, применяем
+    // к кнопкам композера прямо сейчас, если этот чат сейчас открыт
+    if(!!u.block_voice_video !== !!ch.peerBlockVoiceVideo){ ch.peerBlockVoiceVideo=!!u.block_voice_video; changed=true; }
     if(S.chat===ch.id){
       if(el("chnm")){
         el("chnm").textContent=chatDisplayName(ch);
         el("chnm").style.color=ch.peerNameColor||"";
       }
+      applyVoiceVideoRestriction(ch.peerBlockVoiceVideo);
     }
     if(changed){ renderChats(); saveState(); }
   }catch(e){ console.warn("refresh peer info error:", e); }
@@ -3192,6 +3220,7 @@ function openChat(id){
   // Загружаем сообщения из БД если чат реальный
   if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); markChatAsRead(id); refreshChatPeerInfo(ch); }
   ch.unread=0; renderChats();
+  applyVoiceVideoRestriction(ch.peerBlockVoiceVideo); // сразу из кэша, refreshChatPeerInfo обновит, если поменялось
 
   const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
   if(el("chnm"))el("chnm").textContent=chatDisplayName(ch);
@@ -3284,10 +3313,50 @@ function formatMsgText(raw){
 
 // Одна серая галочка — отправлено, две синие — прочитано (как в Telegram)
 function ticksHTML(m){
+  if(m.failed){
+    return `<span class="mtick-failed" onclick="showFailedMsgMenu(event,${m.id})" title="Не отправлено — нажмите">?</span>`;
+  }
   if(m.read){
     return '<svg class="mtick" width="16" height="12" viewBox="0 0 30 24" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 13 7 19 16 8"/><polyline points="11 13 17 19 29 4"/></svg>';
   }
   return '<svg class="mtick" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+}
+
+// ── Меню "не отправлено" — повтор или удаление, как в Telegram ────────
+function showFailedMsgMenu(e, msgId){
+  e.stopPropagation();
+  document.querySelectorAll(".failed-msg-menu").forEach(m=>m.remove());
+  const menu=document.createElement("div");
+  menu.className="failed-msg-menu";
+  menu.innerHTML=`
+    <div class="failed-msg-menu-item" onclick="retryFailedMsg(${msgId})">🔄 Отправить повторно</div>
+    <div class="failed-msg-menu-item rd" onclick="deleteFailedMsg(${msgId})">🗑️ Удалить</div>
+  `;
+  document.body.appendChild(menu);
+  const rect=e.currentTarget.getBoundingClientRect();
+  menu.style.left=Math.min(rect.left, window.innerWidth-190)+"px";
+  menu.style.top=(rect.bottom+6)+"px";
+  const closeMenu=(ev)=>{ if(!menu.contains(ev.target)){ menu.remove(); document.removeEventListener("click",closeMenu); } };
+  setTimeout(()=>document.addEventListener("click",closeMenu), 0);
+}
+
+function retryFailedMsg(msgId){
+  document.querySelectorAll(".failed-msg-menu").forEach(m=>m.remove());
+  const m=(S.messages[S.chat]||[]).find(x=>x.id===msgId); if(!m) return;
+  m.failed=false;
+  renderMsgs(); saveState();
+  const ch=S.chats.find(c=>c.id===S.chat);
+  const memberIds=getChatMemberIds(ch);
+  if(m.t==="out"){
+    sendTextToServer(m, m.tx, S.chat, ch, m.time, memberIds);
+  }
+}
+
+function deleteFailedMsg(msgId){
+  document.querySelectorAll(".failed-msg-menu").forEach(m=>m.remove());
+  const arr=S.messages[S.chat]||[];
+  const idx=arr.findIndex(x=>x.id===msgId);
+  if(idx>-1){ arr.splice(idx,1); renderMsgs(); saveState(); }
 }
 // Достраивает список сообщений разделителями дат ПРЯМО ПЕРЕД отрисовкой — по
 // настоящим меткам времени, а не по тому, что когда-то было вручную вставлено.
@@ -3978,8 +4047,13 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds){
     try{
       const d=await apiPost("/api/messages", {chatId, text: txt, asChannel: msg.asChannel||null}, true);
       dbId=d?.message?.id||null;
+      if(!d || !d.success){ msg.failed=true; renderMsgs(); saveState(); return; }
       if(dbId){ msg.dbId=dbId; saveState(); }
-    }catch(e){ console.warn("save msg error:", e); }
+    }catch(e){
+      console.warn("save msg error:", e);
+      msg.failed=true; renderMsgs(); saveState();
+      return; // не рассылаем по WS то, что не сохранилось на сервере
+    }
   }
   const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, memberIds, id:dbId, asChannel: msg.asChannel||null, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||"" } });
 
@@ -5651,6 +5725,9 @@ function openEditProfile(){
   if(el("prof-hide-phone")) el("prof-hide-phone").checked=!!u.hidePhone;
   if(el("prof-hide-phone")) el("prof-hide-phone").disabled=!isVip;
   if(el("prof-hide-phone-row")) el("prof-hide-phone-row").style.opacity=isVip?"1":".45";
+  if(el("prof-block-vv")) el("prof-block-vv").checked=!!u.blockVoiceVideo;
+  if(el("prof-block-vv")) el("prof-block-vv").disabled=!isVip;
+  if(el("prof-block-vv-row")) el("prof-block-vv-row").style.opacity=isVip?"1":".45";
   if(el("prof-vip-perks-locked")) el("prof-vip-perks-locked").style.display=isVip?"none":"block";
   profAvatarData=u.avatar||"";
   profAvatarFile=null;
@@ -5673,14 +5750,13 @@ function validateUsername(raw){
 
 // Сохраняются сразу при переключении (не ждут общей кнопки "Сохранить") —
 // как и остальные тумблеры в приложении
+const PRIVACY_FIELD_CHECKBOX_IDS={hideLastSeen:"prof-hide-lastseen",hidePhone:"prof-hide-phone",blockVoiceVideo:"prof-block-vv"};
 async function toggleProfilePrivacy(field, value){
   try{
-    const body = field==="hideLastSeen" ? {hideLastSeen:value} : {hidePhone:value};
-    const data=await apiPatch("/api/users/me", body, true);
+    const data=await apiPatch("/api/users/me", {[field]:value}, true);
     if(!data || !data.success){
       showToast("❌ "+(data&&data.error||"Не удалось сохранить"));
-      const cbId = field==="hideLastSeen" ? "prof-hide-lastseen" : "prof-hide-phone";
-      const cb=el(cbId); if(cb) cb.checked=!value;
+      const cb=el(PRIVACY_FIELD_CHECKBOX_IDS[field]); if(cb) cb.checked=!value;
       return;
     }
     S.user={...S.user, [field]:value}; saveState();
@@ -7857,6 +7933,19 @@ function purgeExpiredStories(){
 }
 setInterval(purgeExpiredStories, 5*60*1000); // проверяем каждые 5 минут, пока приложение открыто
 
+// Кольцо сторис, разрезанное на сегменты по числу активных сторис — как в
+// Telegram (6 сторис = 6 дуг с маленькими зазорами, не сплошной круг)
+function buildStoryRingGradient(count, c1, c2){
+  c1=c1||"var(--acc)"; c2=c2||"var(--am)";
+  if(count<=1) return `linear-gradient(135deg,${c1},${c2})`;
+  const gapDeg=10, segDeg=360/count, stops=[];
+  for(let i=0;i<count;i++){
+    const segStart=i*segDeg, colorEnd=segStart+segDeg-gapDeg, segEnd=segStart+segDeg;
+    stops.push(`${c1} ${segStart}deg`, `${c2} ${colorEnd}deg`, `transparent ${colorEnd}deg`, `transparent ${segEnd}deg`);
+  }
+  return `conic-gradient(${stops.join(", ")})`;
+}
+
 function renderStoriesBar(){
   purgeExpiredStories();
   let bar = document.getElementById("stories-bar");
@@ -7883,7 +7972,7 @@ function renderStoriesBar(){
 
   bar.innerHTML = `
     <div class="story-av-wrap" onclick="${isVip?(myActiveStories.length>0?'viewMyStories(0)':'openStoryEditor()'):'openVIP()'}">
-      <div class="story-ring${isVip?' vip-ring':' locked-ring'}">
+      <div class="story-ring${isVip?(myActiveStories.length>0?'':' vip-ring'):' locked-ring'}" ${isVip&&myActiveStories.length>0?`style="background:${buildStoryRingGradient(myActiveStories.length,'var(--am)','#ff6b6b')}"`:""}>
         <div class="story-av-inner" style="background:${colBg(0)};font-family:'Syne',sans-serif;font-weight:800;font-size:12px;color:#fff">
           ${S.user.avatar?`<img src="${S.user.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(S.user.initials||"Я")}
         </div>
@@ -7892,7 +7981,7 @@ function renderStoriesBar(){
     </div>
     ${friendEntries.map(([uid,data])=>`
       <div class="story-av-wrap" onclick="viewFriendStories('${uid}')">
-        <div class="story-ring">
+        <div class="story-ring" style="background:${buildStoryRingGradient(data.items.length)}">
           <div class="story-av-inner" style="background:${colBg(data.col)};font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#fff">${data.ini}</div>
         </div>
         <div class="story-nm">${(data.name||"?").split(" ")[0]}</div>
@@ -7996,6 +8085,7 @@ function openGifts(recipientName){
   if(el("bal-gifts")) el("bal-gifts").textContent = S.bal.toLocaleString("ru");
   renderGiftsCatalog("all");
   renderMyGifts();
+  renderGiftInventory();
   el("screen-gifts").classList.add("on");
 }
 function closeGifts(){ el("screen-gifts").classList.remove("on"); }
@@ -8071,6 +8161,65 @@ async function sendGift(){
       wsSendReliable({type:"message.send", payload:{chatId, text:"", memberIds, gift:giftData, id:dbId, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||""}});
     }catch(e){ console.warn("send gift error:", e); }
   }
+}
+
+// Купить подарок в свою коллекцию, не отправляя сразу — можно подарить
+// позже, или просто собирать. Количество копится, при дарении уменьшается.
+function buyGiftToInventory(){
+  const g = S.gifts_catalog.find(x=>x.id===selectedGiftId); if(!g) return;
+  if(S.bal < g.price){ showToast("❌ Недостаточно CR"); return; }
+  S.bal -= g.price;
+  g.sold = (g.sold||0)+1;
+  if(!S.gift_inventory) S.gift_inventory={};
+  S.gift_inventory[g.id] = (S.gift_inventory[g.id]||0) + 1;
+  updBal(); closeM("m-gift"); renderGiftInventory(); saveState();
+  showToast("💼 «"+g.name+"» добавлен в вашу коллекцию");
+}
+
+// Подарить что-то уже купленное из своей коллекции — тому же получателю,
+// на которого сейчас открыт экран подарков
+function giftFromInventory(giftId){
+  const g = S.gifts_catalog.find(x=>x.id===giftId); if(!g) return;
+  if(!S.gift_inventory || !S.gift_inventory[giftId]){ showToast("❌ У вас закончились эти подарки"); return; }
+  S.gift_inventory[giftId]--;
+  if(S.gift_inventory[giftId]<=0) delete S.gift_inventory[giftId];
+
+  if(!S.my_gifts) S.my_gifts=[];
+  S.my_gifts.push({id:g.id,icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,from:"Вы",to:giftRecipient,date:now()});
+
+  if(!S.messages[S.chat]) S.messages[S.chat]=[];
+  const giftData={icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,to:giftRecipient,msg:""};
+  const localMsg={id:nextId(),t:"gift",out:true,...giftData,time:now()};
+  S.messages[S.chat].push(localMsg);
+  const ch=S.chats.find(c=>c.id===S.chat);
+  if(ch){ch.prev="🎁 Подарок: "+g.name;ch.time=now();ch.lastTs=Date.now();}
+  renderMsgs(); renderChats(); renderMyGifts(); renderGiftInventory(); saveState();
+  showToast("🎁 Подарили «"+g.name+"» из своей коллекции!");
+
+  const chatId=S.chat;
+  if(typeof chatId==="string" && chatId.length>10){
+    apiPost("/api/messages", {chatId, text:"", gift:giftData}, true).then(d=>{
+      const dbId=d?.message?.id||null;
+      if(dbId){ localMsg.dbId=dbId; saveState(); }
+      const memberIds=getChatMemberIds(ch);
+      wsSendReliable({type:"message.send", payload:{chatId, text:"", memberIds, gift:giftData, id:dbId, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||""}});
+    }).catch(e=>console.warn("gift from inventory send error:",e));
+  }
+}
+
+function renderGiftInventory(){
+  const wrap=el("gift-inventory-list"); if(!wrap) return;
+  const entries=Object.entries(S.gift_inventory||{}).filter(([,qty])=>qty>0);
+  if(!entries.length){ wrap.innerHTML='<div style="color:var(--tx3);font-size:11.5px">Пока пусто — купите подарок кнопкой «💼 Купить», чтобы он появился здесь</div>'; return; }
+  wrap.innerHTML=entries.map(([giftId,qty])=>{
+    const g=S.gifts_catalog.find(x=>x.id===Number(giftId)); if(!g) return "";
+    return `<div class="gift-card ${g.rarity}" style="position:relative">
+      <div class="gift-scarce" style="background:var(--acc)">× ${qty}</div>
+      <div class="gift-ico">${giftVisual(g)}</div>
+      <div class="gift-name">${g.name}</div>
+      <button class="xbtn gn" style="width:100%;margin-top:6px;padding:6px;font-size:11px" onclick="giftFromInventory(${g.id})">🎁 Подарить</button>
+    </div>`;
+  }).join("");
 }
 
 function renderMyGifts(){
@@ -8158,7 +8307,7 @@ function renderStoryAuthorChoice(){
   let html=`<div style="font-size:11.5px;color:var(--tx2);margin-bottom:6px">Опубликовать от имени:</div><div style="display:flex;gap:6px;flex-wrap:wrap">`;
   html+=`<div class="story-author-opt${!selectedStoryChannel?" on":""}" onclick="pickStoryAuthor(null)"><div class="sas-av" style="background:${colBg(S.user?.col||0)}">${(S.user?.name||"Я")[0]}</div>Я</div>`;
   channels.forEach(c=>{
-    html+=`<div class="story-author-opt${selectedStoryChannel===c.id?" on":""}" onclick="pickStoryAuthor(${c.id})"><div class="sas-av" style="background:${colBg(c.col)}">${c.ini}</div>${c.nm}</div>`;
+    html+=`<div class="story-author-opt${selectedStoryChannel===c.id?" on":""}" onclick="pickStoryAuthor('${c.id}')"><div class="sas-av" style="background:${colBg(c.col)}">${c.ini}</div>${c.nm}</div>`;
   });
   html+=`</div>`;
   wrap.innerHTML=html;
@@ -9186,6 +9335,10 @@ applyTheme(S.theme||"dark");
 
     <div class="gifts-catalog" id="gifts-catalog"></div>
 
+    <!-- Купленные, но ещё не подаренные — можно подарить позже -->
+    <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--tx3);margin-bottom:12px">💼 Ваша коллекция (можно подарить)</div>
+    <div class="gifts-catalog" id="gift-inventory-list" style="margin-bottom:20px"></div>
+
     <!-- My received gifts -->
     <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--tx3);margin-bottom:12px">Мои подарки</div>
     <div id="my-gifts-showcase" style="display:flex;flex-wrap:wrap;gap:8px;background:var(--bg2);border:1px solid var(--brd);border-radius:14px;padding:14px;min-height:60px"></div>
@@ -9210,6 +9363,7 @@ applyTheme(S.theme||"dark");
     </div>
     <div class="macts">
       <button class="xbtn sec" onclick="closeM('m-gift')">Отмена</button>
+      <button class="xbtn sec" onclick="buyGiftToInventory()">💼 Купить</button>
       <button class="xbtn gn" onclick="sendGift()">🎁 Подарить!</button>
     </div>
   </div>
