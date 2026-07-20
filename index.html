@@ -1286,7 +1286,7 @@ tr:hover td{background:var(--bg3)}
       <div class="ani" data-section="stickers" onclick="aPage(this,'stickers')">🐱 Стикеры</div>
       <div class="ani" data-section="users" onclick="aPage(this,'users')">👥 Пользователи</div>
       <div class="ani ani-todo" data-section="langs" onclick="aPage(this,'langs')">🌍 Языки</div>
-      <div class="ani ani-todo" data-section="bots" onclick="aPage(this,'bots')">🤖 Боты и API</div>
+      <div class="ani" data-section="bots" onclick="aPage(this,'bots')">🤖 Боты и API</div>
       <div class="ani ani-todo" data-section="webhooks" onclick="aPage(this,'webhooks')">🔗 Вебхуки</div>
       <div class="ani" data-section="settings" onclick="aPage(this,'settings')">⚙️ Настройки</div>
     </div>
@@ -1386,13 +1386,12 @@ tr:hover td{background:var(--bg3)}
         </div>
       </div>
       <div class="apage" id="page-bots">
-        <div class="atitle">🤖 Боты и API</div><div class="asub2">API-ключи и боты</div>
-        <div class="asec"><div class="asect">🔑 API-ключи</div>
-          <div class="frow"><div class="fg"><span class="fl">Название</span><input class="fii" id="aknm" placeholder="Prod Key"></div><div class="fg"><span class="fl">Права</span><select class="fii" id="akperms" style="cursor:pointer"><option>read:messages</option><option>full_access</option><option>payments:read</option></select></div></div>
-          <button class="xbtn" onclick="genKey()">⚡ Генерировать</button>
-          <div id="akeys" style="margin-top:10px"><div style="color:var(--tx3);font-size:11.5px">Нет ключей</div></div>
+        <div class="atitle">🤖 Боты и API</div><div class="asub2">Токен бота — это и есть его ключ API, отдельной системы ключей больше нет</div>
+        <div class="asec"><div class="asect">➕ Создать бота</div>
+          <div class="frow s1"><div class="fg"><span class="fl">Название</span><input class="fii" id="bot-new-name" placeholder="Мой бот"></div></div>
+          <button class="xbtn" onclick="createBot()">🤖 Создать</button>
         </div>
-        <div class="asec"><div class="asect">🤖 Боты</div><div id="botlist"></div><button class="xbtn sec" style="margin-top:8px" onclick="showToast('Конструктор бота')">+ Создать</button></div>
+        <div class="asec"><div class="asect">🤖 Все боты</div><div id="botlist"><div style="color:var(--tx3);font-size:11.5px">Загрузка...</div></div></div>
       </div>
       <div class="apage" id="page-webhooks">
         <div class="atitle">🔗 Вебхуки</div><div class="asub2">Realtime события</div>
@@ -6738,7 +6737,7 @@ async function loadOverviewStats(){
 }
 
 function initAdmin(){
-  renderCurrs();renderPkgEd();renderWallets();renderUsers();renderSPAdmin();renderKeys();renderBots();renderWH();renderLngs();
+  renderCurrs();renderPkgEd();renderWallets();renderUsers();renderSPAdmin();renderBots();renderWH();renderLngs();
   if(el("bal-admin"))el("bal-admin").textContent=S.bal.toLocaleString();
   // new sections
   loadOverviewStats();
@@ -7010,9 +7009,84 @@ async function createSP(){
 }
 function renderLngs(){ const e=el("lngtbl");if(!e)return; const data=[["ru","🇷🇺","Русский",4820,"33.5"],["en","🇬🇧","English",3640,"25.3"],["de","🇩🇪","Deutsch",1180,"8.2"],["fr","🇫🇷","Français",980,"6.8"],["es","🇪🇸","Español",860,"6.0"],["tr","🇹🇷","Türkçe",720,"5.0"],["ar","🇸🇦","العربية",580,"4.0"],["zh","🇨🇳","中文",520,"3.6"],["it","🇮🇹","Italiano",410,"2.8"],["pt","🇧🇷","Português",380,"2.6"],["ja","🇯🇵","日本語",340,"2.4"],["ko","🇰🇷","한국어",280,"1.9"],["uk","🇺🇦","Українська",210,"1.5"],["pl","🇵🇱","Polski",180,"1.2"]]; e.innerHTML=data.map(([c,f,n,u,p])=>`<tr><td>${f} ${n}</td><td><span class="bg bgc">${c.toUpperCase()}</span></td><td>${parseInt(u).toLocaleString()}</td><td><div style="display:flex;align-items:center;gap:5px"><div style="width:60px;height:4px;background:var(--bg4);border-radius:2px"><div style="width:${Math.min(parseFloat(p)*2.7,100)}%;height:100%;background:var(--cr);border-radius:2px"></div></div>${p}%</div></td><td><span class="bg bgg">Активен</span></td><td><button class="xbtn sec" style="padding:2px 7px;font-size:9.5px" onclick="S.lang='${c}';applyLang();renderChats();renderMsgs();saveState();showToast('${LANGS[c]?.flag||""} ${n}')">↩️ Применить</button></td></tr>`).join(""); }
 let akc=1;
-function renderKeys(){ const e=el("akeys");if(!e)return; if(!S.apiKeys.length){e.innerHTML='<div style="color:var(--tx3);font-size:11.5px">Нет ключей</div>';return;} e.innerHTML=S.apiKeys.map((k,i)=>`<div style="margin-bottom:8px"><div style="font-size:10.5px;color:var(--tx2);margin-bottom:3px">🔑 ${k.nm} · <span style="color:var(--acc2)">${k.perms}</span></div><div class="akrow"><div class="akval">${k.key}</div><div class="akcpy" onclick="navigator.clipboard.writeText('${k.key}').catch(()=>{});showToast('Скопировано')">Копировать</div><button class="xbtn rd" style="padding:4px 8px;font-size:11px" onclick="S.apiKeys.splice(${i},1);renderKeys();saveState()">✕</button></div></div>`).join(""); }
-function genKey(){ const nm=el("aknm")?.value||"Key #"+akc++;const perms=el("akperms")?.value||"read";const key="nx_live_"+Array.from({length:32},()=>"abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random()*36)]).join("");S.apiKeys.push({nm,perms,key});renderKeys();if(el("aknm"))el("aknm").value="";saveState();showToast("🔑 API-ключ создан"); }
-function renderBots(){ const e=el("botlist");if(!e)return; e.innerHTML=[{nm:"NexusPayBot",d:"Платежи Crystals",i:"💎",st:"Активен"},{nm:"NexusI18nBot",d:"Перевод (14 языков)",i:"🌍",st:"Активен"},{nm:"NexusModBot",d:"Модерация",i:"🛡️",st:"Пауза"},{nm:"NexusStatBot",d:"Аналитика",i:"📊",st:"Активен"}].map(b=>`<div class="botcard"><div style="width:36px;height:36px;border-radius:8px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${b.i}</div><div style="flex:1"><div class="botnm">@${b.nm}</div><div class="botd">${b.d}</div></div><span class="bg ${b.st==="Активен"?"bgg":"bga"}">${b.st}</span><button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="showToast('Настройка')">⚙️</button></div>`).join(""); }
+// ⚠️ Раньше это были 4 захардкоженных бота ("NexusPayBot" и т.п.),
+// выдуманных целиком, кнопка "⚙️" ничего не делала. Отдельная система
+// "API-ключей" тоже была локальной и никем не проверялась. Теперь боты —
+// реальные аккаунты (таблица users, is_bot=true), с настоящим токеном,
+// вебхуком и статусом.
+async function renderBots(){
+  const e=el("botlist"); if(!e) return;
+  try{
+    const data=await apiGet("/api/admin/bots");
+    const bots=(data && data.bots)||[];
+    if(!bots.length){ e.innerHTML='<div style="color:var(--tx3);font-size:11.5px">Ботов пока нет</div>'; return; }
+    e.innerHTML=bots.map(b=>`
+      <div class="botcard" style="flex-wrap:wrap;align-items:flex-start">
+        <div style="width:36px;height:36px;border-radius:8px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🤖</div>
+        <div style="flex:1;min-width:160px">
+          <div class="botnm">${b.name} <span style="color:var(--tx3);font-weight:400">@${b.username}</span></div>
+          <div class="botd" style="margin-bottom:4px">Токен для API:</div>
+          <div class="akrow"><div class="akval">${b.bot_token}</div><div class="akcpy" onclick="navigator.clipboard.writeText('${b.bot_token}').catch(()=>{});showToast('Скопировано')">Копировать</div></div>
+          <div class="fg" style="margin-top:6px"><span class="fl">Webhook URL (для личных сообщений боту)</span><input class="fii" value="${b.bot_webhook_url||''}" placeholder="https://your-server.com/webhook" onchange="saveBotWebhook('${b.id}',this.value)"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+          <span class="bg ${b.bot_status==='active'?'bgg':'bga'}" style="cursor:pointer" onclick="toggleBotStatus('${b.id}','${b.bot_status}')">${b.bot_status==='active'?'Активен':'Пауза'}</span>
+          <button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="regenerateBotToken('${b.id}')">🔄 Токен</button>
+          <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="deleteBot('${b.id}','${b.name}')">✕ Удалить</button>
+        </div>
+      </div>`).join("");
+  }catch(err){ e.innerHTML='<div style="color:var(--rd);font-size:11.5px">Не удалось загрузить</div>'; }
+}
+
+async function createBot(){
+  const name=el("bot-new-name")?.value?.trim();
+  if(!name){ showToast("❌ Впишите название бота"); return; }
+  try{
+    const data=await apiPost("/api/admin/bots", {name}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось создать")); return; }
+    showToast("🤖 Бот создан! @"+data.bot.username);
+    if(el("bot-new-name")) el("bot-new-name").value="";
+    renderBots();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function saveBotWebhook(botId, url){
+  try{
+    const data=await apiPatch("/api/admin/bots/"+botId, {webhookUrl:url}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); return; }
+    showToast("✅ Webhook сохранён");
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function toggleBotStatus(botId, currentStatus){
+  const newStatus=currentStatus==="active"?"paused":"active";
+  try{
+    const data=await apiPatch("/api/admin/bots/"+botId, {status:newStatus}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); return; }
+    showToast(newStatus==="active"?"✅ Бот включён":"⏸️ Бот на паузе");
+    renderBots();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function regenerateBotToken(botId){
+  if(!confirm("Перевыпустить токен? Старый сразу перестанет работать.")) return;
+  try{
+    const data=await apiPost("/api/admin/bots/"+botId+"/regenerate-token", {}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось перевыпустить")); return; }
+    showToast("🔄 Новый токен выпущен");
+    renderBots();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function deleteBot(botId, name){
+  if(!confirm(`Удалить бота «${name}» безвозвратно?`)) return;
+  try{
+    const data=await apiDelete("/api/admin/bots/"+botId);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось удалить")); return; }
+    showToast("✅ Бот удалён");
+    renderBots();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
 function renderWH(){ const e=el("whlist");if(!e)return; if(!S.webhooks.length){e.innerHTML='<div style="color:var(--tx3);font-size:11.5px">Нет вебхуков</div>';return;} e.innerHTML=S.webhooks.map((w,i)=>`<div class="whitem"><div class="whico">📡</div><div style="flex:1"><div class="whev">${w.ev}</div><div class="whurl">${w.url}</div></div><span class="bg bgg">Активен</span><button class="xbtn rd" style="padding:3px 8px;font-size:11px" onclick="S.webhooks.splice(${i},1);renderWH();saveState()">✕</button></div>`).join(""); }
 function addWH(){ const url=el("whurl")?.value;if(!url){showToast("❌ URL обязателен");return;} const ev=el("whev")?.value||"all_events";S.webhooks.push({url,ev});renderWH();if(el("whurl"))el("whurl").value="";saveState();showToast("📡 Вебхук добавлен"); }
 
