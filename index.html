@@ -1487,6 +1487,11 @@ tr:hover td{background:var(--bg3)}
   <div class="frow s1"><div class="fg"><span class="fl">Имя</span><input class="fii" id="prof-name"></div></div>
   <div class="frow s1"><div class="fg"><span class="fl">Username</span><input class="fii" id="prof-uname" placeholder="@username"></div></div>
   <div class="frow s1"><div class="fg"><span class="fl">Bio</span><textarea class="fii" id="prof-bio" rows="2" style="resize:none"></textarea></div></div>
+  <div class="frow s1" id="prof-vip-perks-row">
+    <div class="fg"><span class="fl">👑 Эмодзи-статус (VIP)</span><input class="fii" id="prof-status-emoji" placeholder="✨" maxlength="4"></div>
+    <div class="fg"><span class="fl">👑 Цвет имени (VIP)</span><input type="color" class="fii" id="prof-name-color" style="height:38px;padding:2px"></div>
+  </div>
+  <div id="prof-vip-perks-locked" style="display:none;font-size:11px;color:var(--tx3);margin:-6px 0 10px">👑 Эмодзи-статус и цвет имени — доступны только с активным VIP</div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-profile')">Отмена</button><button class="xbtn" onclick="saveProfile()">💾 Сохранить</button></div>
 </div></div>
 
@@ -2706,11 +2711,11 @@ function updateChatAvatarDisplays(ch){
   if(rpav){ rpav.style.background=ch.avatar?"none":colBg(ch.col); rpav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?"; }
 }
 
-// Имя чата для отображения в шапке — с короной VIP, если у собеседника
-// (в личном чате) активна подписка. Простой текст, без HTML — используется
-// в местах с .textContent
+// Имя чата для отображения в шапке — с короной VIP и эмодзи-статусом,
+// если у собеседника (в личном чате) активна подписка. Простой текст, без
+// HTML — используется в местах с .textContent
 function chatDisplayName(ch){
-  return ch.nm + (ch.peerVip ? " 👑" : "");
+  return ch.nm + (ch.peerVip ? " 👑" : "") + (ch.peerStatusEmoji ? " "+ch.peerStatusEmoji : "");
 }
 
 async function refreshChatPeerInfo(ch){
@@ -2737,7 +2742,15 @@ async function refreshChatPeerInfo(ch){
       ch.peerVip = peerIsVip;
       changed=true;
     }
-    if(S.chat===ch.id && el("chnm")) el("chnm").textContent=chatDisplayName(ch);
+    // Эмодзи-статус и цвет имени — VIP-привилегии собеседника
+    if((u.status_emoji||"")!==(ch.peerStatusEmoji||"")){ ch.peerStatusEmoji=u.status_emoji||""; changed=true; }
+    if((u.name_color||"")!==(ch.peerNameColor||"")){ ch.peerNameColor=u.name_color||""; changed=true; }
+    if(S.chat===ch.id){
+      if(el("chnm")){
+        el("chnm").textContent=chatDisplayName(ch);
+        el("chnm").style.color=ch.peerNameColor||"";
+      }
+    }
     if(changed){ renderChats(); saveState(); }
   }catch(e){ console.warn("refresh peer info error:", e); }
 }
@@ -2989,7 +3002,7 @@ function renderChats(filter=""){
     const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:(ch.ini||"?");
     d.innerHTML=`<div class="chav" style="background:${colBg(ch.col)}">${avHTML}${ch.online?'<div class="odot"></div>':""}</div>
     <div class="cinfo" style="flex:1;overflow:hidden">
-      <div class="cnm">${ch.nm}${ch.peerVip?' <span title="VIP" style="font-size:11px">👑</span>':""}${ch.muted?' <span style="font-size:10px;opacity:.5">🔇</span>':""}</div>
+      <div class="cnm"${ch.peerNameColor?` style="color:${ch.peerNameColor}"`:""}>${ch.nm}${ch.peerVip?' <span title="VIP" style="font-size:11px">👑</span>':""}${ch.peerStatusEmoji?' '+ch.peerStatusEmoji:""}${ch.muted?' <span style="font-size:10px;opacity:.5">🔇</span>':""}</div>
       <div class="cprev">${ch._typing?'<span class="typing-label">печатает...</span>':(ch.draft?'<span class="draft-label">Черновик: </span>'+ch.draft:ch.prev)}</div>
     </div>
     <div class="cmeta">
@@ -4603,7 +4616,7 @@ function renderMP(mode){
   if(mode==="emoji_old"){ c.innerHTML=`<div class="egrid">${EMOJIS.map(e=>`<div class="epem" onclick="insEmoji('${e}')">${e}</div>`).join("")}</div>`; }
   else{
     c.innerHTML=`<div class="spwrap">${S.packs.map(p=>{
-      const owned=p.free||S.owned.includes(p.id);
+      const owned=p.free||S.owned.includes(p.id)||S.vip?.active;
       const stks=p.stickers.map(s=>`<div class="sitem${owned?"":' lk'}" ${owned?`onclick="sendSticker('${s}')"`:""}>${isStickerImg(s)?`<img src="${s}" style="width:100%;height:100%;object-fit:contain">`:s}</div>`).join("");
       return`<div><div class="sphdr"><div class="spnm">${p.nm}</div>${owned?'<span style="font-size:10px;color:var(--gr)">✓</span>':`<div class="splk" onclick="openStkModal(${p.id})">💎 ${p.price} CR</div>`}</div><div class="srow">${stks}</div></div>`;
     }).join("")}</div>`;
@@ -5441,6 +5454,13 @@ function openEditProfile(){
   if(el("prof-name"))el("prof-name").value=u.name||"";
   if(el("prof-uname"))el("prof-uname").value=u.uname||"";
   if(el("prof-bio"))el("prof-bio").value=u.bio||"";
+  if(el("prof-status-emoji"))el("prof-status-emoji").value=u.statusEmoji||"";
+  if(el("prof-name-color"))el("prof-name-color").value=u.nameColor||"#6c63ff";
+  const isVip=!!S.vip?.active;
+  if(el("prof-status-emoji")) el("prof-status-emoji").disabled=!isVip;
+  if(el("prof-name-color")) el("prof-name-color").disabled=!isVip;
+  if(el("prof-vip-perks-row")) el("prof-vip-perks-row").style.opacity=isVip?"1":".45";
+  if(el("prof-vip-perks-locked")) el("prof-vip-perks-locked").style.display=isVip?"none":"block";
   profAvatarData=u.avatar||"";
   profAvatarFile=null;
   el("m-profile").classList.add("on");
@@ -5466,6 +5486,12 @@ async function saveProfile(){
   const unameCheck=validateUsername(el("prof-uname")?.value); if(!unameCheck.ok) return;
   const uname=unameCheck.value;
   const bio=el("prof-bio")?.value||"";
+  // Эмодзи-статус и цвет имени — только если VIP активен, иначе поля
+  // заблокированы и не должны отправляться (COALESCE на сервере и так бы
+  // не тронул значение при отказе, но лучше не отправлять лишнего)
+  const isVip=!!S.vip?.active;
+  const statusEmoji=isVip?(el("prof-status-emoji")?.value||"").trim():undefined;
+  const nameColor=isVip?(el("prof-name-color")?.value||""):undefined;
 
   // Запоминаем, что было ДО правки — если сервер откажет, вернём как было
   const prevUser={...S.user};
@@ -5489,12 +5515,12 @@ async function saveProfile(){
     }
   }
 
-  S.user={...S.user,name:nm,uname:uname,bio:bio,avatar:avatarUrl,initials:nm.slice(0,2).toUpperCase()};
+  S.user={...S.user,name:nm,uname:uname,bio:bio,avatar:avatarUrl,initials:nm.slice(0,2).toUpperCase(),...(isVip?{statusEmoji,nameColor}:{})};
   closeM("m-profile"); updateUserUI(); openSettings(); saveState(); showToast("✅ Профиль сохранён");
   profAvatarFile=null;
 
   // Сохраняем на сервере — иначе новое имя/юзернейм/аватар не увидят другие пользователи
-  apiPatch("/api/users/me", {name:nm, username:uname || null, bio:bio, avatar:avatarUrl}, true)
+  apiPatch("/api/users/me", {name:nm, username:uname || null, bio:bio, avatar:avatarUrl, statusEmoji, nameColor}, true)
     .then(d=>{
       if(!d?.success){
         // Сервер отклонил — откатываем локальные изменения и заново открываем окно
@@ -6292,7 +6318,7 @@ function renderStore(){
     const priceHtml = basePrice ? `<span style="text-decoration:line-through;color:var(--tx3);font-size:11px;margin-right:4px">${basePrice}</span>${price} ${curr.sym}` : `${price} ${curr.sym}`;
     return `<div class="cpkg${pop?" pop":""}" onclick="openBuyM(${p.cr},${price},'${curr.sym}')">${discountBadge||(pop?`<div class="pkgb">✨ Хит</div>`:"")}<div class="pkgico">💎</div><div class="pkgamt">${p.cr.toLocaleString()}</div><div class="pkgpr">${priceHtml}</div>${p.bonus?`<div class="pkgbo">+${p.bonus} CR</div>`:""}</div>`;
   }).join("");
-  el("stkst").innerHTML=S.packs.map(p=>{const owned=p.free||S.owned.includes(p.id);const prev=p.stickers.slice(0,4).map(s=>isStickerImg(s)?`<img src="${s}" style="width:28px;height:28px;object-fit:contain">`:`<span>${s}</span>`).join("");return`<div class="scard"><div class="scprev">${prev}</div><div class="scbot"><div><div class="scnm">${p.nm}</div><div class="scdesc">${p.desc}</div></div><button class="scbuy${owned?" owned":""}" ${owned?"disabled":""} onclick="${owned?"":` openStkModal(${p.id})`}">${owned?(p.free?"Бесплатно":"✓ Куплено"):`💎 ${p.price} CR`}</button></div></div>`;}).join("");
+  el("stkst").innerHTML=S.packs.map(p=>{const owned=p.free||S.owned.includes(p.id)||S.vip?.active;const prev=p.stickers.slice(0,4).map(s=>isStickerImg(s)?`<img src="${s}" style="width:28px;height:28px;object-fit:contain">`:`<span>${s}</span>`).join("");return`<div class="scard"><div class="scprev">${prev}</div><div class="scbot"><div><div class="scnm">${p.nm}</div><div class="scdesc">${p.desc}</div></div><button class="scbuy${owned?" owned":""}" ${owned?"disabled":""} onclick="${owned?"":` openStkModal(${p.id})`}">${owned?(p.free?"Бесплатно":(S.vip?.active&&!S.owned.includes(p.id)?"👑 VIP":"✓ Куплено")):`💎 ${p.price} CR`}</button></div></div>`;}).join("");
 }
 function openBuyM(cr,price,sym){ S.buyPkg={cr,price}; el("mbpkg").textContent=cr.toLocaleString()+" CR"; el("mbcr").textContent=cr.toLocaleString()+" 💎"; el("mbpr").textContent=price+" "+sym; if(el("mbuy-method")) el("mbuy-method").value="tinkoff"; updateBuyMethodHint(); el("m-buy").classList.add("on"); }
 
@@ -6851,7 +6877,7 @@ if(S.loggedIn){
       .then(resp=>{
         const data = resp && resp.user; // GET /api/users/me отдаёт { user: {...} }, не плоский объект
         if(!data||!data.id) return;
-        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region}};
+        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region,statusEmoji:data.status_emoji||S.user.statusEmoji,nameColor:data.name_color||S.user.nameColor}};
         // Зарубежным пользователям (не +7) незачем видеть цены в рублях —
         // переключаем на доллар автоматически, но только если валюта ещё
         // стоит на дефолтной RUB (не трогаем, если человек сам её менял —
@@ -6949,6 +6975,8 @@ const VIP_PERKS = [
   {ico:"📖", title:"Сторис", desc:"Публикуй истории на 24 часа"},
   {ico:"🎭", title:"Анимированные аватары", desc:"GIF и анимация профиля"},
   {ico:"🐲", title:"PREMIUM стикеры", desc:"Все паки бесплатно"},
+  {ico:"✨", title:"Эмодзи-статус", desc:"Свой эмодзи рядом с именем"},
+  {ico:"🎨", title:"Цвет имени", desc:"Выбери свой цвет, видно всем"},
   {ico:"📁", title:"Папки чатов", desc:"Организация чатов в папки"},
   {ico:"🌐", title:"Перевод сообщений", desc:"Авто-перевод на ваш язык"},
   {ico:"📎", title:"Файлы до 4 GB", desc:"Вместо 2 GB у обычных"},
