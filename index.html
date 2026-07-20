@@ -1384,7 +1384,6 @@ tr:hover td{background:var(--bg3)}
         <div class="asec"><div class="asect">👑 Видимые VIP-планы</div><div class="asub2" style="margin:-4px 0 10px">Скрытые планы никуда не пропадают, просто не показываются на экране VIP — можно вернуть в любой момент</div>
           <div class="trow"><div class="trl">VIP на 1 месяц</div><label class="toggle"><input type="checkbox" id="vipvis-month" onchange="toggleVipVisibility('month',this.checked)"><span class="ts"></span></label></div>
           <div class="trow"><div class="trl">VIP на 1 год</div><label class="toggle"><input type="checkbox" id="vipvis-year" onchange="toggleVipVisibility('year',this.checked)"><span class="ts"></span></label></div>
-          <div class="trow"><div class="trl">VIP навсегда</div><label class="toggle"><input type="checkbox" id="vipvis-forever" onchange="toggleVipVisibility('forever',this.checked)"><span class="ts"></span></label></div>
         </div>
         <div class="asec"><div class="asect">🔐 Права модератора</div><div class="asub2" style="margin:-4px 0 10px">У admin всегда полный доступ ко всему — не настраивается. Отмечайте, какие разделы Dev Panel видит и может редактировать moderator</div>
           <div id="role-perms-list" style="display:flex;flex-direction:column;gap:2px"></div>
@@ -6653,7 +6652,7 @@ async function renderUsers(){
         <td style="color:var(--cr)">💎 ${Number(u.balance_cr||0).toLocaleString()}</td>
         <td>${isVip?"👑":"—"}</td>
         <td style="color:var(--tx3)">${regDate}</td>
-        <td><button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="editUserRole('${u.id}','${u.role}')">✏️</button></td>
+        <td style="white-space:nowrap"><button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="editUserRole('${u.id}','${u.role}')">✏️</button> <button class="xbtn am" style="padding:3px 8px;font-size:10px" onclick="grantVipForever('${u.id}','${u.username||u.name||u.phone}')" title="Выдать VIP навсегда">♾️</button></td>
       </tr>`;
     }).join("");
   }catch(err){
@@ -6669,6 +6668,18 @@ async function editUserRole(userId, currentRole){
     const data=await apiPatch("/api/users/"+userId+"/role", {role:newRole}, true);
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось изменить роль")); return; }
     showToast("✅ Роль обновлена");
+    renderUsers();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+// Ручная выдача VIP навсегда — не через покупку (план "навсегда" сознательно
+// не продаётся публично), только так, по решению админа
+async function grantVipForever(userId, label){
+  if(!confirm(`Выдать VIP навсегда пользователю ${label}? Действие не имеет ограничения по времени.`)) return;
+  try{
+    const data=await apiPatch("/api/admin/users/"+userId+"/grant-vip-forever", {}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось выдать VIP")); return; }
+    showToast("👑 VIP навсегда выдан");
     renderUsers();
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
@@ -8032,7 +8043,7 @@ async function loadVipVisibilityToggles(){
     const data=await apiGet("/api/settings/vip-visibility");
     const vis=data && data.visibility;
     if(!vis) return;
-    ["month","year","forever"].forEach(id=>{
+    ["month","year"].forEach(id=>{
       const cb=el("vipvis-"+id);
       if(cb) cb.checked = vis[id]!==false;
     });
