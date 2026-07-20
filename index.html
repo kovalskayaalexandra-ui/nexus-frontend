@@ -291,6 +291,34 @@ body.select-mode .msel-check{display:flex}
 .mrow.out .mt{justify-content:flex-end}
 .rxns{display:flex;gap:3px;margin-top:3px;flex-wrap:wrap}
 .rxn{background:var(--bg3);border:1px solid var(--brd);border-radius:999px;padding:2px 7px;font-size:11.5px;cursor:pointer;transition:background .1s;user-select:none}
+.crystal-total-badge{cursor:default;background:linear-gradient(135deg,rgba(103,232,249,.18),rgba(108,99,255,.18));border-color:rgba(103,232,249,.4);color:var(--cr);font-weight:700}
+
+/* Анимация кристалльного подарка — 5 секунд, парящие кристаллики + вспышка числа */
+.crystal-gift-fx{position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:20}
+.cgfx-burst{
+  position:absolute;top:-10px;left:50%;transform:translateX(-50%) scale(0);
+  font-size:20px;font-weight:800;color:var(--cr);text-shadow:0 0 12px rgba(103,232,249,.8);
+  animation:cgfxBurst 5s ease-out forwards;
+}
+@keyframes cgfxBurst{
+  0%{transform:translateX(-50%) translateY(0) scale(0);opacity:0}
+  15%{transform:translateX(-50%) translateY(-16px) scale(1.3);opacity:1}
+  30%{transform:translateX(-50%) translateY(-20px) scale(1);opacity:1}
+  80%{transform:translateX(-50%) translateY(-24px) scale(1);opacity:1}
+  100%{transform:translateX(-50%) translateY(-34px) scale(.9);opacity:0}
+}
+.cgfx-particle{
+  position:absolute;bottom:0;left:calc(50% + (var(--i) - 3.5) * 14px);
+  font-size:16px;opacity:0;
+  animation:cgfxFloat 5s ease-out forwards;
+  animation-delay:calc(var(--i) * 0.08s);
+}
+@keyframes cgfxFloat{
+  0%{transform:translateY(0) rotate(0deg) scale(.5);opacity:0}
+  10%{opacity:1;transform:translateY(-10px) rotate(20deg) scale(1)}
+  90%{opacity:.8}
+  100%{transform:translateY(-90px) rotate(200deg) scale(.6);opacity:0}
+}
 .rxn:hover{background:var(--bg4)}
 .rxn.m{border-color:var(--acc);background:rgba(108,99,255,.14)}
 .rprev{border-left:3px solid var(--acc2);padding:3px 7px;margin-bottom:5px;border-radius:4px;background:rgba(255,255,255,.05)}
@@ -407,6 +435,8 @@ body.select-mode .msel-check{display:flex}
 .rxn-picker{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:999px;padding:5px 8px;z-index:1001;display:none;align-items:center;gap:4px;box-shadow:0 8px 32px rgba(0,0,0,.5)}
 .rxn-picker.on{display:flex}
 .rxn-e{font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background .1s;flex-shrink:0}
+.rxn-crystal{background:linear-gradient(135deg,rgba(103,232,249,.15),rgba(108,99,255,.15));border-radius:8px;position:relative}
+.rxn-crystal::after{content:"";position:absolute;inset:0;border-radius:8px;border:1px solid rgba(103,232,249,.35)}
 .rxn-e:hover{background:var(--bg4);transform:scale(1.2)}
 .rxn-quick-row{display:flex;gap:4px}
 .rxn-expanded{display:none}
@@ -1437,6 +1467,20 @@ tr:hover td{background:var(--bg3)}
   </div>
 </div>
 
+<div class="movl" id="m-crystal-gift"><div class="modal" style="max-width:300px;text-align:center">
+  <div style="font-size:40px;margin-bottom:6px">💎</div>
+  <div class="mtit">Подарить Crystals</div>
+  <div class="msub">Спишется с вашего баланса и уйдёт автору сообщения</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0">
+    <button class="xbtn sec" onclick="selectCrystalGiftAmount(10)">10 💎</button>
+    <button class="xbtn sec" onclick="selectCrystalGiftAmount(50)">50 💎</button>
+    <button class="xbtn sec" onclick="selectCrystalGiftAmount(100)">100 💎</button>
+    <button class="xbtn sec" onclick="selectCrystalGiftAmount(500)">500 💎</button>
+  </div>
+  <div class="fg"><span class="fl">Или своё количество</span><input class="fii" type="number" id="crystal-gift-custom" min="1" placeholder="Введите число"></div>
+  <div class="macts" style="margin-top:14px"><button class="xbtn sec" onclick="closeM('m-crystal-gift')">Отмена</button><button class="xbtn gn" onclick="confirmCrystalGift()">💎 Подарить</button></div>
+</div></div>
+
 <!-- MODALS -->
 <div class="movl" id="m-buy"><div class="modal">
   <div class="mtit">💎 Купить Crystals</div>
@@ -2227,6 +2271,43 @@ function wsHandleMessage(msg){
       break;
     }
 
+    case "reaction.update": {
+      // Кто-то другой поставил/снял реакцию — обновляем у себя, чтобы
+      // видеть в реальном времени, не только после перезахода в чат
+      const { chatId, messageId, emoji, userId, action } = msg.payload;
+      const m=(S.messages[chatId]||[]).find(x=>x.dbId===messageId);
+      if(m){
+        if(!m.rxn) m.rxn=[];
+        let ex=m.rxn.find(r=>r.e===emoji);
+        if(action==="added"){
+          if(ex) ex.c++; else m.rxn.push({e:emoji,c:1,m:false});
+        } else if(ex){
+          ex.c=Math.max(0,ex.c-1);
+        }
+        m.rxn=m.rxn.filter(x=>x.c>0);
+        if(S.chat===chatId) renderMsgs();
+        saveState();
+      }
+      break;
+    }
+
+    case "crystal.gifted": {
+      // Кристалльный подарок от другого участника — обновляем сумму и
+      // проигрываем анимацию, если чат сейчас открыт
+      const { chatId, messageId, fromName, amount } = msg.payload;
+      const m=(S.messages[chatId]||[]).find(x=>x.dbId===messageId);
+      if(m){
+        m.crystalTotal=(m.crystalTotal||0)+amount;
+        if(S.chat===chatId){
+          renderMsgs();
+          playCrystalGiftAnimation(m.id, amount);
+        }
+        saveState();
+        if(S.chat!==chatId) showToast(`💎 ${fromName||"Кто-то"} подарил ${amount} CR сообщению`);
+      }
+      break;
+    }
+
     case "official.post": {
       // Новый пост Nexus Official пришёл в реальном времени, пока приложение открыто —
       // добавляем как обычное входящее сообщение в чат 88888 (отдельного экрана больше нет).
@@ -2869,6 +2950,18 @@ async function loadMessagesFromDB(chatId){
         read: isMe ? !!dbMsg.read_at : true,
         edited: !!dbMsg.edited_at
       };
+      // Реакции приходят с сервера построчно (кто, каким эмодзи) —
+      // сворачиваем в формат {эмодзи, счётчик, моя ли} для отрисовки
+      if(dbMsg.reactions && dbMsg.reactions.length){
+        const grouped={};
+        dbMsg.reactions.forEach(r=>{
+          if(!grouped[r.emoji]) grouped[r.emoji]={e:r.emoji,c:0,m:false};
+          grouped[r.emoji].c++;
+          if(r.userId===S.user?.id) grouped[r.emoji].m=true;
+        });
+        m.rxn=Object.values(grouped);
+      }
+      if(dbMsg.crystal_gifts_total>0) m.crystalTotal=dbMsg.crystal_gifts_total;
       if(dbMsg.type==="sticker"){
         m.t="sk";
         m.sk=dbMsg.text;
@@ -3224,6 +3317,7 @@ function renderMsgs(){
     if(m.t==="sys"){const s=document.createElement("div");s.className="sysmsg";s.textContent=m.tx;c.appendChild(s);return;}
     const row=document.createElement("div");
     row.className="mrow "+((m.t==="out"||(m.t==="gift"&&m.out)||(m.t==="sk"&&m.out))?"out":"in")+(S.selectedMsgs.includes(m.id)?" selected":"");
+    row.dataset.msgId=m.id;
     row.dataset.id=m.id;
     // В режиме выделения клик по строке переключает выбор
     if(S.selectMode){
@@ -3320,6 +3414,7 @@ function renderMsgs(){
       const viewsHTML = (curCh?.type==="channels" && m.dbId) ? ` · 👁 <span data-views-for="${m.dbId}">${(m.views||0).toLocaleString("ru")}</span>` : "";
       bc+=`<div class="mt">${m.time||""}${viewsHTML}${m.t==="out"?ticksHTML(m):""}</div>`;
       if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${r.e} ${r.c}</div>`).join("")}</div>`;
+      if(m.crystalTotal>0)bc+=`<div class="rxns"><div class="rxn crystal-total-badge">💎 ${m.crystalTotal.toLocaleString()}</div></div>`;
       if(m.edited)bc+='';
       h+=`<div class="bub${m.edited?" edited":""}${m.videoCircle?" vc-bub":""}" oncontextmenu="showCtx(event,${m.id})" ontouchstart="lpStart(event,${m.id})" ontouchend="lpEnd()" ontouchmove="lpEnd()">${bc}</div>`;
     }
@@ -5007,7 +5102,7 @@ function ctxReact(e){
   rp.style.left=ctx.style.left; rp.style.top=(parseInt(ctx.style.top)-44)+"px";
   ctx.classList.remove("on");
   rxnExpanded=false; rp.classList.remove("expanded");
-  el("rxn-quick-row").innerHTML=QUICK_REACTIONS.map(em=>`<div class="rxn-e" onclick="addRxn('${em}')">${em}</div>`).join("");
+  el("rxn-quick-row").innerHTML=`<div class="rxn-e rxn-crystal" onclick="openCrystalGiftModal(event)">💎</div>`+QUICK_REACTIONS.map(em=>`<div class="rxn-e" onclick="addRxn('${em}')">${em}</div>`).join("");
   rp.classList.add("on");
 }
 function toggleRxnExpand(e){
@@ -5072,49 +5167,108 @@ function delForAll(){
 function ctxDel(){ openDelModal(); }
 function tPlay(btn){ const p=btn.dataset.p==="1"; btn.innerHTML=p?'<svg width="11" height="11" fill="white" viewBox="0 0 24 24"><path d="m5 3 14 9-14 9V3z"/></svg>':'<svg width="11" height="11" fill="white" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'; btn.dataset.p=p?"0":"1"; }
 
-function toggleRxn(msgId, ri){
-  const m=(S.messages[S.chat]||[]).find(x=>x.id===msgId); if(!m?.rxn)return;
-  const r=m.rxn[ri]; if(!r)return;
-  if(!r.m && !isReactionAllowed(S.chat, r.e)){ showToast("🔒 Эта реакция здесь запрещена"); return; }
-  const maxReactions=(S.vip?.active)?3:1;
-  if(!r.m){
+// Общая функция для реакций — реально сохраняет на сервере, обновляет
+// локально сразу же (не дожидаясь ответа, для отзывчивости), рассылает
+// другим участникам чата по WebSocket. Раньше реакции были полностью
+// локальными — их не видел никто, кроме того, кто поставил.
+async function sendReactionToggle(m, emoji){
+  if(!m.dbId){ showToast("⏳ Подождите, сообщение ещё сохраняется"); return; }
+  if(!isReactionAllowed(S.chat, emoji)){ showToast("🔒 Эта реакция здесь запрещена"); return; }
+  if(!m.rxn)m.rxn=[];
+  let ex=m.rxn.find(r=>r.e===emoji);
+  const wasMine=ex && ex.m;
+
+  if(wasMine){
+    ex.m=false; ex.c=Math.max(0,ex.c-1);
+  } else {
+    const maxReactions=(S.vip?.active)?3:1;
     const myCount=m.rxn.filter(x=>x.m).length;
     if(myCount>=maxReactions){
       if(maxReactions===1){
-        m.rxn.forEach(x=>{ if(x.m && x!==r){ x.m=false; x.c=Math.max(0,x.c-1); } });
+        m.rxn.forEach(x=>{ if(x.m){ x.m=false; x.c=Math.max(0,x.c-1); } });
       } else {
         showToast(`❌ Максимум ${maxReactions} реакции одновременно`);
+        renderMsgs();
         return;
       }
     }
+    ex=m.rxn.find(r=>r.e===emoji);
+    if(ex){ ex.m=true; ex.c++; } else { m.rxn.push({e:emoji,c:1,m:true}); }
   }
-  r.m=!r.m; r.c+=r.m?1:-1;
   m.rxn=m.rxn.filter(x=>x.c>0);
   renderMsgs(); saveState();
+
+  try{
+    const data=await apiPost("/api/messages/"+m.dbId+"/reactions", {emoji}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить реакцию")); return; }
+    const curCh=S.chats.find(c=>c.id===S.chat);
+    const memberIds=getChatMemberIds(curCh);
+    wsSendReliable({type:"reaction.update", payload:{chatId:S.chat, messageId:m.dbId, emoji, userId:S.user.id, action:data.action, memberIds}});
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+function toggleRxn(msgId, ri){
+  const m=(S.messages[S.chat]||[]).find(x=>x.id===msgId); if(!m?.rxn)return;
+  const r=m.rxn[ri]; if(!r)return;
+  sendReactionToggle(m, r.e);
 }
 function addRxn(emoji){
   el("rxn-picker").classList.remove("on");
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
-  if(!isReactionAllowed(S.chat, emoji)){ showToast("🔒 Эта реакция здесь запрещена"); return; }
-  if(!m.rxn)m.rxn=[];
-  let ex=m.rxn.find(r=>r.e===emoji);
-  if(ex && ex.m){ renderMsgs(); return; } // уже стоит эта же реакция
+  sendReactionToggle(m, emoji);
+}
 
-  const maxReactions=(S.vip?.active)?3:1;
-  const myCount=m.rxn.filter(x=>x.m).length;
-  if(myCount>=maxReactions){
-    if(maxReactions===1){
-      m.rxn.forEach(x=>{ if(x.m){ x.m=false; x.c=Math.max(0,x.c-1); } });
-    } else {
-      showToast(`❌ Максимум ${maxReactions} реакции одновременно`);
-      renderMsgs();
-      return;
-    }
-  }
-  ex=m.rxn.find(r=>r.e===emoji);
-  if(ex){ ex.m=true; ex.c++; } else { m.rxn.push({e:emoji,c:1,m:true}); }
-  m.rxn=m.rxn.filter(x=>x.c>0);
-  renderMsgs(); saveState();
+// ── Кристалльные подарки — как звёзды в Telegram, только Crystals ─────
+let crystalGiftTargetMsg=null;
+
+function openCrystalGiftModal(e){
+  if(e) e.stopPropagation();
+  el("rxn-picker").classList.remove("on");
+  const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId);
+  if(!m || !m.dbId){ showToast("⏳ Подождите, сообщение ещё сохраняется"); return; }
+  if(m.t==="out"){ showToast("💎 Нельзя подарить самому себе"); return; }
+  crystalGiftTargetMsg=m;
+  if(el("crystal-gift-custom")) el("crystal-gift-custom").value="";
+  el("m-crystal-gift").classList.add("on");
+}
+function selectCrystalGiftAmount(n){ sendCrystalGift(n); }
+function confirmCrystalGift(){
+  const n=parseInt(el("crystal-gift-custom")?.value);
+  if(!n || n<=0){ showToast("❌ Введите количество больше 0"); return; }
+  sendCrystalGift(n);
+}
+async function sendCrystalGift(amount){
+  const m=crystalGiftTargetMsg;
+  if(!m || !m.dbId) return;
+  if(amount>(S.bal||0)){ showToast("❌ Недостаточно Crystals на балансе"); return; }
+  closeM("m-crystal-gift");
+  try{
+    const data=await apiPost("/api/messages/"+m.dbId+"/crystal-gift", {amount}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось подарить")); return; }
+    S.bal=data.newBalance; updBal();
+    m.crystalTotal=(m.crystalTotal||0)+amount;
+    renderMsgs(); saveState();
+    playCrystalGiftAnimation(m.id, amount);
+
+    const curCh=S.chats.find(c=>c.id===S.chat);
+    const memberIds=getChatMemberIds(curCh);
+    wsSendReliable({type:"crystal.gifted", payload:{chatId:S.chat, messageId:m.dbId, fromUserId:S.user.id, fromName:S.user.name, amount, memberIds}});
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+// Красивая анимация на 5 секунд, когда кристаллы прилетают на сообщение —
+// парящие кристаллики + вспышка числа
+function playCrystalGiftAnimation(msgLocalId, amount){
+  const bub=document.querySelector(`[data-msg-id="${msgLocalId}"]`);
+  if(!bub) return;
+  const layer=document.createElement("div");
+  layer.className="crystal-gift-fx";
+  layer.innerHTML=`
+    <div class="cgfx-burst">+${amount} 💎</div>
+    ${Array.from({length:8}).map((_,i)=>`<div class="cgfx-particle" style="--i:${i}">💎</div>`).join("")}
+  `;
+  bub.appendChild(layer);
+  setTimeout(()=>layer.remove(), 5000);
 }
 
 // ── CHAT SEARCH ──────────────────────────────────────────────
