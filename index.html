@@ -2769,6 +2769,12 @@ function loginOK(){
       S.messages[99999]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NS",col:6,tx:SUPPORT_GREET,time:now(),isSupport:true}];
       saveState(); renderChats();
     }
+    if(!S.chats.find(c=>c.id===66666)){
+      const ch={id:66666,nm:"Nexus BotFather 🛠️",ini:"BF",col:5,online:true,prev:"Создавай ботов прямо тут",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:""};
+      S.chats.push(ch);
+      S.messages[66666]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"BF",col:5,tx:BOTFATHER_GREET,time:now(),isSupport:true}];
+      saveState(); renderChats();
+    }
   }, 300);
 
   loadSupportMessages();
@@ -3914,6 +3920,25 @@ function sendMsg(){
       if(sch){sch.prev=ans.slice(0,50);sch.time=now();sch.lastTs=Date.now();}
       renderMsgs(); renderSupportQuick(); renderChats(); saveState();
     }, 800+Math.random()*500);
+    return;
+  }
+  // ── Nexus BotFather interception ──
+  if(S.chat === 66666){
+    if(!S.messages[66666]) S.messages[66666]=[];
+    S.messages[66666].push({id:nextId(),t:"out",tx:txt,time:now(),ts:Date.now(),read:true});
+    setInputText(""); aResize(inp);
+    const sch=S.chats.find(c=>c.id===66666);
+    if(sch){sch.prev=txt;sch.time=now();sch.lastTs=Date.now();}
+    renderMsgs(); renderChats(); saveState();
+    const st=el("chst");
+    if(st){st.textContent="печатает...";st.className="chst typ";}
+    setTimeout(async ()=>{
+      if(st){st.textContent=T("online");st.className="chst";}
+      const ans=await getBotFatherReply(txt);
+      S.messages[66666].push({id:nextId(),t:"in",fr:"BF",col:5,tx:ans,time:now()});
+      if(sch){sch.prev=ans.slice(0,50);sch.time=now();sch.lastTs=Date.now();}
+      renderMsgs(); renderChats(); saveState();
+    }, 500+Math.random()*400);
     return;
   }
   if(!S.messages[S.chat])S.messages[S.chat]=[];
@@ -7234,6 +7259,7 @@ const VIP_PERKS = [
   {ico:"🎭", title:"Анимированные аватары", desc:"GIF и анимация профиля"},
   {ico:"🐲", title:"PREMIUM стикеры", desc:"Все паки бесплатно"},
   {ico:"✨", title:"Эмодзи-статус", desc:"Свой эмодзи рядом с именем"},
+  {ico:"🤖", title:"Создание ботов", desc:"Свой бот через @Nexus BotFather"},
   {ico:"🎨", title:"Цвет имени", desc:"Выбери свой цвет, видно всем"},
   {ico:"📁", title:"Папки чатов", desc:"Организация чатов в папки"},
   {ico:"🌐", title:"Перевод сообщений", desc:"Авто-перевод на ваш язык"},
@@ -7624,6 +7650,62 @@ const SUPPORT_FALLBACK = [
 ];
 
 let supportChatId = null;
+
+// ── Nexus BotFather — создание ботов прямо в чате, как в Telegram ─────
+const BOTFATHER_GREET = `👋 Привет! Я Nexus BotFather — здесь можно создавать своих ботов.
+
+⚠️ Создание ботов — привилегия VIP.
+
+Команды:
+/newbot — создать нового бота
+/mybots — список твоих ботов
+/help — показать это сообщение снова`;
+
+let botFatherState = null; // null | "awaiting_name"
+
+async function getBotFatherReply(txt){
+  const cmd = txt.trim().toLowerCase();
+
+  if(botFatherState==="awaiting_name"){
+    botFatherState=null;
+    const name=txt.trim();
+    if(!name){ return "❌ Название не может быть пустым. Напиши /newbot, чтобы попробовать снова."; }
+    try{
+      const data=await apiPost("/api/bots/create", {name}, true);
+      if(!data || !data.success){
+        return "❌ "+(data&&data.error||"Не удалось создать бота")+"\n\nНапиши /newbot, чтобы попробовать снова.";
+      }
+      const b=data.bot;
+      return `🎉 Готово! Бот «${b.name}» создан.\n\n👤 Username: @${b.username}\n🔑 Токен для API:\n${b.bot_token}\n\n⚠️ Никому не показывай токен — с ним можно слать сообщения от имени бота.\n\nЧтобы бот отвечал автоматически — настрой Webhook URL в /mybots.`;
+    }catch(e){ return "❌ Не удалось связаться с сервером. Попробуй ещё раз чуть позже."; }
+  }
+
+  if(cmd==="/newbot"){
+    if(!S.vip?.active){
+      return "🔒 Создание ботов доступно только с активным VIP.\n\nОформи подписку — кнопка «👑 VIP» вверху экрана.";
+    }
+    botFatherState="awaiting_name";
+    return "Хорошо! Как назвать бота? Просто напиши название следующим сообщением.";
+  }
+
+  if(cmd==="/mybots"){
+    try{
+      const data=await apiGet("/api/bots/mine");
+      const bots=(data && data.bots)||[];
+      if(!bots.length) return "У тебя пока нет ботов. Напиши /newbot, чтобы создать первого.";
+      return "🤖 Твои боты:\n\n"+bots.map(b=>`• ${b.name} (@${b.username}) — ${b.bot_status==="active"?"✅ активен":"⏸️ на паузе"}`).join("\n")+
+        "\n\nПоменять webhook или статус можно из Dev Panel, если у тебя есть туда доступ, либо напиши сюда /newbot для нового бота.";
+    }catch(e){ return "❌ Не удалось загрузить список ботов."; }
+  }
+
+  if(cmd==="/help"){
+    return BOTFATHER_GREET;
+  }
+
+  return "Не поняла команду 🤔 Напиши /help, чтобы увидеть список того, что я умею.";
+}
+
+
 
 // Подтягивает реальные системные уведомления (о покупках и т.п.) с сервера
 // и подмешивает их в локальный чат 99999 — на случай, если они пришли,
