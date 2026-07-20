@@ -2041,7 +2041,7 @@ function wsHandleMessage(msg){
       break;
 
     case "message.new": {
-      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, poll, contact, spoiler, waveform, gift, msgType, asChannel, senderName, senderAvatar } = msg.payload;
+      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, poll, contact, spoiler, waveform, gift, msgType, asChannel, senderName, senderAvatar, senderStatusEmoji, senderNameColor } = msg.payload;
       // Не добавляем своё же сообщение (оно уже есть локально)
       if(senderId === S.user?.id) break;
       // Защита от "пустых" сообщений (например, если у собеседника не удалась загрузка файла)
@@ -2086,6 +2086,8 @@ function wsHandleMessage(msg){
         fr: chIsChannel ? (ch?.ini||"?")[0] : (senderName || ch?.ini || "?")[0],
         frName: chIsChannel ? null : (senderName || null),
         frAvatar: chIsChannel ? (ch?.avatar||null) : (senderAvatar||null),
+        frStatusEmoji: chIsChannel ? null : (senderStatusEmoji||null),
+        frNameColor: chIsChannel ? null : (senderNameColor||null),
         col: chIsChannel ? (ch?.col||0) : colorFromId(senderId),
         asChannel: asChannel || undefined,
         tx: text,
@@ -2853,6 +2855,8 @@ async function loadMessagesFromDB(chatId){
         fr: chIsChannel ? (ch?.ini||"?")[0] : (dbMsg.sender_name ? dbMsg.sender_name.slice(0,2).toUpperCase() : "?"),
         frName: chIsChannel ? null : (dbMsg.sender_name || null),
         frAvatar: chIsChannel ? (ch?.avatar||null) : (dbMsg.sender_avatar||null),
+        frStatusEmoji: chIsChannel ? null : (dbMsg.sender_status_emoji||null),
+        frNameColor: chIsChannel ? null : (dbMsg.sender_name_color||null),
         col: chIsChannel ? (ch?.col||0) : colorFromId(dbMsg.user_id),
         asChannel: dbMsg.as_channel || undefined,
         tx: dbMsg.text || "",
@@ -3246,7 +3250,7 @@ function renderMsgs(){
       // канал (не конкретный админ, который нажал "отправить" — как у
       // "Топор+" в референсе: имя канала текстом над каждым постом).
       if(m.t!=="out" && curCh?.type==="groups" && m.frName && !m.asChannel){
-        bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${colBg(m.col||0)}">${escHtml(m.frName)}</div>`;
+        bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${m.frNameColor||colBg(m.col||0)}">${escHtml(m.frName)}${m.frStatusEmoji?' '+escHtml(m.frStatusEmoji):""}</div>`;
       } else if(m.t!=="out" && curCh?.type==="channels" && !m.asChannel){
         bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${colBg(m.col||0)}">${escHtml(curCh.nm||"Канал")}</div>`;
       }
@@ -3855,7 +3859,7 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds){
       if(dbId){ msg.dbId=dbId; saveState(); }
     }catch(e){ console.warn("save msg error:", e); }
   }
-  const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, memberIds, id:dbId, asChannel: msg.asChannel||null, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"" } });
+  const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, memberIds, id:dbId, asChannel: msg.asChannel||null, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||"" } });
 
   // Если WS не подключён — показываем локальный авто-ответ (демо)
   if(!sent){
@@ -3891,7 +3895,7 @@ async function sendSticker(sk){
       const dbId=d?.message?.id||null;
       if(dbId){ localMsg.dbId=dbId; saveState(); }
       const memberIds=getChatMemberIds(ch);
-      wsSendReliable({type:"message.send", payload:{chatId, text:sk, msgType:"sticker", memberIds, id:dbId, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||""}});
+      wsSendReliable({type:"message.send", payload:{chatId, text:sk, msgType:"sticker", memberIds, id:dbId, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||""}});
     }catch(e){ console.warn("send sticker error:", e); }
   }
 }
@@ -4011,7 +4015,7 @@ async function submitPoll(){
       if(dbId){ msg.dbId=dbId; saveState(); }
     }catch(e){ console.warn("save msg error:",e); }
   }
-  wsSend({type:"message.send",payload:{chatId,text:"",memberIds,poll,id:dbId,senderName: S.user?.name||"", senderAvatar: S.user?.avatar||""}});
+  wsSend({type:"message.send",payload:{chatId,text:"",memberIds,poll,id:dbId,senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||""}});
 }
 function voteWord(n){
   const n10=n%10, n100=n%100;
@@ -4112,7 +4116,7 @@ async function sendContactMsg(userId,nm,col,uname){
       if(dbId){ msg.dbId=dbId; saveState(); }
     }catch(e){ console.warn("save msg error:",e); }
   }
-  wsSend({type:"message.send",payload:{chatId,text:"",memberIds,contact,id:dbId,senderName: S.user?.name||"", senderAvatar: S.user?.avatar||""}});
+  wsSend({type:"message.send",payload:{chatId,text:"",memberIds,contact,id:dbId,senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||""}});
 }
 
 function openImgViewer(url){
@@ -4595,7 +4599,7 @@ async function sendWithAttachment(caption){
     }
     wsSend({
       type:"message.send",
-      payload:{chatId,text:caption||"",memberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler,waveform:att.waveform||null,id:dbId,senderName: S.user?.name||"", senderAvatar: S.user?.avatar||""}
+      payload:{chatId,text:caption||"",memberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler,waveform:att.waveform||null,id:dbId,senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||""}
     });
   }catch(err){
     console.error("upload error:",err);
@@ -7728,7 +7732,7 @@ async function sendGift(){
       const dbId=d?.message?.id||null;
       if(dbId){ localMsg.dbId=dbId; saveState(); }
       const memberIds=getChatMemberIds(ch);
-      wsSendReliable({type:"message.send", payload:{chatId, text:"", memberIds, gift:giftData, id:dbId, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||""}});
+      wsSendReliable({type:"message.send", payload:{chatId, text:"", memberIds, gift:giftData, id:dbId, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||""}});
     }catch(e){ console.warn("send gift error:", e); }
   }
 }
