@@ -1494,6 +1494,21 @@ tr:hover td{background:var(--bg3)}
   <div class="macts" style="margin-top:14px"><button class="xbtn sec" onclick="closeM('m-crystal-gift')">Отмена</button><button class="xbtn gn" onclick="confirmCrystalGift()">💎 Подарить</button></div>
 </div></div>
 
+<div class="movl" id="m-gift-detail"><div class="modal" style="max-width:320px;text-align:center">
+  <div id="gd-visual" style="font-size:64px;margin:10px 0"></div>
+  <div id="gd-name" style="font-family:'Syne',sans-serif;font-weight:700;font-size:18px;margin-bottom:4px"></div>
+  <div id="gd-rarity" style="font-size:11.5px;color:var(--tx3);margin-bottom:16px"></div>
+  <div style="background:var(--bg2);border:1px solid var(--brd);border-radius:12px;padding:12px;text-align:left">
+    <div class="prow"><div class="plbl">От кого</div><div class="pval" id="gd-from">—</div></div>
+    <div class="prow"><div class="plbl">Дата</div><div class="pval" id="gd-date">—</div></div>
+    <div id="gd-msg-row" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--brd)">
+      <div style="font-size:11px;color:var(--tx3);margin-bottom:3px">Сообщение</div>
+      <div id="gd-msg" style="font-size:13px"></div>
+    </div>
+  </div>
+  <div class="macts" style="margin-top:14px"><button class="xbtn sec" onclick="closeM('m-gift-detail')">Закрыть</button></div>
+</div></div>
+
 <div class="movl" id="m-gift-recipient"><div class="modal">
   <div class="mtit">🎁 Кому подарить?</div>
   <input class="fii" id="gift-recipient-search" placeholder="Поиск по чатам..." oninput="renderGiftRecipientList(this.value)" style="margin-bottom:10px">
@@ -5838,7 +5853,8 @@ function openChatInfo(){
       apiGet("/api/users/"+ch.withUserId+"/gifts").then(d=>{
         const gifts=(d && d.gifts)||[];
         if(gifts.length){
-          el("ui-gifts-grid").innerHTML = gifts.map(g=>`<div class="pgift ${g.rarity||"common"}" title="${escHtml(g.name)}" onclick="closeM('m-user-info');showToast('🎁 '+'${escHtml(g.name).replace(/'/g,"\\'")}')">${giftVisual({icon:g.icon,imageUrl:g.image_url})}</div>`).join("");
+          uiProfileGifts=gifts;
+          el("ui-gifts-grid").innerHTML = gifts.map((g,i)=>`<div class="pgift ${g.rarity||"common"}" title="${escHtml(g.name)}" onclick="showGiftDetailModal({icon:uiProfileGifts[${i}].icon,imageUrl:uiProfileGifts[${i}].image_url,name:uiProfileGifts[${i}].name,rarity:uiProfileGifts[${i}].rarity,fromName:uiProfileGifts[${i}].from_name,createdAt:uiProfileGifts[${i}].created_at,message:uiProfileGifts[${i}].message})">${giftVisual({icon:g.icon,imageUrl:g.image_url})}</div>`).join("");
           el("ui-gifts-row").style.display="block";
         }
       }).catch(()=>{});
@@ -8799,6 +8815,8 @@ function renderGiftInventory(){
 // Кэш последней загрузки — чтобы openMyGiftDetail мог найти подробности
 // по gift_id без повторного запроса
 let myReceivedGifts=[];
+// То же самое, но для подарков в карточке профиля СОБЕСЕДНИКА (не своих)
+let uiProfileGifts=[];
 
 async function renderMyGifts(){
   const showcase = el("my-gifts-showcase"); if(!showcase) return;
@@ -8847,16 +8865,27 @@ async function renderMyGifts(){
 }
 
 // Детали полученного подарка — при клике перекидывает в каталог
+// Общая карточка деталей подарка — от кого, дата, сообщение, крупная
+// картинка. Раньше клик на подарок просто показывал тост с названием.
+function showGiftDetailModal(gift){
+  el("gd-visual").innerHTML = gift.imageUrl
+    ? `<img src="${gift.imageUrl}" style="width:96px;height:96px;object-fit:contain;border-radius:12px">`
+    : (gift.icon||"🎁");
+  el("gd-name").textContent = gift.name||"Подарок";
+  const rarityLabel={common:"⚪ Обычный",rare:"💜 Редкий",epic:"💚 Эпический",legendary:"⭐ Легендарный"}[gift.rarity]||"";
+  el("gd-rarity").textContent = rarityLabel;
+  el("gd-from").textContent = gift.fromName || "Аноним";
+  el("gd-date").textContent = gift.createdAt ? new Date(gift.createdAt).toLocaleString("ru",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—";
+  if(gift.message){ el("gd-msg").textContent=gift.message; el("gd-msg-row").style.display="block"; }
+  else { el("gd-msg-row").style.display="none"; }
+  el("m-gift-detail").classList.add("on");
+}
+
 function openMyGiftDetail(giftId){
   const items=myReceivedGifts.filter(x=>x.gift_id===giftId);
   if(!items.length)return;
-  const g=items[0];
-  const count=items.length;
-  const rarityLabel={common:"⚪ Обычный",rare:"💜 Редкий",epic:"💚 Эпический",legendary:"⭐ Легендарный"}[g.rarity]||"";
-  showToast(`${g.icon} ${g.name} ${rarityLabel}${count>1?` ×${count}`:""}`);
-  // Подсветим этот подарок в каталоге
-  const catItem=S.gifts_catalog.find(x=>x.id===giftId);
-  if(catItem){ setTimeout(()=>openGiftModal(giftId),300); }
+  const g=items[0]; // самый свежий — myReceivedGifts отсортирован по дате с сервера
+  showGiftDetailModal({icon:g.icon, imageUrl:g.image_url, name:g.name, rarity:g.rarity, fromName:g.from_name, createdAt:g.created_at, message:g.message});
 }
 
 // Gift rendering integrated into renderMsgs directly below
