@@ -8661,9 +8661,12 @@ function openGiftModal(id){
   el("m-gift").classList.add("on");
 }
 
-async function sendGift(){
+async function sendGift(targetChatId){
   const g = S.gifts_catalog.find(x=>x.id===selectedGiftId); if(!g) return;
   if(S.bal < g.price){ showToast("❌ Недостаточно CR"); return; }
+  const chatId = targetChatId || S.chat;
+  const ch=S.chats.find(c=>c.id===chatId);
+  if(!ch){ showToast("❌ Чат не найден"); return; }
 
   // Раньше списание и владение были полностью локальными — сервер вообще
   // не знал о покупке, теоретически можно было слать подарки бесплатно
@@ -8678,19 +8681,17 @@ async function sendGift(){
 
   S.bal = buyData.newBalance; g.sold = buyData.sold ?? ((g.sold||0)+1);
   // send as message in chat
-  if(!S.messages[S.chat]) S.messages[S.chat]=[];
+  if(!S.messages[chatId]) S.messages[chatId]=[];
   const msg_ = el("mgift-msg")?.value||"";
-  const giftData={icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,to:giftRecipient,msg:msg_};
+  const giftData={icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,to:ch.nm,msg:msg_};
   const localMsg={id:nextId(),t:"gift",out:true,...giftData,time:now()};
-  S.messages[S.chat].push(localMsg);
-  const ch=S.chats.find(c=>c.id===S.chat);
-  if(ch){ch.prev="🎁 Подарок: "+g.name;ch.time=now();ch.lastTs=Date.now();}
-  updBal(); closeM("m-gift"); renderMsgs(); renderChats(); renderMyGifts(); saveState();
-  showToast("🎁 Подарок «"+g.name+"» отправлен!");
+  S.messages[chatId].push(localMsg);
+  ch.prev="🎁 Подарок: "+g.name; ch.time=now(); ch.lastTs=Date.now();
+  updBal(); closeM("m-gift"); if(S.chat===chatId) renderMsgs(); renderChats(); renderMyGifts(); saveState();
+  showToast("🎁 Подарок «"+g.name+"» отправлен пользователю "+ch.nm+"!");
 
   // Реально сохраняем на сервере и доставляем собеседнику — раньше подарок оставался
   // только в браузере отправителя и никогда не долетал до получателя
-  const chatId=S.chat;
   const memberIds=getChatMemberIds(ch);
   await retrySimpleMsg(localMsg, chatId, ch, memberIds, {chatId, text:"", gift:giftData}, {text:"", gift:giftData});
 }
@@ -8743,11 +8744,15 @@ async function giftFromInventory(giftId, targetChatId){
   await retrySimpleMsg(localMsg, chatId, ch, memberIds, {chatId, text:"", gift:giftData}, {text:"", gift:giftData});
 }
 
-// Выбор получателя перед дарением из коллекции — раньше жёстко дарило
-// тому чату, откуда открыли экран подарков, теперь можно выбрать любого
+// Выбор получателя перед дарением — раньше жёстко дарило тому чату,
+// откуда открыли экран подарков, теперь можно выбрать любого. Работает
+// в двух режимах: 'inventory' (дарим уже купленное) и 'direct' (покупаем
+// и сразу дарим, минуя коллекцию)
 let giftPickerTargetGiftId=null;
-function openGiftRecipientPicker(giftId){
+let giftPickerMode="inventory";
+function openGiftRecipientPicker(giftId, mode){
   giftPickerTargetGiftId=giftId;
+  giftPickerMode=mode||"inventory";
   if(el("gift-recipient-search")) el("gift-recipient-search").value="";
   renderGiftRecipientList("");
   el("m-gift-recipient").classList.add("on");
@@ -8757,8 +8762,11 @@ function renderGiftRecipientList(filter){
   const f=(filter||"").toLowerCase();
   const chats=S.chats.filter(c=>c.type==="personal" && !isSystemChat(c.id) && c.nm.toLowerCase().includes(f));
   if(!chats.length){ wrap.innerHTML='<div style="color:var(--tx3);font-size:12px;text-align:center;padding:16px 0">Ничего не найдено</div>'; return; }
+  const fnCall = giftPickerMode==="direct"
+    ? (chId)=>`sendGift('${chId}')`
+    : (chId)=>`giftFromInventory(${giftPickerTargetGiftId},'${chId}')`;
   wrap.innerHTML=chats.map(ch=>`
-    <div class="contact-item" style="cursor:pointer" onclick="giftFromInventory(${giftPickerTargetGiftId},'${ch.id}');closeM('m-gift-recipient')">
+    <div class="contact-item" style="cursor:pointer" onclick="${fnCall(ch.id)};closeM('m-gift-recipient')">
       <div class="contact-av" style="background:${colBg(ch.col||0)};overflow:hidden">${ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini}</div>
       <div><div class="contact-nm">${ch.nm}</div></div>
     </div>
@@ -10031,7 +10039,7 @@ applyTheme(S.theme||"dark");
     <div class="macts">
       <button class="xbtn sec" onclick="closeM('m-gift')">Отмена</button>
       <button class="xbtn sec" onclick="buyGiftToInventory()">💼 Купить</button>
-      <button class="xbtn gn" onclick="sendGift()">🎁 Подарить!</button>
+      <button class="xbtn gn" onclick="closeM('m-gift');openGiftRecipientPicker(selectedGiftId,'direct')">🎁 Подарить!</button>
     </div>
   </div>
 </div>
