@@ -160,17 +160,17 @@ button,input,textarea,select{font-family:inherit}
 .rec-hint{flex:1;font-size:12.5px;color:var(--tx3)}
 .rec-btn{width:30px;height:30px;border-radius:50%;border:none;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;background:var(--bg3);color:var(--tx2)}
 .rec-btn-ok{background:var(--acc);color:#fff}
-.voice-msg{display:flex;align-items:center;gap:10px;min-width:190px;padding:2px 0}
-.voice-play-btn{width:34px;height:34px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:13px}
+.voice-msg{display:flex;align-items:center;gap:10px;min-width:250px;padding:2px 0;position:relative}
+.voice-play-btn{width:34px;height:34px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:13px;position:relative}
 .voice-speed-btn{flex-shrink:0;font-size:11px;font-weight:700;color:var(--tx2);background:var(--bg4);border-radius:10px;padding:3px 7px;cursor:pointer;user-select:none}
 .voice-speed-btn:hover{background:var(--bg3);color:var(--tx)}
 .vc-speed-btn{position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;z-index:2}
 .voice-track{flex:1;display:flex;flex-direction:column;gap:4px;cursor:pointer}
-.voice-wave-wrap{position:relative;height:22px;cursor:pointer}
-.voice-unplayed-dot{width:8px;height:8px;border-radius:50%;background:var(--acc2);flex-shrink:0;margin-right:2px;align-self:center}
+.voice-wave-wrap{position:relative;height:22px;cursor:pointer;overflow:hidden}
+.voice-unplayed-dot{position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:var(--acc2);border:2px solid var(--bg2);z-index:1}
 .voice-wave-bars{position:absolute;inset:0;display:flex;align-items:center;gap:2px;color:rgba(255,255,255,.35)}
 .mrow.in .voice-wave-bars{color:var(--tx2)}
-.voice-wave-bars span{flex:1;min-width:2px;max-width:3px;border-radius:2px;background:currentColor;display:block}
+.voice-wave-bars span{flex:1;max-width:3px;border-radius:2px;background:currentColor;display:block}
 .voice-wave-progress{color:#fff}
 .mrow.in .voice-wave-progress{color:var(--acc)}
 .voice-dur{font-size:11px;opacity:.75}
@@ -3793,7 +3793,7 @@ function renderMsgs(){
         } else {
           const barsHTML=renderWaveBars(m.voice.waveform);
           const isUnplayed = m.t!=="out" && !m.voicePlayed;
-          bc+=`<div class="voice-msg" onclick="toggleVoicePlay(this,'${m.voice.url}')" data-msg-id="${m.id}">${isUnplayed?'<div class="voice-unplayed-dot"></div>':''}<div class="voice-play-btn">▶</div><div class="voice-track"><div class="voice-wave-wrap" onmousedown="seekVoice(event,this.closest('.voice-msg'))" ontouchstart="seekVoice(event,this.closest('.voice-msg'))"><div class="voice-wave-bars">${barsHTML}</div><div class="voice-wave-bars voice-wave-progress" style="clip-path:inset(0 100% 0 0)">${barsHTML}</div></div><div class="voice-dur">${formatDur(m.voice.duration)}${m.voice.size?" · "+formatFileSize(m.voice.size):""}</div></div><div class="voice-speed-btn" onclick="cycleSpeed(event,this,this.closest('.voice-msg').querySelector('audio'))">${(S.playbackSpeed||1)}x</div><audio preload="metadata"></audio></div>`;
+          bc+=`<div class="voice-msg" onclick="toggleVoicePlay(this,'${m.voice.url}')" data-msg-id="${m.id}"><div class="voice-play-btn">▶${isUnplayed?'<div class="voice-unplayed-dot"></div>':''}</div><div class="voice-track"><div class="voice-wave-wrap" onmousedown="seekVoice(event,this.closest('.voice-msg'))" ontouchstart="seekVoice(event,this.closest('.voice-msg'))"><div class="voice-wave-bars">${barsHTML}</div><div class="voice-wave-bars voice-wave-progress" style="clip-path:inset(0 100% 0 0)">${barsHTML}</div></div><div class="voice-dur">${formatDur(m.voice.duration)}${m.voice.size?" · "+formatFileSize(m.voice.size):""}</div></div><div class="voice-speed-btn" onclick="cycleSpeed(event,this,this.closest('.voice-msg').querySelector('audio'))">${(S.playbackSpeed||1)}x</div><audio preload="metadata"></audio></div>`;
         }
       }
       if(m.videoCircle){
