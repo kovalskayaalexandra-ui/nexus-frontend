@@ -301,7 +301,8 @@ body.select-mode .msel-check{display:flex}
 .mrow.out .mt{justify-content:flex-end}
 .rxns{display:flex;gap:3px;margin-top:3px;flex-wrap:wrap}
 .rxn{background:var(--bg3);border:1px solid var(--brd);border-radius:999px;padding:2px 7px;font-size:11.5px;cursor:pointer;transition:background .1s;user-select:none}
-.crystal-total-badge{cursor:default;background:linear-gradient(135deg,rgba(103,232,249,.18),rgba(108,99,255,.18));border-color:rgba(103,232,249,.4);color:var(--cr);font-weight:700}
+.crystal-total-badge{cursor:pointer;background:linear-gradient(135deg,rgba(103,232,249,.18),rgba(108,99,255,.18));border-color:rgba(103,232,249,.4);color:var(--cr);font-weight:700;transition:transform .1s}
+.crystal-total-badge:hover{transform:scale(1.06)}
 
 /* Анимация кристалльного подарка — 5 секунд, парящие кристаллики + вспышка числа */
 .crystal-gift-fx{position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:20}
@@ -3787,7 +3788,7 @@ function renderMsgs(){
       const viewsHTML = (curCh?.type==="channels" && m.dbId) ? ` · 👁 <span data-views-for="${m.dbId}">${(m.views||0).toLocaleString("ru")}</span>` : "";
       bc+=`<div class="mt">${m.time||""}${viewsHTML}${m.t==="out"?ticksHTML(m):""}</div>`;
       if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${r.e} ${r.c}</div>`).join("")}</div>`;
-      if(m.crystalTotal>0)bc+=`<div class="rxns"><div class="rxn crystal-total-badge">💎 ${m.crystalTotal.toLocaleString()}</div></div>`;
+      if(m.crystalTotal>0)bc+=`<div class="rxns"><div class="rxn crystal-total-badge" onclick="quickAddCrystal(${m.id})" title="Нажмите, чтобы подарить ещё 1 💎">💎 ${m.crystalTotal.toLocaleString()}</div></div>`;
       if(m.edited)bc+='';
       h+=`<div class="bub${m.edited?" edited":""}${m.videoCircle?" vc-bub":""}" oncontextmenu="showCtx(event,${m.id})" ontouchstart="lpStart(event,${m.id})" ontouchend="lpEnd()" ontouchmove="lpEnd()">${bc}</div>`;
     }
@@ -5570,6 +5571,17 @@ function confirmCrystalGift(){
   if(!n || n<=0){ showToast("❌ Введите количество больше 0"); return; }
   sendCrystalGift(n);
 }
+// Клик по уже стоящему значку суммы кристаллов — сразу +1, без открытия
+// окна выбора суммы каждый раз. Как в Telegram: клик по звезде на
+// сообщении добавляет ещё одну звезду.
+function quickAddCrystal(msgId){
+  const m=(S.messages[S.chat]||[]).find(x=>x.id===msgId);
+  if(!m || !m.dbId){ showToast("⏳ Подождите, сообщение ещё сохраняется"); return; }
+  if(m.t==="out"){ showToast("💎 Нельзя подарить самому себе"); return; }
+  crystalGiftTargetMsg=m;
+  sendCrystalGift(1);
+}
+
 async function sendCrystalGift(amount){
   const m=crystalGiftTargetMsg;
   if(!m || !m.dbId) return;
