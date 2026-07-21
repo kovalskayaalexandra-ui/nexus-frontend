@@ -166,8 +166,9 @@ button,input,textarea,select{font-family:inherit}
 .vc-speed-btn{position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;z-index:2}
 .voice-track{flex:1;display:flex;flex-direction:column;gap:4px;cursor:pointer}
 .voice-wave-wrap{position:relative;height:22px;cursor:pointer}
+.voice-unplayed-dot{width:8px;height:8px;border-radius:50%;background:var(--acc2);flex-shrink:0;margin-right:2px;align-self:center}
 .voice-wave-bars{position:absolute;inset:0;display:flex;align-items:center;gap:2px;color:rgba(255,255,255,.35)}
-.mrow.in .voice-wave-bars{color:var(--bg4)}
+.mrow.in .voice-wave-bars{color:var(--tx2)}
 .voice-wave-bars span{flex:1;min-width:2px;max-width:3px;border-radius:2px;background:currentColor;display:block}
 .voice-wave-progress{color:#fff}
 .mrow.in .voice-wave-progress{color:var(--acc)}
@@ -1258,7 +1259,7 @@ tr:hover td{background:var(--bg3)}
     </div>
   </div>
   <div class="settings-body">
-    <input class="fii" id="contacts-search" placeholder="🔍 Поиск по имени или @username..." style="margin-bottom:14px" oninput="filterContacts(this.value)">
+    <input class="fii" id="contacts-search" placeholder="🔍 Поиск среди добавленных контактов..." style="margin-bottom:14px" oninput="filterContacts(this.value)">
     <div id="contacts-list"></div>
   </div>
 </div>
@@ -2172,7 +2173,7 @@ function wsHandleMessage(msg){
       break;
 
     case "message.new": {
-      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, poll, contact, spoiler, waveform, gift, msgType, asChannel, senderName, senderAvatar, senderStatusEmoji, senderNameColor } = msg.payload;
+      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, fileSize, poll, contact, spoiler, waveform, gift, msgType, asChannel, senderName, senderAvatar, senderStatusEmoji, senderNameColor } = msg.payload;
       // Не добавляем своё же сообщение (оно уже есть локально)
       if(senderId === S.user?.id) break;
       // Защита от "пустых" сообщений (например, если у собеседника не удалась загрузка файла)
@@ -2233,7 +2234,7 @@ function wsHandleMessage(msg){
         if(mediaType==="image"){ newMsg.img = mediaUrl; if(spoiler) newMsg.spoiler=true; }
         else if(mediaType==="video"){ newMsg.video = mediaUrl; if(spoiler) newMsg.spoiler=true; }
         else if(mediaType==="audio") newMsg.audio = { url: mediaUrl, name: fileName||"Аудио" };
-        else if(mediaType==="voice") newMsg.voice = { url: mediaUrl, duration: 0, waveform: waveform||null };
+        else if(mediaType==="voice") newMsg.voice = { url: mediaUrl, duration: 0, waveform: waveform||null, size: fileSize||0 };
         else if(mediaType==="videoCircle") newMsg.videoCircle = { url: mediaUrl, duration: 0 };
         else newMsg.file = { name: fileName||"Файл", url: mediaUrl };
       } else if(poll){
@@ -3614,7 +3615,10 @@ async function retrySimpleMsg(m, chatId, ch, memberIds, postBody, wsExtra){
     if(!d || !d.success) return false;
     const dbId=d?.message?.id||null;
     if(dbId){ m.dbId=dbId; saveState(); }
-    wsSendReliable({type:"message.send", payload:{chatId, memberIds, id:dbId, senderName:S.user?.name||"", senderAvatar:S.user?.avatar||"", senderStatusEmoji:S.user?.statusEmoji||"", senderNameColor:S.user?.nameColor||"", ...wsExtra}});
+    // Как в Telegram: не долетает заблокировавшему, но у нас всё равно
+    // "отправлено" — см. sendTextToServer для подробного комментария
+    const wsMemberIds = d.blockedFromRecipientId ? memberIds.filter(id=>id!==d.blockedFromRecipientId) : memberIds;
+    wsSendReliable({type:"message.send", payload:{chatId, memberIds:wsMemberIds, id:dbId, senderName:S.user?.name||"", senderAvatar:S.user?.avatar||"", senderStatusEmoji:S.user?.statusEmoji||"", senderNameColor:S.user?.nameColor||"", ...wsExtra}});
     return true;
   });
 }
@@ -3646,7 +3650,8 @@ async function retryAttachmentMsg(m, chatId, ch, memberIds){
     if(!d || !d.success) return false;
     const dbId=d?.message?.id||null;
     if(dbId){ m.dbId=dbId; saveState(); }
-    wsSend({type:"message.send",payload:{chatId,text:caption||"",memberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler,waveform:att.waveform||null,id:dbId,senderName:S.user?.name||"", senderAvatar:S.user?.avatar||"", senderStatusEmoji:S.user?.statusEmoji||"", senderNameColor:S.user?.nameColor||""}});
+    const wsMemberIds = d.blockedFromRecipientId ? memberIds.filter(id=>id!==d.blockedFromRecipientId) : memberIds;
+    wsSend({type:"message.send",payload:{chatId,text:caption||"",memberIds:wsMemberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,id:dbId,senderName:S.user?.name||"", senderAvatar:S.user?.avatar||"", senderStatusEmoji:S.user?.statusEmoji||"", senderNameColor:S.user?.nameColor||""}});
     return true;
   });
   m.uploading=false;
@@ -3745,7 +3750,8 @@ function renderMsgs(){
           bc+=`<div class="voice-msg"><div class="voice-play-btn">🎤</div><div class="voice-track"><div class="voice-wave-wrap"><div class="voice-wave-bars">${renderWaveBars(m.voice.waveform)}</div></div><div class="voice-dur">загрузка…</div></div></div>`;
         } else {
           const barsHTML=renderWaveBars(m.voice.waveform);
-          bc+=`<div class="voice-msg" onclick="toggleVoicePlay(this,'${m.voice.url}')"><div class="voice-play-btn">▶</div><div class="voice-track"><div class="voice-wave-wrap" onmousedown="seekVoice(event,this.closest('.voice-msg'))" ontouchstart="seekVoice(event,this.closest('.voice-msg'))"><div class="voice-wave-bars">${barsHTML}</div><div class="voice-wave-bars voice-wave-progress" style="clip-path:inset(0 100% 0 0)">${barsHTML}</div></div><div class="voice-dur">${formatDur(m.voice.duration)}</div></div><div class="voice-speed-btn" onclick="cycleSpeed(event,this,this.closest('.voice-msg').querySelector('audio'))">${(S.playbackSpeed||1)}x</div><audio preload="metadata"></audio></div>`;
+          const isUnplayed = m.t!=="out" && !m.voicePlayed;
+          bc+=`<div class="voice-msg" onclick="toggleVoicePlay(this,'${m.voice.url}')" data-msg-id="${m.id}">${isUnplayed?'<div class="voice-unplayed-dot"></div>':''}<div class="voice-play-btn">▶</div><div class="voice-track"><div class="voice-wave-wrap" onmousedown="seekVoice(event,this.closest('.voice-msg'))" ontouchstart="seekVoice(event,this.closest('.voice-msg'))"><div class="voice-wave-bars">${barsHTML}</div><div class="voice-wave-bars voice-wave-progress" style="clip-path:inset(0 100% 0 0)">${barsHTML}</div></div><div class="voice-dur">${formatDur(m.voice.duration)}${m.voice.size?" · "+formatFileSize(m.voice.size):""}</div></div><div class="voice-speed-btn" onclick="cycleSpeed(event,this,this.closest('.voice-msg').querySelector('audio'))">${(S.playbackSpeed||1)}x</div><audio preload="metadata"></audio></div>`;
         }
       }
       if(m.videoCircle){
@@ -4343,17 +4349,23 @@ function sendMsg(){
 
 async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds){
   let dbId=null;
+  let blockedFromRecipientId=null;
   if(typeof chatId === "string" && chatId.length > 10){
     const ok=await attemptWithAutoRetry(msg, async ()=>{
       const d=await apiPost("/api/messages", {chatId, text: txt, asChannel: msg.asChannel||null}, true);
       if(!d || !d.success) return false;
       dbId=d?.message?.id||null;
+      blockedFromRecipientId=d?.blockedFromRecipientId||null;
       if(dbId){ msg.dbId=dbId; saveState(); }
       return true;
     });
     if(!ok) return; // attemptWithAutoRetry уже пометил msg.failed и перерисовал
   }
-  const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, memberIds, id:dbId, asChannel: msg.asChannel||null, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||"" } });
+  // Как в Telegram: если получатель заблокировал (или мы его), сообщение
+  // всё равно "отправлено" у нас, просто не летит ему по WS и не покажется
+  // при перезагрузке его истории (см. фильтр на сервере)
+  const wsMemberIds = blockedFromRecipientId ? memberIds.filter(id=>id!==blockedFromRecipientId) : memberIds;
+  const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, memberIds:wsMemberIds, id:dbId, asChannel: msg.asChannel||null, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||"" } });
 
   // Если WS не подключён — показываем локальный авто-ответ (демо)
   if(!sent){
@@ -4608,6 +4620,13 @@ function revealSpoiler(msgId){
 let pendingAttach=null; // {file, kind:'image'|'video'|'audio'|'voice'|'file', previewUrl, spoiler}
 
 // ── ГОЛОСОВЫЕ СООБЩЕНИЯ ──────────────────────────────────────
+// Раньше размер голосового вообще нигде не показывался и не хранился
+function formatFileSize(bytes){
+  if(!bytes) return "";
+  if(bytes<1024*1024) return (bytes/1024).toFixed(0)+" КБ";
+  return (bytes/(1024*1024)).toFixed(1)+" МБ";
+}
+
 function formatDur(sec){
   sec=Math.max(0,Math.round(sec||0));
   const m=Math.floor(sec/60), s=sec%60;
@@ -4723,6 +4742,16 @@ function toggleVoicePlay(wrapEl, url){
     audio.playbackRate=S.playbackSpeed||1;
     audio.play();
     btn.textContent="⏸";
+    // Помечаем прослушанным — раньше "прослушано/не прослушано" не отслеживалось вообще
+    const msgId=wrapEl.dataset.msgId;
+    if(msgId){
+      const m=(S.messages[S.chat]||[]).find(x=>String(x.id)===String(msgId));
+      if(m && !m.voicePlayed){
+        m.voicePlayed=true; saveState();
+        const dot=wrapEl.querySelector(".voice-unplayed-dot");
+        if(dot) dot.remove();
+      }
+    }
   } else {
     audio.pause();
     btn.textContent="▶";
@@ -5027,7 +5056,7 @@ async function sendWithAttachment(caption){
   if(att.kind==="image"){ msg.img=att.previewUrl; if(att.spoiler) msg.spoiler=true; }
   else if(att.kind==="video"){ msg.video=att.previewUrl; if(att.spoiler) msg.spoiler=true; }
   else if(att.kind==="audio") msg.audio={url:att.previewUrl,name:att.file.name};
-  else if(att.kind==="voice") msg.voice={url:att.previewUrl,duration:att.duration||0,waveform:att.waveform||null};
+  else if(att.kind==="voice") msg.voice={url:att.previewUrl,duration:att.duration||0,waveform:att.waveform||null,size:att.file?.size||0};
   else if(att.kind==="videoCircle") msg.videoCircle={url:att.previewUrl,duration:att.duration||0};
   else msg.file={name:att.file.name,size:att.file.size};
   if(S.reply){msg.reply={fr:S.reply.fr,tx:S.reply.tx};cancelReply();}
@@ -6533,7 +6562,7 @@ async function startChatWithUser(userId, userName, col){
     }
   } catch(e){ showToast("❌ Не удалось создать чат"); }
 }
-function openNewContact(){ showToast("👤 Добавить контакт — функция в разработке"); }
+function openNewContact(){ closeContacts(); openNewChat(); }
 
 // ── NEW CHAT ──────────────────────────────────────────────────
 function openNewChat(){ el("nc-results").innerHTML=""; el("nc-search").value=""; el("m-newchat").classList.add("on"); }
