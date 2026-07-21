@@ -290,6 +290,11 @@ body.select-mode .msel-check{display:flex}
 .mt{font-size:9.5px;color:rgba(255,255,255,.35);margin-top:3px;display:flex;align-items:center;gap:3px}
 .mtick-failed{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--rd);color:#fff;font-size:10px;font-weight:800;cursor:pointer;flex-shrink:0}
 .failed-msg-menu{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:500;overflow:hidden;min-width:170px}
+.bot-cmd-menu{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:500;overflow:hidden;max-width:280px;max-height:280px;overflow-y:auto}
+.bot-cmd-item{padding:10px 14px;font-size:13px;font-weight:600;color:var(--acc2);cursor:pointer;display:flex;flex-direction:column;gap:2px;border-bottom:1px solid var(--brd)}
+.bot-cmd-item:last-child{border-bottom:none}
+.bot-cmd-item:hover{background:var(--bg4)}
+.bot-cmd-item span{font-size:11px;font-weight:400;color:var(--tx3)}
 .failed-msg-menu-item{padding:10px 14px;font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:8px}
 .failed-msg-menu-item:hover{background:var(--bg4)}
 .failed-msg-menu-item.rd{color:var(--rd)}
@@ -961,6 +966,7 @@ tr:hover td{background:var(--bg3)}
       </div>
       <div class="sb-toolbar">
         <input id="sb-search" placeholder="Поиск чатов..." oninput="filterChats(this.value)">
+        <button class="new-chat-btn" onclick="openContacts()" title="Контакты" style="margin-right:4px">👥</button>
         <button class="new-chat-btn" onclick="openNewChat()" title="Новый чат">+</button>
       </div>
       <div class="clist" id="clist"></div>
@@ -1071,6 +1077,9 @@ tr:hover td{background:var(--bg3)}
           <div class="ibi" onclick="toggleMP('emoji')"><svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></div>
         </div>
         <span class="char-count" id="char-count"></span>
+        <button class="mic-btn" id="bot-menu-btn" onclick="openBotCommandMenu()" title="Команды бота" style="display:none">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
+        </button>
         <button class="mic-btn" id="mic-btn" onclick="toggleVoiceRecording()" title="Голосовое сообщение">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
         </button>
@@ -1204,6 +1213,10 @@ tr:hover td{background:var(--bg3)}
 
     <div class="settings-section">
       <div class="settings-section-title">Данные</div>
+      <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openContacts()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">👥</div><div><div class="settings-row-label">Контакты</div></div></div>
+        <div class="settings-row-arrow">›</div>
+      </div>
       <div class="settings-row" onclick="exportData()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">💾</div><div><div class="settings-row-label">Экспорт данных</div><div class="settings-row-sub">Сохранить историю чатов</div></div></div>
         <div class="settings-row-arrow">›</div>
@@ -1494,7 +1507,7 @@ tr:hover td{background:var(--bg3)}
   <div class="macts" style="margin-top:14px"><button class="xbtn sec" onclick="closeM('m-crystal-gift')">Отмена</button><button class="xbtn gn" onclick="confirmCrystalGift()">💎 Подарить</button></div>
 </div></div>
 
-<div class="movl" id="m-gift-detail"><div class="modal" style="max-width:320px;text-align:center">
+<div class="movl" id="m-gift-detail" style="z-index:750"><div class="modal" style="max-width:320px;text-align:center">
   <div id="gd-visual" style="font-size:64px;margin:10px 0"></div>
   <div id="gd-name" style="font-family:'Syne',sans-serif;font-weight:700;font-size:18px;margin-bottom:4px"></div>
   <div id="gd-rarity" style="font-size:11.5px;color:var(--tx3);margin-bottom:16px"></div>
@@ -2950,6 +2963,59 @@ function updateChatAvatarDisplays(ch){
 // Отключает кнопки записи голосового/видео-кружочка, если у собеседника
 // в этом личном чате включён запрет (VIP-привилегия). Вызывается и при
 // открытии чата, и при получении свежих данных о собеседнике.
+// Кнопка меню команд бота — видна только в чате с ботом, как в Telegram.
+// botUserId=null означает "не бот" ИЛИ "это Nexus BotFather" (у него
+// свой захардкоженный список, определяется по S.chat===66666 отдельно)
+let currentBotMenuTarget=null;
+function applyBotMenuButton(botUserId){
+  const btn=el("bot-menu-btn"); if(!btn) return;
+  const isBotFather = S.chat===66666;
+  currentBotMenuTarget = botUserId || (isBotFather ? "botfather" : null);
+  btn.style.display = currentBotMenuTarget ? "flex" : "none";
+}
+
+async function openBotCommandMenu(){
+  if(!currentBotMenuTarget) return;
+  let commands=[];
+  if(currentBotMenuTarget==="botfather"){
+    commands=[
+      {command:"newbot", description:"Создать нового бота"},
+      {command:"mybots", description:"Список твоих ботов"},
+      {command:"setcommands", description:"Задать команды для твоего бота"},
+      {command:"help", description:"Показать помощь"},
+    ];
+  } else {
+    try{
+      const data=await apiGet("/api/bots/"+currentBotMenuTarget+"/commands");
+      commands=(data && data.commands)||[];
+    }catch(e){ showToast("❌ Не удалось загрузить команды"); return; }
+    if(!commands.length){ showToast("У этого бота пока нет заданных команд"); return; }
+  }
+
+  document.querySelectorAll(".bot-cmd-menu").forEach(m=>m.remove());
+  const menu=document.createElement("div");
+  menu.className="bot-cmd-menu";
+  menu.innerHTML=commands.map(c=>`<div class="bot-cmd-item" onclick="fillBotCommand('${c.command}')">/${c.command}<span>${escHtml(c.description)}</span></div>`).join("");
+  document.body.appendChild(menu);
+  const btn=el("bot-menu-btn");
+  const rect=btn.getBoundingClientRect();
+  menu.style.left=Math.max(10, rect.left-200)+"px";
+  menu.style.bottom=(window.innerHeight-rect.top+8)+"px";
+  const closeMenu=(ev)=>{ if(!menu.contains(ev.target) && ev.target!==btn){ menu.remove(); document.removeEventListener("click",closeMenu); } };
+  setTimeout(()=>document.addEventListener("click",closeMenu), 0);
+}
+
+function fillBotCommand(command){
+  document.querySelectorAll(".bot-cmd-menu").forEach(m=>m.remove());
+  const inp=el("minput"); if(!inp) return;
+  inp.textContent="/"+command+" ";
+  inp.focus();
+  onInput(inp);
+  const range=document.createRange(); const sel=window.getSelection();
+  range.selectNodeContents(inp); range.collapse(false);
+  sel.removeAllRanges(); sel.addRange(range);
+}
+
 function applyVoiceVideoRestriction(blocked){
   const micBtn=el("mic-btn"), vcBtn=el("vc-btn");
   [micBtn, vcBtn].forEach(btn=>{
@@ -2996,12 +3062,14 @@ async function refreshChatPeerInfo(ch){
     // Запрет голосовых/видео — тоже VIP-привилегия собеседника, применяем
     // к кнопкам композера прямо сейчас, если этот чат сейчас открыт
     if(!!u.block_voice_video !== !!ch.peerBlockVoiceVideo){ ch.peerBlockVoiceVideo=!!u.block_voice_video; changed=true; }
+    if(!!u.is_bot !== !!ch.peerIsBot){ ch.peerIsBot=!!u.is_bot; changed=true; }
     if(S.chat===ch.id){
       if(el("chnm")){
         el("chnm").textContent=chatDisplayName(ch);
         el("chnm").style.color=ch.peerNameColor||"";
       }
       applyVoiceVideoRestriction(ch.peerBlockVoiceVideo);
+      applyBotMenuButton(ch.peerIsBot ? ch.withUserId : null);
     }
     if(changed){ renderChats(); saveState(); }
   }catch(e){ console.warn("refresh peer info error:", e); }
@@ -3374,6 +3442,7 @@ function openChat(id){
   if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); markChatAsRead(id); refreshChatPeerInfo(ch); }
   ch.unread=0; renderChats();
   applyVoiceVideoRestriction(ch.peerBlockVoiceVideo); // сразу из кэша, refreshChatPeerInfo обновит, если поменялось
+  applyBotMenuButton(ch.peerIsBot ? ch.withUserId : null);
 
   const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
   if(el("chnm"))el("chnm").textContent=chatDisplayName(ch);
@@ -8222,9 +8291,11 @@ const BOTFATHER_GREET = `👋 Привет! Я Nexus BotFather — здесь м
 Команды:
 /newbot — создать нового бота
 /mybots — список твоих ботов
+/setcommands — задать список команд для твоего бота (собеседники увидят их в кнопке меню)
 /help — показать это сообщение снова`;
 
-let botFatherState = null; // null | "awaiting_name"
+let botFatherState = null; // null | "awaiting_name" | "awaiting_setcommands_bot" | "awaiting_setcommands_list"
+let botFatherSetCommandsTarget = null; // {id, username} бота, для которого сейчас задаём команды
 
 async function getBotFatherReply(txt){
   const cmd = txt.trim().toLowerCase();
@@ -8239,8 +8310,48 @@ async function getBotFatherReply(txt){
         return "❌ "+(data&&data.error||"Не удалось создать бота")+"\n\nНапиши /newbot, чтобы попробовать снова.";
       }
       const b=data.bot;
-      return `🎉 Готово! Бот «${b.name}» создан.\n\n👤 Username: @${b.username}\n🔑 Токен для API:\n${b.bot_token}\n\n⚠️ Никому не показывай токен — с ним можно слать сообщения от имени бота.\n\nЧтобы бот отвечал автоматически — настрой Webhook URL в /mybots.`;
+      return `🎉 Готово! Бот «${b.name}» создан.\n\n👤 Username: @${b.username}\n🔑 Токен для API:\n${b.bot_token}\n\n⚠️ Никому не показывай токен — с ним можно слать сообщения от имени бота.\n\nЧтобы бот отвечал автоматически — настрой Webhook URL в /mybots.\nЧтобы задать список команд — напиши /setcommands.`;
     }catch(e){ return "❌ Не удалось связаться с сервером. Попробуй ещё раз чуть позже."; }
+  }
+
+  if(botFatherState==="awaiting_setcommands_bot"){
+    botFatherState=null;
+    const username=txt.trim().replace(/^@/,"");
+    try{
+      const data=await apiGet("/api/bots/mine");
+      const bots=(data && data.bots)||[];
+      const bot=bots.find(b=>b.username.toLowerCase()===username.toLowerCase());
+      if(!bot){ return "❌ Не нашла у тебя бота с таким username. Напиши /mybots, чтобы посмотреть список, и попробуй /setcommands снова."; }
+      botFatherSetCommandsTarget={id:bot.id, username:bot.username};
+      botFatherState="awaiting_setcommands_list";
+      return `Хорошо, задаём команды для @${bot.username}.\n\nПришли список в формате (по одной команде на строке):\nstart - Запустить бота\nhelp - Показать помощь\n\nЭто заменит весь текущий список команд.`;
+    }catch(e){ return "❌ Не удалось загрузить список ботов."; }
+  }
+
+  if(botFatherState==="awaiting_setcommands_list"){
+    botFatherState=null;
+    const target=botFatherSetCommandsTarget; botFatherSetCommandsTarget=null;
+    if(!target) return "❌ Что-то пошло не так, начни заново с /setcommands.";
+    const lines=txt.split("\n").map(l=>l.trim()).filter(Boolean);
+    const commands=lines.map(l=>{
+      const idx=l.indexOf("-");
+      if(idx===-1) return null;
+      return {command:l.slice(0,idx).trim().replace(/^\//,""), description:l.slice(idx+1).trim()};
+    }).filter(c=>c && c.command && c.description);
+    if(!commands.length) return "❌ Не смогла разобрать ни одной команды. Формат: команда - описание, каждая с новой строки. Попробуй /setcommands снова.";
+    try{
+      const data=await apiPatch("/api/bots/"+target.id+"/commands", {commands}, true);
+      if(!data || !data.success){ return "❌ "+(data&&data.error||"Не удалось сохранить команды"); }
+      return `✅ Готово! У @${target.username} теперь ${commands.length} команд${commands.length===1?"а":commands.length<5?"ы":""}. Собеседники увидят их через кнопку меню у поля ввода в чате с ботом.`;
+    }catch(e){ return "❌ Не удалось связаться с сервером."; }
+  }
+
+  if(cmd==="/setcommands"){
+    if(!S.vip?.active){
+      return "🔒 Управление ботами доступно только с активным VIP.";
+    }
+    botFatherState="awaiting_setcommands_bot";
+    return "Для какого бота задаём команды? Пришли его username (можно с @ или без).";
   }
 
   if(cmd==="/newbot"){
