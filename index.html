@@ -1494,6 +1494,12 @@ tr:hover td{background:var(--bg3)}
   <div class="macts" style="margin-top:14px"><button class="xbtn sec" onclick="closeM('m-crystal-gift')">Отмена</button><button class="xbtn gn" onclick="confirmCrystalGift()">💎 Подарить</button></div>
 </div></div>
 
+<div class="movl" id="m-blocked-list"><div class="modal">
+  <div class="mtit">🚫 Заблокированные</div>
+  <div id="blocked-list-items"></div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-blocked-list')">Закрыть</button></div>
+</div></div>
+
 <div class="movl" id="m-change-phone"><div class="modal">
   <div class="mtit">📱 Сменить номер телефона</div>
 
@@ -2893,6 +2899,7 @@ function loginOK(){
   loadOwnedStickerPacks();
   loadGiftsCatalog();
   loadGiftInventory();
+  loadContacts();
   loadVipVisibility();
   loadStoriesFeed();
 
@@ -2995,6 +3002,7 @@ async function loadChatsFromDB(){
 
       // Если чат уже есть локально — обновляем
       const existing = S.chats.find(c => c.id === dbChat.id);
+      const mutedFromServer = !!(dbChat.muted_until && new Date(dbChat.muted_until) > new Date());
       if(existing){
         existing.prev = dbChat.last_message || existing.prev;
         existing.time = dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : existing.time;
@@ -3011,6 +3019,10 @@ async function loadChatsFromDB(){
         if(isPersonal && otherUser?.avatar!==undefined) existing.avatar = otherUser.avatar || "";
         existing.myRole = dbChat.my_role || existing.myRole;
         existing.restrictSendMessages = !!dbChat.restrict_send_messages;
+        // Закреп/мьют/архив — раньше были чисто локальными, теперь синхронизируются с сервера
+        existing.pinned = !!dbChat.pinned;
+        existing.archived = !!dbChat.archived;
+        existing.muted = mutedFromServer;
       } else {
         // Добавляем новый чат из БД
         S.chats.push({
@@ -3024,8 +3036,9 @@ async function loadChatsFromDB(){
           time: dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : "",
           unread: 0,
           type: dbChat.type || "personal",
-          pinned: false,
-          muted: false,
+          pinned: !!dbChat.pinned,
+          muted: mutedFromServer,
+          archived: !!dbChat.archived,
           blocked: false,
           draft: "",
           dbId: dbChat.id,
@@ -3037,6 +3050,7 @@ async function loadChatsFromDB(){
       }
     });
     saveState(); renderChats();
+    loadBlockedUsers(); // после чатов — нужно сопоставлять по withUserId
   } catch(e){ console.warn("loadChatsFromDB error:", e); }
 }
 
@@ -5504,19 +5518,30 @@ function searchInChat(q){ if(!q){closeChatSearch();return;} const rows=document.
 function srchNav(d){ if(!srchResults.length)return; srchIdx=(srchIdx+d+srchResults.length)%srchResults.length; if(el("srch-count"))el("srch-count").textContent=`${srchIdx+1} / ${srchResults.length}`; srchResults[srchIdx].scrollIntoView({block:"center"}); }
 
 // ── RIGHT PANEL ACTIONS ──────────────────────────────────────
+// Общая функция сохранения личных настроек чата на сервере — раньше
+// закреп/мьют/архив были полностью локальными, не синхронизировались
+// между устройствами
+function saveChatMemberPref(chatId, field, value){
+  if(!(typeof chatId==="string" && chatId.length>10)) return; // системные чаты — не настоящие записи в БД
+  apiPatch("/api/chats/"+chatId+"/member-prefs", {[field]:value}, true).catch(e=>console.warn("save chat pref error:",e));
+}
+
 function pinChat(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
   ch.pinned=!ch.pinned; renderChats(); showToast(ch.pinned?"📌 Чат закреплён":"Чат откреплён"); saveState();
+  saveChatMemberPref(ch.id, "pinned", ch.pinned);
 }
 function muteChat(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
   ch.muted=!ch.muted; renderChats(); showToast(ch.muted?"🔇 Заглушено":"🔔 Уведомления включены"); saveState();
+  saveChatMemberPref(ch.id, "muted", ch.muted);
 }
 function archiveChat(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
   if(isSystemChat(ch.id)){ showToast("🔒 Это системный чат, его нельзя архивировать"); return; }
   ch.archived=!ch.archived;
   renderChats(); saveState();
+  saveChatMemberPref(ch.id, "archived", ch.archived);
   if(ch.archived){
     showToast("🗄️ Чат перемещён в архив");
     openChat(77777); // безопасный переход, раз текущий чат только что спрятан из списка
@@ -5695,6 +5720,7 @@ function reportAndBlockCurrentChat(){
   ch.blocked=true; if(!S.blocked.includes(ch.id))S.blocked.push(ch.id);
   renderUnknownBar(ch);
   renderChats(); showToast("🚫 Жалоба отправлена, "+ch.nm+" заблокирован"); saveState();
+  if(ch.withUserId) apiPost("/api/users/"+ch.withUserId+"/block", {}, true).catch(e=>console.warn("block error:",e));
 }
 // Базовые системные чаты — Избранное/Nexus Official/NexusSupport.
 // Их нельзя удалить, заблокировать или отправить в архив.
@@ -5706,6 +5732,19 @@ function blockUser(){
   if(confirm("Заблокировать "+ch.nm+"?")){
     ch.blocked=true; if(!S.blocked.includes(ch.id))S.blocked.push(ch.id);
     renderChats(); showToast("🚫 "+ch.nm+" заблокирован"); saveState();
+    // Раньше блокировка была полностью локальной — сервер не знал, человек
+    // всё равно мог вам писать
+    if(ch.withUserId) apiPost("/api/users/"+ch.withUserId+"/block", {}, true).catch(e=>console.warn("block error:",e));
+  }
+}
+
+async function unblockUser(chatId){
+  const ch=S.chats.find(c=>c.id===chatId); if(!ch) return;
+  ch.blocked=false; S.blocked=S.blocked.filter(id=>id!==chatId);
+  renderChats(); renderBlockedList(); saveState();
+  showToast("✅ "+ch.nm+" разблокирован");
+  if(ch.withUserId){
+    try{ await apiPost("/api/users/"+ch.withUserId+"/unblock", {}, true); }catch(e){ console.warn("unblock error:",e); }
   }
 }
 // Считает реальное количество разных типов вложений в истории чата
@@ -6106,7 +6145,23 @@ async function terminateAllSessions(){
     showToast("✅ Вы вышли на всех остальных устройствах");
   }catch(e){ showToast("❌ Не удалось завершить сессии"); }
 }
-function openBlockedList(){ showToast("🚫 Заблокированных: "+(S.blocked?.length||0)); }
+function openBlockedList(){
+  renderBlockedList();
+  el("m-blocked-list").classList.add("on");
+}
+
+function renderBlockedList(){
+  const wrap=el("blocked-list-items"); if(!wrap) return;
+  const chats=(S.blocked||[]).map(id=>S.chats.find(c=>c.id===id)).filter(Boolean);
+  if(!chats.length){ wrap.innerHTML='<div style="color:var(--tx3);font-size:12px;text-align:center;padding:20px 0">Заблокированных нет</div>'; return; }
+  wrap.innerHTML=chats.map(ch=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--brd)">
+      <div style="width:36px;height:36px;border-radius:50%;background:${colBg(ch.col||0)};display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;flex-shrink:0;overflow:hidden">${ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini}</div>
+      <div style="flex:1;font-size:13px">${ch.nm}</div>
+      <button class="xbtn sec" style="padding:4px 10px;font-size:11px" onclick="unblockUser('${ch.id}')">Разблокировать</button>
+    </div>
+  `).join("");
+}
 // ── СКАЧИВАНИЕ МЕДИА (фото/видео/аудио/голосовые/кружочки/файлы) ────────────
 // Обычная ссылка <a download> не всегда срабатывает для файлов с другого домена
 // (а наши файлы лежат в Supabase, не на самом сайте) — браузер вместо скачивания
@@ -6333,7 +6388,7 @@ function renderContacts(filter=""){
   const list=S.contacts.filter(c=>!filter||c.nm.toLowerCase().includes(filter.toLowerCase())||("@"+(c.uname||"")).includes(filter.toLowerCase()));
   list.sort((a,b)=>a.nm.localeCompare(b.nm));
   let html=""; let lastL="";
-  list.forEach(c=>{ const l=c.nm[0].toUpperCase(); if(l!==lastL){html+=`<div class="alpha-idx">${l}</div>`;lastL=l;} html+=`<div class="contact-item" onclick="startChatWith(${c.id})"><div class="contact-av" style="background:${colBg(c.col)}">${c.nm[0]}</div><div style="flex:1"><div class="contact-nm">${c.nm}</div><div class="contact-ph">@${c.uname||"—"} · ${c.phone||""}</div></div><div class="contact-online">${c.online?"● онлайн":""}</div></div>`; });
+  list.forEach(c=>{ const l=c.nm[0].toUpperCase(); if(l!==lastL){html+=`<div class="alpha-idx">${l}</div>`;lastL=l;} html+=`<div class="contact-item"><div style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer" onclick="startChatWith('${c.id}')"><div class="contact-av" style="background:${colBg(c.col)}">${c.nm[0]}</div><div style="flex:1"><div class="contact-nm">${c.nm}</div><div class="contact-ph">@${c.uname||"—"} · ${c.phone||""}</div></div><div class="contact-online">${c.online?"● онлайн":""}</div></div><button class="xbtn sec" style="padding:4px 8px;font-size:10px;flex-shrink:0" onclick="event.stopPropagation();removeFromContacts('${c.id}')">✕</button></div>`; });
   if(!list.length)html=`<div style="text-align:center;color:var(--tx3);padding:24px">Не найдено</div>`;
   el("contacts-list").innerHTML=html;
 }
@@ -6377,7 +6432,10 @@ async function searchNewChat(v){
       if(!local.find(c=>c.id===u.id)) local.push({id:u.id,nm:u.name||u.username||"?",uname:u.username||"",col:Math.floor(Math.random()*8),online:false});
     });
   } catch(e){}
-  el("nc-results").innerHTML=local.map(c=>`<div class="contact-item" style="margin-bottom:4px" onclick="startChatWithUser('${c.id}','${c.nm}',${c.col||0});closeM('m-newchat')"><div class="contact-av" style="background:${colBg(c.col)}">${c.nm[0]}</div><div><div class="contact-nm">${c.nm}</div><div class="contact-ph">@${c.uname}</div></div></div>`).join("");
+  el("nc-results").innerHTML=local.map(c=>{
+    const alreadyContact=S.contacts.some(x=>x.id===c.id);
+    return `<div class="contact-item" style="margin-bottom:4px"><div style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer" onclick="startChatWithUser('${c.id}','${c.nm}',${c.col||0});closeM('m-newchat')"><div class="contact-av" style="background:${colBg(c.col)}">${c.nm[0]}</div><div><div class="contact-nm">${c.nm}</div><div class="contact-ph">@${c.uname}</div></div></div>${alreadyContact?'':`<button class="xbtn sec" style="padding:4px 8px;font-size:11px;flex-shrink:0" onclick="event.stopPropagation();addToContacts('${c.id}','${c.nm}',${c.col||0})">+ Контакт</button>`}</div>`;
+  }).join("");
   if(!local.length&&v)el("nc-results").innerHTML=`<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пользователь @${v} не найден</div>`;
 }
 let creatingChannelMode=false;
@@ -7307,6 +7365,57 @@ async function loadGiftsCatalog(){
 
 // Мои купленные, но ещё не подаренные — раньше S.gift_inventory был чисто
 // локальным, теперь реальный список с сервера
+// Раньше S.blocked был чисто локальным — теперь синхронизируется через
+// список ID пользователей с сервера (сопоставляем с чатами по withUserId)
+// Раньше S.contacts всегда был пустым локальным массивом — экран
+// контактов показывал "Не найдено" в принципе всегда, ничего не грузилось
+async function loadContacts(){
+  try{
+    const data=await apiGet("/api/contacts");
+    const rows=(data && data.contacts)||[];
+    S.contacts=rows.map(u=>({
+      id:u.id, nm:u.name||"?", uname:u.username||"", phone:u.phone||"",
+      avatar:u.avatar_url||"", col:colorFromId(u.id), online:!!u.online,
+    }));
+    saveState();
+    if(el("contacts-list")) renderContacts();
+  }catch(e){ /* не удалось — останется пустым */ }
+}
+
+async function addToContacts(userId, name, col){
+  try{
+    const data=await apiPost("/api/contacts", {userId}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось добавить")); return; }
+    showToast("✅ "+name+" добавлен(а) в контакты");
+    await loadContacts();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function removeFromContacts(userId){
+  if(!confirm("Удалить из контактов?")) return;
+  try{
+    const data=await apiDelete("/api/contacts/"+userId);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось удалить")); return; }
+    showToast("✅ Удалено из контактов");
+    await loadContacts();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function loadBlockedUsers(){
+  try{
+    const data=await apiGet("/api/users/blocked");
+    const blockedUserIds=(data && data.blockedIds)||[];
+    if(!blockedUserIds.length) return;
+    S.chats.forEach(ch=>{
+      if(ch.withUserId && blockedUserIds.includes(ch.withUserId)){
+        ch.blocked=true;
+        if(!S.blocked.includes(ch.id)) S.blocked.push(ch.id);
+      }
+    });
+    saveState();
+  }catch(e){ /* не удалось — останется то, что уже было локально */ }
+}
+
 async function loadGiftInventory(){
   try{
     const data=await apiGet("/api/gifts/inventory");
@@ -7574,6 +7683,7 @@ if(S.loggedIn){
     loadOwnedStickerPacks();
     loadGiftsCatalog();
     loadGiftInventory();
+    loadContacts();
     loadVipVisibility();
     loadStoriesFeed();
   }
