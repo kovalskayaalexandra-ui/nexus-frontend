@@ -1509,6 +1509,16 @@ tr:hover td{background:var(--bg3)}
   <div class="macts" style="margin-top:14px"><button class="xbtn sec" onclick="closeM('m-crystal-gift')">Отмена</button><button class="xbtn gn" onclick="confirmCrystalGift()">💎 Подарить</button></div>
 </div></div>
 
+<div class="movl" id="m-birthday-notif"><div class="modal" style="max-width:320px;text-align:center">
+  <div style="font-size:56px;margin:6px 0">🎂</div>
+  <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:17px;margin-bottom:6px">Сегодня день рождения!</div>
+  <div id="bday-notif-text" style="font-size:13.5px;color:var(--tx2);margin-bottom:16px"></div>
+  <div class="macts" style="flex-direction:column;gap:8px">
+    <button class="xbtn gn" style="width:100%" onclick="giftVipToBirthdayPerson()">🎁 Подарить VIP</button>
+    <button class="xbtn sec" style="width:100%" onclick="dismissBirthdayNotif()">Позже</button>
+  </div>
+</div></div>
+
 <div class="movl" id="m-gift-detail" style="z-index:750"><div class="modal" style="max-width:320px;text-align:center">
   <div id="gd-visual" style="font-size:64px;margin:10px 0"></div>
   <div id="gd-name" style="font-family:'Syne',sans-serif;font-weight:700;font-size:18px;margin-bottom:4px"></div>
@@ -1611,6 +1621,8 @@ tr:hover td{background:var(--bg3)}
   <div class="frow s1"><div class="fg"><span class="fl">Имя</span><input class="fii" id="prof-name"></div></div>
   <div class="frow s1"><div class="fg"><span class="fl">Username</span><input class="fii" id="prof-uname" placeholder="@username"></div></div>
   <div class="frow s1"><div class="fg"><span class="fl">Bio</span><textarea class="fii" id="prof-bio" rows="2" style="resize:none"></textarea></div></div>
+  <div class="frow"><div class="fg"><span class="fl">🎂 Дата рождения</span><input class="fii" type="date" id="prof-birthday"></div></div>
+  <div class="trow"><div><div class="trl">Скрывать год рождения</div><div style="font-size:11px;color:var(--tx3)">Остальные увидят только число и месяц</div></div><label class="toggle"><input type="checkbox" id="prof-hide-birth-year" onchange="saveBirthdayHideYear()"><span class="ts"></span></label></div>
   <div class="frow s1" id="prof-vip-perks-row">
     <div class="fg"><span class="fl">👑 Эмодзи-статус (VIP)</span><input class="fii" id="prof-status-emoji" placeholder="✨" maxlength="4"></div>
     <div class="fg"><span class="fl">👑 Цвет имени (VIP)</span><input type="color" class="fii" id="prof-name-color" style="height:38px;padding:2px"></div>
@@ -2937,6 +2949,7 @@ function loginOK(){
   loadGiftsCatalog();
   loadGiftInventory();
   loadContacts();
+  loadNotifications();
   loadVipVisibility();
   loadStoriesFeed();
 
@@ -5920,6 +5933,7 @@ function openChatInfo(){
   el("ui-name").textContent = ch.nm;
   el("ui-uname-row").style.display="none";
   el("ui-bio-row").style.display="none";
+  el("ui-birthday-row").style.display="none";
   el("ui-gifts-row").style.display="none";
   el("ui-members-row").style.display="none";
   el("ui-bottom-actions").innerHTML="";
@@ -5954,6 +5968,12 @@ function openChatInfo(){
     if(ch.withUserId){
       apiGet("/api/users/"+ch.withUserId).then(d=>{
         if(d.user?.bio){ el("ui-bio").textContent=d.user.bio; el("ui-bio-row").style.display="block"; }
+        if(d.user?.birthday){
+          const [y,mo,da]=d.user.birthday.split("-").map(Number);
+          const months=["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+          el("ui-birthday").textContent = da+" "+months[mo-1]+(y>0?" "+y:"");
+          el("ui-birthday-row").style.display="block";
+        }
       }).catch(()=>{});
 
       // Раньше подарки на карточке брались из истории переписки
@@ -6022,6 +6042,8 @@ function openEditProfile(){
   if(el("prof-name"))el("prof-name").value=u.name||"";
   if(el("prof-uname"))el("prof-uname").value=u.uname||"";
   if(el("prof-bio"))el("prof-bio").value=u.bio||"";
+  if(el("prof-birthday"))el("prof-birthday").value=u.birthday?u.birthday.slice(0,10):"";
+  if(el("prof-hide-birth-year"))el("prof-hide-birth-year").checked=!!u.hideBirthYear;
   if(el("prof-status-emoji"))el("prof-status-emoji").value=u.statusEmoji||"";
   if(el("prof-name-color"))el("prof-name-color").value=u.nameColor||"#6c63ff";
   const isVip=!!S.vip?.active;
@@ -6074,11 +6096,22 @@ async function toggleProfilePrivacy(field, value){
 }
 
 function previewProfAvatar(inp){ if(!inp.files[0])return; profAvatarFile=inp.files[0]; const r=new FileReader();r.onload=e=>{profAvatarData=e.target.result;const av=el("prof-av-btn");if(av)av.innerHTML=`<img src="${profAvatarData}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;};r.readAsDataURL(inp.files[0]); }
+async function saveBirthdayHideYear(){
+  const val=!!el("prof-hide-birth-year")?.checked;
+  try{
+    const data=await apiPatch("/api/users/me", {hideBirthYear:val}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); return; }
+    S.user={...S.user, hideBirthYear:val}; saveState();
+    showToast("✅ Сохранено");
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
 async function saveProfile(){
   const nm=(el("prof-name")?.value||"").trim(); if(!nm){showToast("❌ Имя не может быть пустым");return;}
   const unameCheck=validateUsername(el("prof-uname")?.value); if(!unameCheck.ok) return;
   const uname=unameCheck.value;
   const bio=el("prof-bio")?.value||"";
+  const birthday=el("prof-birthday")?.value||null;
   // Эмодзи-статус и цвет имени — только если VIP активен, иначе поля
   // заблокированы и не должны отправляться (COALESCE на сервере и так бы
   // не тронул значение при отказе, но лучше не отправлять лишнего)
@@ -6108,12 +6141,12 @@ async function saveProfile(){
     }
   }
 
-  S.user={...S.user,name:nm,uname:uname,bio:bio,avatar:avatarUrl,initials:nm.slice(0,2).toUpperCase(),...(isVip?{statusEmoji,nameColor}:{})};
+  S.user={...S.user,name:nm,uname:uname,bio:bio,birthday:birthday,avatar:avatarUrl,initials:nm.slice(0,2).toUpperCase(),...(isVip?{statusEmoji,nameColor}:{})};
   closeM("m-profile"); updateUserUI(); openSettings(); saveState(); showToast("✅ Профиль сохранён");
   profAvatarFile=null;
 
   // Сохраняем на сервере — иначе новое имя/юзернейм/аватар не увидят другие пользователи
-  apiPatch("/api/users/me", {name:nm, username:uname || null, bio:bio, avatar:avatarUrl, statusEmoji, nameColor}, true)
+  apiPatch("/api/users/me", {name:nm, username:uname || null, bio:bio, avatar:avatarUrl, statusEmoji, nameColor, birthday}, true)
     .then(d=>{
       if(!d?.success){
         // Сервер отклонил — откатываем локальные изменения и заново открываем окно
@@ -7831,6 +7864,7 @@ if(S.loggedIn){
     loadGiftsCatalog();
     loadGiftInventory();
     loadContacts();
+    loadNotifications();
     loadVipVisibility();
     loadStoriesFeed();
   }
@@ -8966,6 +9000,46 @@ function renderGiftInventory(){
 
 // Кэш последней загрузки — чтобы openMyGiftDetail мог найти подробности
 // по gift_id без повторного запроса
+// Уведомления о днях рождения взаимных контактов — раньше такой функции
+// не было вообще. Показываем по одному, следующее — после закрытия текущего.
+let birthdayNotifQueue=[];
+async function loadNotifications(){
+  try{
+    const data=await apiGet("/api/notifications");
+    const list=(data && data.notifications)||[];
+    birthdayNotifQueue=list.filter(n=>n.type==="birthday");
+    if(birthdayNotifQueue.length) showNextBirthdayNotif();
+  }catch(e){ /* не удалось — просто не покажем сегодня */ }
+}
+
+function showNextBirthdayNotif(){
+  const n=birthdayNotifQueue[0]; if(!n) return;
+  const aboutName=n.data?.aboutUserName||"друг";
+  el("bday-notif-text").textContent=`У ${aboutName} сегодня день рождения — не забудьте поздравить!`;
+  el("m-birthday-notif").dataset.notifId=n.id;
+  el("m-birthday-notif").dataset.aboutUserId=n.data?.aboutUserId||"";
+  el("m-birthday-notif").dataset.aboutUserName=aboutName;
+  el("m-birthday-notif").classList.add("on");
+}
+
+async function dismissBirthdayNotif(){
+  const modal=el("m-birthday-notif");
+  const notifId=modal.dataset.notifId;
+  modal.classList.remove("on");
+  if(notifId){ try{ await apiPost("/api/notifications/"+notifId+"/read", {}, true); }catch(e){} }
+  birthdayNotifQueue.shift();
+  if(birthdayNotifQueue.length) setTimeout(showNextBirthdayNotif, 400);
+}
+
+function giftVipToBirthdayPerson(){
+  const modal=el("m-birthday-notif");
+  const userId=modal.dataset.aboutUserId, nm=modal.dataset.aboutUserName;
+  if(!userId) return;
+  dismissBirthdayNotif();
+  const ch=S.chats.find(c=>c.withUserId===userId);
+  pickGiftVipRecipient(userId, nm, ch?.col||0);
+}
+
 let myReceivedGifts=[];
 // То же самое, но для подарков в карточке профиля СОБЕСЕДНИКА (не своих)
 let uiProfileGifts=[];
@@ -10407,6 +10481,10 @@ applyTheme(S.theme||"dark");
     <div id="ui-bio-row" style="padding:10px 16px;border-bottom:1px solid var(--brd);display:none">
       <div id="ui-bio" style="font-size:13px;line-height:1.5"></div>
       <div style="font-size:10.5px;color:var(--tx3);margin-top:2px">О себе</div>
+    </div>
+    <div id="ui-birthday-row" style="padding:10px 16px;border-bottom:1px solid var(--brd);display:none">
+      <div id="ui-birthday" style="font-size:13px"></div>
+      <div style="font-size:10.5px;color:var(--tx3);margin-top:2px">🎂 Дата рождения</div>
     </div>
 
     <!-- Разбивка по контенту -->
