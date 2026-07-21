@@ -1494,6 +1494,13 @@ tr:hover td{background:var(--bg3)}
   <div class="macts" style="margin-top:14px"><button class="xbtn sec" onclick="closeM('m-crystal-gift')">Отмена</button><button class="xbtn gn" onclick="confirmCrystalGift()">💎 Подарить</button></div>
 </div></div>
 
+<div class="movl" id="m-gift-recipient"><div class="modal">
+  <div class="mtit">🎁 Кому подарить?</div>
+  <input class="fii" id="gift-recipient-search" placeholder="Поиск по чатам..." oninput="renderGiftRecipientList(this.value)" style="margin-bottom:10px">
+  <div id="gift-recipient-list" style="max-height:280px;overflow-y:auto"></div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-gift-recipient')">Отмена</button></div>
+</div></div>
+
 <div class="movl" id="m-blocked-list"><div class="modal">
   <div class="mtit">🚫 Заблокированные</div>
   <div id="blocked-list-items"></div>
@@ -8662,9 +8669,6 @@ async function sendGift(){
   try{ await apiPost("/api/gifts/"+g.id+"/use-from-inventory", {}, true); }catch(e){ /* не критично для отправки сообщения */ }
 
   S.bal = buyData.newBalance; g.sold = buyData.sold ?? ((g.sold||0)+1);
-  // add to my gifts
-  if(!S.my_gifts) S.my_gifts=[];
-  S.my_gifts.push({id:g.id,icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,from:"Вы",to:giftRecipient,date:now()});
   // send as message in chat
   if(!S.messages[S.chat]) S.messages[S.chat]=[];
   const msg_ = el("mgift-msg")?.value||"";
@@ -8701,9 +8705,12 @@ async function buyGiftToInventory(){
 
 // Подарить что-то уже купленное из своей коллекции — тому же получателю,
 // на которого сейчас открыт экран подарков
-async function giftFromInventory(giftId){
+async function giftFromInventory(giftId, targetChatId){
   const g = S.gifts_catalog.find(x=>x.id===giftId); if(!g) return;
   if(!S.gift_inventory || !S.gift_inventory[giftId]){ showToast("❌ У вас закончились эти подарки"); return; }
+  const chatId = targetChatId || S.chat;
+  const ch=S.chats.find(c=>c.id===chatId);
+  if(!ch){ showToast("❌ Чат не найден"); return; }
 
   // Раньше это было чисто локальное уменьшение счётчика — сервер вообще
   // не знал о вашей коллекции подарков
@@ -8715,21 +8722,39 @@ async function giftFromInventory(giftId){
   S.gift_inventory[giftId]--;
   if(S.gift_inventory[giftId]<=0) delete S.gift_inventory[giftId];
 
-  if(!S.my_gifts) S.my_gifts=[];
-  S.my_gifts.push({id:g.id,icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,from:"Вы",to:giftRecipient,date:now()});
-
-  if(!S.messages[S.chat]) S.messages[S.chat]=[];
-  const giftData={icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,to:giftRecipient,msg:""};
+  if(!S.messages[chatId]) S.messages[chatId]=[];
+  const giftData={icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,to:ch.nm,msg:""};
   const localMsg={id:nextId(),t:"gift",out:true,...giftData,time:now()};
-  S.messages[S.chat].push(localMsg);
-  const ch=S.chats.find(c=>c.id===S.chat);
-  if(ch){ch.prev="🎁 Подарок: "+g.name;ch.time=now();ch.lastTs=Date.now();}
-  renderMsgs(); renderChats(); renderMyGifts(); renderGiftInventory(); saveState();
-  showToast("🎁 Подарили «"+g.name+"» из своей коллекции!");
+  S.messages[chatId].push(localMsg);
+  ch.prev="🎁 Подарок: "+g.name; ch.time=now(); ch.lastTs=Date.now();
+  if(S.chat===chatId) renderMsgs();
+  renderChats(); renderMyGifts(); renderGiftInventory(); saveState();
+  showToast("🎁 Подарили «"+g.name+"» пользователю "+ch.nm+"!");
 
-  const chatId=S.chat;
   const memberIds=getChatMemberIds(ch);
   await retrySimpleMsg(localMsg, chatId, ch, memberIds, {chatId, text:"", gift:giftData}, {text:"", gift:giftData});
+}
+
+// Выбор получателя перед дарением из коллекции — раньше жёстко дарило
+// тому чату, откуда открыли экран подарков, теперь можно выбрать любого
+let giftPickerTargetGiftId=null;
+function openGiftRecipientPicker(giftId){
+  giftPickerTargetGiftId=giftId;
+  if(el("gift-recipient-search")) el("gift-recipient-search").value="";
+  renderGiftRecipientList("");
+  el("m-gift-recipient").classList.add("on");
+}
+function renderGiftRecipientList(filter){
+  const wrap=el("gift-recipient-list"); if(!wrap) return;
+  const f=(filter||"").toLowerCase();
+  const chats=S.chats.filter(c=>c.type==="personal" && !isSystemChat(c.id) && c.nm.toLowerCase().includes(f));
+  if(!chats.length){ wrap.innerHTML='<div style="color:var(--tx3);font-size:12px;text-align:center;padding:16px 0">Ничего не найдено</div>'; return; }
+  wrap.innerHTML=chats.map(ch=>`
+    <div class="contact-item" style="cursor:pointer" onclick="giftFromInventory(${giftPickerTargetGiftId},'${ch.id}');closeM('m-gift-recipient')">
+      <div class="contact-av" style="background:${colBg(ch.col||0)};overflow:hidden">${ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini}</div>
+      <div><div class="contact-nm">${ch.nm}</div></div>
+    </div>
+  `).join("");
 }
 
 function renderGiftInventory(){
@@ -8742,21 +8767,35 @@ function renderGiftInventory(){
       <div class="gift-scarce" style="background:var(--acc)">× ${qty}</div>
       <div class="gift-ico">${giftVisual(g)}</div>
       <div class="gift-name">${g.name}</div>
-      <button class="xbtn gn" style="width:100%;margin-top:6px;padding:6px;font-size:11px" onclick="giftFromInventory(${g.id})">🎁 Подарить</button>
+      <button class="xbtn gn" style="width:100%;margin-top:6px;padding:6px;font-size:11px" onclick="openGiftRecipientPicker(${g.id})">🎁 Подарить</button>
     </div>`;
   }).join("");
 }
 
-function renderMyGifts(){
+// Кэш последней загрузки — чтобы openMyGiftDetail мог найти подробности
+// по gift_id без повторного запроса
+let myReceivedGifts=[];
+
+async function renderMyGifts(){
   const showcase = el("my-gifts-showcase"); if(!showcase) return;
-  const gifts = S.my_gifts||[];
+  if(!S.user?.id) return;
+  showcase.innerHTML='<div class="pgift-empty" style="opacity:.5">Загрузка...</div>';
+
+  let gifts=[];
+  try{
+    const data=await apiGet("/api/users/"+S.user.id+"/gifts");
+    gifts=(data && data.gifts)||[];
+  }catch(e){ showcase.innerHTML='<div class="pgift-empty">Не удалось загрузить</div>'; return; }
+  myReceivedGifts=gifts;
+
   if(!gifts.length){ showcase.innerHTML='<div class="pgift-empty">🎁 У вас пока нет подарков<br><span style="font-size:11px">Подарки от друзей появятся здесь</span></div>'; return; }
 
-  // Группируем по id подарка (считаем количество)
+  // Группируем по id подарка из каталога (считаем количество)
   const grouped={};
   gifts.forEach(g=>{
-    if(!grouped[g.id]) grouped[g.id]={...g,count:0};
-    grouped[g.id].count++;
+    const key=g.gift_id||g.name;
+    if(!grouped[key]) grouped[key]={id:g.gift_id, icon:g.icon, imageUrl:g.image_url, name:g.name, rarity:g.rarity, from:g.from_name||"Аноним", count:0};
+    grouped[key].count++;
   });
   const arr=Object.values(grouped);
   // Сортируем по редкости: легендарные → эпические → редкие → обычные
@@ -8785,9 +8824,10 @@ function renderMyGifts(){
 
 // Детали полученного подарка — при клике перекидывает в каталог
 function openMyGiftDetail(giftId){
-  const g=(S.my_gifts||[]).find(x=>x.id===giftId);
-  if(!g)return;
-  const count=(S.my_gifts||[]).filter(x=>x.id===giftId).length;
+  const items=myReceivedGifts.filter(x=>x.gift_id===giftId);
+  if(!items.length)return;
+  const g=items[0];
+  const count=items.length;
   const rarityLabel={common:"⚪ Обычный",rare:"💜 Редкий",epic:"💚 Эпический",legendary:"⭐ Легендарный"}[g.rarity]||"";
   showToast(`${g.icon} ${g.name} ${rarityLabel}${count>1?` ×${count}`:""}`);
   // Подсветим этот подарок в каталоге
