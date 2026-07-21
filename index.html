@@ -1426,7 +1426,10 @@ tr:hover td{background:var(--bg3)}
           <div class="frow s1"><div class="fg"><span class="fl">Название</span><input class="fii" id="bot-new-name" placeholder="Мой бот"></div></div>
           <button class="xbtn" onclick="createBot()">🤖 Создать</button>
         </div>
-        <div class="asec"><div class="asect">🤖 Все боты</div><div id="botlist"><div style="color:var(--tx3);font-size:11.5px">Загрузка...</div></div></div>
+        <div class="asec"><div class="asect">🤖 Все боты</div>
+          <input class="fii" id="bot-search" placeholder="Поиск по имени/username..." style="margin-bottom:10px" oninput="debounceRenderBots()">
+          <div id="botlist"><div style="color:var(--tx3);font-size:11.5px">Загрузка...</div></div>
+        </div>
       </div>
       <div class="apage" id="page-webhooks">
         <div class="atitle">🔗 Вебхуки</div><div class="asub2">Realtime события</div>
@@ -7437,9 +7440,15 @@ function addWallet(){ S.wallets.push({nm:"Новый получатель",ico:"
 // выдуманная целиком — ни один из этих пользователей не существовал.
 // Теперь реальный список из БД, с поиском и фильтром по роли.
 let _usrSearchTimer=null;
+let _botSearchTimer=null;
 function debounceRenderUsers(){
   clearTimeout(_usrSearchTimer);
   _usrSearchTimer=setTimeout(renderUsers, 350); // не дёргаем сервер на каждое нажатие клавиши
+}
+
+function debounceRenderBots(){
+  clearTimeout(_botSearchTimer);
+  _botSearchTimer=setTimeout(renderBots, 350);
 }
 
 async function renderUsers(){
@@ -7502,13 +7511,14 @@ async function searchChatsForModeration(){
       const actionBtn=c.admin_blocked
         ? `<button class="xbtn gn" style="padding:4px 10px;font-size:11px" onclick="unblockChatByAdmin('${c.id}','${escHtml(c.name).replace(/'/g,"\\'")}')">✅ Открыть доступ</button>`
         : `<button class="xbtn rd" style="padding:4px 10px;font-size:11px" onclick="blockChatByAdmin('${c.id}','${escHtml(c.name).replace(/'/g,"\\'")}')">🚫 Закрыть доступ</button>`;
+      const deleteBtn=`<button class="xbtn sec" style="padding:4px 10px;font-size:11px;color:var(--rd)" onclick="deleteChatByAdmin('${c.id}','${escHtml(c.name).replace(/'/g,"\\'")}')">🗑️ Удалить</button>`;
       return `<div class="asec" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:180px">
           <div style="font-weight:600;font-size:13.5px">${typeLabel} ${escHtml(c.name)}${c.username?" · @"+escHtml(c.username):""}</div>
           <div style="font-size:11.5px;color:var(--tx3);margin-top:2px">${c.member_count} участников</div>
           <div style="margin-top:4px">${statusHtml}</div>
         </div>
-        ${actionBtn}
+        ${actionBtn}${deleteBtn}
       </div>`;
     }).join("");
   }catch(e){ wrap.innerHTML='<div style="color:var(--rd);font-size:12px;padding:10px 0">Не удалось загрузить</div>'; }
@@ -7532,6 +7542,17 @@ async function unblockChatByAdmin(chatId, name){
     const data=await apiPatch("/api/chats/admin/"+chatId+"/unblock", {}, true);
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось открыть доступ")); return; }
     showToast("✅ Доступ открыт");
+    searchChatsForModeration();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function deleteChatByAdmin(chatId, name){
+  if(!confirm(`Удалить «${name}» БЕЗВОЗВРАТНО? Все сообщения и данные исчезнут навсегда — это не то же самое, что закрыть доступ. Для нарушений закона обычно лучше «Закрыть доступ», а не удалять.`)) return;
+  if(!confirm(`Точно? Это действие нельзя отменить.`)) return;
+  try{
+    const data=await apiDelete("/api/chats/admin/"+chatId);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось удалить")); return; }
+    showToast("🗑️ Удалено безвозвратно");
     searchChatsForModeration();
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
@@ -7792,10 +7813,11 @@ let akc=1;
 // вебхуком и статусом.
 async function renderBots(){
   const e=el("botlist"); if(!e) return;
+  const q=el("bot-search")?.value?.trim()||"";
   try{
-    const data=await apiGet("/api/admin/bots");
+    const data=await apiGet("/api/admin/bots"+(q?"?q="+encodeURIComponent(q):""));
     const bots=(data && data.bots)||[];
-    if(!bots.length){ e.innerHTML='<div style="color:var(--tx3);font-size:11.5px">Ботов пока нет</div>'; return; }
+    if(!bots.length){ e.innerHTML=`<div style="color:var(--tx3);font-size:11.5px">${q?"Ничего не найдено":"Ботов пока нет"}</div>`; return; }
     e.innerHTML=bots.map(b=>`
       <div class="botcard" style="flex-wrap:wrap;align-items:flex-start">
         <div style="width:36px;height:36px;border-radius:8px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🤖</div>
