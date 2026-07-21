@@ -1423,6 +1423,10 @@ tr:hover td{background:var(--bg3)}
         <div class="asec"><div class="asect">🔐 Права модератора</div><div class="asub2" style="margin:-4px 0 10px">У admin всегда полный доступ ко всему — не настраивается. Отмечайте, какие разделы Dev Panel видит и может редактировать moderator</div>
           <div id="role-perms-list" style="display:flex;flex-direction:column;gap:2px"></div>
         </div>
+        <div class="asec"><div class="asect">📢 Лимиты каналов и групп</div><div class="asub2" style="margin:-4px 0 10px">Защита от сквоттинга брендовых имён — кто-то создаёт кучу каналов ради перепродажи названий</div>
+          <div class="trow"><div><div class="trl">Создавать могут только VIP</div><div style="font-size:11px;color:var(--tx3)">Если выключено — может любой пользователь, лимиты ниже всё равно действуют на всех</div></div><label class="toggle"><input type="checkbox" id="chatlim-vip-only" onchange="toggleChannelLimitFlag('vipOnly',this.checked)"><span class="ts"></span></label></div>
+          <div class="frow" style="margin-top:10px"><div class="fg"><span class="fl">Максимум каналов на аккаунт</span><input class="fii" type="number" id="chatlim-max-channels" min="0" onchange="saveChannelLimitNumber('maxChannels',this.value)"></div><div class="fg"><span class="fl">Максимум групп на аккаунт</span><input class="fii" type="number" id="chatlim-max-groups" min="0" onchange="saveChannelLimitNumber('maxGroups',this.value)"></div></div>
+        </div>
       </div>
     </div>
   </div>
@@ -6228,12 +6232,20 @@ async function doCreateGroup(){
   });
 
   showToast("⏳ Создаём...");
-  let realId=null;
+  let data;
   try{
-    const data=await apiPost("/api/chats", {type:isChannel?"channels":"groups", name:nm, description:desc, memberIds}, true);
-    realId=data?.chat?.id || null;
-    var serverInviteLink=data?.chat?.invite_link || null;
-  }catch(e){ console.warn("create chat on server error:", e); }
+    data=await apiPost("/api/chats", {type:isChannel?"channels":"groups", name:nm, description:desc, memberIds}, true);
+  }catch(e){
+    console.warn("create chat on server error:", e);
+    showToast("❌ Нет связи с сервером");
+    return;
+  }
+  if(!data || !data.success || !data.chat){
+    showToast("❌ "+(data&&data.error||"Не удалось создать"));
+    return;
+  }
+  const realId=data.chat.id;
+  const serverInviteLink=data.chat.invite_link||null;
 
   const newChat={id:realId||nextId(),nm:nm,ini:nm.slice(0,2).toUpperCase(),col:Math.floor(Math.random()*COLS.length),online:false,prev:isChannel?"Канал создан":"Группа создана",time:now(),unread:0,type:isChannel?"channels":"groups",mbrs:members.length,members:members,memberIds:memberIds,myRole:"owner",mine:isChannel,pinned:false,muted:false,blocked:false,draft:"",inviteLink:serverInviteLink,isPrivate:false};
   S.chats.unshift(newChat);
@@ -6869,7 +6881,7 @@ function initAdmin(){
   if(el("bal-admin"))el("bal-admin").textContent=S.bal.toLocaleString();
   // new sections
   loadOverviewStats();
-  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();loadWelcomeMessage();loadPlatformFlags();loadVipVisibilityToggles();loadRolePermissions();applyDevPanelPermissions();},100);
+  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();loadWelcomeMessage();loadPlatformFlags();loadVipVisibilityToggles();loadRolePermissions();loadChannelLimits();applyDevPanelPermissions();},100);
 }
 function renderCurrs(){ const e=el("currs");if(!e)return; e.innerHTML=CURRENCIES.map(c=>`<div class="copt${S.currency===c.code?" on":""}" onclick="selCurr('${c.code}')"><div class="cflag">${c.flag}</div><div class="ccode">${c.sym} ${c.code}</div><div class="cname">${c.nm}</div><div class="crate">1 CR = ${c.rate} ${c.code}</div></div>`).join(""); }
 function selCurr(code){ S.currency=code;const c=CURRENCIES.find(x=>x.code===code);if(c){S.rate=c.rate;if(el("crinp"))el("crinp").value=c.rate;updRate(c.rate);}renderCurrs();showToast("Валюта → "+code);saveState(); }
@@ -8620,6 +8632,39 @@ async function applyDevPanelPermissions(){
       if(firstVisible) firstVisible.click();
     }
   }catch(e){ /* при ошибке сети — не блокируем, пусть меню останется как есть */ }
+}
+
+async function loadChannelLimits(){
+  try{
+    const data=await apiGet("/api/settings/channel-limits");
+    const limits=data && data.limits;
+    if(!limits) return;
+    if(el("chatlim-vip-only")) el("chatlim-vip-only").checked=!!limits.vipOnly;
+    if(el("chatlim-max-channels")) el("chatlim-max-channels").value=limits.maxChannels ?? 5;
+    if(el("chatlim-max-groups")) el("chatlim-max-groups").value=limits.maxGroups ?? 5;
+  }catch(e){ /* тихо игнорируем — поля останутся пустыми */ }
+}
+
+async function toggleChannelLimitFlag(field, value){
+  try{
+    const data=await apiPatch("/api/settings/channel-limits", {[field]:value}, true);
+    if(!data || !data.success){
+      showToast("❌ "+(data&&data.error||"Не удалось сохранить"));
+      const cb=el("chatlim-vip-only"); if(cb) cb.checked=!value;
+      return;
+    }
+    showToast("✅ Сохранено");
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function saveChannelLimitNumber(field, value){
+  const n=parseInt(value);
+  if(!Number.isInteger(n) || n<0){ showToast("❌ Введите целое число ≥ 0"); loadChannelLimits(); return; }
+  try{
+    const data=await apiPatch("/api/settings/channel-limits", {[field]:n}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); loadChannelLimits(); return; }
+    showToast("✅ Сохранено");
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
 async function loadRolePermissions(){
