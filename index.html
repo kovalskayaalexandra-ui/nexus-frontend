@@ -1212,6 +1212,11 @@ tr:hover td{background:var(--bg3)}
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">📥</div><div><div class="settings-row-label">Импорт данных</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
+      <div class="settings-row" onclick="openChangePhoneModal()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">📱</div><div><div class="settings-row-label">Сменить номер телефона</div></div></div>
+        <div class="settings-row-arrow">›</div>
+      </div>
+      <div id="pending-phone-change-banner" style="display:none;margin:8px 16px;padding:10px 12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:10px;font-size:11.5px;color:var(--am)"></div>
     </div>
 
     <div style="padding:8px 0">
@@ -1379,7 +1384,7 @@ tr:hover td{background:var(--bg3)}
       <div class="apage" id="page-users">
         <div class="atitle">👥 Пользователи</div><div class="asub2">Управление аккаунтами</div>
         <div style="display:flex;gap:8px;margin-bottom:14px"><input class="fii" style="max-width:220px" id="usr-search" placeholder="Поиск по имени/username/телефону..." oninput="debounceRenderUsers()"><select class="fsel" style="width:140px" id="usr-role-filter" onchange="renderUsers()"><option value="all">Все роли</option><option value="admin">Admin</option><option value="moderator">Moderator</option><option value="user">User</option></select></div>
-        <div class="tw"><table><thead><tr><th>Пользователь</th><th>Телефон</th><th>Роль</th><th>CR</th><th>VIP</th><th>Регистрация</th><th></th></tr></thead><tbody id="usrtbl"></tbody></table></div>
+        <div class="tw"><table><thead><tr><th>Пользователь</th><th>Телефон</th><th>Роль</th><th>CR</th><th>VIP</th><th>Регистрация</th><th>Статус</th><th></th></tr></thead><tbody id="usrtbl"></tbody></table></div>
       </div>
       <div class="apage" id="page-langs">
         <div class="atitle">🌍 Языки</div><div class="asub2">14 языков · Автоопределение по IP</div>
@@ -1487,6 +1492,29 @@ tr:hover td{background:var(--bg3)}
   </div>
   <div class="fg"><span class="fl">Или своё количество</span><input class="fii" type="number" id="crystal-gift-custom" min="1" placeholder="Введите число"></div>
   <div class="macts" style="margin-top:14px"><button class="xbtn sec" onclick="closeM('m-crystal-gift')">Отмена</button><button class="xbtn gn" onclick="confirmCrystalGift()">💎 Подарить</button></div>
+</div></div>
+
+<div class="movl" id="m-change-phone"><div class="modal">
+  <div class="mtit">📱 Сменить номер телефона</div>
+
+  <div id="cp-step-phone">
+    <div class="msub">Для защиты от угона аккаунта потребуется подтверждение по SMS</div>
+    <div class="fg"><span class="fl">Новый номер</span><input class="fii" id="cp-new-phone" placeholder="+7 900 123-45-67"></div>
+    <div class="trow"><div><div class="trl">У меня есть доступ к старому номеру</div><div style="font-size:11px;color:var(--tx3)">Если нет — смена произойдёт через 7 дней, можно отменить в любой момент</div></div><label class="toggle"><input type="checkbox" id="cp-has-old-access" checked><span class="ts"></span></label></div>
+    <div class="macts"><button class="xbtn sec" onclick="closeM('m-change-phone')">Отмена</button><button class="xbtn" onclick="startPhoneChange()">Далее</button></div>
+  </div>
+
+  <div id="cp-step-code" style="display:none">
+    <div class="msub" id="cp-code-hint"></div>
+    <div class="fg"><span class="fl">Код из SMS</span><input class="fii" id="cp-code" maxlength="5" placeholder="12345" inputmode="numeric"></div>
+    <div class="macts"><button class="xbtn sec" onclick="closeM('m-change-phone')">Отмена</button><button class="xbtn" onclick="confirmPhoneChangeCode()">Подтвердить</button></div>
+  </div>
+
+  <div id="cp-step-delayed" style="display:none;text-align:center">
+    <div style="font-size:36px;margin-bottom:6px">⏳</div>
+    <div class="msub" id="cp-delayed-text"></div>
+    <div class="macts" style="justify-content:center"><button class="xbtn sec" onclick="closeM('m-change-phone')">Понятно</button></div>
+  </div>
 </div></div>
 
 <!-- MODALS -->
@@ -2582,6 +2610,26 @@ async function sendCode(){
   }
 }
 
+// Отдельно от sendCode() — та читает номер из поля ввода на экране
+// "телефон", а здесь мы уже на экране кода, номер уже известен в S.phone
+async function sendRestoreCode(){
+  showToast("📱 Отправляем новый код для подтверждения...");
+  try{
+    const data=await apiPost("/api/auth/send-code", { phone: S.phone });
+    if(!data.success){ showToast("❌ "+(data.error||"Ошибка")); S.restoringAccount=false; return; }
+    if(data.dev_code){
+      showToast("🔧 DEV: код "+data.dev_code);
+      setTimeout(()=>{
+        const digits=data.dev_code.toString().split("");
+        digits.forEach((d,i)=>{ const inp=el("o"+i); if(inp) inp.value=d; });
+      }, 400);
+    }
+    for(let i=0;i<5;i++){ const inp=el("o"+i); if(inp) inp.value=""; }
+    startOTP();
+    setTimeout(()=>el("o0")&&el("o0").focus(),50);
+  }catch(e){ showToast("❌ Нет связи с сервером"); S.restoringAccount=false; }
+}
+
 function startOTP(){ let t=60; clearInterval(otmr); el("otc").textContent=t; otmr=setInterval(()=>{t--;if(el("otc"))el("otc").textContent=t;if(t<=0)clearInterval(otmr);},1000); }
 function oNext(i){ if(el("o"+i).value&&i<4)el("o"+(i+1)).focus(); chkOTP(); }
 function oBk(e,i){ if(e.key==="Backspace"&&!el("o"+i).value&&i>0)el("o"+(i-1)).focus(); }
@@ -2686,7 +2734,8 @@ async function verifyCode(){
   if(btn){ btn.disabled=true; btn.textContent="⏳..."; }
 
   try {
-    const data = await apiPost("/api/auth/verify-code", { phone: S.phone, code: c });
+    const endpoint = S.restoringAccount ? "/api/auth/restore-account" : "/api/auth/verify-code";
+    const data = await apiPost(endpoint, { phone: S.phone, code: c });
     if(!data.success){
       if(data.requires_password_login){
         showToast("🛡️ На этом аккаунте включена 2FA — войдите по паролю");
@@ -2694,8 +2743,24 @@ async function verifyCode(){
         openPasswordLogin();
         return;
       }
+      if(data.banned){
+        showToast("🚫 "+data.error);
+        if(btn){btn.disabled=false;btn.textContent=T("btnvfy");}
+        return;
+      }
+      if(data.accountDeleted && !S.restoringAccount){
+        if(btn){btn.disabled=false;btn.textContent=T("btnvfy");}
+        if(confirm("Этот аккаунт был удалён. Восстановить его?")){
+          S.restoringAccount=true;
+          await sendRestoreCode();
+        } else {
+          S.restoringAccount=false;
+        }
+        return;
+      }
       showToast("❌ "+(data.error||"Неверный код")); if(btn){btn.disabled=false;btn.textContent=T("btnvfy");} return;
     }
+    S.restoringAccount=false;
 
     setToken(data.token);
 
@@ -3083,6 +3148,16 @@ function openSettings(){
   if(el("settings-phone"))el("settings-phone").textContent=u.phone||S.phone||"";
   if(el("settings-ph-disp"))el("settings-ph-disp").textContent=u.phone||S.phone||"";
   if(el("blocked-count"))el("blocked-count").textContent=(S.blocked?.length||0)+" пользователей";
+  const pendingBanner=el("pending-phone-change-banner");
+  if(pendingBanner){
+    if(u.pendingPhoneChange){
+      const dt=u.pendingPhoneChangeAt?new Date(u.pendingPhoneChangeAt).toLocaleDateString("ru"):"";
+      pendingBanner.innerHTML=`⏳ Смена номера на ${u.pendingPhoneChange} запланирована на ${dt}. <span style="text-decoration:underline;cursor:pointer" onclick="cancelPendingPhoneChange()">Отменить</span>`;
+      pendingBanner.style.display="block";
+    } else {
+      pendingBanner.style.display="none";
+    }
+  }
   if(el("priv-phone"))el("priv-phone").value=S.privacy.phone;
   if(el("priv-online"))el("priv-online").value=S.privacy.online;
   if(el("priv-e2e"))el("priv-e2e").checked=S.privacy.e2e;
@@ -6134,7 +6209,103 @@ function exportData(){ const blob=new Blob([JSON.stringify({user:S.user,chats:S.
 
 function importData(){ showToast("📥 Выберите файл nexus_export.json"); }
 function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{S.loggedIn=false;clearToken();saveState();location.reload();}; el("m-confirm").classList.add("on"); }
-function confirmDeleteAccount(){ el("conf-title").textContent="💀 Удалить аккаунт?"; el("conf-body").textContent="Это действие необратимо. Все данные будут удалены."; el("conf-ok").textContent="Удалить навсегда"; el("conf-ok").onclick=()=>{localStorage.removeItem(STORE_KEY);location.reload();}; el("m-confirm").classList.add("on"); }
+
+// Мягкое удаление — аккаунт останется в базе год, можно восстановить при
+// следующем входе (запросит подтверждение по SMS). Всем остальным профиль
+// сразу станет виден как "Аккаунт удалён".
+function confirmDeleteAccount(){
+  el("conf-title").textContent="💀 Удалить аккаунт?";
+  el("conf-body").textContent="Аккаунт станет недоступен для входа и будет виден всем как «Аккаунт удалён». В течение года его можно восстановить, войдя снова и подтвердив по SMS — после этого срока удаление станет окончательным.";
+  el("conf-ok").textContent="Удалить";
+  el("conf-ok").onclick=async ()=>{
+    el("m-confirm").classList.remove("on");
+    try{
+      const data=await apiPost("/api/users/me/delete", {}, true);
+      if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось удалить аккаунт")); return; }
+      showToast("💀 Аккаунт удалён");
+      S.loggedIn=false; clearToken(); saveState();
+      setTimeout(()=>location.reload(), 800);
+    }catch(e){ showToast("❌ Нет связи с сервером"); }
+  };
+  el("m-confirm").classList.add("on");
+}
+
+// ── Смена номера телефона — с защитой от угона аккаунта ────────
+let phoneChangeStep=null; // 'old_phone' | 'new_phone' | 'new_phone_delayed'
+
+function openChangePhoneModal(){
+  el("cp-new-phone").value="";
+  el("cp-has-old-access").checked=true;
+  el("cp-step-phone").style.display="block";
+  el("cp-step-code").style.display="none";
+  el("cp-step-delayed").style.display="none";
+  el("m-change-phone").classList.add("on");
+}
+
+async function startPhoneChange(){
+  const newPhone=el("cp-new-phone")?.value?.trim();
+  if(!newPhone){ showToast("❌ Введите новый номер"); return; }
+  const hasOldAccess=!!el("cp-has-old-access")?.checked;
+  try{
+    const data=await apiPost("/api/auth/change-phone/request", {newPhone, hasOldAccess}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось начать смену номера")); return; }
+    phoneChangeStep=data.step;
+    if(data.dev_code) showToast("🔧 DEV: код "+data.dev_code);
+    el("cp-code").value="";
+    el("cp-code-hint").textContent = data.step==="old_phone"
+      ? "Введите код, отправленный на ваш ТЕКУЩИЙ номер"
+      : "Введите код, отправленный на НОВЫЙ номер";
+    el("cp-step-phone").style.display="none";
+    el("cp-step-code").style.display="block";
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function confirmPhoneChangeCode(){
+  const code=el("cp-code")?.value?.trim();
+  if(!code){ showToast("❌ Введите код"); return; }
+  try{
+    const data=await apiPost("/api/auth/change-phone/confirm", {code}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Неверный код")); return; }
+
+    if(data.step==="new_phone"){
+      // Первый код (со старого номера) подтверждён — теперь ждём код с нового
+      phoneChangeStep="new_phone";
+      if(data.dev_code) showToast("🔧 DEV: код "+data.dev_code);
+      el("cp-code").value="";
+      el("cp-code-hint").textContent="Старый номер подтверждён ✓. Теперь введите код, отправленный на НОВЫЙ номер";
+      showToast("✅ Старый номер подтверждён, код отправлен на новый");
+      return;
+    }
+
+    if(data.applied){
+      S.user.phone=data.newPhone;
+      saveState();
+      closeM("m-change-phone");
+      showToast("✅ Номер телефона изменён на "+data.newPhone);
+      return;
+    }
+
+    if(data.delayed){
+      el("cp-step-code").style.display="none";
+      el("cp-delayed-text").textContent=`Новый номер (${data.newPhone}) подтверждён. Так как доступа к старому номеру нет, смена произойдёт через ${data.appliesInDays} дней. Если это не вы — отмените смену в настройках.`;
+      el("cp-step-delayed").style.display="block";
+      showToast("⏳ Смена номера запланирована через 7 дней");
+      return;
+    }
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function cancelPendingPhoneChange(){
+  if(!confirm("Отменить запланированную смену номера?")) return;
+  try{
+    const data=await apiPost("/api/auth/change-phone/cancel", {}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось отменить")); return; }
+    showToast("✅ Смена номера отменена");
+    if(S.user) S.user.pendingPhoneChange=null;
+    saveState();
+    openSettings();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
 
 // ── CONTACTS ──────────────────────────────────────────────────
 function renderContacts(filter=""){
@@ -6979,7 +7150,7 @@ async function renderUsers(){
   const e=el("usrtbl"); if(!e) return;
   const search=el("usr-search")?.value||"";
   const role=el("usr-role-filter")?.value||"all";
-  e.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--tx3);padding:14px">Загрузка...</td></tr>`;
+  e.innerHTML=`<tr><td colspan="8" style="text-align:center;color:var(--tx3);padding:14px">Загрузка...</td></tr>`;
   try{
     const params=new URLSearchParams();
     if(search) params.set("search",search);
@@ -6987,13 +7158,18 @@ async function renderUsers(){
     const data=await apiGet("/api/admin/users?"+params.toString());
     const users=(data && data.users)||[];
     if(!users.length){
-      e.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--tx3);padding:14px">Никого не найдено</td></tr>`;
+      e.innerHTML=`<tr><td colspan="8" style="text-align:center;color:var(--tx3);padding:14px">Никого не найдено</td></tr>`;
       return;
     }
     e.innerHTML=users.map(u=>{
       const isVip=u.vip_plan && (!u.vip_until || new Date(u.vip_until)>new Date());
       const roleBadge=u.role==="admin"?"bgr":u.role==="moderator"?"bga":"bgg";
       const regDate=u.created_at ? new Date(u.created_at).toLocaleDateString("ru") : "—";
+      const label=u.username||u.name||u.phone||"пользователя";
+      const statusHtml = u.is_banned ? '<span class="bg bgr">🚫 Заблокирован</span>' : u.is_deleted ? '<span class="bg bga">🗑️ Удалён</span>' : '<span style="color:var(--tx3)">Активен</span>';
+      const banBtn = u.is_banned
+        ? `<button class="xbtn gn" style="padding:3px 8px;font-size:10px" onclick="unbanUser('${u.id}','${label}')">✅ Разбан</button>`
+        : `<button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="banUser('${u.id}','${label}')">🚫 Бан</button>`;
       return `<tr>
         <td style="color:var(--acc2);font-weight:500">${u.username?"@"+u.username:(u.name||"—")}</td>
         <td style="color:var(--tx3);font-size:11.5px">${u.phone||"—"}</td>
@@ -7001,12 +7177,34 @@ async function renderUsers(){
         <td style="color:var(--cr)">💎 ${Number(u.balance_cr||0).toLocaleString()}</td>
         <td>${isVip?"👑":"—"}</td>
         <td style="color:var(--tx3)">${regDate}</td>
-        <td style="white-space:nowrap"><button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="editUserRole('${u.id}','${u.role}')">✏️</button> <button class="xbtn am" style="padding:3px 8px;font-size:10px" onclick="grantVipForever('${u.id}','${u.username||u.name||u.phone}')" title="Выдать VIP навсегда">♾️</button></td>
+        <td>${statusHtml}</td>
+        <td style="white-space:nowrap">${banBtn} <button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="editUserRole('${u.id}','${u.role}')">✏️</button> <button class="xbtn am" style="padding:3px 8px;font-size:10px" onclick="grantVipForever('${u.id}','${label}')" title="Выдать VIP навсегда">♾️</button></td>
       </tr>`;
     }).join("");
   }catch(err){
-    e.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить</td></tr>`;
+    e.innerHTML=`<tr><td colspan="8" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить</td></tr>`;
   }
+}
+
+async function banUser(userId, label){
+  const reason=prompt(`Причина блокировки ${label} (необязательно):`, "");
+  if(reason===null) return; // отмена
+  try{
+    const data=await apiPatch("/api/admin/users/"+userId+"/ban", {reason:reason||null}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось заблокировать")); return; }
+    showToast("🚫 Пользователь заблокирован");
+    renderUsers();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function unbanUser(userId, label){
+  if(!confirm(`Снять блокировку с ${label}?`)) return;
+  try{
+    const data=await apiPatch("/api/admin/users/"+userId+"/unban", {}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось разблокировать")); return; }
+    showToast("✅ Блокировка снята");
+    renderUsers();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
 async function editUserRole(userId, currentRole){
@@ -7275,7 +7473,7 @@ if(S.loggedIn){
       .then(resp=>{
         const data = resp && resp.user; // GET /api/users/me отдаёт { user: {...} }, не плоский объект
         if(!data||!data.id) return;
-        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region,statusEmoji:data.status_emoji||S.user.statusEmoji,nameColor:data.name_color||S.user.nameColor,hidePhone:!!data.hide_phone,hideLastSeen:!!data.hide_last_seen}};
+        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region,statusEmoji:data.status_emoji||S.user.statusEmoji,nameColor:data.name_color||S.user.nameColor,hidePhone:!!data.hide_phone,hideLastSeen:!!data.hide_last_seen,pendingPhoneChange:data.pending_phone_change||null,pendingPhoneChangeAt:data.pending_phone_change_at||null}};
         // Зарубежным пользователям (не +7) незачем видеть цены в рублях —
         // переключаем на доллар автоматически, но только если валюта ещё
         // стоит на дефолтной RUB (не трогаем, если человек сам её менял —
