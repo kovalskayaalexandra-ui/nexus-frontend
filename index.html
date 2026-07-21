@@ -2890,6 +2890,9 @@ function loginOK(){
   loadOfficialPosts();
   loadCrystalCatalog();
   loadStickerPacks();
+  loadOwnedStickerPacks();
+  loadGiftsCatalog();
+  loadGiftInventory();
   loadVipVisibility();
   loadStoriesFeed();
 
@@ -7025,7 +7028,22 @@ async function completeBuy(){
   }
 }
 function openStkModal(id){ const p=S.packs.find(x=>x.id===id);if(!p)return; S.buySP=id; el("msttit").textContent="🐱 "+p.nm; el("mstnm").textContent=p.nm; el("mstcnt").textContent=p.stickers.length+" шт."; el("mstpr").textContent=p.price+" 💎 CR"; el("mstbal").textContent=S.bal.toLocaleString()+" 💎"; el("mstrem").textContent=(S.bal-p.price).toLocaleString()+" 💎"; el("m-stk").classList.add("on"); }
-function completeStkBuy(){ const p=S.packs.find(x=>x.id===S.buySP);if(!p){closeM("m-stk");return;} if(S.bal<p.price){showToast("❌ Недостаточно CR");closeM("m-stk");return;} S.bal-=p.price;S.owned.push(p.id);updBal();closeM("m-stk");showToast("🎉 "+p.nm+"!");saveState();if(el("screen-store").classList.contains("on"))renderStore(); }
+// Раньше списание и владение были полностью локальными — сервер вообще не
+// знал о покупке, теоретически можно было получить любой пак бесплатно
+async function completeStkBuy(){
+  const p=S.packs.find(x=>x.id===S.buySP); if(!p){closeM("m-stk");return;}
+  if(S.bal<p.price){showToast("❌ Недостаточно CR");closeM("m-stk");return;}
+  try{
+    const data=await apiPost("/api/sticker-packs/"+p.id+"/buy", {}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось купить")); closeM("m-stk"); return; }
+    S.bal=data.newBalance; updBal();
+    if(!S.owned.includes(p.id)) S.owned.push(p.id);
+    closeM("m-stk");
+    showToast("🎉 "+p.nm+"!");
+    saveState();
+    if(el("screen-store").classList.contains("on"))renderStore();
+  }catch(e){ showToast("❌ Нет связи с сервером"); closeM("m-stk"); }
+}
 
 // ── ADMIN ──────────────────────────────────────────────────
 function aPage(e,page){ document.querySelectorAll(".ani").forEach(x=>x.classList.remove("on")); e.classList.add("on"); document.querySelectorAll(".apage").forEach(x=>x.classList.remove("on")); el("page-"+page).classList.add("on"); }
@@ -7268,6 +7286,39 @@ async function loadStickerPacks(){
       }));
     }
   }catch(e){ /* не удалось — останется локальный дефолт */ }
+}
+
+// Раньше S.owned был чисто локальным массивом (клиент сам решал, что
+// "куплено") — теперь реальный список с сервера
+// Каталог подарков — раньше был полностью локальным (S.gifts_catalog),
+// сервер вообще о нём не знал. Теперь настоящий, редактируется в Dev
+// Panel и виден всем одинаково.
+async function loadGiftsCatalog(){
+  try{
+    const data=await apiGet("/api/gifts");
+    if(data && data.gifts && data.gifts.length){
+      S.gifts_catalog = data.gifts.map(g=>({
+        id:g.id, name:g.name, icon:g.icon, imageUrl:g.image_url||null,
+        price:g.price, limit:g.gift_limit, sold:g.sold, rarity:g.rarity, color:g.color,
+      }));
+    }
+  }catch(e){ /* не удалось — останется локальный дефолт */ }
+}
+
+// Мои купленные, но ещё не подаренные — раньше S.gift_inventory был чисто
+// локальным, теперь реальный список с сервера
+async function loadGiftInventory(){
+  try{
+    const data=await apiGet("/api/gifts/inventory");
+    if(data && data.inventory) S.gift_inventory=data.inventory;
+  }catch(e){ /* не удалось — останется то, что уже было локально */ }
+}
+
+async function loadOwnedStickerPacks(){
+  try{
+    const data=await apiGet("/api/sticker-packs/mine");
+    if(data && data.ownedPackIds) S.owned=data.ownedPackIds;
+  }catch(e){ /* не удалось — останется то, что уже было локально */ }
 }
 
 async function renderSPAdmin(){
@@ -7520,6 +7571,9 @@ if(S.loggedIn){
     loadOfficialPosts();
     loadCrystalCatalog();
     loadStickerPacks();
+    loadOwnedStickerPacks();
+    loadGiftsCatalog();
+    loadGiftInventory();
     loadVipVisibility();
     loadStoriesFeed();
   }
@@ -8485,8 +8539,19 @@ function openGiftModal(id){
 async function sendGift(){
   const g = S.gifts_catalog.find(x=>x.id===selectedGiftId); if(!g) return;
   if(S.bal < g.price){ showToast("❌ Недостаточно CR"); return; }
-  S.bal -= g.price;
-  g.sold = (g.sold||0)+1;
+
+  // Раньше списание и владение были полностью локальными — сервер вообще
+  // не знал о покупке, теоретически можно было слать подарки бесплатно
+  let buyData;
+  try{
+    buyData=await apiPost("/api/gifts/"+g.id+"/buy", {}, true);
+    if(!buyData || !buyData.success){ showToast("❌ "+(buyData&&buyData.error||"Не удалось купить подарок")); return; }
+  }catch(e){ showToast("❌ Нет связи с сервером"); return; }
+  // Сразу используем купленный экземпляр — не оставляем его в коллекции,
+  // раз дарим прямо сейчас
+  try{ await apiPost("/api/gifts/"+g.id+"/use-from-inventory", {}, true); }catch(e){ /* не критично для отправки сообщения */ }
+
+  S.bal = buyData.newBalance; g.sold = buyData.sold ?? ((g.sold||0)+1);
   // add to my gifts
   if(!S.my_gifts) S.my_gifts=[];
   S.my_gifts.push({id:g.id,icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,from:"Вы",to:giftRecipient,date:now()});
@@ -8510,15 +8575,18 @@ async function sendGift(){
 
 // Купить подарок в свою коллекцию, не отправляя сразу — можно подарить
 // позже, или просто собирать. Количество копится, при дарении уменьшается.
-function buyGiftToInventory(){
+async function buyGiftToInventory(){
   const g = S.gifts_catalog.find(x=>x.id===selectedGiftId); if(!g) return;
   if(S.bal < g.price){ showToast("❌ Недостаточно CR"); return; }
-  S.bal -= g.price;
-  g.sold = (g.sold||0)+1;
-  if(!S.gift_inventory) S.gift_inventory={};
-  S.gift_inventory[g.id] = (S.gift_inventory[g.id]||0) + 1;
-  updBal(); closeM("m-gift"); renderGiftInventory(); saveState();
-  showToast("💼 «"+g.name+"» добавлен в вашу коллекцию");
+  try{
+    const data=await apiPost("/api/gifts/"+g.id+"/buy", {}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось купить")); return; }
+    S.bal=data.newBalance; g.sold=data.sold ?? ((g.sold||0)+1);
+    if(!S.gift_inventory) S.gift_inventory={};
+    S.gift_inventory[g.id] = (S.gift_inventory[g.id]||0) + 1;
+    updBal(); closeM("m-gift"); renderGiftInventory(); saveState();
+    showToast("💼 «"+g.name+"» добавлен в вашу коллекцию");
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
 // Подарить что-то уже купленное из своей коллекции — тому же получателю,
@@ -8526,6 +8594,14 @@ function buyGiftToInventory(){
 async function giftFromInventory(giftId){
   const g = S.gifts_catalog.find(x=>x.id===giftId); if(!g) return;
   if(!S.gift_inventory || !S.gift_inventory[giftId]){ showToast("❌ У вас закончились эти подарки"); return; }
+
+  // Раньше это было чисто локальное уменьшение счётчика — сервер вообще
+  // не знал о вашей коллекции подарков
+  try{
+    const data=await apiPost("/api/gifts/"+giftId+"/use-from-inventory", {}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось подарить")); return; }
+  }catch(e){ showToast("❌ Нет связи с сервером"); return; }
+
   S.gift_inventory[giftId]--;
   if(S.gift_inventory[giftId]<=0) delete S.gift_inventory[giftId];
 
@@ -9366,7 +9442,7 @@ function renderAdminGifts(){
   if(asb && !document.getElementById("ani-gifts")){
     const div = document.createElement("div");
     div.id = "ani-gifts";
-    div.className = "ani ani-todo";
+    div.className = "ani";
     div.dataset.section = "gifts";
     div.onclick = ()=>aPage(div,"gifts");
     div.textContent = "🎁 Подарки";
@@ -9414,8 +9490,19 @@ function renderAdminGiftsTable(){
     <tr><td>${g.imageUrl?`<span style="display:inline-block;width:20px;height:20px;vertical-align:middle;margin-right:4px">${giftVisual(g)}</span>`:g.icon} ${g.name}</td><td style="color:var(--cr)">💎 ${g.price}</td>
     <td>${g.limit||"∞"}</td><td>${g.sold}</td>
     <td><span class="bg bga">${g.rarity}</span></td>
-    <td><button class="xbtn rd" style="padding:3px 7px;font-size:10px" onclick="S.gifts_catalog.splice(${i},1);renderAdminGiftsTable();saveState()">✕</button></td></tr>
+    <td><button class="xbtn rd" style="padding:3px 7px;font-size:10px" onclick="deleteAdminGift(${g.id})">✕</button></td></tr>
   `).join("");
+}
+
+async function deleteAdminGift(giftId){
+  if(!confirm("Удалить подарок из каталога безвозвратно?")) return;
+  try{
+    const data=await apiDelete("/api/gifts/"+giftId);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось удалить")); return; }
+    await loadGiftsCatalog();
+    renderAdminGiftsTable();
+    showToast("✅ Подарок удалён");
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
 let adminGiftImageFile=null;
@@ -9452,9 +9539,12 @@ async function adminAddGift(){
     }
   }
 
-  S.gifts_catalog.push({id:nextId(),name:nm,icon:ico,imageUrl,price,limit:limit||null,sold:0,rarity,color:"var(--cr)"});
-  renderAdminGiftsTable();
-  saveState();
+  try{
+    const data=await apiPost("/api/gifts", {name:nm, icon:ico, imageUrl, price, giftLimit:limit||null, rarity, color:"var(--cr)"}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось добавить подарок")); return; }
+    await loadGiftsCatalog();
+    renderAdminGiftsTable();
+  }catch(e){ showToast("❌ Нет связи с сервером"); return; }
   // Сбрасываем форму
   adminGiftImageFile=null;
   el("ag-img-preview").innerHTML="🎁";
