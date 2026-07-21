@@ -3217,7 +3217,7 @@ function closeContacts(){ el("screen-contacts").classList.remove("on"); }
 function updBal(){
   if(el("bal-vip"))el("bal-vip").textContent=(S.bal||0).toLocaleString("ru");
   const f=S.bal.toLocaleString("ru");
-  ["baltop","balst","bal-admin"].forEach(id=>{if(el(id))el(id).textContent=f;});
+  ["baltop","balst","bal-admin","bal-gifts"].forEach(id=>{if(el(id))el(id).textContent=f;});
   if(el("balbig"))el("balbig").textContent=f+" CR";
 }
 
@@ -8021,8 +8021,10 @@ function closeStories(){ el("screen-stories").classList.remove("on"); clearInter
 function pauseStoryVideo(){ const v=el("story-media-video"); if(v) v.pause(); }
 
 function formatStoryAge(ts){
-  const h=Math.floor((Date.now()-ts)/3600000);
-  if(h<1) return "только что";
+  const m=Math.floor((Date.now()-ts)/60000);
+  if(m<1) return "только что";
+  if(m<60) return m+" мин назад";
+  const h=Math.floor(m/60);
   if(h<24) return h+" ч назад";
   return Math.floor(h/24)+" дн назад";
 }
@@ -8926,7 +8928,7 @@ function notifyAboutStory(story, channel){
     // канала есть, просто раньше не включали её в объект при публикации
     if(story.channel) story.channel.avatar=channel.avatar||null;
     wsSendReliable({type:"story.new", payload:{
-      story:{id:story.id, type:story.type, bg:story.bg, text:story.text, emoji:story.emoji, mediaUrl:story.mediaUrl, caption:story.caption, created:story.created, expires:story.expires, channel:story.channel},
+      story:{id:story.id, dbId:story.dbId, type:story.type, bg:story.bg, text:story.text, emoji:story.emoji, mediaUrl:story.mediaUrl, caption:story.caption, created:story.created, expires:story.expires, channel:story.channel},
       memberIds,
       fromUserId:S.user?.id, fromName:S.user?.name||"Пользователь", fromCol:0, fromIni:S.user?.initials||"?", fromAvatar:S.user?.avatar||null
     }});
@@ -8935,7 +8937,7 @@ function notifyAboutStory(story, channel){
   const memberIds=S.chats.filter(c=>c.withUserId).map(c=>c.withUserId);
   if(!memberIds.length) return;
   wsSendReliable({type:"story.new", payload:{
-    story:{id:story.id, type:story.type, bg:story.bg, text:story.text, emoji:story.emoji, mediaUrl:story.mediaUrl, caption:story.caption, created:story.created, expires:story.expires, channel:null},
+    story:{id:story.id, dbId:story.dbId, type:story.type, bg:story.bg, text:story.text, emoji:story.emoji, mediaUrl:story.mediaUrl, caption:story.caption, created:story.created, expires:story.expires, channel:null},
     memberIds,
     fromUserId:S.user?.id, fromName:S.user?.name||"Пользователь", fromCol:0, fromIni:S.user?.initials||"?", fromAvatar:S.user?.avatar||null
   }});
