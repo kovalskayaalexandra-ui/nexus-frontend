@@ -2272,13 +2272,14 @@ function wsHandleMessage(msg){
     }
 
     case "story.received": {
-      const { story, fromUserId, fromName, fromCol, fromIni } = msg.payload;
+      const { story, fromUserId, fromName, fromCol, fromIni, fromAvatar } = msg.payload;
       if(story.channel){
         // Сторис от канала — складываем под самим каналом, не под тем, кто её опубликовал
         if(!S.channel_stories) S.channel_stories={};
         const cid=story.channel.id;
-        if(!S.channel_stories[cid]) S.channel_stories[cid]={name:story.channel.nm, col:story.channel.col||0, ini:story.channel.ini||"?", items:[]};
+        if(!S.channel_stories[cid]) S.channel_stories[cid]={name:story.channel.nm, col:story.channel.col||0, ini:story.channel.ini||"?", avatar:story.channel.avatar||null, items:[]};
         S.channel_stories[cid].name=story.channel.nm;
+        S.channel_stories[cid].avatar=story.channel.avatar||null;
         S.channel_stories[cid].items.push(story);
         S.channel_stories[cid].items=S.channel_stories[cid].items.filter(s=>Date.now()<s.expires);
         renderStoriesBar(); saveState();
@@ -2286,12 +2287,28 @@ function wsHandleMessage(msg){
         break;
       }
       if(!S.friend_stories) S.friend_stories={};
-      if(!S.friend_stories[fromUserId]) S.friend_stories[fromUserId]={name:fromName, col:fromCol||0, ini:fromIni||"?", items:[]};
+      if(!S.friend_stories[fromUserId]) S.friend_stories[fromUserId]={name:fromName, col:fromCol||0, ini:fromIni||"?", avatar:fromAvatar||null, items:[]};
       S.friend_stories[fromUserId].name=fromName; // на случай смены имени
+      S.friend_stories[fromUserId].avatar=fromAvatar||null;
       S.friend_stories[fromUserId].items.push(story);
       S.friend_stories[fromUserId].items=S.friend_stories[fromUserId].items.filter(s=>Date.now()<s.expires);
       renderStoriesBar(); saveState();
       showToast(`📖 ${fromName} опубликовал(а) сторис`);
+      break;
+    }
+
+    case "story.deleted": {
+      const { storyId, channelId, fromUserId } = msg.payload;
+      if(channelId){
+        if(S.channel_stories?.[channelId]){
+          S.channel_stories[channelId].items=S.channel_stories[channelId].items.filter(s=>s.id!==storyId);
+          if(!S.channel_stories[channelId].items.length) delete S.channel_stories[channelId];
+        }
+      } else if(fromUserId && S.friend_stories?.[fromUserId]){
+        S.friend_stories[fromUserId].items=S.friend_stories[fromUserId].items.filter(s=>s.id!==storyId);
+        if(!S.friend_stories[fromUserId].items.length) delete S.friend_stories[fromUserId];
+      }
+      renderStoriesBar(); saveState();
       break;
     }
 
@@ -2874,6 +2891,7 @@ function loginOK(){
   loadCrystalCatalog();
   loadStickerPacks();
   loadVipVisibility();
+  loadStoriesFeed();
 
   // Загружаем реальные чаты из БД
   setTimeout(loadChatsFromDB, 600);
@@ -7503,6 +7521,7 @@ if(S.loggedIn){
     loadCrystalCatalog();
     loadStickerPacks();
     loadVipVisibility();
+    loadStoriesFeed();
   }
 } else {
   el("auth-welcome").classList.add("on");
@@ -7916,10 +7935,16 @@ function deleteCurrentStory(){
   if(isMyChannelStory){
     const cid=storyState.owner.channelId;
     if(S.channel_stories?.[cid]) S.channel_stories[cid].items=S.channel_stories[cid].items.filter(x=>x.id!==s.id);
+    const ch=S.chats.find(c=>c.id===cid);
+    const memberIds=ch?getChatMemberIds(ch).filter(id=>id!==S.user?.id):[];
+    if(memberIds.length) wsSendReliable({type:"story.deleted", payload:{storyId:s.id, channelId:cid, memberIds}});
   } else {
     S.my_stories=(S.my_stories||[]).filter(x=>x.id!==s.id);
+    const memberIds=S.chats.filter(c=>c.withUserId).map(c=>c.withUserId);
+    if(memberIds.length) wsSendReliable({type:"story.deleted", payload:{storyId:s.id, channelId:null, fromUserId:S.user?.id, memberIds}});
   }
   saveState(); renderStoriesBar();
+  if(s.dbId){ apiDelete("/api/stories/"+s.dbId).catch(e=>console.warn("delete story on server error:",e)); }
 
   const items=isMyChannelStory
     ? (S.channel_stories?.[storyState.owner.channelId]?.items||[]).filter(x=>Date.now()<x.expires)
@@ -8203,6 +8228,50 @@ setInterval(purgeExpiredStories, 5*60*1000); // проверяем каждые 
 
 // Кольцо сторис, разрезанное на сегменты по числу активных сторис — как в
 // Telegram (6 сторис = 6 дуг с маленькими зазорами, не сплошной круг)
+// Подгружает всё, что ещё не истекло, с сервера — раньше при обычном заходе
+// в приложение сторис не подгружались вообще, только через живой WebSocket
+// в момент публикации. Не дублирует то, что уже есть локально (по dbId).
+async function loadStoriesFeed(){
+  try{
+    const data=await apiGet("/api/stories/feed");
+    const rows=(data && data.stories)||[];
+    if(!S.my_stories) S.my_stories=[];
+    if(!S.friend_stories) S.friend_stories={};
+    if(!S.channel_stories) S.channel_stories={};
+
+    const known=new Set();
+    S.my_stories.forEach(s=>known.add(s.dbId||s.id));
+    Object.values(S.friend_stories).forEach(d=>(d.items||[]).forEach(s=>known.add(s.dbId||s.id)));
+    Object.values(S.channel_stories).forEach(d=>(d.items||[]).forEach(s=>known.add(s.dbId||s.id)));
+
+    rows.forEach(row=>{
+      if(known.has(row.id)) return;
+      const story={
+        id: nextId(), dbId: row.id,
+        type: row.type, bg: row.bg, text: row.text, emoji: row.emoji,
+        mediaUrl: row.media_url, caption: row.caption,
+        created: new Date(row.created_at).getTime(),
+        expires: new Date(row.expires_at).getTime(),
+        views: 0,
+      };
+      if(row.channel_id){
+        const chatObj=S.chats.find(c=>c.id===row.channel_id);
+        const mine = !!(chatObj?.mine || chatObj?.myRole==="owner" || chatObj?.myRole==="admin");
+        story.channel={id:row.channel_id, nm:row.channel_name, ini:(row.channel_name||"?")[0], col:chatObj?.col||0};
+        if(!S.channel_stories[row.channel_id]) S.channel_stories[row.channel_id]={name:row.channel_name, col:chatObj?.col||0, ini:(row.channel_name||"?")[0], avatar:row.channel_avatar||null, items:[], mine};
+        S.channel_stories[row.channel_id].items.push(story);
+      } else if(row.user_id===S.user?.id){
+        S.my_stories.push(story);
+      } else {
+        if(!S.friend_stories[row.user_id]) S.friend_stories[row.user_id]={name:row.sender_name||"?", col:colorFromId(row.user_id), ini:(row.sender_name||"?").slice(0,2).toUpperCase(), avatar:row.sender_avatar||null, items:[]};
+        S.friend_stories[row.user_id].items.push(story);
+      }
+    });
+
+    renderStoriesBar(); saveState();
+  }catch(e){ /* тихо игнорируем — просто не подгрузится, живой WebSocket всё равно работает */ }
+}
+
 function buildStoryRingGradient(count, c1, c2){
   c1=c1||"var(--acc)"; c2=c2||"var(--am)";
   if(count<=1) return `linear-gradient(135deg,${c1},${c2})`;
@@ -8257,7 +8326,7 @@ function renderStoriesBar(){
     ${channelEntries.map(([cid,data])=>`
       <div class="story-av-wrap" onclick="viewChannelStories('${cid}')">
         <div class="story-ring" style="background:${buildStoryRingGradient(data.items.length,'var(--acc2)','var(--gr)')}">
-          <div class="story-av-inner" style="background:${colBg(data.col)};font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#fff">${data.ini}</div>
+          <div class="story-av-inner" style="background:${colBg(data.col)};font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#fff">${data.avatar?`<img src="${data.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:data.ini}</div>
         </div>
         <div class="story-nm">${(data.name||"?").split(" ")[0]}${data.mine?" 📢":""}</div>
       </div>
@@ -8265,7 +8334,7 @@ function renderStoriesBar(){
     ${friendEntries.map(([uid,data])=>`
       <div class="story-av-wrap" onclick="viewFriendStories('${uid}')">
         <div class="story-ring" style="background:${buildStoryRingGradient(data.items.length)}">
-          <div class="story-av-inner" style="background:${colBg(data.col)};font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#fff">${data.ini}</div>
+          <div class="story-av-inner" style="background:${colBg(data.col)};font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:#fff">${data.avatar?`<img src="${data.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:data.ini}</div>
         </div>
         <div class="story-nm">${(data.name||"?").split(" ")[0]}</div>
       </div>
@@ -8627,10 +8696,13 @@ function notifyAboutStory(story, channel){
   if(channel){
     const memberIds=getChatMemberIds(channel).filter(id=>id!==S.user?.id);
     if(!memberIds.length) return;
+    // Аватарка канала кладётся прямо в story.channel — она уже там, если у
+    // канала есть, просто раньше не включали её в объект при публикации
+    if(story.channel) story.channel.avatar=channel.avatar||null;
     wsSendReliable({type:"story.new", payload:{
       story:{id:story.id, type:story.type, bg:story.bg, text:story.text, emoji:story.emoji, mediaUrl:story.mediaUrl, caption:story.caption, created:story.created, expires:story.expires, channel:story.channel},
       memberIds,
-      fromUserId:S.user?.id, fromName:S.user?.name||"Пользователь", fromCol:0, fromIni:S.user?.initials||"?"
+      fromUserId:S.user?.id, fromName:S.user?.name||"Пользователь", fromCol:0, fromIni:S.user?.initials||"?", fromAvatar:S.user?.avatar||null
     }});
     return;
   }
@@ -8639,8 +8711,22 @@ function notifyAboutStory(story, channel){
   wsSendReliable({type:"story.new", payload:{
     story:{id:story.id, type:story.type, bg:story.bg, text:story.text, emoji:story.emoji, mediaUrl:story.mediaUrl, caption:story.caption, created:story.created, expires:story.expires, channel:null},
     memberIds,
-    fromUserId:S.user?.id, fromName:S.user?.name||"Пользователь", fromCol:0, fromIni:S.user?.initials||"?"
+    fromUserId:S.user?.id, fromName:S.user?.name||"Пользователь", fromCol:0, fromIni:S.user?.initials||"?", fromAvatar:S.user?.avatar||null
   }});
+}
+
+// Сохраняет сторис на сервере по-настоящему — раньше сторис были полностью
+// эфемерными (жили только в момент отправки по WebSocket), кто не был
+// в сети именно в эту секунду, никогда её не видел. Теперь настоящая
+// запись в БД, достаётся через /api/stories/feed при заходе в приложение.
+async function saveStoryToServer(story, channel){
+  try{
+    const data=await apiPost("/api/stories", {
+      type:story.type, bg:story.bg, text:story.text, emoji:story.emoji,
+      mediaUrl:story.mediaUrl, caption:story.caption||null, channelId:channel?channel.id:null
+    }, true);
+    if(data && data.success && data.story){ story.dbId=data.story.id; saveState(); }
+  }catch(e){ console.warn("save story to server error:", e); }
 }
 
 async function publishStory(){
@@ -8688,6 +8774,7 @@ async function publishStory(){
       story.mediaUrl=data.url;
       story.uploading=false;
       saveState();
+      await saveStoryToServer(story, publishingChannel);
       notifyAboutStory(story, publishingChannel);
       const where = story.channel ? `в канал «${story.channel.nm}»` : "";
       showToast(`📖 Сторис опубликована ${where}!`);
@@ -8705,6 +8792,7 @@ async function publishStory(){
   closeM("m-story-editor");
   renderStoriesBar();
   saveState();
+  await saveStoryToServer(story, publishingChannel);
   notifyAboutStory(story, publishingChannel);
   const where = story.channel ? `в канал «${story.channel.nm}»` : "";
   showToast(`📖 Сторис опубликована ${where}!`);
