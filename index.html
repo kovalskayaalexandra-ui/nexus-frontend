@@ -5826,12 +5826,18 @@ function openChatInfo(){
       apiGet("/api/users/"+ch.withUserId).then(d=>{
         if(d.user?.bio){ el("ui-bio").textContent=d.user.bio; el("ui-bio-row").style.display="block"; }
       }).catch(()=>{});
-    }
 
-    const gifts=msgs.filter(m=>m.t==="gift");
-    if(gifts.length){
-      el("ui-gifts-grid").innerHTML = gifts.map(g=>`<div class="pgift ${g.rarity||"common"}" title="${escHtml(g.name)}" onclick="closeM('m-user-info');showToast('🎁 '+'${escHtml(g.name).replace(/'/g,"\\'")}')">${giftVisual(g)}</div>`).join("");
-      el("ui-gifts-row").style.display="block";
+      // Раньше подарки на карточке брались из истории переписки
+      // (msgs.filter(m=>m.t==="gift")) — а переписка одна общая на двоих,
+      // поэтому оба видели одни и те же подарки, независимо от того, кто
+      // кому дарил. Теперь — реальный запрос по конкретному получателю.
+      apiGet("/api/users/"+ch.withUserId+"/gifts").then(d=>{
+        const gifts=(d && d.gifts)||[];
+        if(gifts.length){
+          el("ui-gifts-grid").innerHTML = gifts.map(g=>`<div class="pgift ${g.rarity||"common"}" title="${escHtml(g.name)}" onclick="closeM('m-user-info');showToast('🎁 '+'${escHtml(g.name).replace(/'/g,"\\'")}')">${giftVisual({icon:g.icon,imageUrl:g.image_url})}</div>`).join("");
+          el("ui-gifts-row").style.display="block";
+        }
+      }).catch(()=>{});
     }
 
     if(!isSystem){
