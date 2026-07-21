@@ -1227,6 +1227,9 @@ tr:hover td{background:var(--bg3)}
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">📥</div><div><div class="settings-row-label">Импорт данных</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
+      <div class="settings-row" onclick="clearMediaCache()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">🗑️</div><div><div class="settings-row-label">Очистить кэш файлов</div><div class="settings-row-sub">Голосовые, видео, фото, документы, сохранённые локально</div></div></div>
+      </div>
       <div class="settings-row" onclick="openChangePhoneModal()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">📱</div><div><div class="settings-row-label">Сменить номер телефона</div></div></div>
         <div class="settings-row-arrow">›</div>
@@ -1813,6 +1816,22 @@ tr:hover td{background:var(--bg3)}
 // ══════════════════════════════════════════════════
 
 const APP_VERSION = "2.1.0";
+
+// Локальное кэширование медиафайлов (голосовые/видео/кружочки/файлы/фото) —
+// как в Telegram, скачали один раз, дальше берём из браузера, не с сервера
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("sw.js").catch(e=>console.warn("SW registration failed:",e));
+  });
+}
+async function clearMediaCache(){
+  if(!("caches" in window)){ showToast("❌ Браузер не поддерживает эту функцию"); return; }
+  if(!confirm("Очистить локально сохранённые файлы? Их придётся заново скачать при следующем открытии.")) return;
+  try{
+    await caches.delete("nexus-media-v1");
+    showToast("✅ Локальный кэш файлов очищен");
+  }catch(e){ showToast("❌ Не удалось очистить кэш"); }
+}
 const STORE_KEY = "nexus_v2_data";
 
 // ── LANGUAGES (14) ──────────────────────────────────────────────
