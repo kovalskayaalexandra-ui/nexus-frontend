@@ -3189,7 +3189,10 @@ function openSettings(){
   if(el("settings-bio"))el("settings-bio").textContent=u.bio||"";
   if(el("settings-phone"))el("settings-phone").textContent=u.phone||S.phone||"";
   if(el("settings-ph-disp"))el("settings-ph-disp").textContent=u.phone||S.phone||"";
-  if(el("blocked-count"))el("blocked-count").textContent=(S.blocked?.length||0)+" пользователей";
+  if(el("blocked-count")){
+    const realBlockedCount=(S.blocked||[]).filter(id=>S.chats.find(c=>String(c.id)===String(id))).length;
+    el("blocked-count").textContent=realBlockedCount+" пользователей";
+  }
   const pendingBanner=el("pending-phone-change-banner");
   if(pendingBanner){
     if(u.pendingPhoneChange){
@@ -5723,6 +5726,7 @@ function addCurrentChatToContacts(){
 }
 function reportAndBlockCurrentChat(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  if(isSystemChat(ch.id)){ showToast("🔒 Это системный чат, его нельзя заблокировать"); return; }
   if(!confirm("Пожаловаться на "+ch.nm+" и заблокировать? Дальнейшие сообщения от него приходить не будут.")) return;
   ch.blocked=true; if(!S.blocked.includes(ch.id))S.blocked.push(ch.id);
   renderUnknownBar(ch);
@@ -5746,8 +5750,8 @@ function blockUser(){
 }
 
 async function unblockUser(chatId){
-  const ch=S.chats.find(c=>c.id===chatId); if(!ch) return;
-  ch.blocked=false; S.blocked=S.blocked.filter(id=>id!==chatId);
+  const ch=S.chats.find(c=>String(c.id)===String(chatId)); if(!ch) return;
+  ch.blocked=false; S.blocked=S.blocked.filter(id=>String(id)!==String(chatId));
   renderChats(); renderBlockedList(); saveState();
   showToast("✅ "+ch.nm+" разблокирован");
   if(ch.withUserId){
@@ -5817,7 +5821,7 @@ function openChatInfo(){
 
     el("ui-actions").innerHTML = isSystem ? "" : [
       uiActionBtn("💬","Чат",`closeM('m-user-info')`),
-      uiActionBtn(ch.muted?"🔔":"🔕",ch.muted?"Вкл. звук":"Без звука",`muteChat();openChatInfo()`),
+      uiActionBtn(ch.muted?"🔇":"🔔",ch.muted?"Вкл. звук":"Без звука",`muteChat();openChatInfo()`),
       uiActionBtn("📞","Звонок",`closeM('m-user-info');showToast('📞 Звонки — скоро')`),
       uiActionBtn("⋯","Ещё",`closeM('m-user-info')`),
     ].join("");
@@ -5853,7 +5857,7 @@ function openChatInfo(){
 
     const myRole=myRoleIn(ch);
     const canEdit = !isSystem && (ch.mine||myRole==="owner"||myRole==="admin");
-    const actions=[uiActionBtn(ch.muted?"🔔":"🔕",ch.muted?"Вкл. звук":"Без звука",`muteChat();openChatInfo()`)];
+    const actions=[uiActionBtn(ch.muted?"🔇":"🔔",ch.muted?"Вкл. звук":"Без звука",`muteChat();openChatInfo()`)];
     if(ch.type==="groups") actions.push(uiActionBtn("👥","Участники",`closeM('m-user-info');openMembers()`));
     if(canEdit) actions.push(uiActionBtn("⚙️","Управление",`closeM('m-user-info');openChannelSettings()`));
     actions.push(uiActionBtn("⋯","Ещё",`closeM('m-user-info')`));
@@ -7418,15 +7422,19 @@ async function loadBlockedUsers(){
   try{
     const data=await apiGet("/api/users/blocked");
     const blockedUserIds=(data && data.blockedIds)||[];
-    if(!blockedUserIds.length) return;
+    // Пересобираем заново с нуля — раньше только ДОБАВЛЯЛИ в S.blocked и
+    // выходили сразу, если сервер сказал "заблокированных нет", из-за
+    // чего старый локальный мусор никогда не стирался
+    const newBlocked=[];
     S.chats.forEach(ch=>{
-      if(ch.withUserId && blockedUserIds.includes(ch.withUserId)){
-        ch.blocked=true;
-        if(!S.blocked.includes(ch.id)) S.blocked.push(ch.id);
-      }
+      if(!ch.withUserId) return; // системные чаты сюда не попадают вообще
+      const isBlocked=blockedUserIds.includes(ch.withUserId);
+      ch.blocked=isBlocked;
+      if(isBlocked) newBlocked.push(ch.id);
     });
+    S.blocked=newBlocked;
     saveState();
-  }catch(e){ /* не удалось — останется то, что уже было локально */ }
+  }catch(e){ /* не удалось — оставляем то, что уже было локально */ }
 }
 
 async function loadGiftInventory(){
