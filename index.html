@@ -1314,6 +1314,7 @@ tr:hover td{background:var(--bg3)}
       <div class="ani" data-section="wallets" onclick="aPage(this,'wallets')">💳 Кошельки</div>
       <div class="ani" data-section="stickers" onclick="aPage(this,'stickers')">🐱 Стикеры</div>
       <div class="ani" data-section="users" onclick="aPage(this,'users')">👥 Пользователи</div>
+      <div class="ani" data-section="chatmod" onclick="aPage(this,'chatmod')">🚫 Модерация чатов</div>
       <div class="ani ani-todo" data-section="langs" onclick="aPage(this,'langs')">🌍 Языки</div>
       <div class="ani" data-section="bots" onclick="aPage(this,'bots')">🤖 Боты и API</div>
       <div class="ani ani-todo" data-section="webhooks" onclick="aPage(this,'webhooks')">🔗 Вебхуки</div>
@@ -1404,6 +1405,11 @@ tr:hover td{background:var(--bg3)}
         <div class="atitle">👥 Пользователи</div><div class="asub2">Управление аккаунтами</div>
         <div style="display:flex;gap:8px;margin-bottom:14px"><input class="fii" style="max-width:220px" id="usr-search" placeholder="Поиск по имени/username/телефону..." oninput="debounceRenderUsers()"><select class="fsel" style="width:140px" id="usr-role-filter" onchange="renderUsers()"><option value="all">Все роли</option><option value="admin">Admin</option><option value="moderator">Moderator</option><option value="user">User</option></select></div>
         <div class="tw"><table><thead><tr><th>Пользователь</th><th>Телефон</th><th>Роль</th><th>CR</th><th>VIP</th><th>Регистрация</th><th>Статус</th><th></th></tr></thead><tbody id="usrtbl"></tbody></table></div>
+      </div>
+      <div class="apage" id="page-chatmod">
+        <div class="atitle">🚫 Модерация чатов</div><div class="asub2">Закрыть доступ к каналу/группе — данные не удаляются, сохраняются для возможной передачи в компетентные органы</div>
+        <div style="display:flex;gap:8px;margin-bottom:14px"><input class="fii" style="max-width:300px" id="chatmod-search" placeholder="Название или @username канала/группы..." onkeydown="if(event.key==='Enter')searchChatsForModeration()"><button class="xbtn" onclick="searchChatsForModeration()">🔍 Найти</button></div>
+        <div id="chatmod-results"></div>
       </div>
       <div class="apage" id="page-langs">
         <div class="atitle">🌍 Языки</div><div class="asub2">14 языков · Автоопределение по IP</div>
@@ -7474,6 +7480,60 @@ async function renderUsers(){
   }catch(err){
     e.innerHTML=`<tr><td colspan="8" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить</td></tr>`;
   }
+}
+
+// Модерация каналов/групп — закрыть доступ, не удаляя данные (для случаев
+// незаконного контента, когда переписку может понадобиться передать в
+// компетентные органы)
+async function searchChatsForModeration(){
+  const q=el("chatmod-search")?.value?.trim();
+  const wrap=el("chatmod-results"); if(!wrap) return;
+  if(!q){ wrap.innerHTML=""; return; }
+  wrap.innerHTML='<div style="color:var(--tx3);font-size:12px;padding:10px 0">Ищем...</div>';
+  try{
+    const data=await apiGet("/api/chats/admin/search?q="+encodeURIComponent(q));
+    const chats=(data && data.chats)||[];
+    if(!chats.length){ wrap.innerHTML='<div style="color:var(--tx3);font-size:12px;padding:10px 0">Ничего не найдено</div>'; return; }
+    wrap.innerHTML=chats.map(c=>{
+      const typeLabel=c.type==="channels"?"📢 Канал":"👥 Группа";
+      const statusHtml=c.admin_blocked
+        ? `<span class="bg bgr">🚫 Доступ закрыт${c.admin_blocked_reason?" — "+escHtml(c.admin_blocked_reason):""}</span>`
+        : `<span style="color:var(--tx3)">Активен</span>`;
+      const actionBtn=c.admin_blocked
+        ? `<button class="xbtn gn" style="padding:4px 10px;font-size:11px" onclick="unblockChatByAdmin('${c.id}','${escHtml(c.name).replace(/'/g,"\\'")}')">✅ Открыть доступ</button>`
+        : `<button class="xbtn rd" style="padding:4px 10px;font-size:11px" onclick="blockChatByAdmin('${c.id}','${escHtml(c.name).replace(/'/g,"\\'")}')">🚫 Закрыть доступ</button>`;
+      return `<div class="asec" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:180px">
+          <div style="font-weight:600;font-size:13.5px">${typeLabel} ${escHtml(c.name)}${c.username?" · @"+escHtml(c.username):""}</div>
+          <div style="font-size:11.5px;color:var(--tx3);margin-top:2px">${c.member_count} участников</div>
+          <div style="margin-top:4px">${statusHtml}</div>
+        </div>
+        ${actionBtn}
+      </div>`;
+    }).join("");
+  }catch(e){ wrap.innerHTML='<div style="color:var(--rd);font-size:12px;padding:10px 0">Не удалось загрузить</div>'; }
+}
+
+async function blockChatByAdmin(chatId, name){
+  const reason=prompt(`Причина закрытия доступа к «${name}» (для истории, необязательно):`, "");
+  if(reason===null) return;
+  if(!confirm(`Закрыть доступ к «${name}»? Никто не сможет писать и просматривать, данные сохранятся.`)) return;
+  try{
+    const data=await apiPatch("/api/chats/admin/"+chatId+"/block", {reason:reason||null}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось закрыть доступ")); return; }
+    showToast("🚫 Доступ закрыт");
+    searchChatsForModeration();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+async function unblockChatByAdmin(chatId, name){
+  if(!confirm(`Открыть доступ к «${name}» снова?`)) return;
+  try{
+    const data=await apiPatch("/api/chats/admin/"+chatId+"/unblock", {}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось открыть доступ")); return; }
+    showToast("✅ Доступ открыт");
+    searchChatsForModeration();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
 async function banUser(userId, label){
