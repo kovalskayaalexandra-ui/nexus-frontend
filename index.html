@@ -5932,6 +5932,12 @@ function unarchiveChat(chatId){
   const ch=S.chats.find(c=>c.id===chatId); if(!ch)return;
   ch.archived=false;
   renderArchiveList(); renderChats(); saveState();
+  // ⚠️ Раньше не сохранялось на сервере вообще (в отличие от archiveChat(),
+  // который вызывается из тумблера внутри чата) — из-за этого сервер
+  // продолжал считать чат заархивированным, и он "возвращался" в архив
+  // при каждой перезагрузке страницы после того, как её починили
+  // подтягивать реальные чаты с сервера.
+  saveChatMemberPref(ch.id, "archived", false);
   showToast("Чат восстановлен из архива");
 }
 function openArchive(){ renderArchiveList(); el("m-archive").classList.add("on"); }
