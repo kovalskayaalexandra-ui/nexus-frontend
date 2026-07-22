@@ -10201,7 +10201,12 @@ async function loadMyChannelsForVerify(){
     const data = await apiGet("/api/verification/my-channels");
     const chats = (data && data.chats)||[];
     if(!chats.length){ sel.innerHTML = `<option value="">У вас нет каналов/групп, где вы владелец</option>`; return; }
-    sel.innerHTML = chats.map(c=>`<option value="${c.id}">${c.type==="channels"?"📢":"👥"} ${escHtml(c.name)}${c.username?" (@"+escHtml(c.username)+")":""}${c.is_verified?" ✅":""}</option>`).join("");
+    // ⚠️ Раньше первым пунктом сразу шёл реальный канал — браузер выбирал
+    // его "по умолчанию", и форма выглядела так, будто сама предлагает
+    // канал, хотя на самом деле никто его не выбирал. Теперь первый пункт —
+    // пустой и заблокирован для выбора, ничего не предвыбрано.
+    sel.innerHTML = `<option value="" selected disabled>— Выберите канал/группу —</option>` +
+      chats.map(c=>`<option value="${c.id}">${c.type==="channels"?"📢":"👥"} ${escHtml(c.name)}${c.username?" (@"+escHtml(c.username)+")":""}${c.is_verified?" ✅":""}</option>`).join("");
   }catch(e){ sel.innerHTML = `<option value="">Не удалось загрузить</option>`; }
 }
 async function submitVerification(){
