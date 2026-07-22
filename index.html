@@ -3259,7 +3259,7 @@ async function loadMessagesFromDB(chatId){
         if(dbMsg.media_type==="image"){ m.img=dbMsg.media_url; if(dbMsg.spoiler) m.spoiler=true; }
         else if(dbMsg.media_type==="video"){ m.video=dbMsg.media_url; if(dbMsg.spoiler) m.spoiler=true; }
         else if(dbMsg.media_type==="audio") m.audio={url:dbMsg.media_url,name:dbMsg.file_name||"Аудио"};
-        else if(dbMsg.media_type==="voice") m.voice={url:dbMsg.media_url,duration:0,waveform:dbMsg.waveform||null};
+        else if(dbMsg.media_type==="voice") m.voice={url:dbMsg.media_url,duration:0,waveform:dbMsg.waveform||null,size:dbMsg.file_size||0};
         else if(dbMsg.media_type==="videoCircle") m.videoCircle={url:dbMsg.media_url,duration:0};
         else m.file={name:dbMsg.file_name||"Файл",url:dbMsg.media_url};
       }
@@ -3698,7 +3698,7 @@ async function retryAttachmentMsg(m, chatId, ch, memberIds){
     else m.file.url=data.url;
     renderMsgs(); saveState();
 
-    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,spoiler:!!att.spoiler,waveform:att.waveform||null},true);
+    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null},true);
     if(!d || !d.success) return false;
     const dbId=d?.message?.id||null;
     if(dbId){ m.dbId=dbId; saveState(); }
