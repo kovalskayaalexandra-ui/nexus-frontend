@@ -9996,36 +9996,58 @@ function removeCustomSticker(i){
   previewCustomStickers({files:customStickerFiles});
 }
 
-function submitCustomPack(){
+// ⚠️ Раньше сами картинки стикеров нигде не сохранялись (только File-объекты
+// в памяти вкладки), а заявка писалась в S.custom_packs — тот же
+// localStorage-ключ, что читал Dev Panel, поэтому админ видел только СВОИ
+// же тестовые паки, а не чужие. Теперь стикеры реально грузятся через
+// /api/upload, а заявка реально сохраняется на сервере.
+async function submitCustomPack(){
   const nm = el("cs-name")?.value?.trim();
   const link = el("cs-link")?.value?.trim();
   if(!nm){ showToast("❌ Введите название пака"); return; }
   if(!link){ showToast("❌ Введите короткую ссылку"); return; }
   if(customStickerFiles.length<1){ showToast("❌ Добавьте хотя бы 1 стикер"); return; }
   const price = parseInt(el("cs-price")?.value)||0;
-  if(!S.custom_packs) S.custom_packs=[];
-  S.custom_packs.push({id:nextId(),name:nm,link,price,count:customStickerFiles.length,status:"moderation",created:now()});
-  renderMyCustomPacks();
-  el("cs-name").value=""; el("cs-link").value=""; el("cs-price").value="0";
-  customStickerFiles=[]; if(el("cs-preview"))el("cs-preview").innerHTML="";
-  saveState();
-  showToast("📤 Пак «"+nm+"» отправлен на модерацию!");
+  const btn = document.querySelector('[onclick="submitCustomPack()"]');
+  if(btn){ btn.disabled=true; btn.textContent="⏳ Загрузка..."; }
+  try{
+    const t=getToken();
+    const uploaded = await Promise.all(customStickerFiles.map(async file=>{
+      const fd=new FormData(); fd.append("file",file);
+      const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.success) throw new Error(data.error||"Не удалось загрузить стикер");
+      return data.url;
+    }));
+    const data = await apiPost("/api/custom-sticker-packs", {name:nm, link, price, stickers:uploaded}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось отправить пак")); return; }
+    renderMyCustomPacks();
+    el("cs-name").value=""; el("cs-link").value=""; el("cs-price").value="0";
+    customStickerFiles=[]; if(el("cs-preview"))el("cs-preview").innerHTML="";
+    showToast("📤 Пак «"+nm+"» отправлен на модерацию!");
+  }catch(e){ showToast("❌ "+(e.message||"Не удалось отправить пак")); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent="📤 Отправить на модерацию"; } }
 }
 
-function renderMyCustomPacks(){
+async function renderMyCustomPacks(){
   const c = el("my-custom-packs"); if(!c) return;
-  const packs = S.custom_packs||[];
-  if(!packs.length){ c.innerHTML='<div style="color:var(--tx3);font-size:12px;text-align:center;padding:12px">Нет созданных паков</div>'; return; }
-  c.innerHTML = packs.map(p=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--brd)">
+  c.innerHTML = `<div style="color:var(--tx3);font-size:12px;text-align:center;padding:12px">Загрузка...</div>`;
+  try{
+    const data = await apiGet("/api/custom-sticker-packs/mine");
+    const packs = (data && data.packs)||[];
+    if(!packs.length){ c.innerHTML='<div style="color:var(--tx3);font-size:12px;text-align:center;padding:12px">Нет созданных паков</div>'; return; }
+    c.innerHTML = packs.map(p=>{
+      const count=(p.stickers||[]).length;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--brd)">
       <div style="font-size:22px">🎨</div>
       <div style="flex:1">
         <div style="font-weight:600;font-size:12.5px">${p.name}</div>
-        <div style="font-size:10.5px;color:var(--tx3)">@${p.link} · ${p.count} стикеров · ${p.price?p.price+" CR":"Бесплатно"}</div>
+        <div style="font-size:10.5px;color:var(--tx3)">@${p.link} · ${count} стикеров · ${p.price?p.price+" CR":"Бесплатно"}</div>
       </div>
       <span class="bg ${p.status==="moderation"?"bga":p.status==="approved"?"bgg":"bgr"}">${p.status==="moderation"?"На модерации":p.status==="approved"?"Одобрен":"Отклонён"}</span>
-    </div>
-  `).join("");
+    </div>`;
+    }).join("");
+  }catch(e){ c.innerHTML='<div style="color:var(--rd);font-size:12px;text-align:center;padding:12px">Не удалось загрузить</div>'; }
 }
 
 // ══════════════════════════════════════════════════
@@ -10201,12 +10223,16 @@ async function reviewVerification(id, status){
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
+// ⚠️ Раньше читало S.custom_packs — тот же localStorage-ключ, что и у
+// самого отправителя в его браузере, поэтому админ видел только СВОИ же
+// тестовые заявки, а не заявки реальных пользователей. Теперь общая
+// таблица custom_sticker_packs в БД, видна всем с доступом к разделу.
 function renderAdminCustomPacks(){
   const asb = document.querySelector(".asb");
   if(asb && !document.getElementById("ani-custpacks")){
     const div = document.createElement("div");
     div.id = "ani-custpacks";
-    div.className = "ani ani-todo";
+    div.className = "ani";
     div.dataset.section = "custompacks";
     div.onclick = ()=>aPage(div,"custpacks");
     div.textContent = "🎨 Паки юзеров";
@@ -10220,29 +10246,36 @@ function renderAdminCustomPacks(){
         <div class="asec"><div class="tw"><table><thead><tr><th>Пак</th><th>Автор</th><th>Стикеров</th><th>Цена</th><th>Статус</th><th></th></tr></thead>
         <tbody id="acp-tbl"></tbody></table></div></div>`;
       acnt.appendChild(page);
-      renderAdminCustomPacksTable();
     }
   }
-}
-
-function renderAdminCustomPacksTable(){
-  const t = document.getElementById("acp-tbl"); if(!t) return;
-  const packs = S.custom_packs||[];
-  t.innerHTML = packs.length ? packs.map((p,i)=>`
-    <tr><td><strong>${p.name}</strong><br><span style="font-size:10px;color:var(--tx3)">@${p.link}</span></td>
-    <td style="color:var(--acc2)">@dev_user</td><td>${p.count}</td>
-    <td>${p.price?"💎 "+p.price:"Бесплатно"}</td>
-    <td><span class="bg bga">На модерации</span></td>
-    <td><button class="xbtn gn" style="padding:3px 7px;font-size:10px" onclick="approveCustomPack(${i})">✓</button> <button class="xbtn rd" style="padding:3px 7px;font-size:10px" onclick="S.custom_packs.splice(${i},1);renderAdminCustomPacksTable();saveState()">✕</button></td></tr>
-  `).join("") : '<tr><td colspan="6" style="color:var(--tx3);text-align:center;padding:14px">Нет заявок</td></tr>';
-}
-
-function approveCustomPack(i){
-  if(S.custom_packs[i]) S.custom_packs[i].status="approved";
   renderAdminCustomPacksTable();
-  renderMyCustomPacks();
-  saveState();
-  showToast("✅ Пак одобрен!");
+}
+
+async function renderAdminCustomPacksTable(){
+  const t = document.getElementById("acp-tbl"); if(!t) return;
+  t.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--tx3);padding:14px">Загрузка...</td></tr>';
+  try{
+    const data = await apiGet("/api/admin/custom-sticker-packs");
+    const packs = (data && data.packs)||[];
+    if(!packs.length){ t.innerHTML = '<tr><td colspan="6" style="color:var(--tx3);text-align:center;padding:14px">Нет заявок</td></tr>'; return; }
+    const statusBadge = {moderation:'<span class="bg bga">На модерации</span>', approved:'<span class="bg bgg">Одобрен</span>', rejected:'<span class="bg bgr">Отклонён</span>'};
+    t.innerHTML = packs.map(p=>`
+    <tr><td><strong>${p.name}</strong><br><span style="font-size:10px;color:var(--tx3)">@${p.link}</span></td>
+    <td style="color:var(--acc2)">${p.username?"@"+p.username:(p.phone||"—")}</td><td>${(p.stickers||[]).length}</td>
+    <td>${p.price?"💎 "+p.price:"Бесплатно"}</td>
+    <td>${statusBadge[p.status]||p.status}</td>
+    <td>${p.status==="moderation"?`<button class="xbtn gn" style="padding:3px 7px;font-size:10px" onclick="reviewCustomPack('${p.id}','approved')">✓</button> <button class="xbtn rd" style="padding:3px 7px;font-size:10px" onclick="reviewCustomPack('${p.id}','rejected')">✕</button>`:""}</td></tr>
+  `).join("");
+  }catch(e){ t.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить</td></tr>'; }
+}
+
+async function reviewCustomPack(id, status){
+  try{
+    const data = await apiPatch("/api/admin/custom-sticker-packs/"+id, {status}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); return; }
+    showToast(status==="approved"?"✅ Пак одобрен!":"❌ Пак отклонён");
+    renderAdminCustomPacksTable();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
 // Official channel added on login — merged into loginOK below
