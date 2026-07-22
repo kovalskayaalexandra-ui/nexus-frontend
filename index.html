@@ -2037,6 +2037,13 @@ function loadState(){
       sc.blocked=false; sc.archived=false;
     }
   });
+  // Все официальные каналы/боты Nexus (не "Избранное" — это просто личные
+  // заметки, не отдельная сущность) — сразу с синей галочкой, у уже
+  // существующих локально чатов флага могло не быть (появился позже)
+  [88888,99999,66666,55555].forEach(sid=>{
+    const sc=S.chats?.find(c=>c.id===sid);
+    if(sc && !sc.verified) sc.verified=true;
+  });
 }
 
 function saveState(){
@@ -2997,25 +3004,25 @@ function loginOK(){
       saveState(); renderChats();
     }
     if(!S.chats.find(c=>c.id===88888)){
-      S.chats.push({id:88888,nm:"Nexus Official ✅",ini:"NO",col:4,online:false,prev:"🎉 Nexus v3.0 — крупное обновление!",time:"сейчас",unread:4,type:"channels",pinned:false,muted:false,blocked:false,draft:"",official:true});
+      S.chats.push({id:88888,nm:"Nexus Official ✅",ini:"NO",col:4,online:false,prev:"🎉 Nexus v3.0 — крупное обновление!",time:"сейчас",unread:4,type:"channels",pinned:false,muted:false,blocked:false,draft:"",official:true,verified:true});
       S.messages[88888] = buildOfficialMessages();
       saveState(); renderChats();
     }
     renderStoriesBar();
     if(!S.chats.find(c=>c.id===99999)){
-      const ch={id:99999,nm:"NexusSupport 🤖",ini:"NS",col:6,online:true,prev:"Чем могу помочь?",time:now(),unread:1,type:"personal",pinned:false,muted:false,blocked:false,draft:""};
+      const ch={id:99999,nm:"NexusSupport 🤖",ini:"NS",col:6,online:true,prev:"Чем могу помочь?",time:now(),unread:1,type:"personal",pinned:false,muted:false,blocked:false,draft:"",verified:true};
       S.chats.push(ch);
       S.messages[99999]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NS",col:6,tx:SUPPORT_GREET,time:now(),isSupport:true}];
       saveState(); renderChats();
     }
     if(!S.chats.find(c=>c.id===66666)){
-      const ch={id:66666,nm:"Nexus BotFather 🛠️",ini:"BF",col:5,online:true,prev:"Создавай ботов прямо тут",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:""};
+      const ch={id:66666,nm:"Nexus BotFather 🛠️",ini:"BF",col:5,online:true,prev:"Создавай ботов прямо тут",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:"",verified:true};
       S.chats.push(ch);
       S.messages[66666]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"BF",col:5,tx:BOTFATHER_GREET,time:now(),isSupport:true}];
       saveState(); renderChats();
     }
     if(!S.chats.find(c=>c.id===55555)){
-      const ch={id:55555,nm:"Nexus Verify 🛡️",ini:"NV",col:3,online:true,prev:"Подать заявку на верификацию",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:""};
+      const ch={id:55555,nm:"Nexus Verify 🛡️",ini:"NV",col:3,online:true,prev:"Подать заявку на верификацию",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:"",verified:true};
       S.chats.push(ch);
       S.messages[55555]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NV",col:3,tx:VERIFY_GREET,time:now(),isSupport:true}];
       saveState(); renderChats();
@@ -8809,7 +8816,7 @@ function openSupport(){
   // find or create support chat
   let ch = S.chats.find(c=>c.nm==="NexusSupport 🤖");
   if(!ch){
-    ch = {id:99999, nm:"NexusSupport 🤖", ini:"NS", col:6, online:true, prev:"Напишите нам!", time:now(), unread:1, type:"personal", pinned:true, muted:false, blocked:false, draft:""};
+    ch = {id:99999, nm:"NexusSupport 🤖", ini:"NS", col:6, online:true, prev:"Напишите нам!", time:now(), unread:1, type:"personal", pinned:true, muted:false, blocked:false, draft:"", verified:true};
     S.chats.unshift(ch);
     S.messages[99999] = [
       {id:1, t:"date", tx:"Сегодня", ts:Date.now()},
@@ -9075,7 +9082,7 @@ if(S.loggedIn){
   setTimeout(()=>{
     renderStoriesBar();
     if(!S.chats.find(c=>c.id===99999)){
-      const ch = {id:99999,nm:"NexusSupport 🤖",ini:"NS",col:6,online:true,prev:"Чем могу помочь?",time:now(),unread:1,type:"personal",pinned:false,muted:false,blocked:false,draft:""};
+      const ch = {id:99999,nm:"NexusSupport 🤖",ini:"NS",col:6,online:true,prev:"Чем могу помочь?",time:now(),unread:1,type:"personal",pinned:false,muted:false,blocked:false,draft:"",verified:true};
       S.chats.push(ch);
       S.messages[99999]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NS",col:6,tx:SUPPORT_GREET,time:now(),isSupport:true}];
       saveState(); renderChats();
@@ -10142,7 +10149,7 @@ async function renderVerificationStatus(){
     const data = await apiGet("/api/verification/my-requests");
     const reqs = (data && data.requests)||[];
     if(!reqs.length){ box.innerHTML = "Заявок нет"; return; }
-    const labels = {pending:["На рассмотрении ⏳","var(--tx2)"], approved:["Одобрено ✅","var(--gr)"], rejected:["Отклонено ❌","var(--rd)"]};
+    const labels = {pending:["На рассмотрении ⏳","var(--tx2)"], approved:["Одобрено ✅","var(--gr)"], rejected:["Отклонено ❌","var(--rd)"], revoked:["Верификация снята 🔒","var(--rd)"]};
     box.innerHTML = reqs.map(r=>{
       const [label,color] = labels[r.status]||labels.pending;
       const typeLabel = r.target_type==="user"?"Личный профиль":"Канал/группа";
@@ -10393,15 +10400,20 @@ async function renderAdminVerificationsTable(){
     const data = await apiGet("/api/admin/verification-requests");
     const reqs = (data && data.requests)||[];
     if(!reqs.length){ t.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--tx3);padding:14px">Заявок нет</td></tr>'; return; }
-    const statusBadge = {pending:'<span class="bg bga">На рассмотрении</span>', approved:'<span class="bg bgg">Одобрено</span>', rejected:'<span class="bg bgr">Отклонено</span>'};
-    t.innerHTML = reqs.map(r=>`<tr>
+    const statusBadge = {pending:'<span class="bg bga">На рассмотрении</span>', approved:'<span class="bg bgg">Одобрено</span>', rejected:'<span class="bg bgr">Отклонено</span>', revoked:'<span class="bg bgr">Верификация снята</span>'};
+    t.innerHTML = reqs.map(r=>{
+      let actions="";
+      if(r.status==="pending") actions=`<button class="xbtn gn" style="padding:3px 8px;font-size:10px" onclick="reviewVerification('${r.id}','approved')">✓</button> <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="reviewVerification('${r.id}','rejected')">✕</button>`;
+      else if(r.status==="approved") actions=`<button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="revokeVerification('${r.id}')">🔒 Снять верификацию</button>`;
+      return `<tr>
       <td>${r.channel_name} <span style="font-size:9px;color:var(--tx3)">${r.target_type==="user"?"👤 профиль":"📢 канал"}</span><br><span style="font-size:10px;color:var(--tx3)">${r.channel_link}</span></td>
       <td style="color:var(--acc2)">${r.username?"@"+r.username:(r.phone||"—")}</td>
       <td style="max-width:220px;font-size:11px;color:var(--tx2)"><div style="white-space:pre-line">${escHtml(r.reason||"—")}</div>${r.proof_links?`<div style="margin-top:4px;color:var(--tx3);white-space:pre-line">🔗 ${escHtml(r.proof_links)}</div>`:""}</td>
       <td style="color:var(--tx3)">${new Date(r.created_at).toLocaleDateString("ru")}</td>
       <td>${statusBadge[r.status]||r.status}</td>
-      <td>${r.status==="pending"?`<button class="xbtn gn" style="padding:3px 8px;font-size:10px" onclick="reviewVerification('${r.id}','approved')">✓</button> <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="reviewVerification('${r.id}','rejected')">✕</button>`:""}</td>
-    </tr>`).join("");
+      <td>${actions}</td>
+    </tr>`;
+    }).join("");
   }catch(e){ t.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить</td></tr>'; }
 }
 // Сообщение уходит заявителю лично от Nexus Verify — особенно важно при
@@ -10420,6 +10432,19 @@ async function reviewVerification(id, status){
     const data = await apiPatch("/api/admin/verification-requests/"+id, {status, reviewNote: reviewNote||undefined}, true);
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); return; }
     showToast(status==="approved"?"✅ Одобрено":"❌ Отклонено");
+    renderAdminVerificationsTable();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+// Снять уже выданную верификацию — галочка у канала/профиля пропадает
+async function revokeVerification(id){
+  if(!confirm("Снять верификацию? Галочка пропадёт, канал/профиль станет неверифицированным.")) return;
+  const raw = prompt("Причина (необязательно, заявитель это увидит):", "");
+  if(raw===null) return;
+  const reviewNote = raw.trim();
+  try{
+    const data = await apiPatch("/api/admin/verification-requests/"+id+"/revoke", {reviewNote: reviewNote||undefined}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось снять верификацию")); return; }
+    showToast("🔒 Верификация снята");
     renderAdminVerificationsTable();
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
