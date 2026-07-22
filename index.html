@@ -2836,7 +2836,7 @@ async function verifyCode(){
 
   try {
     const endpoint = S.restoringAccount ? "/api/auth/restore-account" : "/api/auth/verify-code";
-    const data = await apiPost(endpoint, { phone: S.phone, code: c });
+    const data = await apiPost(endpoint, { phone: S.phone, code: c, language: S.lang });
     if(!data.success){
       if(data.requires_password_login){
         showToast("🛡️ На этом аккаунте включена 2FA — войдите по паролю");
@@ -3299,7 +3299,13 @@ function updateUserUI(){
 // ── LANG PICKER ──────────────────────────────────────────────────
 function openLP(){ renderLG(); el("lpick").classList.add("on"); }
 function renderLG(){ el("lgrid").innerHTML=Object.entries(LANGS).map(([k,l])=>`<div class="li${S.lang===k?" on":""}" onclick="setLang('${k}')"><span class="li-f">${l.flag}</span><div><div class="li-n">${l.name}</div><div class="li-nat">${l.native}</div></div></div>`).join(""); }
-function setLang(code){ S.lang=code; applyLang(); el("lpick").classList.remove("on"); renderChats(); renderMsgs(); saveState(); showToast(LANGS[code].flag+" "+LANGS[code].native); }
+function setLang(code){
+  S.lang=code; applyLang(); el("lpick").classList.remove("on"); renderChats(); renderMsgs(); saveState();
+  showToast(LANGS[code].flag+" "+LANGS[code].native);
+  // Сохраняем на сервере, если залогинены — чтобы Dev Panel → Языки видел
+  // реальную статистику, а не только локальный выбор в этом браузере
+  if(getToken()) apiPatch("/api/users/me/language", {language:code}, true).catch(()=>{});
+}
 
 // ── SCREENS ──────────────────────────────────────────────────────
 function openStore(){ el("screen-store").classList.add("on"); renderStore(); }
@@ -7804,7 +7810,25 @@ async function createSP(){
     renderSPAdmin();
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
-function renderLngs(){ const e=el("lngtbl");if(!e)return; const data=[["ru","🇷🇺","Русский",4820,"33.5"],["en","🇬🇧","English",3640,"25.3"],["de","🇩🇪","Deutsch",1180,"8.2"],["fr","🇫🇷","Français",980,"6.8"],["es","🇪🇸","Español",860,"6.0"],["tr","🇹🇷","Türkçe",720,"5.0"],["ar","🇸🇦","العربية",580,"4.0"],["zh","🇨🇳","中文",520,"3.6"],["it","🇮🇹","Italiano",410,"2.8"],["pt","🇧🇷","Português",380,"2.6"],["ja","🇯🇵","日本語",340,"2.4"],["ko","🇰🇷","한국어",280,"1.9"],["uk","🇺🇦","Українська",210,"1.5"],["pl","🇵🇱","Polski",180,"1.2"]]; e.innerHTML=data.map(([c,f,n,u,p])=>`<tr><td>${f} ${n}</td><td><span class="bg bgc">${c.toUpperCase()}</span></td><td>${parseInt(u).toLocaleString()}</td><td><div style="display:flex;align-items:center;gap:5px"><div style="width:60px;height:4px;background:var(--bg4);border-radius:2px"><div style="width:${Math.min(parseFloat(p)*2.7,100)}%;height:100%;background:var(--cr);border-radius:2px"></div></div>${p}%</div></td><td><span class="bg bgg">Активен</span></td><td><button class="xbtn sec" style="padding:2px 7px;font-size:9.5px" onclick="S.lang='${c}';applyLang();renderChats();renderMsgs();saveState();showToast('${LANGS[c]?.flag||""} ${n}')">↩️ Применить</button></td></tr>`).join(""); }
+// ⚠️ Раньше вся таблица (4820 юзеров на русском и т.п.) была выдуманными
+// числами прямо в коде — теперь реальный подсчёт по колонке users.language
+async function renderLngs(){
+  const e=el("lngtbl"); if(!e) return;
+  e.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--tx3);padding:14px">Загрузка...</td></tr>`;
+  try{
+    const data=await apiGet("/api/admin/language-stats");
+    const stats=(data && data.stats)||[];
+    const byCode={}; stats.forEach(s=>{ byCode[s.language]=s; });
+    // Показываем все известные 14 языков, даже с 0 пользователей — так же,
+    // как раньше показывался полный список, просто теперь честные цифры
+    const rows=Object.keys(LANGS).map(c=>({c, count:byCode[c]?.count||0, pct:byCode[c]?.percent||0}))
+      .sort((a,b)=>b.count-a.count);
+    e.innerHTML=rows.map(({c,count,pct})=>{
+      const l=LANGS[c]; if(!l) return "";
+      return `<tr><td>${l.flag} ${l.name}</td><td><span class="bg bgc">${c.toUpperCase()}</span></td><td>${count.toLocaleString()}</td><td><div style="display:flex;align-items:center;gap:5px"><div style="width:60px;height:4px;background:var(--bg4);border-radius:2px"><div style="width:${Math.min(pct*2.7,100)}%;height:100%;background:var(--cr);border-radius:2px"></div></div>${pct.toFixed(1)}%</div></td><td><span class="bg bgg">Активен</span></td><td><button class="xbtn sec" style="padding:2px 7px;font-size:9.5px" onclick="S.lang='${c}';applyLang();renderChats();renderMsgs();saveState();showToast('${l.flag} ${l.name}')">↩️ Применить</button></td></tr>`;
+    }).join("");
+  }catch(e){ console.warn("language stats error:", e); }
+}
 let akc=1;
 // ⚠️ Раньше это были 4 захардкоженных бота ("NexusPayBot" и т.п.),
 // выдуманных целиком, кнопка "⚙️" ничего не делала. Отдельная система
