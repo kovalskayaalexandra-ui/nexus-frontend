@@ -9191,12 +9191,20 @@ async function loadStoriesFeed(){
         const chatObj=S.chats.find(c=>c.id===row.channel_id);
         const mine = !!(chatObj?.mine || chatObj?.myRole==="owner" || chatObj?.myRole==="admin");
         story.channel={id:row.channel_id, nm:row.channel_name, ini:(row.channel_name||"?")[0], col:chatObj?.col||0};
-        if(!S.channel_stories[row.channel_id]) S.channel_stories[row.channel_id]={name:row.channel_name, col:chatObj?.col||0, ini:(row.channel_name||"?")[0], avatar:row.channel_avatar||null, items:[], mine};
+        // ⚠️ Раньше имя/аватар канала записывались сюда только один раз, при
+        // первом появлении сториз этого канала — если владелец потом менял
+        // аватар/название, кольцо сториз продолжало показывать старые
+        // данные вечно (guard `if(!S.channel_stories[...])` не давал их
+        // обновить). Теперь метаданные обновляются при каждой загрузке ленты.
+        if(!S.channel_stories[row.channel_id]) S.channel_stories[row.channel_id]={items:[]};
+        Object.assign(S.channel_stories[row.channel_id], {name:row.channel_name, col:chatObj?.col||0, ini:(row.channel_name||"?")[0], avatar:row.channel_avatar||null, mine});
         S.channel_stories[row.channel_id].items.push(story);
       } else if(row.user_id===S.user?.id){
         S.my_stories.push(story);
       } else {
-        if(!S.friend_stories[row.user_id]) S.friend_stories[row.user_id]={name:row.sender_name||"?", col:colorFromId(row.user_id), ini:(row.sender_name||"?").slice(0,2).toUpperCase(), avatar:row.sender_avatar||null, items:[]};
+        // Та же болезнь была и с аватаром/именем друга в его кольце сториз
+        if(!S.friend_stories[row.user_id]) S.friend_stories[row.user_id]={items:[]};
+        Object.assign(S.friend_stories[row.user_id], {name:row.sender_name||"?", col:colorFromId(row.user_id), ini:(row.sender_name||"?").slice(0,2).toUpperCase(), avatar:row.sender_avatar||null});
         S.friend_stories[row.user_id].items.push(story);
       }
     });
