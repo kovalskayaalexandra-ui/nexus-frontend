@@ -3484,7 +3484,11 @@ function updateUserUI(){
   const nmEl=el("unm");
   if(nmEl){
     const base=u.uname?"@"+u.uname:(u.name||"dev_user");
-    nmEl.innerHTML=S.vip?.active?base+' <span style="font-size:10px;color:var(--am);vertical-align:middle">👑</span>':base;
+    const vip=S.vip?.active?' <span style="font-size:10px;color:var(--am);vertical-align:middle">👑</span>':"";
+    // Раньше здесь проверялась только VIP-корона, свою же собственную
+    // синюю галочку верификации нигде не показывали вообще (даже себе)
+    const verified=u.verified?verifiedBadgeHTML({verified:true}):"";
+    nmEl.innerHTML=base+vip+verified;
   }
 }
 
@@ -8219,7 +8223,7 @@ if(S.loggedIn){
       .then(resp=>{
         const data = resp && resp.user; // GET /api/users/me отдаёт { user: {...} }, не плоский объект
         if(!data||!data.id) return;
-        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region,statusEmoji:data.status_emoji||S.user.statusEmoji,nameColor:data.name_color||S.user.nameColor,hidePhone:!!data.hide_phone,hideLastSeen:!!data.hide_last_seen,pendingPhoneChange:data.pending_phone_change||null,pendingPhoneChangeAt:data.pending_phone_change_at||null}};
+        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region,statusEmoji:data.status_emoji||S.user.statusEmoji,nameColor:data.name_color||S.user.nameColor,hidePhone:!!data.hide_phone,hideLastSeen:!!data.hide_last_seen,pendingPhoneChange:data.pending_phone_change||null,pendingPhoneChangeAt:data.pending_phone_change_at||null,verified:!!data.is_verified}};
         // Зарубежным пользователям (не +7) незачем видеть цены в рублях —
         // переключаем на доллар автоматически, но только если валюта ещё
         // стоит на дефолтной RUB (не трогаем, если человек сам её менял —
@@ -10241,12 +10245,24 @@ async function submitVerification(){
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 function openVerification(){ el("screen-verify").classList.add("on"); updateVerifyFormLabels(); renderVerificationStatus(); }
+// ⚠️ Без этой проверки можно было подать заявку на личный профиль сколько
+// угодно раз подряд (для канала эту же защиту делает сервер + фильтр в
+// loadMyChannelsForVerify — уже поданные каналы не показываются в списке)
+function updateVerifyTypeAvailability(reqs){
+  const opt = el("vr-type")?.querySelector('option[value="user"]');
+  if(!opt) return;
+  const already = (reqs||[]).some(r=>r.target_type==="user" && (r.status==="pending"||r.status==="approved"));
+  opt.disabled = already;
+  opt.textContent = already ? "👤 Мой личный профиль (заявка уже подана)" : "👤 Мой личный профиль (блогер)";
+  if(already && el("vr-type").value==="user"){ el("vr-type").value="channel"; updateVerifyFormLabels(); }
+}
 async function renderVerificationStatus(){
   const box = el("vr-status"); if(!box) return;
   box.innerHTML = `<div style="color:var(--tx3)">Загрузка...</div>`;
   try{
     const data = await apiGet("/api/verification/my-requests");
     const reqs = (data && data.requests)||[];
+    updateVerifyTypeAvailability(reqs);
     if(!reqs.length){ box.innerHTML = "Заявок нет"; return; }
     const labels = {pending:["На рассмотрении ⏳","var(--tx2)"], approved:["Одобрено ✅","var(--gr)"], rejected:["Отклонено ❌","var(--rd)"], revoked:["Верификация снята 🔒","var(--rd)"]};
     box.innerHTML = reqs.map(r=>{
