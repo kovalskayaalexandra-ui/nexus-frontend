@@ -780,10 +780,14 @@ tr:hover td{background:var(--bg3)}
 .story-exp{font-size:9px;color:rgba(255,255,255,.7);text-align:center;margin-top:2px}
 
 /* ══ VERIFICATION ══ */
-.verify-badge{display:inline-flex;align-items:center;position:relative;cursor:pointer}
-.verify-tick{font-size:13px;color:#38bdf8;margin-left:3px}
-.verify-tooltip{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--brd2);border-radius:8px;padding:6px 10px;font-size:11px;white-space:nowrap;color:var(--tx);z-index:100;display:none;box-shadow:0 4px 16px rgba(0,0,0,.4)}
-.verify-badge:hover .verify-tooltip{display:block}
+/* ⚠️ Раньше подсказка (.verify-tooltip) была position:absolute внутри самого
+   значка — если родитель (например .cnm, у него overflow:hidden для
+   многоточия у длинных имён) обрезал контент, подсказка обрезалась вместе с
+   ним, вместо того чтобы всплывать поверх всего. Теперь один общий тултип
+   на весь документ (#global-verify-tip, position:fixed), позиционируется
+   через JS (showVerifyTip/hideVerifyTip) — не зависит от overflow родителей. */
+.verify-badge{display:inline-flex;align-items:center;margin-left:3px;cursor:pointer;vertical-align:-2px}
+.verify-tick-svg{width:14px;height:14px;flex-shrink:0}
 
 /* ══ CUSTOM STICKER UPLOAD ══ */
 .upload-zone{border:2px dashed var(--brd);border-radius:12px;padding:24px;text-align:center;cursor:pointer;transition:all .2s}
@@ -2044,6 +2048,10 @@ function loadState(){
     const sc=S.chats?.find(c=>c.id===sid);
     if(sc && !sc.verified) sc.verified=true;
   });
+  // Раньше у Nexus Official галочка была просто вписана в текст имени
+  // ("Nexus Official ✅") — теперь есть настоящий значок verifiedBadgeHTML(),
+  // старый текстовый вариант убираем, чтобы не показывались две галочки разом
+  { const noff=S.chats?.find(c=>c.id===88888); if(noff && noff.nm==="Nexus Official ✅") noff.nm="Nexus Official"; }
 }
 
 function saveState(){
@@ -3004,7 +3012,7 @@ function loginOK(){
       saveState(); renderChats();
     }
     if(!S.chats.find(c=>c.id===88888)){
-      S.chats.push({id:88888,nm:"Nexus Official ✅",ini:"NO",col:4,online:false,prev:"🎉 Nexus v3.0 — крупное обновление!",time:"сейчас",unread:4,type:"channels",pinned:false,muted:false,blocked:false,draft:"",official:true,verified:true});
+      S.chats.push({id:88888,nm:"Nexus Official",ini:"NO",col:4,online:false,prev:"🎉 Nexus v3.0 — крупное обновление!",time:"сейчас",unread:4,type:"channels",pinned:false,muted:false,blocked:false,draft:"",official:true,verified:true});
       S.messages[88888] = buildOfficialMessages();
       saveState(); renderChats();
     }
@@ -3143,10 +3151,39 @@ function chatDisplayName(ch){
 // ch.verified — верифицирован сам канал/группа; ch.peerVerified —
 // верифицирован СОБЕСЕДНИК в личном чате (как в Telegram, верификация
 // доступна и личным профилям, не только каналам).
+// Значок — два наложенных скруглённых квадрата (один повёрнут на 22.5°) дают
+// восьмиконечную "розетку", как у настоящего значка Telegram/Twitter, а не
+// плоский эмодзи ✅
+const VERIFY_TICK_SVG = `<svg class="verify-tick-svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="5" fill="#2AABEE"/><rect x="3" y="3" width="18" height="18" rx="5" fill="#2AABEE" transform="rotate(22.5 12 12)"/><path d="M8.3 12.2l2.6 2.6 5-5.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
 function verifiedBadgeHTML(ch){
   if(!ch || (!ch.verified && !ch.peerVerified)) return "";
   const tip = ch.peerVerified ? "Подтверждённый профиль" : "Подтверждённый канал";
-  return `<span class="verify-badge" style="font-size:11px"><span class="verify-tick">✅</span><div class="verify-tooltip">${tip}</div></span>`;
+  return `<span class="verify-badge" onmouseenter="showVerifyTip(this,'${tip}')" onmouseleave="hideVerifyTip()">${VERIFY_TICK_SVG}</span>`;
+}
+
+// Общий тултип на весь документ (position:fixed) — не зависит от overflow
+// родителей значка, поэтому реально всплывает поверх всего остального
+function showVerifyTip(anchorEl, text){
+  let tip = document.getElementById("global-verify-tip");
+  if(!tip){
+    tip = document.createElement("div");
+    tip.id = "global-verify-tip";
+    tip.style.cssText = "position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:8px;padding:6px 10px;font-size:11px;white-space:nowrap;color:var(--tx);z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.4);pointer-events:none";
+    document.body.appendChild(tip);
+  }
+  tip.textContent = text;
+  tip.style.display = "block";
+  const r = anchorEl.getBoundingClientRect();
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  let left = r.left + r.width/2 - tw/2;
+  left = Math.max(4, Math.min(left, window.innerWidth - tw - 4));
+  tip.style.left = left+"px";
+  tip.style.top = Math.max(4, r.top - th - 8)+"px";
+}
+function hideVerifyTip(){
+  const tip = document.getElementById("global-verify-tip");
+  if(tip) tip.style.display = "none";
 }
 
 async function refreshChatPeerInfo(ch){
@@ -10063,7 +10100,7 @@ function openOfficialChannel(){
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:4px">
             <span style="font-weight:700;font-size:13px">Nexus Official</span>
-            <div class="verify-badge"><span class="verify-tick">✅</span><div class="verify-tooltip">Официальный канал Nexus</div></div>
+            <span class="verify-badge" onmouseenter="showVerifyTip(this,'Официальный канал Nexus')" onmouseleave="hideVerifyTip()">${VERIFY_TICK_SVG}</span>
           </div>
         </div>
         <div style="font-size:22px">${p.emoji}</div>
@@ -10812,10 +10849,9 @@ applyTheme(S.theme||"dark");
     <div class="logo" onclick="el('screen-official').classList.remove('on')">⬡ Nexus</div>
     <div style="display:flex;align-items:center;gap:6px">
       <div style="font-weight:800;font-size:15px">Nexus Official</div>
-      <div class="verify-badge">
-        <span class="verify-tick">✅</span>
-        <div class="verify-tooltip">Официальный канал Nexus Messenger</div>
-      </div>
+      <span class="verify-badge" onmouseenter="showVerifyTip(this,'Официальный канал Nexus Messenger')" onmouseleave="hideVerifyTip()">
+        <svg class="verify-tick-svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="5" fill="#2AABEE"/><rect x="3" y="3" width="18" height="18" rx="5" fill="#2AABEE" transform="rotate(22.5 12 12)"/><path d="M8.3 12.2l2.6 2.6 5-5.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
     </div>
     <div class="tr">
       <div style="font-size:11px;color:var(--tx2);background:var(--bg3);border:1px solid var(--brd);padding:4px 10px;border-radius:999px">👥 14 382 подписчика</div>
