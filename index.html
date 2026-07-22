@@ -1224,6 +1224,10 @@ tr:hover td{background:var(--bg3)}
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(56,189,248,.1)">✅</div><div><div class="settings-row-label">Верификация канала</div><div class="settings-row-sub">Синяя галочка для канала/группы</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
+      <div class="settings-row" onclick="el('screen-settings').classList.remove('on');el('screen-custom-stickers').classList.add('on');renderMyCustomPacks()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(167,139,250,.1)">🎨</div><div><div class="settings-row-label">Свой стикерпак</div><div class="settings-row-sub">Загрузить и отправить на модерацию</div></div></div>
+        <div class="settings-row-arrow">›</div>
+      </div>
       <div class="settings-row" onclick="exportData()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">💾</div><div><div class="settings-row-label">Экспорт данных</div><div class="settings-row-sub">Сохранить историю чатов</div></div></div>
         <div class="settings-row-arrow">›</div>
