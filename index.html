@@ -2022,8 +2022,11 @@ function loadState(){
   } else {
   }
   // На случай, если системные чаты успели получить blocked/archived ДО того, как мы
-  // защитили их от этого — снимаем флаги принудительно при каждой загрузке
-  [77777,88888,99999].forEach(sid=>{
+  // защитили их от этого — снимаем флаги принудительно при каждой загрузке.
+  // 66666 (BotFather) добавлен сюда отдельно — раньше не входил в защищённый
+  // список вообще, из-за чего у alex2 он мог застрять заблокированным/в
+  // архиве навсегда, не долетая обратно даже после перезагрузки страницы.
+  [77777,88888,99999,66666].forEach(sid=>{
     const sc=S.chats?.find(c=>c.id===sid);
     if(sc && (sc.blocked||sc.archived)){
       sc.blocked=false; sc.archived=false;
@@ -2215,6 +2218,14 @@ function wsHandleMessage(msg){
 
     case "auth.error":
       console.warn("WS auth error:", msg.error);
+      if(msg.banned) forceLogoutBanned(msg.error);
+      break;
+
+    // Сервер разорвал соединение сразу при бане — раньше забаненный, у
+    // которого уже было открыто приложение, продолжал бы работать как ни в
+    // чём не бывало до следующего входа. Теперь выкидывает сразу же.
+    case "account.banned":
+      forceLogoutBanned(msg.reason);
       break;
 
     case "message.new": {
@@ -2641,18 +2652,26 @@ function getToken(){ return localStorage.getItem("nexus_token"); }
 function setToken(t){ localStorage.setItem("nexus_token",t); }
 function clearToken(){ localStorage.removeItem("nexus_token"); }
 
+// Общая проверка на "забанен/удалён" — сервер теперь может вернуть её на
+// ЛЮБОМ запросе (не только при входе), см. middleware/auth.js. Проверяем в
+// одном месте, чтобы не дублировать в каждой из функций-обёрток ниже.
+function checkBannedResponse(data){
+  if(data && data.banned){ forceLogoutBanned(data.error); }
+  return data;
+}
+
 async function apiPost(path, body, auth=false){
   const headers = {"Content-Type":"application/json"};
   if(auth){ const t=getToken(); if(t) headers["Authorization"]="Bearer "+t; }
   const res = await fetch(API_URL+path,{method:"POST",headers,body:JSON.stringify(body)});
-  return res.json();
+  return checkBannedResponse(await res.json());
 }
 
 async function apiPatch(path, body, auth=false){
   const headers = {"Content-Type":"application/json"};
   if(auth){ const t=getToken(); if(t) headers["Authorization"]="Bearer "+t; }
   const res = await fetch(API_URL+path,{method:"PATCH",headers,body:JSON.stringify(body)});
-  return res.json();
+  return checkBannedResponse(await res.json());
 }
 
 function getChatMemberIds(chat){
@@ -2673,14 +2692,14 @@ async function apiGet(path){
   const t=getToken();
   const headers = t ? {"Authorization":"Bearer "+t} : {};
   const res = await fetch(API_URL+path,{headers});
-  return res.json();
+  return checkBannedResponse(await res.json());
 }
 
 async function apiDelete(path, body){
   const t=getToken();
   const headers = {"Content-Type":"application/json","Authorization":"Bearer "+(t||"")};
   const res = await fetch(API_URL+path,{method:"DELETE",headers, body: body?JSON.stringify(body):undefined});
-  return res.json();
+  return checkBannedResponse(await res.json());
 }
 
 // ── AUTH FUNCTIONS ────────────────────────────────────────────
@@ -5910,9 +5929,12 @@ function reportAndBlockCurrentChat(){
   renderChats(); showToast("🚫 Жалоба отправлена, "+ch.nm+" заблокирован"); saveState();
   if(ch.withUserId) apiPost("/api/users/"+ch.withUserId+"/block", {}, true).catch(e=>console.warn("block error:",e));
 }
-// Базовые системные чаты — Избранное/Nexus Official/NexusSupport.
+// Базовые системные чаты — Избранное/Nexus Official/NexusSupport/BotFather.
 // Их нельзя удалить, заблокировать или отправить в архив.
-function isSystemChat(chatId){ return chatId===77777 || chatId===88888 || chatId===99999; }
+// ⚠️ 66666 (BotFather) раньше сюда не входил — из-за этого его можно было
+// случайно заблокировать/заархивировать, и, в отличие от остальных трёх,
+// это никогда само не снималось (см. фикс в loadState()).
+function isSystemChat(chatId){ return chatId===77777 || chatId===88888 || chatId===99999 || chatId===66666; }
 
 function blockUser(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
@@ -6500,6 +6522,15 @@ function exportData(){ const blob=new Blob([JSON.stringify({user:S.user,chats:S.
 
 function importData(){ showToast("📥 Выберите файл nexus_export.json"); }
 function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{S.loggedIn=false;clearToken();saveState();location.reload();}; el("m-confirm").classList.add("on"); }
+// Принудительный выход при бане — сервер прислал это либо через открытый WS
+// (сразу в момент бана), либо через ошибку авторизации при переподключении
+let _forceLogoutShown=false;
+function forceLogoutBanned(reason){
+  if(_forceLogoutShown) return; // WS и HTTP-ответ могут прилететь почти одновременно
+  _forceLogoutShown=true;
+  alert("🚫 "+(reason||"Ваш аккаунт заблокирован администрацией"));
+  S.loggedIn=false; clearToken(); saveState(); location.reload();
+}
 
 // Мягкое удаление — аккаунт останется в базе год, можно восстановить при
 // следующем входе (запросит подтверждение по SMS). Всем остальным профиль
