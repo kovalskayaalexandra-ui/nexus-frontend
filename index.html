@@ -1317,7 +1317,7 @@ tr:hover td{background:var(--bg3)}
       <div class="ani" data-section="chatmod" onclick="aPage(this,'chatmod')">🚫 Модерация чатов</div>
       <div class="ani" data-section="langs" onclick="aPage(this,'langs')">🌍 Языки</div>
       <div class="ani" data-section="bots" onclick="aPage(this,'bots')">🤖 Боты и API</div>
-      <div class="ani ani-todo" data-section="webhooks" onclick="aPage(this,'webhooks')">🔗 Вебхуки</div>
+      <div class="ani" data-section="webhooks" onclick="aPage(this,'webhooks')">🔗 Вебхуки</div>
       <div class="ani" data-section="settings" onclick="aPage(this,'settings')">⚙️ Настройки</div>
     </div>
     <div class="acnt">
@@ -7909,8 +7909,39 @@ async function deleteBot(botId, name){
     renderBots();
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
-function renderWH(){ const e=el("whlist");if(!e)return; if(!S.webhooks.length){e.innerHTML='<div style="color:var(--tx3);font-size:11.5px">Нет вебхуков</div>';return;} e.innerHTML=S.webhooks.map((w,i)=>`<div class="whitem"><div class="whico">📡</div><div style="flex:1"><div class="whev">${w.ev}</div><div class="whurl">${w.url}</div></div><span class="bg bgg">Активен</span><button class="xbtn rd" style="padding:3px 8px;font-size:11px" onclick="S.webhooks.splice(${i},1);renderWH();saveState()">✕</button></div>`).join(""); }
-function addWH(){ const url=el("whurl")?.value;if(!url){showToast("❌ URL обязателен");return;} const ev=el("whev")?.value||"all_events";S.webhooks.push({url,ev});renderWH();if(el("whurl"))el("whurl").value="";saveState();showToast("📡 Вебхук добавлен"); }
+// ⚠️ Раньше вебхуки жили только в S.webhooks (localStorage браузера админа) —
+// сервер о них не знал и ничего никуда реально не отправлял. Теперь
+// реальная таблица + реальная доставка событий (см. services/webhooks.js)
+async function renderWH(){
+  const e=el("whlist"); if(!e) return;
+  e.innerHTML=`<div style="color:var(--tx3);font-size:11.5px">Загрузка...</div>`;
+  try{
+    const data=await apiGet("/api/admin/webhooks");
+    const hooks=(data && data.webhooks)||[];
+    if(!hooks.length){ e.innerHTML='<div style="color:var(--tx3);font-size:11.5px">Нет вебхуков</div>'; return; }
+    e.innerHTML=hooks.map(w=>`<div class="whitem"><div class="whico">📡</div><div style="flex:1"><div class="whev">${w.event}</div><div class="whurl">${w.url}</div></div><span class="bg bgg">Активен</span><button class="xbtn rd" style="padding:3px 8px;font-size:11px" onclick="deleteWH('${w.id}')">✕</button></div>`).join("");
+  }catch(err){ e.innerHTML='<div style="color:var(--rd);font-size:11.5px">Не удалось загрузить</div>'; }
+}
+async function addWH(){
+  const url=el("whurl")?.value?.trim();
+  if(!url){ showToast("❌ URL обязателен"); return; }
+  const ev=el("whev")?.value||"all_events";
+  try{
+    const data=await apiPost("/api/admin/webhooks", {url, event:ev}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось добавить")); return; }
+    if(el("whurl")) el("whurl").value="";
+    renderWH();
+    showToast("📡 Вебхук добавлен — секрет: "+data.webhook.secret.slice(0,12)+"… (полный смотрите в БД, повторно не покажем)");
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+async function deleteWH(id){
+  try{
+    const data=await apiDelete("/api/admin/webhooks/"+id);
+    if(!data || !data.success){ showToast("❌ Не удалось удалить"); return; }
+    renderWH();
+    showToast("🗑️ Вебхук удалён");
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
 
 // ── CLOSE MEDIA PANEL on outside click ───────────────────────
 document.addEventListener("click",e=>{ if(!e.target.closest(".mpanel")&&!e.target.closest(".ibi")&&!e.target.closest(".epem")&&!e.target.closest(".sitem"))closeMPanel(); });
