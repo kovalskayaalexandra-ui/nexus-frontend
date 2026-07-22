@@ -1973,6 +1973,45 @@ const DEFAULT_STATE = {
   theme: "dark"
 };
 
+// ── ПРИВЕТСТВИЯ СИСТЕМНЫХ БОТОВ ────────────────────────────────────
+// ⚠️ Вынесены сюда (выше своего исходного места рядом с логикой каждого
+// бота) специально — loadState() вызывается один раз, рано, сразу при
+// старте приложения (см. вызов ниже по файлу), а эти константы раньше были
+// объявлены значительно позже в файле. Так как это const (а не function,
+// которая была бы поднята целиком), обратиться к ним ДО того, как дошло до
+// их объявления, означало бы ReferenceError. Перенос сюда даёт loadState()
+// возможность реально пересоздавать пропавшие системные чаты при КАЖДОЙ
+// загрузке страницы, а не только при входе в аккаунт — именно это раньше
+// было причиной, что Nexus BotFather/Nexus Verify не появлялись сами
+// собой, если бот появился в коде уже ПОСЛЕ того, как человек залогинился
+// в прошлый раз: самовосстановление тогда работало только в момент входа.
+const SUPPORT_GREET = `👋 Привет! Я *NexusSupport* — бот поддержки Nexus Messenger.
+
+Чем могу помочь? Напиши свой вопрос или выбери тему:`;
+
+const VERIFY_GREET = `👋 Привет! Я *Nexus Verify* — здесь можно подать заявку на верификацию (синяя галочка ✅).
+
+Кому подходит:
+• Каналам и группам
+• Личным профилям — блогерам, публичным людям
+
+Что понадобится:
+• Ссылки на уже подтверждённые страницы в других соцсетях (Instagram, YouTube, VK и т.п. — там, где у вас уже есть галочка)
+• Или подтверждение публичной деятельности — упоминания в СМИ, интервью и т.д.
+• Ссылки на всё это нужно будет прислать в самой заявке
+
+Заявку рассматривают вручную, решение придёт сюда же, в этот чат — с указанием причины, если откажут.`;
+
+const BOTFATHER_GREET = `👋 Привет! Я Nexus BotFather — здесь можно создавать своих ботов.
+
+⚠️ Создание ботов — привилегия VIP.
+
+Команды:
+/newbot — создать нового бота
+/mybots — список твоих ботов
+/setcommands — задать список команд для твоего бота (собеседники увидят их в кнопке меню)
+/help — показать это сообщение снова`;
+
 // ── PERSISTENCE ──────────────────────────────────────────────────
 let S = {};
 
@@ -2019,16 +2058,34 @@ function loadState(){
   // Контактов пока нет как реальной функции — список всегда пустой из кода
   S.contacts = [];
 
-  // Самовосстановление "Избранного" (chat 77777) — раньше эта проверка была только
-  // в момент входа (loginOK), поэтому если чат случайно пропадал (удаление/баг до того,
-  // как мы защитили системные чаты от удаления), обычная перезагрузка страницы его не
-  // возвращала. Теперь проверяется при каждой загрузке состояния.
-  if(S.chats && !S.chats.find(c=>c.id===77777)){
-    S.chats.push({id:77777,nm:"⭐ Избранное",ini:"⭐",col:2,online:false,prev:"Сохранённые сообщения",time:"",unread:0,type:"personal",pinned:true,muted:false,blocked:false,draft:"",saved:true});
-    if(!S.messages) S.messages={};
-    if(!S.messages[77777]) S.messages[77777]=[{id:1,t:"sys",tx:"Это ваше Избранное — сохраняйте сюда важные сообщения, ссылки и заметки. Видите только вы."}];
-  } else {
-  }
+  // Самовосстановление системных чатов (Избранное/NexusSupport/BotFather/
+  // Nexus Verify) — раньше это в лучшем случае проверялось только в момент
+  // входа (loginOK), поэтому если чат отсутствовал (первый показ нового
+  // бота уже после того, как человек залогинился в прошлый раз — именно
+  // так Nexus Verify не появился у Александры без повторного входа), обычная
+  // перезагрузка страницы его не создавала. Теперь проверяется при каждой
+  // загрузке состояния. Nexus Official (88888) сюда сознательно не входит —
+  // его контент строится из buildOfficialMessages()/OFFICIAL_POSTS, которые
+  // объявлены намного ниже в файле и ещё не существуют в момент вызова
+  // loadState() (та же проблема с порядком объявления, что была у текстов
+  // приветствий) — для него самовосстановление остаётся только при входе.
+  if(!S.messages) S.messages={};
+  const SYSTEM_CHAT_DEFAULTS = [
+    {id:77777, nm:"⭐ Избранное", ini:"⭐", col:2, online:false, prev:"Сохранённые сообщения", type:"personal", pinned:true, saved:true,
+     greet:[{id:1,t:"sys",tx:"Это ваше Избранное — сохраняйте сюда важные сообщения, ссылки и заметки. Видите только вы."}]},
+    {id:99999, nm:"NexusSupport 🤖", ini:"NS", col:6, online:true, prev:"Чем могу помочь?", type:"personal", pinned:false,
+     greet:[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NS",col:6,tx:SUPPORT_GREET,time:now(),isSupport:true}]},
+    {id:66666, nm:"Nexus BotFather 🛠️", ini:"BF", col:5, online:true, prev:"Создавай ботов прямо тут", type:"personal", pinned:false,
+     greet:[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"BF",col:5,tx:BOTFATHER_GREET,time:now(),isSupport:true}]},
+    {id:55555, nm:"Nexus Verify 🛡️", ini:"NV", col:3, online:true, prev:"Подать заявку на верификацию", type:"personal", pinned:false,
+     greet:[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NV",col:3,tx:VERIFY_GREET,time:now(),isSupport:true}]},
+  ];
+  SYSTEM_CHAT_DEFAULTS.forEach(def=>{
+    if(S.chats && !S.chats.find(c=>c.id===def.id)){
+      S.chats.push({id:def.id,nm:def.nm,ini:def.ini,col:def.col,online:def.online,prev:def.prev,time:def.id===77777?"":now(),unread:0,type:def.type,pinned:def.pinned,muted:false,blocked:false,draft:"",saved:def.saved,verified:def.id!==77777});
+      if(!S.messages[def.id]) S.messages[def.id]=def.greet;
+    }
+  });
   // На случай, если системные чаты успели получить blocked/archived ДО того, как мы
   // защитили их от этого — снимаем флаги принудительно при каждой загрузке.
   // 66666 (BotFather) добавлен сюда отдельно — раньше не входил в защищённый
@@ -8670,10 +8727,6 @@ const SUPPORT_FAQ = [
     ans:"👨‍💻 *Соединяю с оператором...*\n\nВаше обращение принято. Оператор ответит в течение нескольких минут.\n\n⏰ Время работы: Пн–Пт 9:00–21:00 МСК\n📧 Email: support@nexus.app\n\nНомер обращения: #NX-"+Math.floor(Math.random()*90000+10000) },
 ];
 
-const SUPPORT_GREET = `👋 Привет! Я *NexusSupport* — бот поддержки Nexus Messenger.
-
-Чем могу помочь? Напиши свой вопрос или выбери тему:`;
-
 const SUPPORT_QUICK = ["💎 Crystals и оплата","🐱 Стикеры","👑 VIP подписка","📞 Звонки","⚙️ Настройки","👨‍💻 Оператор"];
 
 const SUPPORT_FALLBACK = [
@@ -8689,30 +8742,10 @@ let supportChatId = null;
 // только через кнопку ниже (открывает настоящую форму), а не свободным
 // текстом. Решение (одобрено/отклонено + причина от админа) приходит сюда
 // же личным сообщением от бота.
-const VERIFY_GREET = `👋 Привет! Я *Nexus Verify* — здесь можно подать заявку на верификацию (синяя галочка ✅).
-
-Кому подходит:
-• Каналам и группам
-• Личным профилям — блогерам, публичным людям
-
-Что понадобится:
-• Ссылки на уже подтверждённые страницы в других соцсетях (Instagram, YouTube, VK и т.п. — там, где у вас уже есть галочка)
-• Или подтверждение публичной деятельности — упоминания в СМИ, интервью и т.д.
-• Ссылки на всё это нужно будет прислать в самой заявке
-
-Заявку рассматривают вручную, решение придёт сюда же, в этот чат — с указанием причины, если откажут.`;
+// (Тексты приветствий SUPPORT_GREET/VERIFY_GREET/BOTFATHER_GREET вынесены
+// выше, к началу файла, рядом с loadState() — см. комментарий там.)
 
 // ── Nexus BotFather — создание ботов прямо в чате, как в Telegram ─────
-const BOTFATHER_GREET = `👋 Привет! Я Nexus BotFather — здесь можно создавать своих ботов.
-
-⚠️ Создание ботов — привилегия VIP.
-
-Команды:
-/newbot — создать нового бота
-/mybots — список твоих ботов
-/setcommands — задать список команд для твоего бота (собеседники увидят их в кнопке меню)
-/help — показать это сообщение снова`;
-
 let botFatherState = null; // null | "awaiting_name" | "awaiting_setcommands_bot" | "awaiting_setcommands_list"
 let botFatherSetCommandsTarget = null; // {id, username} бота, для которого сейчас задаём команды
 
@@ -10149,28 +10182,39 @@ function togglePostReaction(postId, emoji){
 // ⚠️ Раньше вся заявка была локальной — номер тикета выдумывался в
 // браузере, ничего не сохранялось и никто её не рассматривал. Теперь
 // реально уходит на сервер (POST /api/verification/request).
-// Тип заявки меняет подписи полей — "канал/группа" или "личный профиль
-// блогера" (как в Telegram, верификация доступна не только каналам)
+// ⚠️ Раньше тут были поля "Название"/"Ссылка", вписываемые вручную — сервер
+// потом пытался сопоставить вписанный текст с реальным каналом по username,
+// опечатка/регистр ломали это молча. Теперь для канала — реальный выбор из
+// СВОИХ каналов (chatId, ошибиться невозможно), для личного профиля —
+// вообще ничего выбирать не нужно, это всегда сам заявитель.
 function updateVerifyFormLabels(){
   const isUser = el("vr-type")?.value==="user";
-  if(el("vr-name-label")) el("vr-name-label").textContent = isUser?"Ваше публичное имя":"Название канала / группы";
-  if(el("vr-link-label")) el("vr-link-label").textContent = isUser?"Ваш @username":"Ссылка на канал";
-  if(el("vr-name")) el("vr-name").placeholder = isUser?"Александра Ковальская":"Nexus Official";
-  if(el("vr-link")) el("vr-link").placeholder = isUser?"@alexandra":"@mychannel";
+  if(el("vr-channel-row")) el("vr-channel-row").style.display = isUser?"none":"";
+  if(el("vr-user-row")) el("vr-user-row").style.display = isUser?"block":"none";
+  if(isUser && el("vr-user-name")) el("vr-user-name").textContent = (S.user?.name||"")+(S.user?.uname?" (@"+S.user.uname+")":"");
+  if(!isUser) loadMyChannelsForVerify();
+}
+async function loadMyChannelsForVerify(){
+  const sel = el("vr-channel-select"); if(!sel) return;
+  sel.innerHTML = `<option value="">Загрузка...</option>`;
+  try{
+    const data = await apiGet("/api/verification/my-channels");
+    const chats = (data && data.chats)||[];
+    if(!chats.length){ sel.innerHTML = `<option value="">У вас нет каналов/групп, где вы владелец</option>`; return; }
+    sel.innerHTML = chats.map(c=>`<option value="${c.id}">${c.type==="channels"?"📢":"👥"} ${escHtml(c.name)}${c.username?" (@"+escHtml(c.username)+")":""}${c.is_verified?" ✅":""}</option>`).join("");
+  }catch(e){ sel.innerHTML = `<option value="">Не удалось загрузить</option>`; }
 }
 async function submitVerification(){
   const targetType = el("vr-type")?.value==="user"?"user":"channel";
-  const name = el("vr-name")?.value?.trim();
-  const link = el("vr-link")?.value?.trim();
+  const chatId = el("vr-channel-select")?.value||"";
   const reason = el("vr-reason")?.value?.trim();
   const proofLinks = el("vr-proof")?.value?.trim();
   const email = el("vr-email")?.value?.trim();
-  if(!name||!link||!reason||!proofLinks||!email){ showToast("❌ Заполните все поля"); return; }
+  if(targetType==="channel" && !chatId){ showToast("❌ Выберите канал/группу"); return; }
+  if(!reason||!proofLinks||!email){ showToast("❌ Заполните все поля"); return; }
   try{
-    const data = await apiPost("/api/verification/request", {channelName:name, channelLink:link, reason, proofLinks, contactEmail:email, targetType}, true);
+    const data = await apiPost("/api/verification/request", {targetType, chatId:targetType==="channel"?chatId:undefined, reason, proofLinks, contactEmail:email}, true);
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось отправить заявку")); return; }
-    if(el("vr-name"))el("vr-name").value="";
-    if(el("vr-link"))el("vr-link").value="";
     if(el("vr-reason"))el("vr-reason").value="";
     if(el("vr-proof"))el("vr-proof").value="";
     if(el("vr-email"))el("vr-email").value="";
@@ -10883,8 +10927,8 @@ applyTheme(S.theme||"dark");
       <div class="settings-section-title">Подать заявку</div>
       <div style="padding:14px">
         <div class="frow s1"><div class="fg"><span class="fl">Тип заявки</span><select class="fsel" id="vr-type" onchange="updateVerifyFormLabels()"><option value="channel">📢 Канал / группа</option><option value="user">👤 Мой личный профиль (блогер)</option></select></div></div>
-        <div class="frow s1"><div class="fg"><span class="fl" id="vr-name-label">Название канала / группы</span><input class="fii" id="vr-name" placeholder="Nexus Official"></div></div>
-        <div class="frow s1"><div class="fg"><span class="fl" id="vr-link-label">Ссылка на канал</span><input class="fii" id="vr-link" placeholder="@mychannel"></div></div>
+        <div class="frow s1" id="vr-channel-row"><div class="fg"><span class="fl">Выберите канал/группу (только те, где вы владелец)</span><select class="fsel" id="vr-channel-select"><option value="">Загрузка...</option></select></div></div>
+        <div id="vr-user-row" style="display:none;font-size:12px;color:var(--tx2);background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:12px">Заявка подаётся на ваш личный профиль: <strong id="vr-user-name">—</strong></div>
         <div class="frow s1"><div class="fg"><span class="fl">Почему вы заслуживаете верификацию?</span><textarea class="fii" id="vr-reason" rows="3" style="resize:none" placeholder="Опишите вашу деятельность, аудиторию, контент..."></textarea></div></div>
         <div class="frow s1"><div class="fg"><span class="fl">Ссылки-подтверждения</span><textarea class="fii" id="vr-proof" rows="3" style="resize:none" placeholder="Подтверждённые страницы в других соцсетях, упоминания в СМИ и т.д. — по ссылке на каждой строке"></textarea></div></div>
         <div class="frow s1"><div class="fg"><span class="fl">Контактный email</span><input class="fii" id="vr-email" placeholder="contact@example.com" type="email"></div></div>
