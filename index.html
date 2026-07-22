@@ -10468,7 +10468,7 @@ async function reviewVerification(id, status){
   try{
     const data = await apiPatch("/api/admin/verification-requests/"+id, {status, reviewNote: reviewNote||undefined}, true);
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); return; }
-    showToast(status==="approved"?"✅ Одобрено":"❌ Отклонено");
+    if(data.warning){ showToast("⚠️ "+data.warning); } else { showToast(status==="approved"?"✅ Одобрено":"❌ Отклонено"); }
     renderAdminVerificationsTable();
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
@@ -10481,7 +10481,7 @@ async function revokeVerification(id){
   try{
     const data = await apiPatch("/api/admin/verification-requests/"+id+"/revoke", {reviewNote: reviewNote||undefined}, true);
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось снять верификацию")); return; }
-    showToast("🔒 Верификация снята");
+    if(data.warning){ showToast("⚠️ "+data.warning); } else { showToast("🔒 Верификация снята"); }
     renderAdminVerificationsTable();
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
