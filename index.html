@@ -2509,6 +2509,16 @@ function wsHandleMessage(msg){
       break;
     }
 
+    // Кто-то другой (или мы сами с другого устройства) закрепил/открепил
+    // сообщение — раньше закреп вообще не долетал до остальных участников
+    case "chat.pin.updated": {
+      const { chatId, pinnedMessageIds } = msg.payload;
+      S.pinnedByChat[chatId] = pinnedMessageIds||[];
+      if(S.chat===chatId){ S.pinViewIdx=0; renderPinbar(); }
+      saveState();
+      break;
+    }
+
     case "message.viewed": {
       const { chatId, messageId, views } = msg.payload;
       const m=(S.messages[chatId]||[]).find(x=>x.dbId===messageId);
@@ -3317,6 +3327,9 @@ async function loadChatsFromDB(){
       const isPersonal = (dbChat.type || "personal") === "personal";
       const otherUser = isPersonal ? others[0] : null;
       const displayName = otherUser?.name || dbChat.name || "Чат";
+      // Закреплённые сообщения — раньше не хранились на сервере вообще
+      if(!S.pinnedByChat) S.pinnedByChat={};
+      S.pinnedByChat[dbChat.id] = dbChat.pinned_message_ids || [];
 
       // Если чат уже есть локально — обновляем
       const existing = S.chats.find(c => c.id === dbChat.id);
@@ -5470,17 +5483,42 @@ function selForwardAll(){
 }
 function ctxEdit(){ const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m||m.t!=="out"){showToast("❌ Только свои сообщения");return;} startEdit(S.ctxId); }
 function ctxCopy(){ const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId);if(m?.tx)navigator.clipboard.writeText(m.tx).catch(()=>{});showToast("📋 Скопировано"); }
-function ctxPin(){
+// ⚠️ Раньше закреп был полностью локальным (S.pinnedByChat только в
+// localStorage) — другие участники чата (и то же устройство после
+// перезахода) закреп вообще не видели, хотя действие проверяло права и
+// выглядело как настоящая групповая функция. Теперь реально сохраняется
+// на сервере (pinned_messages) и рассылается остальным через WS.
+async function ctxPin(){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
   // Проверка прав на закрепление в группах
   if(!canI("pinMsg")){ showToast("🔒 Нет прав на закрепление"); el("ctx").classList.remove("on"); return; }
   if(!S.pinnedByChat[S.chat]) S.pinnedByChat[S.chat]=[];
-  // Уже закреплено? — открепляем
-  const idx=S.pinnedByChat[S.chat].indexOf(m.id);
-  if(idx!==-1){ S.pinnedByChat[S.chat].splice(idx,1); showToast("📌 Откреплено"); }
-  else { S.pinnedByChat[S.chat].push(m.id); showToast("📌 Закреплено"); }
+  const alreadyPinned = S.pinnedByChat[S.chat].includes(m.id);
+  // Системные/локально-ещё-не-подтверждённые сообщения — закрепляем только
+  // локально, синхронизировать с сервером нечего (нет настоящего chatId/messageId)
+  const canSync = typeof S.chat==="string" && S.chat.length>10 && typeof m.id==="string" && m.id.length>10;
+  if(canSync){
+    try{
+      const data = alreadyPinned
+        ? await apiDelete("/api/chats/"+S.chat+"/pin/"+m.id)
+        : await apiPost("/api/chats/"+S.chat+"/pin", {messageId:m.id}, true);
+      if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось изменить закреп")); return; }
+      S.pinnedByChat[S.chat]=data.pinnedMessageIds;
+      broadcastPinsUpdate();
+    }catch(e){ showToast("❌ Нет связи с сервером"); return; }
+  } else {
+    const idx=S.pinnedByChat[S.chat].indexOf(m.id);
+    if(idx!==-1) S.pinnedByChat[S.chat].splice(idx,1); else S.pinnedByChat[S.chat].push(m.id);
+  }
+  showToast(alreadyPinned?"📌 Откреплено":"📌 Закреплено");
   S.pinViewIdx=0;
   renderPinbar(); saveState();
+}
+// Живое уведомление остальных участников чата — сам REST-эндпоинт только
+// сохраняет в БД, рассылку (как и у chat.updated) делает клиент через WS
+function broadcastPinsUpdate(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  wsSendReliable({type:"chat.pin.updated", payload:{chatId:S.chat, pinnedMessageIds:S.pinnedByChat[S.chat]||[], memberIds:getChatMemberIds(ch)}});
 }
 
 function renderPinbar(){
@@ -5517,15 +5555,24 @@ function showAllPins(){
   const ms=S.messages[S.chat]||[];
   showToast(`📌 Закреплено: ${pins.length}`);
 }
-function unpinMsg(){
+async function unpinMsg(){
   const pins=S.pinnedByChat[S.chat]||[];
   const valid=pins.filter(pid=>{ const m=(S.messages[S.chat]||[]).find(x=>x.id===pid); return m && !m._deletedForAll && !m._deletedForMe; });
-  if(valid.length){
-    const curId=valid[S.pinViewIdx % valid.length];
+  if(!valid.length) return;
+  const curId=valid[S.pinViewIdx % valid.length];
+  const canSync = typeof S.chat==="string" && S.chat.length>10 && typeof curId==="string" && curId.length>10;
+  if(canSync){
+    try{
+      const data = await apiDelete("/api/chats/"+S.chat+"/pin/"+curId);
+      if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось открепить")); return; }
+      S.pinnedByChat[S.chat]=data.pinnedMessageIds;
+      broadcastPinsUpdate();
+    }catch(e){ showToast("❌ Нет связи с сервером"); return; }
+  } else {
     const idx=S.pinnedByChat[S.chat].indexOf(curId);
     if(idx!==-1)S.pinnedByChat[S.chat].splice(idx,1);
-    S.pinViewIdx=0;
   }
+  S.pinViewIdx=0;
   renderPinbar(); saveState();
 }
 function ctxForward(){ S.fwdId=S.ctxId; openForward(); }
