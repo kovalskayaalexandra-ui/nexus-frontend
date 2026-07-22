@@ -5806,13 +5806,20 @@ function ctxReport(){
 const QUICK_REACTIONS=["❤️","👍","🔥","😂","😮","😢","🎉","💯"];
 let rxnExpanded=false;
 
+// ⚠️ Раньше показывался весь список реакций, включая запрещённые в этом
+// канале/группе — по клику выскакивал тост "запрещено". Правильно (и то,
+// что попросила Александра) — просто не показывать запрещённые вообще,
+// список сам по себе состоит только из разрешённых. 💎 (дарение кристаллов)
+// — отдельный от реакций механизм (сразу списывает деньги), ограничению не
+// подчиняется и показывается всегда.
 function ctxReact(e){
   if(e)e.stopPropagation();
   const ctx=el("ctx"); const rp=el("rxn-picker");
   rp.style.left=ctx.style.left; rp.style.top=(parseInt(ctx.style.top)-44)+"px";
   ctx.classList.remove("on");
   rxnExpanded=false; rp.classList.remove("expanded");
-  el("rxn-quick-row").innerHTML=`<div class="rxn-e rxn-crystal" onclick="openCrystalGiftModal(event)">💎</div>`+QUICK_REACTIONS.map(em=>`<div class="rxn-e" onclick="addRxn('${em}')">${em}</div>`).join("");
+  const allowedQuick=QUICK_REACTIONS.filter(em=>isReactionAllowed(S.chat,em));
+  el("rxn-quick-row").innerHTML=`<div class="rxn-e rxn-crystal" onclick="openCrystalGiftModal(event)">💎</div>`+allowedQuick.map(em=>`<div class="rxn-e" onclick="addRxn('${em}')">${em}</div>`).join("");
   rp.classList.add("on");
 }
 function toggleRxnExpand(e){
@@ -5822,13 +5829,13 @@ function toggleRxnExpand(e){
   rp.classList.toggle("expanded",rxnExpanded);
   if(rxnExpanded){
     el("rxn-cats").innerHTML=EMOJI_CATS_LIST.map((cat,i)=>`<div class="emoji-cat${i===0?" on":""}" onclick="event.stopPropagation();switchRxnCat('${cat}',this)">${cat.split(" ")[0]}</div>`).join("");
-    el("rxn-grid").innerHTML=EMOJI_DB[EMOJI_CATS_LIST[0]].map(em=>`<div class="emoji-item" onclick="addRxn('${em}')">${em}</div>`).join("");
+    el("rxn-grid").innerHTML=EMOJI_DB[EMOJI_CATS_LIST[0]].filter(em=>isReactionAllowed(S.chat,em)).map(em=>`<div class="emoji-item" onclick="addRxn('${em}')">${em}</div>`).join("");
   }
 }
 function switchRxnCat(cat, catEl){
   document.querySelectorAll("#rxn-cats .emoji-cat").forEach(x=>x.classList.remove("on"));
   catEl.classList.add("on");
-  el("rxn-grid").innerHTML=EMOJI_DB[cat].map(em=>`<div class="emoji-item" onclick="addRxn('${em}')">${em}</div>`).join("");
+  el("rxn-grid").innerHTML=EMOJI_DB[cat].filter(em=>isReactionAllowed(S.chat,em)).map(em=>`<div class="emoji-item" onclick="addRxn('${em}')">${em}</div>`).join("");
 }
 function openDelModal(){
   const ms=S.messages[S.chat]||[];
