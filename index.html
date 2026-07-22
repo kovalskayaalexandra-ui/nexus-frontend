@@ -5818,7 +5818,13 @@ function ctxReact(e){
   rp.style.left=ctx.style.left; rp.style.top=(parseInt(ctx.style.top)-44)+"px";
   ctx.classList.remove("on");
   rxnExpanded=false; rp.classList.remove("expanded");
-  const allowedQuick=QUICK_REACTIONS.filter(em=>isReactionAllowed(S.chat,em));
+  // Если админ настроил конкретный список разрешённых реакций — показываем
+  // сразу ЕГО в быстром ряду (как в Telegram), а не просто урезанную
+  // стандартную восьмёрку. Если ограничений нет (allowedReactions пуст) —
+  // как и раньше, стандартный набор.
+  const ch=S.chats.find(c=>c.id===S.chat);
+  const customList=ch?.allowedReactions;
+  const allowedQuick=(customList && customList.length) ? customList : QUICK_REACTIONS.filter(em=>isReactionAllowed(S.chat,em));
   el("rxn-quick-row").innerHTML=`<div class="rxn-e rxn-crystal" onclick="openCrystalGiftModal(event)">💎</div>`+allowedQuick.map(em=>`<div class="rxn-e" onclick="addRxn('${em}')">${em}</div>`).join("");
   rp.classList.add("on");
 }
