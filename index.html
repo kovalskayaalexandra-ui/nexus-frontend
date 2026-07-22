@@ -3103,14 +3103,17 @@ function chatDisplayName(ch){
   return ch.nm + (ch.peerVip ? " 👑" : "") + (ch.peerStatusEmoji ? " "+ch.peerStatusEmoji : "");
 }
 
-// ⚠️ Раньше синяя галочка (chats.is_verified) реально ставилась в базу при
+// ⚠️ Раньше синяя галочка (is_verified) реально ставилась в базу при
 // одобрении заявки на верификацию, но нигде в интерфейсе не отображалась —
 // одобрение выглядело так, будто ничего не произошло. Не путать с
-// "Официальный канал Nexus" (это другое, платформенное, только у 88888) —
-// тут подпись именно про подтверждённый пользовательский канал.
+// "Официальный канал Nexus" (это другое, платформенное, только у 88888).
+// ch.verified — верифицирован сам канал/группа; ch.peerVerified —
+// верифицирован СОБЕСЕДНИК в личном чате (как в Telegram, верификация
+// доступна и личным профилям, не только каналам).
 function verifiedBadgeHTML(ch){
-  if(!ch || !ch.verified) return "";
-  return `<span class="verify-badge" style="font-size:11px"><span class="verify-tick">✅</span><div class="verify-tooltip">Подтверждённый канал</div></span>`;
+  if(!ch || (!ch.verified && !ch.peerVerified)) return "";
+  const tip = ch.peerVerified ? "Подтверждённый профиль" : "Подтверждённый канал";
+  return `<span class="verify-badge" style="font-size:11px"><span class="verify-tick">✅</span><div class="verify-tooltip">${tip}</div></span>`;
 }
 
 async function refreshChatPeerInfo(ch){
@@ -3140,13 +3143,16 @@ async function refreshChatPeerInfo(ch){
     // Эмодзи-статус и цвет имени — VIP-привилегии собеседника
     if((u.status_emoji||"")!==(ch.peerStatusEmoji||"")){ ch.peerStatusEmoji=u.status_emoji||""; changed=true; }
     if((u.name_color||"")!==(ch.peerNameColor||"")){ ch.peerNameColor=u.name_color||""; changed=true; }
+    // Синяя галочка верификации — как в Telegram, доступна и личным
+    // профилям (не только каналам), см. users.is_verified
+    if(!!u.is_verified !== !!ch.peerVerified){ ch.peerVerified=!!u.is_verified; changed=true; }
     // Запрет голосовых/видео — тоже VIP-привилегия собеседника, применяем
     // к кнопкам композера прямо сейчас, если этот чат сейчас открыт
     if(!!u.block_voice_video !== !!ch.peerBlockVoiceVideo){ ch.peerBlockVoiceVideo=!!u.block_voice_video; changed=true; }
     if(!!u.is_bot !== !!ch.peerIsBot){ ch.peerIsBot=!!u.is_bot; changed=true; }
     if(S.chat===ch.id){
       if(el("chnm")){
-        el("chnm").textContent=chatDisplayName(ch);
+        el("chnm").innerHTML=escHtml(chatDisplayName(ch))+verifiedBadgeHTML(ch);
         el("chnm").style.color=ch.peerNameColor||"";
       }
       applyVoiceVideoRestriction(ch.peerBlockVoiceVideo);
@@ -10017,14 +10023,24 @@ function togglePostReaction(postId, emoji){
 // ⚠️ Раньше вся заявка была локальной — номер тикета выдумывался в
 // браузере, ничего не сохранялось и никто её не рассматривал. Теперь
 // реально уходит на сервер (POST /api/verification/request).
+// Тип заявки меняет подписи полей — "канал/группа" или "личный профиль
+// блогера" (как в Telegram, верификация доступна не только каналам)
+function updateVerifyFormLabels(){
+  const isUser = el("vr-type")?.value==="user";
+  if(el("vr-name-label")) el("vr-name-label").textContent = isUser?"Ваше публичное имя":"Название канала / группы";
+  if(el("vr-link-label")) el("vr-link-label").textContent = isUser?"Ваш @username":"Ссылка на канал";
+  if(el("vr-name")) el("vr-name").placeholder = isUser?"Александра Ковальская":"Nexus Official";
+  if(el("vr-link")) el("vr-link").placeholder = isUser?"@alexandra":"@mychannel";
+}
 async function submitVerification(){
+  const targetType = el("vr-type")?.value==="user"?"user":"channel";
   const name = el("vr-name")?.value?.trim();
   const link = el("vr-link")?.value?.trim();
   const reason = el("vr-reason")?.value?.trim();
   const email = el("vr-email")?.value?.trim();
   if(!name||!link||!reason||!email){ showToast("❌ Заполните все поля"); return; }
   try{
-    const data = await apiPost("/api/verification/request", {channelName:name, channelLink:link, reason, contactEmail:email}, true);
+    const data = await apiPost("/api/verification/request", {channelName:name, channelLink:link, reason, contactEmail:email, targetType}, true);
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось отправить заявку")); return; }
     if(el("vr-name"))el("vr-name").value="";
     if(el("vr-link"))el("vr-link").value="";
@@ -10034,7 +10050,7 @@ async function submitVerification(){
     renderVerificationStatus();
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
-function openVerification(){ el("screen-verify").classList.add("on"); renderVerificationStatus(); }
+function openVerification(){ el("screen-verify").classList.add("on"); updateVerifyFormLabels(); renderVerificationStatus(); }
 async function renderVerificationStatus(){
   const box = el("vr-status"); if(!box) return;
   box.innerHTML = `<div style="color:var(--tx3)">Загрузка...</div>`;
@@ -10045,9 +10061,10 @@ async function renderVerificationStatus(){
     const labels = {pending:["На рассмотрении ⏳","var(--tx2)"], approved:["Одобрено ✅","var(--gr)"], rejected:["Отклонено ❌","var(--rd)"]};
     box.innerHTML = reqs.map(r=>{
       const [label,color] = labels[r.status]||labels.pending;
+      const typeLabel = r.target_type==="user"?"Личный профиль":"Канал/группа";
       return `<div style="background:rgba(56,189,248,.07);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:12px;margin-bottom:8px">
-        <div style="font-weight:600;color:var(--acc3);margin-bottom:4px">${r.channel_name}</div>
-        <div style="font-size:11.5px;color:var(--tx2)">Канал: ${r.channel_link}<br>Статус: <span style="color:${color}">${label}</span><br>Подано: ${new Date(r.created_at).toLocaleDateString("ru")}</div>
+        <div style="font-weight:600;color:var(--acc3);margin-bottom:4px">${r.channel_name} <span style="font-size:10px;color:var(--tx3);font-weight:400">(${typeLabel})</span></div>
+        <div style="font-size:11.5px;color:var(--tx2)">${r.target_type==="user"?"Профиль":"Канал"}: ${r.channel_link}<br>Статус: <span style="color:${color}">${label}</span><br>Подано: ${new Date(r.created_at).toLocaleDateString("ru")}</div>
       </div>`;
     }).join("");
   }catch(e){ box.innerHTML = "Не удалось загрузить"; }
@@ -10294,7 +10311,7 @@ async function renderAdminVerificationsTable(){
     if(!reqs.length){ t.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--tx3);padding:14px">Заявок нет</td></tr>'; return; }
     const statusBadge = {pending:'<span class="bg bga">На рассмотрении</span>', approved:'<span class="bg bgg">Одобрено</span>', rejected:'<span class="bg bgr">Отклонено</span>'};
     t.innerHTML = reqs.map(r=>`<tr>
-      <td>${r.channel_name}<br><span style="font-size:10px;color:var(--tx3)">${r.channel_link}</span></td>
+      <td>${r.channel_name} <span style="font-size:9px;color:var(--tx3)">${r.target_type==="user"?"👤 профиль":"📢 канал"}</span><br><span style="font-size:10px;color:var(--tx3)">${r.channel_link}</span></td>
       <td style="color:var(--acc2)">${r.username?"@"+r.username:(r.phone||"—")}</td>
       <td style="color:var(--tx3)">${new Date(r.created_at).toLocaleDateString("ru")}</td>
       <td>${statusBadge[r.status]||r.status}</td>
@@ -10708,8 +10725,9 @@ applyTheme(S.theme||"dark");
     <div class="settings-section">
       <div class="settings-section-title">Подать заявку</div>
       <div style="padding:14px">
-        <div class="frow s1"><div class="fg"><span class="fl">Название канала / группы</span><input class="fii" id="vr-name" placeholder="Nexus Official"></div></div>
-        <div class="frow s1"><div class="fg"><span class="fl">Ссылка на канал</span><input class="fii" id="vr-link" placeholder="@mychannel"></div></div>
+        <div class="frow s1"><div class="fg"><span class="fl">Тип заявки</span><select class="fsel" id="vr-type" onchange="updateVerifyFormLabels()"><option value="channel">📢 Канал / группа</option><option value="user">👤 Мой личный профиль (блогер)</option></select></div></div>
+        <div class="frow s1"><div class="fg"><span class="fl" id="vr-name-label">Название канала / группы</span><input class="fii" id="vr-name" placeholder="Nexus Official"></div></div>
+        <div class="frow s1"><div class="fg"><span class="fl" id="vr-link-label">Ссылка на канал</span><input class="fii" id="vr-link" placeholder="@mychannel"></div></div>
         <div class="frow s1"><div class="fg"><span class="fl">Почему вы заслуживаете верификацию?</span><textarea class="fii" id="vr-reason" rows="3" style="resize:none" placeholder="Опишите вашу деятельность, аудиторию, контент..."></textarea></div></div>
         <div class="frow s1"><div class="fg"><span class="fl">Контактный email</span><input class="fii" id="vr-email" placeholder="contact@example.com" type="email"></div></div>
         <div style="font-size:11.5px;color:var(--tx3);margin-bottom:12px">Заявка будет рассмотрена редакторами Nexus в течение 3-7 рабочих дней</div>
