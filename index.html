@@ -1220,6 +1220,10 @@ tr:hover td{background:var(--bg3)}
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">👥</div><div><div class="settings-row-label">Контакты</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
+      <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openVerification()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(56,189,248,.1)">✅</div><div><div class="settings-row-label">Верификация канала</div><div class="settings-row-sub">Синяя галочка для канала/группы</div></div></div>
+        <div class="settings-row-arrow">›</div>
+      </div>
       <div class="settings-row" onclick="exportData()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">💾</div><div><div class="settings-row-label">Экспорт данных</div><div class="settings-row-sub">Сохранить историю чатов</div></div></div>
         <div class="settings-row-arrow">›</div>
@@ -9922,36 +9926,43 @@ function togglePostReaction(postId, emoji){
 // ══════════════════════════════════════════════════
 //  VERIFICATION SYSTEM
 // ══════════════════════════════════════════════════
-function submitVerification(){
+// ⚠️ Раньше вся заявка была локальной — номер тикета выдумывался в
+// браузере, ничего не сохранялось и никто её не рассматривал. Теперь
+// реально уходит на сервер (POST /api/verification/request).
+async function submitVerification(){
   const name = el("vr-name")?.value?.trim();
   const link = el("vr-link")?.value?.trim();
   const reason = el("vr-reason")?.value?.trim();
   const email = el("vr-email")?.value?.trim();
   if(!name||!link||!reason||!email){ showToast("❌ Заполните все поля"); return; }
-  const ticketNum = "VRF-"+Math.floor(10000+Math.random()*90000);
-  el("vr-status").innerHTML = `
-    <div style="background:rgba(56,189,248,.07);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:12px">
-      <div style="font-weight:600;color:var(--acc3);margin-bottom:4px">📨 Заявка отправлена</div>
-      <div style="font-size:11.5px;color:var(--tx2)">Номер: <strong>${ticketNum}</strong><br>Канал: ${link}<br>Статус: На рассмотрении ⏳<br>Срок: 3-7 рабочих дней</div>
-    </div>
-  `;
-  if(el("vr-name"))el("vr-name").value="";
-  if(el("vr-link"))el("vr-link").value="";
-  if(el("vr-reason"))el("vr-reason").value="";
-  if(el("vr-email"))el("vr-email").value="";
-  showToast("✅ Заявка #"+ticketNum+" принята!");
-  // send to support chat
-  openSupport();
-  setTimeout(()=>{
-    if(!S.messages[99999])S.messages[99999]=[];
-    S.messages[99999].push({id:nextId(),t:"in",fr:"NS",col:6,tx:`✅ Заявка на верификацию принята!
-
-Номер: ${ticketNum}
-Канал: ${link}
-
-Редакторы Nexus рассмотрят её в течение 3-7 рабочих дней и свяжутся с вами по email: ${email}`,time:now()});
-    saveState();
-  },1000);
+  try{
+    const data = await apiPost("/api/verification/request", {channelName:name, channelLink:link, reason, contactEmail:email}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось отправить заявку")); return; }
+    if(el("vr-name"))el("vr-name").value="";
+    if(el("vr-link"))el("vr-link").value="";
+    if(el("vr-reason"))el("vr-reason").value="";
+    if(el("vr-email"))el("vr-email").value="";
+    showToast("✅ Заявка отправлена!");
+    renderVerificationStatus();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+function openVerification(){ el("screen-verify").classList.add("on"); renderVerificationStatus(); }
+async function renderVerificationStatus(){
+  const box = el("vr-status"); if(!box) return;
+  box.innerHTML = `<div style="color:var(--tx3)">Загрузка...</div>`;
+  try{
+    const data = await apiGet("/api/verification/my-requests");
+    const reqs = (data && data.requests)||[];
+    if(!reqs.length){ box.innerHTML = "Заявок нет"; return; }
+    const labels = {pending:["На рассмотрении ⏳","var(--tx2)"], approved:["Одобрено ✅","var(--gr)"], rejected:["Отклонено ❌","var(--rd)"]};
+    box.innerHTML = reqs.map(r=>{
+      const [label,color] = labels[r.status]||labels.pending;
+      return `<div style="background:rgba(56,189,248,.07);border:1px solid rgba(56,189,248,.2);border-radius:10px;padding:12px;margin-bottom:8px">
+        <div style="font-weight:600;color:var(--acc3);margin-bottom:4px">${r.channel_name}</div>
+        <div style="font-size:11.5px;color:var(--tx2)">Канал: ${r.channel_link}<br>Статус: <span style="color:${color}">${label}</span><br>Подано: ${new Date(r.created_at).toLocaleDateString("ru")}</div>
+      </div>`;
+    }).join("");
+  }catch(e){ box.innerHTML = "Не удалось загрузить"; }
 }
 
 // ══════════════════════════════════════════════════
@@ -10139,12 +10150,14 @@ async function adminAddGift(){
   showToast("🎁 Подарок добавлен!");
 }
 
+// ⚠️ Раньше был один захардкоженный ряд (@nexus_fans), кнопки ✓/✕ только
+// показывали тост — теперь реальные заявки из verification_requests
 function renderAdminVerifications(){
   const asb = document.querySelector(".asb");
   if(asb && !document.getElementById("ani-verify")){
     const div = document.createElement("div");
     div.id = "ani-verify";
-    div.className = "ani ani-todo";
+    div.className = "ani";
     div.dataset.section = "verification";
     div.onclick = ()=>aPage(div,"verify");
     div.textContent = "✅ Верификация";
@@ -10155,13 +10168,37 @@ function renderAdminVerifications(){
       page.className = "apage";
       page.id = "page-verify";
       page.innerHTML = `<div class="atitle">✅ Верификация</div><div class="asub2">Заявки на верификацию каналов</div>
-        <div class="asec"><div style="color:var(--tx3);font-size:12.5px;padding:12px 0">Заявки поступают через @NexusVerify бот и отображаются здесь для рассмотрения редакторами.</div>
-        <div class="tw"><table><thead><tr><th>Канал</th><th>Заявитель</th><th>Дата</th><th>Статус</th><th></th></tr></thead><tbody>
-          <tr><td>@nexus_fans</td><td>@user_123</td><td>07.06.2026</td><td><span class="bg bga">На рассмотрении</span></td><td><button class="xbtn gn" style="padding:3px 8px;font-size:10px" onclick="showToast('✅ Одобрено')">✓</button> <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="showToast('❌ Отклонено')">✕</button></td></tr>
+        <div class="asec"><div class="tw"><table><thead><tr><th>Канал</th><th>Заявитель</th><th>Дата</th><th>Статус</th><th></th></tr></thead><tbody id="verif-tbl">
+          <tr><td colspan="5" style="text-align:center;color:var(--tx3);padding:14px">Загрузка...</td></tr>
         </tbody></table></div></div>`;
       acnt.appendChild(page);
     }
   }
+  renderAdminVerificationsTable();
+}
+async function renderAdminVerificationsTable(){
+  const t = el("verif-tbl"); if(!t) return;
+  try{
+    const data = await apiGet("/api/admin/verification-requests");
+    const reqs = (data && data.requests)||[];
+    if(!reqs.length){ t.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--tx3);padding:14px">Заявок нет</td></tr>'; return; }
+    const statusBadge = {pending:'<span class="bg bga">На рассмотрении</span>', approved:'<span class="bg bgg">Одобрено</span>', rejected:'<span class="bg bgr">Отклонено</span>'};
+    t.innerHTML = reqs.map(r=>`<tr>
+      <td>${r.channel_name}<br><span style="font-size:10px;color:var(--tx3)">${r.channel_link}</span></td>
+      <td style="color:var(--acc2)">${r.username?"@"+r.username:(r.phone||"—")}</td>
+      <td style="color:var(--tx3)">${new Date(r.created_at).toLocaleDateString("ru")}</td>
+      <td>${statusBadge[r.status]||r.status}</td>
+      <td>${r.status==="pending"?`<button class="xbtn gn" style="padding:3px 8px;font-size:10px" onclick="reviewVerification('${r.id}','approved')">✓</button> <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="reviewVerification('${r.id}','rejected')">✕</button>`:""}</td>
+    </tr>`).join("");
+  }catch(e){ t.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить</td></tr>'; }
+}
+async function reviewVerification(id, status){
+  try{
+    const data = await apiPatch("/api/admin/verification-requests/"+id, {status}, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); return; }
+    showToast(status==="approved"?"✅ Одобрено":"❌ Отклонено");
+    renderAdminVerificationsTable();
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
 function renderAdminCustomPacks(){
