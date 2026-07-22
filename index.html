@@ -1708,11 +1708,11 @@ tr:hover td{background:var(--bg3)}
   </div>
   <div class="perm-row">
     <span class="perm-label">Реакции<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Разрешить участникам ставить реакции на сообщения/посты</div></span>
-    <div class="perm-tgl" id="chset-reactions-enabled" onclick="toggleChSetting('reactionsEnabled',this)"></div>
+    <div class="perm-tgl" id="chset-reactions-enabled" onclick="toggleReactionsEnabled(this)"></div>
   </div>
   <div class="perm-row">
     <span class="perm-label">Приватный чат<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Вступить можно только по ссылке-приглашению</div></span>
-    <div class="perm-tgl" id="chset-private" onclick="toggleChSetting('isPrivate',this)"></div>
+    <div class="perm-tgl" id="chset-private" onclick="toggleChPrivate(this)"></div>
   </div>
   <div class="fg" style="margin-bottom:10px">
     <span class="fl">Ссылка-приглашение</span>
@@ -2489,7 +2489,7 @@ function wsHandleMessage(msg){
     }
 
     case "chat.updated": {
-      const { chatId, name, description, avatar, username, restrictSendMessages } = msg.payload;
+      const { chatId, name, description, avatar, username, restrictSendMessages, reactionsEnabled, allowedReactions, isPrivate } = msg.payload;
       const ch=S.chats.find(c=>c.id===chatId);
       if(ch){
         if(name){ ch.nm=name; ch.ini=name.slice(0,2).toUpperCase(); }
@@ -2497,6 +2497,11 @@ function wsHandleMessage(msg){
         if(avatar!==undefined) ch.avatar=avatar;
         if(username!==undefined) ch.uname=username;
         if(restrictSendMessages!==undefined) ch.restrictSendMessages=restrictSendMessages;
+        // Реакции и приватность — раньше вообще не долетали до остальных
+        // участников (S.channelSettings был локальным только у того, кто менял)
+        if(reactionsEnabled!==undefined) ch.reactionsEnabled=reactionsEnabled;
+        if(allowedReactions!==undefined) ch.allowedReactions=allowedReactions;
+        if(isPrivate!==undefined) ch.isPrivate=isPrivate;
         if(S.chat===chatId){
           if(el("chnm")) el("chnm").innerHTML=escHtml(chatDisplayName(ch))+verifiedBadgeHTML(ch);
           updateChatAvatarDisplays(ch);
@@ -3355,6 +3360,10 @@ async function loadChatsFromDB(){
         if(isPersonal && otherUser?.avatar!==undefined) existing.avatar = otherUser.avatar || "";
         existing.myRole = dbChat.my_role || existing.myRole;
         existing.restrictSendMessages = !!dbChat.restrict_send_messages;
+        // Реакции и приватность — раньше были чисто локальными (S.channelSettings)
+        existing.reactionsEnabled = dbChat.reactions_enabled!==false;
+        existing.allowedReactions = dbChat.allowed_reactions||[];
+        existing.isPrivate = !!dbChat.is_private;
         // Закреп/мьют/архив — раньше были чисто локальными, теперь синхронизируются с сервера
         existing.pinned = !!dbChat.pinned;
         existing.archived = !!dbChat.archived;
@@ -3380,6 +3389,9 @@ async function loadChatsFromDB(){
           dbId: dbChat.id,
           myRole: dbChat.my_role,
           restrictSendMessages: !!dbChat.restrict_send_messages,
+          reactionsEnabled: dbChat.reactions_enabled!==false,
+          allowedReactions: dbChat.allowed_reactions||[],
+          isPrivate: !!dbChat.is_private,
           withUserId: otherUser ? otherUser.userId : undefined,
           memberIds: !isPersonal ? others.map(m => m.userId) : undefined,
           members: !isPersonal ? buildRealMembers(dbChat, others) : undefined,
@@ -4179,13 +4191,14 @@ function openChannelSettings(){
   const restrictRow=el("chset-restrict-row");
   if(restrictRow) restrictRow.style.display = isChannel ? "none" : "flex";
   if(el("chset-restrict")) el("chset-restrict").classList.toggle("on", !!ch.restrictSendMessages);
-  if(!S.channelSettings[ch.id]) S.channelSettings[ch.id]={};
-  const reactEnabled=S.channelSettings[ch.id].reactionsEnabled!==false;
+  // Реакции и приватность — реально сохраняются на сервере (ch.reactionsEnabled/
+  // ch.allowedReactions/ch.isPrivate), как и restrictSendMessages выше
+  const reactEnabled=ch.reactionsEnabled!==false;
   el("chset-reactions-enabled").classList.toggle("on",reactEnabled);
   el("chset-reactions-picker-row").style.display=reactEnabled?"block":"none";
   updateReactionsSummary(ch.id);
 
-  el("chset-private").classList.toggle("on", !!S.channelSettings[ch.id].isPrivate);
+  el("chset-private").classList.toggle("on", !!ch.isPrivate);
   el("chset-invite-link").value = ch.inviteLink ? buildRealInviteLink(ch.inviteLink) : "Ссылка появится после сохранения";
 
   // "Удалить группу/канал" — только для владельца (создателя), не для админов
@@ -4295,16 +4308,52 @@ async function regenerateInviteLink(){
   }catch(e){ console.warn("regenerate invite error:",e); showToast("❌ Не удалось обновить ссылку"); }
 }
 
+// ⚠️ Раньше reactionsEnabled/allowedReactions/isPrivate жили только в
+// S.channelSettings (localStorage админа) — другие участники/устройства
+// их не видели вообще, хотя выглядело как настоящая настройка канала.
+// Общий помощник — сохраняет поле(я) на сервере и рассылает остальным
+// участникам чата, тем же способом, что и toggleRestrictSendMessages.
+async function saveChatSettingField(ch, patch){
+  const isRealChat = typeof ch.id==="string" && ch.id.length>10;
+  if(!isRealChat) return false;
+  try{
+    const data = await apiPatch("/api/chats/"+ch.id, patch, true);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); return false; }
+    Object.assign(ch, patch);
+    saveState();
+    wsSendReliable({type:"chat.updated", payload:{chatId:ch.id, ...patch, memberIds:getChatMemberIds(ch)}});
+    return true;
+  }catch(e){ showToast("❌ Нет связи с сервером"); return false; }
+}
+
+async function toggleReactionsEnabled(elm){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch) return;
+  const newVal=!(ch.reactionsEnabled!==false);
+  elm.classList.toggle("on", newVal);
+  const ok = await saveChatSettingField(ch, {reactionsEnabled:newVal});
+  if(!ok){ elm.classList.toggle("on", !newVal); return; }
+  el("chset-reactions-picker-row").style.display=newVal?"block":"none";
+  showToast(newVal?"✅ Реакции разрешены":"🔒 Реакции запрещены");
+}
+
+async function toggleChPrivate(elm){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch) return;
+  const newVal=!ch.isPrivate;
+  elm.classList.toggle("on", newVal);
+  const ok = await saveChatSettingField(ch, {isPrivate:newVal});
+  if(!ok){ elm.classList.toggle("on", !newVal); return; }
+  showToast(newVal?"🔒 Канал приватный":"🌍 Канал публичный");
+}
+
 function updateReactionsSummary(chatId){
-  const allowed=S.channelSettings[chatId]?.allowedReactions;
+  const ch=S.chats.find(c=>c.id===chatId);
+  const allowed=ch?.allowedReactions;
   el("chset-reactions-summary").textContent = (allowed && allowed.length)
     ? "Разрешено: "+allowed.join(" ")
     : "Разрешены все реакции";
 }
 
 function openReactionsAllowedPicker(){
-  const chatId=S.chat;
-  if(!S.channelSettings[chatId]) S.channelSettings[chatId]={};
   renderAllowedReactionsCats();
   renderAllowedReactionsGrid(EMOJI_CATS_LIST[0]);
   el("m-reactions-allowed").classList.add("on");
@@ -4318,41 +4367,43 @@ function switchAllowedRxnCat(cat, catEl){
   renderAllowedReactionsGrid(cat);
 }
 function renderAllowedReactionsGrid(cat){
-  const chatId=S.chat;
-  const allowed=S.channelSettings[chatId]?.allowedReactions||[];
+  const ch=S.chats.find(c=>c.id===S.chat);
+  const allowed=ch?.allowedReactions||[];
   el("rxn-allowed-grid").innerHTML=EMOJI_DB[cat].map(em=>{
     const isOn=allowed.includes(em);
     return `<div class="emoji-item${isOn?" allowed-on":""}" style="${isOn?"background:var(--acc);border-radius:6px":""}" onclick="toggleAllowedReaction('${em}',this)">${em}</div>`;
   }).join("");
 }
-function toggleAllowedReaction(emoji, itemEl){
-  const chatId=S.chat;
-  if(!S.channelSettings[chatId]) S.channelSettings[chatId]={};
-  if(!S.channelSettings[chatId].allowedReactions) S.channelSettings[chatId].allowedReactions=[];
-  const arr=S.channelSettings[chatId].allowedReactions;
+async function toggleAllowedReaction(emoji, itemEl){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch) return;
+  const arr=[...(ch.allowedReactions||[])];
   const idx=arr.indexOf(emoji);
-  if(idx===-1){ arr.push(emoji); itemEl.classList.add("allowed-on"); itemEl.style.background="var(--acc)"; itemEl.style.borderRadius="6px"; }
-  else { arr.splice(idx,1); itemEl.classList.remove("allowed-on"); itemEl.style.background=""; }
-  updateReactionsSummary(chatId);
-  saveState();
+  if(idx===-1) arr.push(emoji); else arr.splice(idx,1);
+  const ok = await saveChatSettingField(ch, {allowedReactions:arr});
+  if(!ok) return;
+  itemEl.classList.toggle("allowed-on", idx===-1);
+  itemEl.style.background = idx===-1 ? "var(--acc)" : "";
+  itemEl.style.borderRadius = idx===-1 ? "6px" : "";
+  updateReactionsSummary(ch.id);
 }
-function clearAllowedReactions(){
-  const chatId=S.chat;
-  if(S.channelSettings[chatId]) S.channelSettings[chatId].allowedReactions=[];
-  updateReactionsSummary(chatId);
-  renderAllowedReactionsGrid(document.querySelector("#rxn-allowed-cats .emoji-cat.on")?.textContent ? EMOJI_CATS_LIST.find(c=>c.startsWith(document.querySelector("#rxn-allowed-cats .emoji-cat.on").textContent)) : EMOJI_CATS_LIST[0]);
-  saveState();
+async function clearAllowedReactions(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch) return;
+  const ok = await saveChatSettingField(ch, {allowedReactions:[]});
+  if(!ok) return;
+  updateReactionsSummary(ch.id);
+  const curCat=document.querySelector("#rxn-allowed-cats .emoji-cat.on")?.textContent;
+  renderAllowedReactionsGrid(curCat ? EMOJI_CATS_LIST.find(c=>c.startsWith(curCat)) : EMOJI_CATS_LIST[0]);
   showToast("✅ Разрешены все реакции");
 }
 
 // Проверка: разрешена ли конкретная реакция в этом чате (для групп/каналов)
+// — реальное поле с сервера (ch.reactionsEnabled/ch.allowedReactions), не
+// локальный S.channelSettings, поэтому ограничение видят все участники
 function isReactionAllowed(chatId, emoji){
   const ch=S.chats.find(c=>c.id===chatId);
   if(!ch || (ch.type!=="groups" && ch.type!=="channels")) return true; // личные чаты — без ограничений
-  const settings=S.channelSettings[chatId];
-  if(!settings) return true;
-  if(settings.reactionsEnabled===false) return false;
-  if(settings.allowedReactions && settings.allowedReactions.length) return settings.allowedReactions.includes(emoji);
+  if(ch.reactionsEnabled===false) return false;
+  if(ch.allowedReactions && ch.allowedReactions.length) return ch.allowedReactions.includes(emoji);
   return true;
 }
 
@@ -4434,9 +4485,12 @@ async function saveChatInfo(){
   }
 }
 
-// В отличие от toggleChSetting() (чисто локальная, для визуальных настроек типа
-// реакций) — это реально сохраняется на сервере через PATCH /api/chats/:id,
-// потому что от этого зависит настоящая проверка прав в messages.js.
+// toggleChSetting() ниже осталась только для allowPostInChats — фича
+// "писать от имени канала в чатах" сама по себе отключена (canSendAsChannelHere()
+// жёстко возвращает false, см. комментарий там), так что синхронизировать
+// с сервером пока нечего. Реакции/приватность больше НЕ используют
+// toggleChSetting — у них теперь свои функции (saveChatSettingField), это
+// реально сохраняется через PATCH /api/chats/:id.
 async function toggleRestrictSendMessages(elm){
   const ch=S.chats.find(c=>c.id===S.chat);
   if(!ch) return;
