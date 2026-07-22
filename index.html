@@ -1181,8 +1181,8 @@ tr:hover td{background:var(--bg3)}
         <select class="fsel" style="width:130px" id="priv-online" onchange="savePrivacy()"><option>Все</option><option selected>Мои контакты</option><option>Никто</option></select>
       </div>
       <div class="settings-row">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">🔐</div><div><div class="settings-row-label">E2E шифрование</div></div></div>
-        <label class="toggle"><input type="checkbox" id="priv-e2e" checked onchange="savePrivacy()"><span class="ts"></span></label>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">🔐</div><div><div class="settings-row-label">E2E шифрование</div><div class="settings-row-sub">В разработке — сообщения пока НЕ шифруются</div></div></div>
+        <span style="font-size:11px;color:var(--tx3);background:var(--bg3);padding:4px 10px;border-radius:20px;white-space:nowrap">Скоро</span>
       </div>
       <div class="settings-row" onclick="openBlockedList()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(248,113,113,.1)">🚫</div><div><div class="settings-row-label">Заблокированные</div><div class="settings-row-sub" id="blocked-count">0 пользователей</div></div></div>
@@ -1968,7 +1968,7 @@ const DEFAULT_STATE = {
     {id:1,device:"Chrome / Windows 11",ip:"185.220.101.x",active:true,date:"Сейчас"},
     {id:2,device:"Safari / iPhone 15",ip:"31.173.82.x",active:false,date:"2 дня назад"}
   ],
-  privacy: {phone:"Мои контакты",online:"Мои контакты",e2e:true},
+  privacy: {phone:"Мои контакты",online:"Мои контакты"},
   notifSettings: {push:true,sound:true,preview:true},
   theme: "dark"
 };
@@ -3534,7 +3534,6 @@ function openSettings(){
   }
   if(el("priv-phone"))el("priv-phone").value=S.privacy.phone;
   if(el("priv-online"))el("priv-online").value=S.privacy.online;
-  if(el("priv-e2e"))el("priv-e2e").checked=S.privacy.e2e;
   if(el("notif-push"))el("notif-push").checked=S.notifSettings.push;
   if(el("notif-sound"))el("notif-sound").checked=S.notifSettings.sound;
   if(el("notif-preview"))el("notif-preview").checked=S.notifSettings.preview;
@@ -6406,7 +6405,7 @@ async function saveProfile(){
       showToast("⚠️ Сохранено локально, но не на сервере — поиск других может не найти");
     });
 }
-function savePrivacy(){ S.privacy={phone:el("priv-phone")?.value,online:el("priv-online")?.value,e2e:el("priv-e2e")?.checked}; saveState(); showToast("✅ Приватность сохранена"); }
+function savePrivacy(){ S.privacy={phone:el("priv-phone")?.value,online:el("priv-online")?.value}; saveState(); showToast("✅ Приватность сохранена"); }
 function saveNotif(){ S.notifSettings={push:el("notif-push")?.checked,sound:el("notif-sound")?.checked,preview:el("notif-preview")?.checked}; saveState(); }
 // Три полноценных набора значений — раньше переключались только --bg/--bg2,
 // AMOLED и "остальное" делили одни и те же тёмные цвета, светлой темы
