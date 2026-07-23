@@ -1823,6 +1823,14 @@ tr:hover td{background:var(--bg3)}
     <div id="mp-bio" style="font-size:13px;line-height:1.5"></div>
     <div style="font-size:10.5px;color:var(--tx3);margin-top:2px">О себе</div>
   </div>
+  <div id="mp-birthday-row" style="padding:10px 16px;border-bottom:1px solid var(--brd);display:none">
+    <div id="mp-birthday" style="font-size:13px"></div>
+    <div style="font-size:10.5px;color:var(--tx3);margin-top:2px">🎂 Дата рождения</div>
+  </div>
+  <div id="mp-gifts-row" style="padding:12px 16px;border-bottom:1px solid var(--brd);display:none">
+    <div style="font-size:11px;color:var(--tx3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em">🎁 Подарки</div>
+    <div id="mp-gifts-grid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+  </div>
   <div style="padding:12px 16px">
     <button class="xbtn gn" id="mp-manage-btn" style="width:100%;display:none" onclick="openMemberManageFromProfile()">⚙️ Управление</button>
   </div>
@@ -3500,7 +3508,7 @@ function buildRealMembers(dbChat, others){
   // perms/tag/canWrite — реально сохранены на сервере (chat_members.perms/
   // admin_tag/can_write), если для конкретного участника там ничего ещё не
   // задано (null) — берём дефолт по роли, как и раньше.
-  const me = {id:S.user?.id, nm:S.user?.name||"Я", uname:S.user?.uname||"", col:colorFromId(S.user?.id), role:myRole, perms:dbChat.my_perms||permsFor(myRole), tag:dbChat.my_tag||null, canWrite:dbChat.my_can_write!==false};
+  const me = {id:S.user?.id, nm:S.user?.name||"Я", uname:S.user?.uname||"", avatar:S.user?.avatar||"", col:colorFromId(S.user?.id), role:myRole, perms:dbChat.my_perms||permsFor(myRole), tag:dbChat.my_tag||null, canWrite:dbChat.my_can_write!==false};
   const rest = others.map(m=>({id:m.userId, nm:m.name||"", uname:m.username||"", avatar:m.avatar||"", col:colorFromId(m.userId), role:m.role||"member", perms:m.perms||permsFor(m.role||"member"), tag:m.tag||null, canWrite:m.canWrite!==false}));
   return [me, ...rest];
 }
@@ -7895,8 +7903,9 @@ function renderMembersList(){
     const roleLabel=m.role==="owner"?"Владелец":(m.role==="admin"?(m.tag||"Админ"):"");
     const roleBadge=roleLabel?`<span class="mem-role ${m.role}">${roleLabel}</span>`:"";
     const muteBadge=m.canWrite===false?`<span class="mem-role" style="background:var(--bg4);color:var(--tx3)" title="Не может писать">🔇</span>`:"";
+    const avHTML=m.avatar?`<img src="${m.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(m.nm||"?")[0];
     return `<div class="mem-item" onclick="openMemberProfile('${m.id}')">
-      <div class="mem-av" style="background:${colBg(m.col||0)}">${(m.nm||"?")[0]}</div>
+      <div class="mem-av" style="background:${m.avatar?"none":colBg(m.col||0)}">${avHTML}</div>
       <div class="mem-info"><div class="mem-nm">${m.nm}${m.role==="owner"?" 👑":(m.role==="admin"?" ⭐":"")}</div><div class="mem-sub">${m.uname?"@"+m.uname:"участник"}</div></div>
       ${roleBadge}${muteBadge}
     </div>`;
@@ -7922,10 +7931,29 @@ function openMemberProfile(memberId){
   if(member.uname) el("mp-uname").textContent="@"+member.uname;
   el("mp-bio-row").style.display="none";
   el("mp-bio").textContent="";
+  el("mp-birthday-row").style.display="none";
+  el("mp-gifts-row").style.display="none";
+  el("mp-gifts-grid").innerHTML="";
 
-  if(!isSelf && member.id){
+  if(member.id){
     apiGet("/api/users/"+member.id).then(d=>{
       if(d?.user?.bio){ el("mp-bio").textContent=d.user.bio; el("mp-bio-row").style.display="block"; }
+      if(d?.user?.birthday){
+        const [y,mo,da]=d.user.birthday.split("-").map(Number);
+        const months=["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+        el("mp-birthday").textContent = da+" "+months[mo-1]+(y>0?" "+y:"");
+        el("mp-birthday-row").style.display="block";
+      }
+    }).catch(()=>{});
+    // Подарки — та же реальная витрина, что и в карточке личного чата
+    // (openChatInfo), просто по userId участника, а не withUserId чата
+    apiGet("/api/users/"+member.id+"/gifts").then(d=>{
+      const gifts=(d && d.gifts)||[];
+      if(gifts.length){
+        mpProfileGifts=gifts;
+        el("mp-gifts-grid").innerHTML = gifts.map((g,i)=>`<div class="pgift ${g.rarity||"common"}" title="${escHtml(g.name)}" onclick="showGiftDetailModal({icon:mpProfileGifts[${i}].icon,imageUrl:mpProfileGifts[${i}].image_url,name:mpProfileGifts[${i}].name,rarity:mpProfileGifts[${i}].rarity,fromName:mpProfileGifts[${i}].from_name,createdAt:mpProfileGifts[${i}].created_at,message:mpProfileGifts[${i}].message})">${giftVisual({icon:g.icon,imageUrl:g.image_url})}</div>`).join("");
+        el("mp-gifts-row").style.display="block";
+      }
     }).catch(()=>{});
   }
 
@@ -10556,6 +10584,7 @@ function giftVipToBirthdayPerson(){
 let myReceivedGifts=[];
 // То же самое, но для подарков в карточке профиля СОБЕСЕДНИКА (не своих)
 let uiProfileGifts=[];
+let mpProfileGifts=[]; // та же роль, что uiProfileGifts, но для карточки участника группы (openMemberProfile)
 
 async function renderMyGifts(){
   const showcase = el("my-gifts-showcase"); if(!showcase) return;
