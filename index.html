@@ -481,6 +481,16 @@ body.select-mode .msel-check{display:flex}
 .msg-img-spin{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
 .msg-img-spin svg{animation:nxSpin .8s linear infinite}
 @keyframes nxSpin{to{transform:rotate(360deg)}}
+/* Значок загрузки ВХОДЯЩЕГО видео (не путать с msg-img-spin — тот только
+   для СВОЕГО исходящего файла, пока он грузится НА сервер). Раньше при
+   плохом/пропавшем интернете входящее видео просто оставалось пустым
+   чёрным прямоугольником без вообще какой-либо обратной связи — теперь
+   поверх крутится узнаваемый значок "загрузка", как в Telegram, пока
+   видео реально не готово к проигрыванию (см. hideMediaLoading/
+   showMediaLoading, повешены на события самого <video>). */
+.msg-media-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.28);opacity:1;transition:opacity .25s ease;pointer-events:none;border-radius:inherit}
+.msg-media-loading.mml-hide{opacity:0}
+.mml-arc{animation:nxSpin 1.1s linear infinite;transform-origin:17px 17px}
 .msg-video-wrap{position:relative;margin-bottom:4px;border-radius:12px;overflow:hidden;max-width:260px;background:#000}
 .msg-video{display:block;width:100%;max-height:320px;border-radius:12px}
 .msg-video-wrap.uploading .msg-video{filter:brightness(.5)}
@@ -4087,6 +4097,22 @@ function deleteFailedMsg(msgId){
   const idx=arr.findIndex(x=>x.id===msgId);
   if(idx>-1){ arr.splice(idx,1); renderMsgs(); saveState(); }
 }
+// Значок "загрузка" для ВХОДЯЩЕГО видео (обычное видео-сообщение и
+// видео-кружочек) — показывается по умолчанию сразу при отрисовке (видео
+// ещё не готово к проигрыванию, пока браузер реально не скачал достаточно
+// данных), прячется по событию video.oncanplay/onloadeddata и появляется
+// заново по onwaiting/onerror (сеть подвисла/пропала). Один и тот же
+// значок переиспользуется в обоих местах вместо копирования разметки.
+const MEDIA_LOADING_HTML = `<div class="msg-media-loading"><svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="2.5"/><circle class="mml-arc" cx="17" cy="17" r="14" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="22 66"/><path d="M17 11v10m-4-4 4 4 4-4" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`;
+function hideMediaLoading(mediaEl){
+  const wrap=mediaEl.closest(".msg-video-wrap, .video-circle-wrap"); if(!wrap) return;
+  const spin=wrap.querySelector(".msg-media-loading"); if(spin) spin.classList.add("mml-hide");
+}
+function showMediaLoading(mediaEl){
+  const wrap=mediaEl.closest(".msg-video-wrap, .video-circle-wrap"); if(!wrap) return;
+  const spin=wrap.querySelector(".msg-media-loading"); if(spin) spin.classList.remove("mml-hide");
+}
+
 // Достраивает список сообщений разделителями дат ПРЯМО ПЕРЕД отрисовкой — по
 // настоящим меткам времени, а не по тому, что когда-то было вручную вставлено.
 // Работает для любого чата, включая личные, где раньше дат не было вообще.
@@ -4164,7 +4190,15 @@ function renderMsgs(){
       if(m.video){
         const isSp=m.spoiler && !m.spoilerRevealed;
         const showCtrl=!m.uploading && !isSp;
-        bc+=`<div class="msg-video-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}"><video class="msg-video" src="${m.video}" ${showCtrl?"controls":""} playsinline ${isSp?`onclick="revealSpoiler(${m.id})"`:""}></video>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
+        // ⚠️ Раньше у входящего видео при плохом/пропавшем интернете не было
+        // вообще никакой обратной связи — просто пустой чёрный прямоугольник,
+        // пока браузер молча (и неизвестно сколько) пытается его скачать.
+        // Показываем свой значок загрузки сразу же, прячем по событиям самого
+        // <video> (canplay/loadeddata — данных достаточно, waiting/error —
+        // подвисло или прервалось, показываем обратно).
+        const showDownloadSpin=!m.uploading && !isSp;
+        const dlEvents=showDownloadSpin?`onloadeddata="hideMediaLoading(this)" oncanplay="hideMediaLoading(this)" onplaying="hideMediaLoading(this)" onwaiting="showMediaLoading(this)" onstalled="showMediaLoading(this)" onerror="showMediaLoading(this)"`:"";
+        bc+=`<div class="msg-video-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}"><video class="msg-video" src="${m.video}" ${showCtrl?"controls":""} playsinline ${isSp?`onclick="revealSpoiler(${m.id})"`:""} ${dlEvents}></video>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${showDownloadSpin?MEDIA_LOADING_HTML:""}</div>`;
       }
       if(m.audio){
         bc+=`<div class="msg-audio-wrap"><div style="font-size:12px;color:var(--tx2);margin-bottom:3px">🎵 ${escHtml(m.audio.name||"Аудио")}${m.uploading?" · загрузка…":""}</div><audio src="${m.audio.url}" ${m.uploading?"":"controls"}></audio></div>`;
@@ -4183,7 +4217,7 @@ function renderMsgs(){
           bc+=`<div class="video-circle-wrap"><video class="video-circle" src="${m.videoCircle.url}" muted playsinline></video><div class="vc-play-overlay">⏳</div></div>`;
         } else {
           bc+=`<div class="video-circle-wrap" onclick="toggleVideoCirclePlay(this)">
-            <video class="video-circle" src="${m.videoCircle.url}" playsinline muted></video>
+            <video class="video-circle" src="${m.videoCircle.url}" playsinline muted onloadeddata="hideMediaLoading(this)" oncanplay="hideMediaLoading(this)" onplaying="hideMediaLoading(this)" onwaiting="showMediaLoading(this)" onstalled="showMediaLoading(this)" onerror="showMediaLoading(this)"></video>
             <svg class="vc-ring" viewBox="0 0 100 100" onmousedown="seekVideoCircle(event,this.closest('.video-circle-wrap'))" ontouchstart="seekVideoCircle(event,this.closest('.video-circle-wrap'))">
               <circle class="vc-ring-bg" cx="50" cy="50" r="47"></circle>
               <circle class="vc-ring-progress" cx="50" cy="50" r="47"></circle>
@@ -4191,6 +4225,7 @@ function renderMsgs(){
             <div class="vc-play-overlay">▶</div>
             <div class="vc-dur-badge">${formatDur(m.videoCircle.duration)}</div>
             <div class="voice-speed-btn vc-speed-btn" onclick="cycleSpeed(event,this,this.closest('.video-circle-wrap').querySelector('video'))">${(S.playbackSpeed||1)}x</div>
+            ${MEDIA_LOADING_HTML}
           </div>`;
         }
       }
