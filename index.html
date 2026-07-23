@@ -4459,7 +4459,13 @@ function openChannelSettings(){
   const ch=S.chats.find(c=>c.id===S.chat);
   if(!ch||(ch.type!=="channels"&&ch.type!=="groups")){ showToast("Только для групп и каналов"); return; }
   const myRole=myRoleIn(ch);
-  if(!ch.mine && myRole!=="owner" && myRole!=="admin"){ showToast("🔒 Нет прав редактировать этот чат"); return; }
+  // ⚠️ Раньше тут проверялась только роль (owner/admin) — тумблер
+  // "Изменение профиля группы" (changeInfo) в редакторе прав конкретного
+  // админа ничего реально не значил, любой админ всё равно мог открыть и
+  // сохранить это окно. Теперь для НЕ-владельца дополнительно нужен сам
+  // canI("changeInfo") — реальная (не только видимость поля).
+  const canEdit = ch.mine || myRole==="owner" || (myRole==="admin" && canI("changeInfo"));
+  if(!canEdit){ showToast("🔒 Нет прав редактировать этот чат"); return; }
   const isChannel=ch.type==="channels";
   el("chsettings-title").textContent=isChannel?"⚙️ Изменить канал":"⚙️ Изменить группу";
   el("chset-name-label").textContent=isChannel?"Название канала":"Название группы";
@@ -7940,9 +7946,14 @@ function getMyRole(ch){
 
 // Универсальная проверка прав в текущем чате
 // Для личных чатов и чатов без members — всё разрешено (нет ролей)
+// ⚠️ Раньше здесь стояло ch.type!=="groups" — для каналов функция ВСЕГДА
+// возвращала true, то есть addAdmins/banUsers/changeInfo-проверки для
+// админов канала были фикцией (любой админ канала мог всё, независимо от
+// того, что реально стояло в его перс. правах). Найдено при разборе бага
+// с тумблером "Изменение профиля группы" (23 июля 2026, см. заметки).
 function canI(permKey){
   const ch=S.chats.find(c=>c.id===S.chat);
-  if(!ch||ch.type!=="groups"||!ch.members) return true;
+  if(!ch||(ch.type!=="groups"&&ch.type!=="channels")||!ch.members) return true;
   const me=ch.members.find(m=>m.id===(S.user?.id||"me"));
   if(!me) return false;
   if(me.role==="owner") return true; // владелец может всё
