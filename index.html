@@ -1798,12 +1798,34 @@ tr:hover td{background:var(--bg3)}
 <div class="movl" id="m-member-act"><div class="modal">
   <div class="mtit" id="member-act-name">Участник</div>
   <div id="member-act-list">
-    <div class="ctxi" onclick="makeAdmin()">⭐ Сделать администратором</div>
-    <div class="ctxi" onclick="openPerms()">🔑 Изменить разрешения</div>
+    <div class="ctxi" id="mact-makeadmin" onclick="makeAdmin()">⭐ Сделать администратором</div>
+    <div class="ctxi" id="mact-perms" onclick="openPerms()">🔑 Изменить разрешения</div>
+    <div class="ctxi" id="mact-mute" onclick="toggleMemberCanWrite()">🔇 Запретить писать</div>
     <div class="ctxsep"></div>
-    <div class="ctxi rd" onclick="removeMember()">➖ Удалить из группы</div>
+    <div class="ctxi rd" id="mact-remove" onclick="removeMember()">➖ Удалить из группы</div>
   </div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-member-act')">Отмена</button></div>
+</div></div>
+
+<!-- MODAL: MEMBER PROFILE (read-only) -->
+<div class="movl" id="m-member-profile"><div class="modal" style="padding:0;overflow:hidden;max-width:340px">
+  <div style="position:relative;padding:20px 20px 16px;background:linear-gradient(135deg,var(--acc2),var(--acc3));display:flex;flex-direction:column;align-items:center">
+    <div onclick="closeM('m-member-profile')" style="position:absolute;top:12px;right:12px;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.25);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px">✕</div>
+    <div id="mp-avatar" style="width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;margin-bottom:10px;overflow:hidden;background:rgba(255,255,255,.2);color:#fff;border:2px solid rgba(255,255,255,.4)"></div>
+    <div id="mp-name" style="font-weight:700;font-size:16px;text-align:center;color:#fff">Участник</div>
+    <div id="mp-role" style="color:rgba(255,255,255,.85);font-size:12px;margin-top:3px"></div>
+  </div>
+  <div id="mp-uname-row" style="padding:10px 16px;border-bottom:1px solid var(--brd);display:none">
+    <div id="mp-uname" style="color:var(--acc2);font-size:13.5px"></div>
+    <div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Имя пользователя</div>
+  </div>
+  <div id="mp-bio-row" style="padding:10px 16px;border-bottom:1px solid var(--brd);display:none">
+    <div id="mp-bio" style="font-size:13px;line-height:1.5"></div>
+    <div style="font-size:10.5px;color:var(--tx3);margin-top:2px">О себе</div>
+  </div>
+  <div style="padding:12px 16px">
+    <button class="xbtn gn" id="mp-manage-btn" style="width:100%;display:none" onclick="openMemberManageFromProfile()">⚙️ Управление</button>
+  </div>
 </div></div>
 
 <!-- MODAL: ADMIN PERMISSIONS -->
@@ -1815,7 +1837,7 @@ tr:hover td{background:var(--bg3)}
   <div style="font-size:11.5px;color:var(--tx2);margin:12px 0 6px">Тег участника</div>
   <input class="fii" id="perms-tag" placeholder="Админ" style="margin-bottom:6px">
   <div style="font-size:10.5px;color:var(--tx3);margin-bottom:12px">Должность, которая будет показываться в подписи вместо «Админ».</div>
-  <div class="macts"><button class="xbtn sec" onclick="closeM('m-perms')">Отмена</button><button class="xbtn gn" onclick="savePerms()">✅ Сохранить</button></div>
+  <div class="macts"><button class="xbtn sec" onclick="cancelPerms()">Отмена</button><button class="xbtn gn" onclick="savePerms()">✅ Сохранить</button></div>
 </div></div>
 
 <!-- MODAL: ADD MEMBER -->
@@ -2590,6 +2612,53 @@ function wsHandleMessage(msg){
           // Если сейчас смотрим именно этот чат — сразу прячем/возвращаем поле
           // ввода, не дожидаясь повторного открытия чата или перезагрузки.
           if(restrictSendMessages!==undefined) updateInputPermissionUI(ch);
+        }
+        renderChats(); saveState();
+      }
+      break;
+    }
+
+    // Изменения роли/прав/подписи/мьюта конкретного участника (владелец
+    // сделал кого-то админом, поменял его права, запретил писать одному
+    // конкретному человеку) — раньше всё это было чисто локальным у того,
+    // кто менял, остальные участники и другие устройства ничего не видели.
+    case "chat.member.updated": {
+      const { chatId, userId: targetUserId, role, perms, tag, canWrite } = msg.payload;
+      const ch=S.chats.find(c=>c.id===chatId);
+      if(ch && ch.members){
+        const m=ch.members.find(mm=>String(mm.id)===String(targetUserId));
+        if(m){
+          if(role!==undefined) m.role=role;
+          if(perms!==undefined) m.perms=perms;
+          if(tag!==undefined) m.tag=tag;
+          if(canWrite!==undefined) m.canWrite=canWrite;
+          if(S.chat===chatId){
+            renderMembersList();
+            if(String(targetUserId)===String(S.user?.id)) updateInputPermissionUI(ch);
+          }
+          renderChats(); saveState();
+        }
+      }
+      break;
+    }
+
+    // Участника удалили из группы/канала — если удалили НАС, чат должен
+    // пропасть у нас же (не только у остальных, кто это видел в списке).
+    // Раньше removeMember() был чисто локальным у того, кто нажал "Удалить" —
+    // кикнутый как состоял в чате, так и оставался.
+    case "chat.member.removed": {
+      const { chatId, userId: removedUserId } = msg.payload;
+      const ch=S.chats.find(c=>c.id===chatId);
+      if(ch){
+        if(String(removedUserId)===String(S.user?.id)){
+          S.chats=S.chats.filter(c=>c.id!==chatId);
+          delete S.messages[chatId];
+          if(S.chat===chatId) openChat(77777);
+          showToast("➖ Вас удалили из «"+ch.nm+"»");
+        } else if(ch.members){
+          ch.members=ch.members.filter(m=>String(m.id)!==String(removedUserId));
+          ch.mbrs=ch.members.length;
+          if(S.chat===chatId) renderMembersList();
         }
         renderChats(); saveState();
       }
@@ -3428,8 +3497,11 @@ async function refreshChatPeerInfo(ch){
 function buildRealMembers(dbChat, others){
   const myRole = dbChat.my_role||"member";
   const permsFor = r => r==="owner"?fullPerms():(r==="admin"?adminPerms():memberPerms());
-  const me = {id:S.user?.id, nm:S.user?.name||"Я", uname:S.user?.uname||"", col:colorFromId(S.user?.id), role:myRole, perms:permsFor(myRole)};
-  const rest = others.map(m=>({id:m.userId, nm:m.name||"", uname:m.username||"", avatar:m.avatar||"", col:colorFromId(m.userId), role:m.role||"member", perms:permsFor(m.role||"member")}));
+  // perms/tag/canWrite — реально сохранены на сервере (chat_members.perms/
+  // admin_tag/can_write), если для конкретного участника там ничего ещё не
+  // задано (null) — берём дефолт по роли, как и раньше.
+  const me = {id:S.user?.id, nm:S.user?.name||"Я", uname:S.user?.uname||"", col:colorFromId(S.user?.id), role:myRole, perms:dbChat.my_perms||permsFor(myRole), tag:dbChat.my_tag||null, canWrite:dbChat.my_can_write!==false};
+  const rest = others.map(m=>({id:m.userId, nm:m.name||"", uname:m.username||"", avatar:m.avatar||"", col:colorFromId(m.userId), role:m.role||"member", perms:m.perms||permsFor(m.role||"member"), tag:m.tag||null, canWrite:m.canWrite!==false}));
   return [me, ...rest];
 }
 
@@ -5459,6 +5531,8 @@ async function computeWaveform(blob, barsCount=40){
 async function toggleVoiceRecording(){
   if(voiceRecorder && voiceRecorder.state==="recording"){ stopVoiceRecording(); return; }
   if(isOfficialBotChat(S.chat)){ showToast("🎤 Голосовые здесь недоступны"); return; }
+  const vch=S.chats.find(c=>c.id===S.chat);
+  if(vch?.peerBlockVoiceVideo){ showToast("🔒 Собеседник запретил голосовые и видео-сообщения"); return; }
   try{
     voiceStream=await navigator.mediaDevices.getUserMedia({audio:true});
   }catch(e){
@@ -5592,6 +5666,8 @@ let vcRecorder=null, vcChunks=[], vcStream=null, vcStartTs=0, vcTimerInt=null, v
 
 async function openVideoCircleRecorder(){
   if(isOfficialBotChat(S.chat)){ showToast("⭕ Видео-кружочки здесь недоступны"); return; }
+  const vch=S.chats.find(c=>c.id===S.chat);
+  if(vch?.peerBlockVoiceVideo){ showToast("🔒 Собеседник запретил голосовые и видео-сообщения"); return; }
   try{
     vcStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:400,height:400},audio:true});
   }catch(e){
@@ -7812,12 +7888,48 @@ function renderMembersList(){
   el("members-list").innerHTML=sorted.map(m=>{
     const roleLabel=m.role==="owner"?"Владелец":(m.role==="admin"?(m.tag||"Админ"):"");
     const roleBadge=roleLabel?`<span class="mem-role ${m.role}">${roleLabel}</span>`:"";
-    return `<div class="mem-item" onclick="openMemberAct('${m.id}')">
+    const muteBadge=m.canWrite===false?`<span class="mem-role" style="background:var(--bg4);color:var(--tx3)" title="Не может писать">🔇</span>`:"";
+    return `<div class="mem-item" onclick="openMemberProfile('${m.id}')">
       <div class="mem-av" style="background:${colBg(m.col||0)}">${(m.nm||"?")[0]}</div>
       <div class="mem-info"><div class="mem-nm">${m.nm}${m.role==="owner"?" 👑":(m.role==="admin"?" ⭐":"")}</div><div class="mem-sub">${m.uname?"@"+m.uname:"участник"}</div></div>
-      ${roleBadge}
+      ${roleBadge}${muteBadge}
     </div>`;
   }).join("");
+}
+
+// Read-only карточка участника — раньше клик по любому участнику в списке
+// либо открывал панель управления (только owner/admin), либо просто тост
+// "🔒 Недостаточно прав" без единой крупицы информации для рядового
+// участника. Теперь профиль виден всем, управление — отдельная кнопка внутри,
+// только если она реально применима к смотрящему и к этому конкретному человеку.
+function openMemberProfile(memberId){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  const member=ch.members?.find(m=>String(m.id)===String(memberId)); if(!member)return;
+  curMemberId=memberId;
+  const myRole=myRoleIn(ch);
+  const isSelf=String(member.id)===String(S.user?.id);
+
+  el("mp-avatar").innerHTML = member.avatar ? `<img src="${member.avatar}" style="width:100%;height:100%;object-fit:cover">` : (member.nm||"?")[0];
+  el("mp-name").textContent = member.nm||"Участник";
+  el("mp-role").textContent = member.role==="owner"?"👑 Владелец":(member.role==="admin"?"⭐ "+(member.tag||"Админ"):"Участник")+(member.canWrite===false?" · 🔇 не может писать":"");
+  el("mp-uname-row").style.display = member.uname?"block":"none";
+  if(member.uname) el("mp-uname").textContent="@"+member.uname;
+  el("mp-bio-row").style.display="none";
+  el("mp-bio").textContent="";
+
+  if(!isSelf && member.id){
+    apiGet("/api/users/"+member.id).then(d=>{
+      if(d?.user?.bio){ el("mp-bio").textContent=d.user.bio; el("mp-bio-row").style.display="block"; }
+    }).catch(()=>{});
+  }
+
+  const canManage = !isSelf && member.role!=="owner" && (myRole==="owner"||myRole==="admin");
+  el("mp-manage-btn").style.display = canManage ? "block" : "none";
+  el("m-member-profile").classList.add("on");
+}
+function openMemberManageFromProfile(){
+  closeM("m-member-profile");
+  openMemberAct(curMemberId);
 }
 
 function getMyRole(ch){
@@ -7853,47 +7965,117 @@ function openMemberAct(memberId){
   if(myRole!=="owner"&&myRole!=="admin"){ showToast("🔒 Недостаточно прав"); return; }
 
   el("member-act-name").textContent=member.nm;
-  const items=el("member-act-list").querySelectorAll(".ctxi");
-  const makeBtn=items[0]; // Сделать админом
-  const permBtn=items[1]; // Изменить разрешения
-  const removeBtn=items[2]; // Удалить
+  const makeBtn=el("mact-makeadmin");
+  const permBtn=el("mact-perms");
+  const muteBtn=el("mact-mute");
+  const removeBtn=el("mact-remove");
   if(member.role==="admin"){ makeBtn.textContent="⬇️ Снять администратора"; }
   else { makeBtn.textContent="⭐ Сделать администратором"; }
   // Назначать админов — только owner (или admin с правом addAdmins)
   const canManageAdmins = myRole==="owner" || canI("addAdmins");
   makeBtn.style.display=canManageAdmins?"block":"none";
   permBtn.style.display=canManageAdmins?"block":"none";
-  // Удалять участников — owner всегда, admin при праве banUsers
+  // Удалять/мьютить участников — owner всегда, admin при праве banUsers
   const canRemove = myRole==="owner" || canI("banUsers");
   removeBtn.style.display=canRemove?"block":"none";
+  muteBtn.style.display=canRemove?"block":"none";
+  muteBtn.textContent = member.canWrite===false ? "🔊 Разрешить писать" : "🔇 Запретить писать";
   el("m-member-act").classList.add("on");
 }
 
-function makeAdmin(){
+// ⚠️ Раньше и назначение/снятие админа, и его права — были полностью
+// локальными на фронтенде: другие участники и другие устройства того же
+// человека их вообще не видели, а после перезагрузки страницы всё
+// возвращалось к member. Теперь реально сохраняется на сервере
+// (chat_members.role/perms/admin_tag) и рассылается остальным по WS.
+async function makeAdmin(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
   const member=ch.members.find(m=>m.id==curMemberId); if(!member)return;
-  if(member.role==="admin"){
-    member.role="member"; member.perms=memberPerms(); member.tag=null;
-    showToast("⬇️ "+member.nm+" больше не админ");
-    pushSysMsg(member.nm+" снят с должности администратора");
-    closeM("m-member-act"); renderMembersList(); saveState();
-  } else {
-    member.role="admin"; member.perms=adminPerms();
-    closeM("m-member-act");
-    openPermsFor(member);
-    pushSysMsg(member.nm+" назначен администратором");
-    showToast("⭐ "+member.nm+" теперь админ");
-  }
+  const isRealChat = typeof ch.id==="string" && ch.id.length>10;
+  const demoting = member.role==="admin";
+  const newRole = demoting?"member":"admin";
+  const newPerms = demoting?memberPerms():adminPerms();
+  closeM("m-member-act");
+
+  const applyLocally=()=>{
+    member.role=newRole; member.perms=newPerms; if(demoting) member.tag=null;
+    renderMembersList(); saveState();
+    if(demoting){
+      showToast("⬇️ "+member.nm+" больше не админ");
+      pushSysMsg(member.nm+" снят с должности администратора");
+    } else {
+      openPermsFor(member);
+      pushSysMsg(member.nm+" назначен администратором");
+      showToast("⭐ "+member.nm+" теперь админ");
+    }
+  };
+
+  if(!isRealChat){ applyLocally(); return; }
+
+  try{
+    const data=await apiPatch(`/api/chats/${ch.id}/members/${member.id}`, {role:newRole, perms:newPerms, tag:demoting?null:member.tag}, true);
+    if(!data||!data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); return; }
+    applyLocally();
+    const memberIds=getChatMemberIds(ch);
+    wsSendReliable({type:"chat.member.updated", payload:{chatId:ch.id, userId:member.id, role:newRole, perms:newPerms, tag:demoting?null:member.tag, memberIds}});
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
-function removeMember(){
+// Мьют/размьют ОДНОГО конкретного участника — остальные пишут как обычно.
+// Отдельная вещь от toggleRestrictSendMessages() (та — на всю группу разом).
+async function toggleMemberCanWrite(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
   const member=ch.members.find(m=>m.id==curMemberId); if(!member)return;
-  ch.members=ch.members.filter(m=>m.id!=curMemberId);
-  ch.mbrs=ch.members.length;
-  pushSysMsg(member.nm+" удалён(а) из группы");
-  showToast("➖ "+member.nm+" удалён");
-  closeM("m-member-act"); renderMembersList(); renderChats(); saveState();
+  const isRealChat = typeof ch.id==="string" && ch.id.length>10;
+  const newVal = member.canWrite===false;
+  closeM("m-member-act");
+
+  const applyLocally=()=>{
+    member.canWrite=newVal; renderMembersList(); saveState();
+    showToast(newVal?"🔊 "+member.nm+" снова может писать":"🔇 "+member.nm+" больше не может писать");
+    if(String(member.id)===String(S.user?.id)) updateInputPermissionUI(ch);
+  };
+
+  if(!isRealChat){ applyLocally(); return; }
+
+  try{
+    const data=await apiPatch(`/api/chats/${ch.id}/members/${member.id}`, {canWrite:newVal}, true);
+    if(!data||!data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); return; }
+    applyLocally();
+    const memberIds=getChatMemberIds(ch);
+    wsSendReliable({type:"chat.member.updated", payload:{chatId:ch.id, userId:member.id, canWrite:newVal, memberIds}});
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+// ⚠️ Раньше удаление участника было полностью локальным — на сервере
+// (chat_members) кикнутый как состоял в чате, так и оставался, у него
+// самого ничего не менялось. Теперь реально удаляется на сервере, и
+// именно кикнутому (не только остальным) прилетает уведомление, что его
+// удалили — иначе тот же баг "работает только для того, кто нажал".
+async function removeMember(){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  const member=ch.members.find(m=>m.id==curMemberId); if(!member)return;
+  const isRealChat = typeof ch.id==="string" && ch.id.length>10;
+  const memberIdsBeforeRemoval = getChatMemberIds(ch);
+  closeM("m-member-act");
+
+  const applyLocally=()=>{
+    ch.members=ch.members.filter(m=>m.id!=curMemberId);
+    ch.mbrs=ch.members.length;
+    if(Array.isArray(ch.memberIds)) ch.memberIds=ch.memberIds.filter(id=>String(id)!==String(curMemberId));
+    pushSysMsg(member.nm+" удалён(а) из группы");
+    showToast("➖ "+member.nm+" удалён");
+    renderMembersList(); renderChats(); saveState();
+  };
+
+  if(!isRealChat){ applyLocally(); return; }
+
+  try{
+    const data=await apiDelete(`/api/chats/${ch.id}/members/${member.id}`);
+    if(!data||!data.success){ showToast("❌ "+(data&&data.error||"Не удалось удалить")); return; }
+    applyLocally();
+    wsSendReliable({type:"chat.member.removed", payload:{chatId:ch.id, userId:member.id, memberIds:memberIdsBeforeRemoval}});
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
 // Открыть редактор прав
@@ -7907,10 +8089,22 @@ function openPerms(){
 function openPermsFor(member){
   curMemberId=member.id;
   if(!member.perms) member.perms=member.role==="admin"?adminPerms():memberPerms();
+  // togglePerm() ниже мутирует member.perms сразу по клику (до нажатия
+  // "Сохранить") — снимок нужен, чтобы откатить, если нажмут "Отмена" или
+  // если сохранение на сервере не удастся (иначе непереданные изменения
+  // молча оставались бы в памяти до следующей перезагрузки страницы).
+  member._permsBackup={...member.perms};
   el("perms-member").innerHTML=`<div class="mem-av" style="width:36px;height:36px;background:${colBg(member.col||0)}">${(member.nm||"?")[0]}</div><div><div class="mem-nm">${member.nm}</div><div class="mem-sub">${member.uname?"@"+member.uname:"участник"}</div></div>`;
   el("perms-tag").value=member.tag||"";
   renderPermsList(member);
   el("m-perms").classList.add("on");
+}
+
+function cancelPerms(){
+  const ch=S.chats.find(c=>c.id===S.chat);
+  const member=ch?.members.find(m=>m.id==curMemberId);
+  if(member && member._permsBackup){ member.perms=member._permsBackup; delete member._permsBackup; }
+  closeM("m-perms");
 }
 
 function renderPermsList(member){
@@ -7928,15 +8122,35 @@ function togglePerm(key,elm){
   elm.classList.toggle("on",member.perms[key]);
 }
 
-function savePerms(){
+async function savePerms(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
   const member=ch.members.find(m=>m.id==curMemberId); if(!member)return;
-  member.tag=el("perms-tag").value.trim()||null;
+  const newTag=el("perms-tag").value.trim()||null;
   // Если выданы какие-то права — делаем админом
   const hasAnyPerm=Object.values(member.perms).some(v=>v);
-  if(hasAnyPerm&&member.role==="member"){ member.role="admin"; }
-  closeM("m-perms"); renderMembersList(); saveState();
-  showToast("✅ Права сохранены");
+  const newRole=(hasAnyPerm&&member.role==="member")?"admin":member.role;
+  const isRealChat = typeof ch.id==="string" && ch.id.length>10;
+
+  const applyLocally=()=>{
+    member.tag=newTag; member.role=newRole;
+    delete member._permsBackup;
+    closeM("m-perms"); renderMembersList(); saveState();
+    showToast("✅ Права сохранены");
+  };
+  // Если сохранение не удалось (сеть/сервер) — откатываем перещёлканные
+  // togglePerm() галочки к тому, что было при открытии редактора, иначе
+  // неотправленные изменения молча остались бы в памяти до перезагрузки.
+  const revert=()=>{ if(member._permsBackup){ member.perms=member._permsBackup; delete member._permsBackup; } };
+
+  if(!isRealChat){ applyLocally(); return; }
+
+  try{
+    const data=await apiPatch(`/api/chats/${ch.id}/members/${member.id}`, {role:newRole, perms:member.perms, tag:newTag}, true);
+    if(!data||!data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить")); revert(); return; }
+    applyLocally();
+    const memberIds=getChatMemberIds(ch);
+    wsSendReliable({type:"chat.member.updated", payload:{chatId:ch.id, userId:member.id, role:newRole, perms:member.perms, tag:newTag, memberIds}});
+  }catch(e){ showToast("❌ Нет связи с сервером"); revert(); }
 }
 
 function pushSysMsg(text){
@@ -8995,7 +9209,7 @@ if(S.loggedIn){
       .then(resp=>{
         const data = resp && resp.user; // GET /api/users/me отдаёт { user: {...} }, не плоский объект
         if(!data||!data.id) return;
-        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region,statusEmoji:data.status_emoji||S.user.statusEmoji,nameColor:data.name_color||S.user.nameColor,hidePhone:!!data.hide_phone,hideLastSeen:!!data.hide_last_seen,pendingPhoneChange:data.pending_phone_change||null,pendingPhoneChangeAt:data.pending_phone_change_at||null,verified:!!data.is_verified}};
+        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region,statusEmoji:data.status_emoji||S.user.statusEmoji,nameColor:data.name_color||S.user.nameColor,hidePhone:!!data.hide_phone,hideLastSeen:!!data.hide_last_seen,blockVoiceVideo:!!data.block_voice_video,pendingPhoneChange:data.pending_phone_change||null,pendingPhoneChangeAt:data.pending_phone_change_at||null,verified:!!data.is_verified}};
         // Зарубежным пользователям (не +7) незачем видеть цены в рублях —
         // переключаем на доллар автоматически, но только если валюта ещё
         // стоит на дефолтной RUB (не трогаем, если человек сам её менял —
@@ -9769,12 +9983,22 @@ function updateInputPermissionUI(ch){
   const isVerifyChat = ch.id===55555;
   const isChannelReadOnly = ch.type==="channels" && !isOwnerOrAdmin;
   const isGroupRestricted = ch.type==="groups" && ch.restrictSendMessages && !isOwnerOrAdmin;
-  const hideInput = isSupportChat || isVerifyChat || isChannelReadOnly || isGroupRestricted;
+  // Мьют КОНКРЕТНО меня (владелец/админ запретил писать именно мне,
+  // остальные пишут как обычно) — отдельно от isGroupRestricted выше,
+  // которая на всю группу разом. НЕ гейтим на isOwnerOrAdmin: сервер
+  // защищает от мьюта только owner'а (см. chats.js), обычного админа
+  // замьютить можно, и тогда именно ЕГО СОБСТВЕННЫЙ клиент тоже должен
+  // спрятать поле ввода — иначе его сообщения будут молча отклоняться
+  // сервером (403) без всякого объяснения на экране.
+  const me = ch.members?.find(m=>String(m.id)===String(S.user?.id));
+  const isMemberMuted = !!(me && me.canWrite===false);
+  const hideInput = isSupportChat || isVerifyChat || isChannelReadOnly || isGroupRestricted || isMemberMuted;
 
   const ibar=document.querySelector(".ibar");
   if(ibar) ibar.style.display = hideInput ? "none" : "";
 
-  if(isChannelReadOnly) showReadOnlyNotice("🔒 Только владелец и админы канала могут отправлять сообщения");
+  if(isMemberMuted) showReadOnlyNotice("🔇 Вам запретили писать в этом чате");
+  else if(isChannelReadOnly) showReadOnlyNotice("🔒 Только владелец и админы канала могут отправлять сообщения");
   else if(isGroupRestricted) showReadOnlyNotice("🔒 Только админы группы могут отправлять сообщения");
   else hideReadOnlyNotice();
 
