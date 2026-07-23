@@ -3509,7 +3509,7 @@ async function loadMessagesFromDB(chatId){
       // не наше собственное) считаем по нему общий секрет шифрования —
       // нужно на случай, если пропустили handshake живым WS (были офлайн)
       if(dbMsg.type==="e2e_handshake"){
-        if(!isMe) await handleIncomingE2EHandshake(chatId, dbMsg.text, dbMsg.user_id);
+        if(!isMe) await handleIncomingE2EHandshake(chatId, dbMsg.text, dbMsg.user_id, true);
         continue;
       }
       // 🔒 Кто-то выключил шифрование (не важно, мы или собеседник) — история
@@ -4795,7 +4795,14 @@ async function toggleE2EChat(){
 // Пришёл handshake (свой публичный ключ) от собеседника — либо мы сами это
 // затеяли и это ответ, либо собеседник затеял первым. В обоих случаях: если
 // своей пары ещё нет — создаём и отвечаем; в любом случае считаем общий секрет.
-async function handleIncomingE2EHandshake(chatId, peerPublicKeyB64, fromUserId){
+// isReplay=true — вызов из истории (loadMessagesFromDB), не живое событие
+// прямо сейчас: старые рукопожатия реплеятся заново при КАЖДОМ открытии
+// чата (см. комментарий там), поэтому тост "Шифрование включено" и
+// промежуточное обновление кнопки здесь бы показывались заново на каждую
+// перезагрузку страницы — даже если по факту чат сейчас выключен, а это
+// рукопожатие просто более старое событие в истории. Toast и промежуточный
+// updateE2EButton нужны только для по-настоящему нового, живого рукопожатия.
+async function handleIncomingE2EHandshake(chatId, peerPublicKeyB64, fromUserId, isReplay=false){
   try{
     const ch=S.chats.find(c=>c.id===chatId);
     if(!ch || fromUserId===S.user?.id) return; // не обрабатываем эхо своего же handshake
@@ -4804,8 +4811,10 @@ async function handleIncomingE2EHandshake(chatId, peerPublicKeyB64, fromUserId){
     const sharedKey=await e2eDeriveSharedKey(kp.privateKey, peerPublicKeyB64);
     await e2eDbSet("shared:"+chatId, sharedKey);
     ch.e2eActive=true; ch.e2ePending=false; saveState();
-    if(S.chat===chatId) updateE2EButton(ch);
-    showToast("🔒 Шифрование в чате «"+ch.nm+"» включено");
+    if(!isReplay){
+      if(S.chat===chatId) updateE2EButton(ch);
+      showToast("🔒 Шифрование в чате «"+ch.nm+"» включено");
+    }
     // Если своей пары раньше не было — значит, это собеседник затеял
     // шифрование первым, нужно ответить своим публичным ключом, иначе у
     // него общий секрет никогда не появится
