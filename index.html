@@ -1134,14 +1134,14 @@ tr:hover td{background:var(--bg3)}
         <div class="mgrid" id="rp-media"></div>
       </div>
       <div class="rp-actions">
-        <button class="rp-action-btn" id="rp-members-btn" onclick="openMembers()" style="display:none">👥 Участники</button>
-        <button class="rp-action-btn" id="rp-chsettings-btn" onclick="openChannelSettings()" style="display:none">⚙️ Настройки канала</button>
-        <button class="rp-action-btn" onclick="pinChat()">📌 Закрепить чат</button>
-        <button class="rp-action-btn" onclick="muteChat()">🔇 Заглушить</button>
-        <button class="rp-action-btn" onclick="archiveChat()" id="rp-archive-btn">🗄️ В архив</button>
-        <button class="rp-action-btn" onclick="clearHistory()">🗑️ Очистить историю</button>
-        <button class="rp-action-btn rd" id="rp-delete-btn" onclick="deleteChatCompletely()">🗑️ Удалить чат</button>
-        <button class="rp-action-btn rd" id="rp-block-btn" onclick="blockUser()">🚫 Заблокировать</button>
+        <button class="rp-action-btn" id="rp-members-btn" onclick="openMembers()" style="display:none"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14c2.3.3 4 2 4 4.6"/></svg> Участники</button>
+        <button class="rp-action-btn" id="rp-chsettings-btn" onclick="openChannelSettings()" style="display:none"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.7 7.7 0 0 0 0-2l2-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-1.7-1L15 3.6h-4l-.4 2.4a7.6 7.6 0 0 0-1.7 1l-2.3-.9-2 3.4L6.6 11a7.7 7.7 0 0 0 0 2l-2 1.5 2 3.4 2.3-.9c.5.4 1.1.8 1.7 1l.4 2.4h4l.4-2.4c.6-.2 1.2-.6 1.7-1l2.3.9 2-3.4-2-1.5z"/></svg> Настройки канала</button>
+        <button class="rp-action-btn" onclick="pinChat()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 15v5"/></svg> Закрепить чат</button>
+        <button class="rp-action-btn" onclick="muteChat()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/><path d="M3 3l18 18"/></svg> Заглушить</button>
+        <button class="rp-action-btn" onclick="archiveChat()" id="rp-archive-btn"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg> В архив</button>
+        <button class="rp-action-btn" onclick="clearHistory()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg> Очистить историю</button>
+        <button class="rp-action-btn rd" id="rp-delete-btn" onclick="deleteChatCompletely()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg> Удалить чат</button>
+        <button class="rp-action-btn rd" id="rp-block-btn" onclick="blockUser()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/></svg> Заблокировать</button>
       </div>
     </div>
   </div>
@@ -1170,19 +1170,19 @@ tr:hover td{background:var(--bg3)}
     <div class="settings-section">
       <div class="settings-section-title">Аккаунт</div>
       <div class="settings-row" onclick="openEditProfile()">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(108,99,255,.1)">👤</div><div><div class="settings-row-label">Профиль</div><div class="settings-row-sub">Имя, username, фото, bio</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(108,99,255,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#6c63ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg></div><div><div class="settings-row-label">Профиль</div><div class="settings-row-sub">Имя, username, фото, bio</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
       <div class="settings-row" onclick="openChangePhone()">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">📱</div><div><div class="settings-row-label">Номер телефона</div><div class="settings-row-sub" id="settings-ph-disp">+7 999 000 0000</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg></div><div><div class="settings-row-label">Номер телефона</div><div class="settings-row-sub" id="settings-ph-disp">+7 999 000 0000</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
       <div class="settings-row" onclick="openSessions()">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(56,189,248,.1)">📲</div><div><div class="settings-row-label">Активные сессии</div><div class="settings-row-sub">Устройства и выход</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(56,189,248,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="13" height="9" rx="1.5"/><path d="M3 17h13"/><rect x="15" y="10" width="6" height="10" rx="1.3"/></svg></div><div><div class="settings-row-label">Активные сессии</div><div class="settings-row-sub">Устройства и выход</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
       <div class="settings-row" onclick="openSecurity()">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(248,113,113,.1)">🛡️</div><div><div class="settings-row-label">Безопасность</div><div class="settings-row-sub" id="security-sub">Пароль, двухфакторная защита</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(248,113,113,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#f87171" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg></div><div><div class="settings-row-label">Безопасность</div><div class="settings-row-sub" id="security-sub">Пароль, двухфакторная защита</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
     </div>
@@ -1190,18 +1190,18 @@ tr:hover td{background:var(--bg3)}
     <div class="settings-section">
       <div class="settings-section-title">Приватность</div>
       <div class="settings-row">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(251,191,36,.1)">🔒</div><div><div class="settings-row-label">Кто видит мой номер</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(251,191,36,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fbbf24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><div><div class="settings-row-label">Кто видит мой номер</div></div></div>
         <select class="fsel" style="width:130px" id="priv-phone" onchange="savePrivacy()"><option>Все</option><option selected>Мои контакты</option><option>Никто</option></select>
       </div>
       <div class="settings-row">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">🟢</div><div><div class="settings-row-label">Кто видит онлайн</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg></div><div><div class="settings-row-label">Кто видит онлайн</div></div></div>
         <select class="fsel" style="width:130px" id="priv-online" onchange="savePrivacy()"><option>Все</option><option selected>Мои контакты</option><option>Никто</option></select>
       </div>
       <div class="settings-row">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">🔐</div><div><div class="settings-row-label">E2E шифрование</div><div class="settings-row-sub">Включается для каждого личного чата отдельно — кнопка 🔒 в шапке чата</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#67e8f9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="3.2"/><path d="M10.3 12.7 19 4m-4 4 2 2m-6-2 2 2"/></svg></div><div><div class="settings-row-label">E2E шифрование</div><div class="settings-row-sub">Включается для каждого личного чата отдельно — кнопка 🔒 в шапке чата</div></div></div>
       </div>
       <div class="settings-row" onclick="openBlockedList()">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(248,113,113,.1)">🚫</div><div><div class="settings-row-label">Заблокированные</div><div class="settings-row-sub" id="blocked-count">0 пользователей</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(248,113,113,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#f87171" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/></svg></div><div><div class="settings-row-label">Заблокированные</div><div class="settings-row-sub" id="blocked-count">0 пользователей</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
     </div>
@@ -1209,15 +1209,15 @@ tr:hover td{background:var(--bg3)}
     <div class="settings-section">
       <div class="settings-section-title">Уведомления</div>
       <div class="settings-row">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(167,139,250,.1)">🔔</div><div><div class="settings-row-label">Push-уведомления</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(167,139,250,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div><div><div class="settings-row-label">Push-уведомления</div></div></div>
         <label class="toggle"><input type="checkbox" id="notif-push" checked onchange="saveNotif()"><span class="ts"></span></label>
       </div>
       <div class="settings-row">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">🔊</div><div><div class="settings-row-label">Звук сообщений</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#67e8f9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h3l5 4V6l-5 4H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg></div><div><div class="settings-row-label">Звук сообщений</div></div></div>
         <label class="toggle"><input type="checkbox" id="notif-sound" checked onchange="saveNotif()"><span class="ts"></span></label>
       </div>
       <div class="settings-row">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">📋</div><div><div class="settings-row-label">Превью сообщений</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v10H8l-4 4V5z"/><path d="M8 9h8M8 12h5"/></svg></div><div><div class="settings-row-label">Превью сообщений</div></div></div>
         <label class="toggle"><input type="checkbox" id="notif-preview" checked onchange="saveNotif()"><span class="ts"></span></label>
       </div>
     </div>
@@ -1225,11 +1225,11 @@ tr:hover td{background:var(--bg3)}
     <div class="settings-section">
       <div class="settings-section-title">Оформление</div>
       <div class="settings-row">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(108,99,255,.1)">🌙</div><div><div class="settings-row-label">Тема</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(108,99,255,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#6c63ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg></div><div><div class="settings-row-label">Тема</div></div></div>
         <select class="fsel" style="width:130px" id="theme-sel" onchange="applyTheme(this.value)"><option value="dark" selected>Тёмная</option><option value="light">Светлая</option><option value="amoled">AMOLED</option></select>
       </div>
       <div class="settings-row">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(56,189,248,.1)">🌍</div><div><div class="settings-row-label">Язык</div><div class="settings-row-sub" id="settings-lang-sub">Русский</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(56,189,248,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.3 4 5.3 4 8.5s-1.5 6.2-4 8.5c-2.5-2.3-4-5.3-4-8.5s1.5-6.2 4-8.5z"/></svg></div><div><div class="settings-row-label">Язык</div><div class="settings-row-sub" id="settings-lang-sub">Русский</div></div></div>
         <button class="xbtn sec" style="padding:5px 11px;font-size:11.5px" onclick="openLP()">Изменить</button>
       </div>
     </div>
@@ -1237,30 +1237,30 @@ tr:hover td{background:var(--bg3)}
     <div class="settings-section">
       <div class="settings-section-title">Данные</div>
       <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openContacts()">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">👥</div><div><div class="settings-row-label">Контакты</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14c2.3.3 4 2 4 4.6"/></svg></div><div><div class="settings-row-label">Контакты</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
       <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openChat(55555)">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(56,189,248,.1)">✅</div><div><div class="settings-row-label">Верификация (Nexus Verify)</div><div class="settings-row-sub">Синяя галочка для канала или личного профиля</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(56,189,248,.1)"><svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="5" fill="#2AABEE"/><rect x="3" y="3" width="18" height="18" rx="5" fill="#2AABEE" transform="rotate(22.5 12 12)"/><path d="M8.3 12.2l2.6 2.6 5-5.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div><div class="settings-row-label">Верификация (Nexus Verify)</div><div class="settings-row-sub">Синяя галочка для канала или личного профиля</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
       <div class="settings-row" onclick="el('screen-settings').classList.remove('on');el('screen-custom-stickers').classList.add('on');renderMyCustomPacks()">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(167,139,250,.1)">🎨</div><div><div class="settings-row-label">Свой стикерпак</div><div class="settings-row-sub">Загрузить и отправить на модерацию</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(167,139,250,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 8 0 1 0 0 16c1.5 0 2-1 1-2s-.3-2 1-2h2a4 4 0 0 0 4-4c0-4.4-3.9-8-8-8z"/><circle cx="8" cy="11" r=".9" fill="#a78bfa" stroke="none"/><circle cx="12" cy="8" r=".9" fill="#a78bfa" stroke="none"/><circle cx="16" cy="11" r=".9" fill="#a78bfa" stroke="none"/></svg></div><div><div class="settings-row-label">Свой стикерпак</div><div class="settings-row-sub">Загрузить и отправить на модерацию</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
       <div class="settings-row" onclick="exportData()">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">💾</div><div><div class="settings-row-label">Экспорт данных</div><div class="settings-row-sub">Сохранить историю чатов</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div><div><div class="settings-row-label">Экспорт данных</div><div class="settings-row-sub">Сохранить историю чатов</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
       <div class="settings-row" onclick="importData()">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">📥</div><div><div class="settings-row-label">Импорт данных</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#67e8f9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4m0 0 4 4m-4-4-4 4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div><div><div class="settings-row-label">Импорт данных</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
       <div class="settings-row" onclick="clearMediaCache()">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">🗑️</div><div><div class="settings-row-label">Очистить кэш файлов</div><div class="settings-row-sub">Голосовые, видео, фото, документы, сохранённые локально</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#67e8f9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg></div><div><div class="settings-row-label">Очистить кэш файлов</div><div class="settings-row-sub">Голосовые, видео, фото, документы, сохранённые локально</div></div></div>
       </div>
       <div class="settings-row" onclick="openChangePhoneModal()">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">📱</div><div><div class="settings-row-label">Сменить номер телефона</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#67e8f9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg></div><div><div class="settings-row-label">Сменить номер телефона</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
       <div id="pending-phone-change-banner" style="display:none;margin:8px 16px;padding:10px 12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:10px;font-size:11.5px;color:var(--am)"></div>
@@ -1269,10 +1269,10 @@ tr:hover td{background:var(--bg3)}
     <div style="padding:8px 0">
       <div style="background:var(--bg2);border:1px solid rgba(248,113,113,.2);border-radius:14px;overflow:hidden">
         <div class="settings-row" style="color:var(--rd)" onclick="confirmLogout()">
-          <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(248,113,113,.1)">🚪</div><div><div class="settings-row-label" style="color:var(--rd)">Выйти из аккаунта</div></div></div>
+          <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(248,113,113,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#f87171" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"/><path d="M14 8l4 4-4 4M18 12H9"/></svg></div><div><div class="settings-row-label" style="color:var(--rd)">Выйти из аккаунта</div></div></div>
         </div>
         <div class="settings-row" style="color:var(--rd)" onclick="confirmDeleteAccount()">
-          <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(248,113,113,.1)">💀</div><div><div class="settings-row-label" style="color:var(--rd)">Удалить аккаунт</div></div></div>
+          <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(248,113,113,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#f87171" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2 20h20L12 4z"/><path d="M12 10v4"/><circle cx="12" cy="17" r=".9" fill="#f87171" stroke="none"/></svg></div><div><div class="settings-row-label" style="color:var(--rd)">Удалить аккаунт</div></div></div>
         </div>
       </div>
     </div>
