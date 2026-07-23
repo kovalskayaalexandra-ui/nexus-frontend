@@ -3456,16 +3456,27 @@ async function loadMessagesFromDB(chatId){
     const ch = S.chats.find(c => c.id === chatId);
     const chIsChannel = ch?.type === "channels";
 
-    data.messages.forEach(dbMsg => {
+    // ⚠️ Раньше был .forEach() — синхронный, не дожидался
+    // handleIncomingE2EHandshake() (она асинхронная: генерация ключа,
+    // обращение к IndexedDB). Из-за этого даже после исправления порядка
+    // применения e2e_disabled ниже, реальная гонка оставалась: цикл успевал
+    // синхронно обработать более позднее e2e_disabled (выставить false)
+    // ДО того, как асинхронный обработчик более раннего e2e_handshake
+    // вообще успевал дойти до строчки e2eActive=true — тот дописывался
+    // последним по факту (через тик-два после конца цикла) и переигрывал
+    // правильное "выключено" обратно на "включено" при каждом открытии
+    // чата, независимо от того, что оба реально выключили шифрование.
+    // for..of + await сохраняет реальный порядок применения по времени.
+    for(const dbMsg of data.messages){
       // Не дублируем уже загруженные
-      if(S.messages[chatId].find(m => m.dbId === dbMsg.id)) return;
+      if(S.messages[chatId].find(m => m.dbId === dbMsg.id)) continue;
       const isMe = dbMsg.user_id === S.user?.id;
       // 🔒 E2E-рукопожатие — не показываем как сообщение, только (если это
       // не наше собственное) считаем по нему общий секрет шифрования —
       // нужно на случай, если пропустили handshake живым WS (были офлайн)
       if(dbMsg.type==="e2e_handshake"){
-        if(!isMe) handleIncomingE2EHandshake(chatId, dbMsg.text, dbMsg.user_id);
-        return;
+        if(!isMe) await handleIncomingE2EHandshake(chatId, dbMsg.text, dbMsg.user_id);
+        continue;
       }
       // 🔒 Кто-то выключил шифрование (не важно, мы или собеседник) — история
       // грузится заново при КАЖДОМ открытии чата, значит и более раннее
@@ -3480,7 +3491,7 @@ async function loadMessagesFromDB(chatId){
       if(dbMsg.type==="e2e_disabled"){
         const ch2=S.chats.find(c=>c.id===chatId);
         if(ch2){ ch2.e2eActive=false; ch2.e2ePending=false; }
-        return;
+        continue;
       }
       // ⚠️ В канале — всегда сам канал (не автор поста), в группе — реальный автор.
       // Тот же принцип, что и в обработчике message.new по WebSocket.
@@ -3564,7 +3575,7 @@ async function loadMessagesFromDB(chatId){
         }
       }
       S.messages[chatId].push(m);
-    });
+    }
     saveState(); renderMsgs();
     if(S.chat===chatId) updateE2EButton(ch);
   } catch(e){ console.warn("loadMessagesFromDB error:", e); }
