@@ -2012,6 +2012,18 @@ const BOTFATHER_GREET = `👋 Привет! Я Nexus BotFather — здесь м
 /setcommands — задать список команд для твоего бота (собеседники увидят их в кнопке меню)
 /help — показать это сообщение снова`;
 
+// Чат-бот обратной связи — в отличие от остальных системных ботов выше, НЕ
+// появляется у всех подряд: виден только первым 10 000 купивших VIP себе
+// (доступ — навсегда, даже если VIP потом не продлят), и только пока не
+// выключен из Dev Panel. См. syncFeedbackBotStatus() — решение
+// показать/убрать чат принимается там, а не в SYSTEM_CHAT_DEFAULTS ниже.
+const FEEDBACK_CHAT_ID = 44444;
+const FEEDBACK_GREET = `👋 Привет! Я *Nexus Feedback* — сюда можно написать разработчику напрямую: баг, идея, что угодно.
+
+⚠️ Написать можно не чаще раза в сутки — после сообщения бот сразу подтвердит, что оно принято в обработку.
+
+Этот чат — привилегия первых 10 000 купивших VIP.`;
+
 // ── PERSISTENCE ──────────────────────────────────────────────────
 let S = {};
 
@@ -2092,7 +2104,9 @@ function loadState(){
   // список вообще, из-за чего у alex2 он мог застрять заблокированным/в
   // архиве навсегда, не долетая обратно даже после перезагрузки страницы.
   // 55555 (Nexus Verify) — новый бот верификации, защищён с самого начала.
-  [77777,88888,99999,66666,55555].forEach(sid=>{
+  // 44444 (Nexus Feedback) — этого чата может и не быть локально (виден не
+  // всем, см. syncFeedbackBotStatus()), .find() просто ничего не найдёт.
+  [77777,88888,99999,66666,55555,44444].forEach(sid=>{
     const sc=S.chats?.find(c=>c.id===sid);
     if(sc && (sc.blocked||sc.archived)){
       sc.blocked=false; sc.archived=false;
@@ -2101,7 +2115,7 @@ function loadState(){
   // Все официальные каналы/боты Nexus (не "Избранное" — это просто личные
   // заметки, не отдельная сущность) — сразу с синей галочкой, у уже
   // существующих локально чатов флага могло не быть (появился позже)
-  [88888,99999,66666,55555].forEach(sid=>{
+  [88888,99999,66666,55555,44444].forEach(sid=>{
     const sc=S.chats?.find(c=>c.id===sid);
     if(sc && !sc.verified) sc.verified=true;
   });
@@ -2683,6 +2697,25 @@ function wsHandleMessage(msg){
       break;
     }
 
+    case "feedback.message": {
+      // Авто-ответ бота Nexus Feedback ("принято в обработку") — обычно уже
+      // показан сразу из ответа на сам POST (см. sendMsg()), это WS-дублирование
+      // нужно на случай второго открытого устройства/вкладки этого же человека.
+      const { id: serverId, text, createdAt } = msg.payload;
+      if(!S.messages[FEEDBACK_CHAT_ID]) S.messages[FEEDBACK_CHAT_ID]=[];
+      const alreadyFb = S.messages[FEEDBACK_CHAT_ID].some(m=>m.serverId===serverId);
+      if(!alreadyFb){
+        const d = createdAt ? new Date(createdAt) : new Date();
+        S.messages[FEEDBACK_CHAT_ID].push({id:nextId(), serverId, t:"in", fr:"NF", col:1, tx:text, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), isSupport:true});
+        const sch=S.chats.find(c=>c.id===FEEDBACK_CHAT_ID);
+        if(sch){ sch.prev=text; sch.time=now();sch.lastTs=Date.now(); if(S.chat!==FEEDBACK_CHAT_ID) sch.unread=(sch.unread||0)+1; }
+        if(S.chat===FEEDBACK_CHAT_ID){ renderMsgs(); markChatAsRead(FEEDBACK_CHAT_ID); }
+        renderChats(); saveState();
+        if(S.chat!==FEEDBACK_CHAT_ID && sch) showNotif(sch, text);
+      }
+      break;
+    }
+
     case "verify.message": {
       // Решение по заявке на верификацию (одобрено/отклонено + причина) —
       // от Nexus Verify, реально доходит адресату, а не пропадает молча.
@@ -3139,6 +3172,7 @@ function loginOK(){
 
   loadSupportMessages();
   loadVerifyBotMessages();
+  syncFeedbackBotStatus();
   loadOfficialPosts();
   loadCrystalCatalog();
   loadStickerPacks();
@@ -3448,7 +3482,7 @@ async function markChatAsRead(chatId){
 }
 
 async function loadMessagesFromDB(chatId){
-  if(!chatId || chatId === 99999 || chatId === 88888 || chatId === 77777) return;
+  if(!chatId || chatId === 99999 || chatId === 88888 || chatId === 77777 || chatId === FEEDBACK_CHAT_ID) return;
   try {
     const data = await apiGet("/api/messages/"+chatId);
     if(!data.messages || !data.messages.length) return;
@@ -4878,6 +4912,42 @@ async function sendMsg(){
     }, 500+Math.random()*400);
     return;
   }
+  // ── Nexus Feedback (бот обратной связи, доступ только у первых 10 000
+  // купивших VIP) — настоящая отправка на сервер, не локальная имитация,
+  // т.к. лимит "раз в сутки" физически может проверить только сервер.
+  if(S.chat === FEEDBACK_CHAT_ID){
+    if(!S.messages[FEEDBACK_CHAT_ID]) S.messages[FEEDBACK_CHAT_ID]=[];
+    const fbMsg={id:nextId(),t:"out",tx:txt,time:now(),ts:Date.now(),read:true};
+    S.messages[FEEDBACK_CHAT_ID].push(fbMsg);
+    setInputText(""); aResize(inp);
+    const sch=S.chats.find(c=>c.id===FEEDBACK_CHAT_ID);
+    if(sch){sch.prev=txt;sch.time=now();sch.lastTs=Date.now();}
+    renderMsgs(); renderChats(); saveState();
+    try{
+      const data=await apiPost("/api/feedback/messages", {text:txt}, true);
+      if(!data || !data.success){
+        // Не получилось (например, лимит раза в сутки) — убираем своё
+        // сообщение обратно и честно показываем причину, а не делаем вид,
+        // что отправилось
+        S.messages[FEEDBACK_CHAT_ID]=S.messages[FEEDBACK_CHAT_ID].filter(m=>m.id!==fbMsg.id);
+        renderMsgs(); saveState();
+        showToast("❌ "+(data&&data.error||"Не удалось отправить"));
+        return;
+      }
+      fbMsg.serverId=data.id;
+      if(data.reply){
+        const d=new Date(data.reply.createdAt);
+        S.messages[FEEDBACK_CHAT_ID].push({id:nextId(), serverId:data.reply.id, t:"in", fr:"NF", col:1, tx:data.reply.text, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), isSupport:true});
+        if(sch){sch.prev=data.reply.text.slice(0,50);sch.time=now();sch.lastTs=Date.now();}
+      }
+      renderMsgs(); renderChats(); saveState();
+    }catch(e){
+      S.messages[FEEDBACK_CHAT_ID]=S.messages[FEEDBACK_CHAT_ID].filter(m=>m.id!==fbMsg.id);
+      renderMsgs(); saveState();
+      showToast("❌ Нет связи с сервером");
+    }
+    return;
+  }
   if(!S.messages[S.chat])S.messages[S.chat]=[];
   const tm=now();
 
@@ -5046,7 +5116,7 @@ let pollOptionCount=2;
 function openPollCreate(e){
   e.stopPropagation();
   el("attach-menu").classList.remove("on");
-  if(S.chat===77777||S.chat===99999){ showToast("📊 Опросы здесь недоступны"); return; }
+  if(S.chat===77777||S.chat===99999||S.chat===FEEDBACK_CHAT_ID){ showToast("📊 Опросы здесь недоступны"); return; }
   el("poll-q").value="";
   pollOptionCount=2;
   el("poll-options-list").innerHTML=`
@@ -5162,7 +5232,7 @@ async function votePoll(msgId,optId){
 function openShareContact(e){
   e.stopPropagation();
   el("attach-menu").classList.remove("on");
-  if(S.chat===77777||S.chat===99999){ showToast("👤 Отправка контактов здесь недоступна"); return; }
+  if(S.chat===77777||S.chat===99999||S.chat===FEEDBACK_CHAT_ID){ showToast("👤 Отправка контактов здесь недоступна"); return; }
   const list=(S.contacts||[]).length ? S.contacts : S.chats.filter(c=>c.withUserId);
   el("share-contact-list").innerHTML = list.length
     ? list.map(c=>{
@@ -5256,7 +5326,7 @@ async function computeWaveform(blob, barsCount=40){
 
 async function toggleVoiceRecording(){
   if(voiceRecorder && voiceRecorder.state==="recording"){ stopVoiceRecording(); return; }
-  if(S.chat===99999){ showToast("🎤 Голосовые здесь недоступны"); return; }
+  if(S.chat===99999||S.chat===FEEDBACK_CHAT_ID){ showToast("🎤 Голосовые здесь недоступны"); return; }
   try{
     voiceStream=await navigator.mediaDevices.getUserMedia({audio:true});
   }catch(e){
@@ -5389,7 +5459,7 @@ const VC_MAX_SEC=60; // как в Telegram — максимум минута
 let vcRecorder=null, vcChunks=[], vcStream=null, vcStartTs=0, vcTimerInt=null, vcRecording=false;
 
 async function openVideoCircleRecorder(){
-  if(S.chat===99999){ showToast("⭕ Видео-кружочки здесь недоступны"); return; }
+  if(S.chat===99999||S.chat===FEEDBACK_CHAT_ID){ showToast("⭕ Видео-кружочки здесь недоступны"); return; }
   try{
     vcStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:400,height:400},audio:true});
   }catch(e){
@@ -5565,7 +5635,7 @@ async function attachFile(inp){
   if(!f)return;
   inp.value=""; // сбрасываем, чтобы можно было выбрать тот же файл ещё раз
 
-  if(S.chat===77777||S.chat===99999){
+  if(S.chat===77777||S.chat===99999||S.chat===FEEDBACK_CHAT_ID){
     showToast("📎 Прикрепление файлов здесь пока недоступно");
     return;
   }
@@ -6503,7 +6573,7 @@ function reportAndBlockCurrentChat(){
 // ⚠️ 66666 (BotFather) раньше сюда не входил — из-за этого его можно было
 // случайно заблокировать/заархивировать, и, в отличие от остальных трёх,
 // это никогда само не снималось (см. фикс в loadState()).
-function isSystemChat(chatId){ return chatId===77777 || chatId===88888 || chatId===99999 || chatId===66666 || chatId===55555; }
+function isSystemChat(chatId){ return chatId===77777 || chatId===88888 || chatId===99999 || chatId===66666 || chatId===55555 || chatId===FEEDBACK_CHAT_ID; }
 
 function blockUser(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
@@ -7979,7 +8049,7 @@ function initAdmin(){
   if(el("bal-admin"))el("bal-admin").textContent=S.bal.toLocaleString();
   // new sections
   loadOverviewStats();
-  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();loadWelcomeMessage();loadPlatformFlags();loadVipVisibilityToggles();loadRolePermissions();loadChannelLimits();applyDevPanelPermissions();},100);
+  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();renderAdminFeedback();loadWelcomeMessage();loadPlatformFlags();loadVipVisibilityToggles();loadRolePermissions();loadChannelLimits();applyDevPanelPermissions();},100);
 }
 function renderCurrs(){ const e=el("currs");if(!e)return; e.innerHTML=CURRENCIES.map(c=>`<div class="copt${S.currency===c.code?" on":""}" onclick="selCurr('${c.code}')"><div class="cflag">${c.flag}</div><div class="ccode">${c.sym} ${c.code}</div><div class="cname">${c.nm}</div><div class="crate">1 CR = ${c.rate} ${c.code}</div></div>`).join(""); }
 function selCurr(code){ S.currency=code;const c=CURRENCIES.find(x=>x.code===code);if(c){S.rate=c.rate;if(el("crinp"))el("crinp").value=c.rate;updRate(c.rate);}renderCurrs();showToast("Валюта → "+code);saveState(); }
@@ -8637,6 +8707,7 @@ if(S.loggedIn){
       .catch(()=>{});
     loadSupportMessages();
     loadVerifyBotMessages();
+    syncFeedbackBotStatus();
     loadOfficialPosts();
     loadCrystalCatalog();
     loadStickerPacks();
@@ -9282,6 +9353,62 @@ async function loadVerifyBotMessages(){
       S.messages[55555].sort((a,b)=>(a.ts||0)-(b.ts||0));
       saveState();
       if(S.chat===55555) renderMsgs();
+    }
+  }catch(e){ /* тихо игнорируем — не критично для остальной работы приложения */ }
+}
+
+// ── Nexus Feedback (бот обратной связи) ──────────────────────────
+// В отличие от остальных системных ботов (Support/BotFather/Verify), этот
+// НЕ создаётся всем подряд в loadState()/loginOK() — видимость зависит от
+// сервера: персональный доступ (первые 10 000 купивших VIP себе) + общий
+// переключатель из Dev Panel. Вызывается при каждом входе/перезагрузке —
+// решение "показать/убрать чат" принимается именно здесь.
+async function syncFeedbackBotStatus(){
+  if(!getToken()) return;
+  try{
+    const data = await apiGet("/api/feedback/status");
+    const show = !!(data && data.show);
+    const exists = !!S.chats.find(c=>c.id===FEEDBACK_CHAT_ID);
+    if(show && !exists){
+      const ch={id:FEEDBACK_CHAT_ID,nm:"Nexus Feedback 📮",ini:"NF",col:1,online:true,prev:"Сообщите разработчику о багах и идеях",time:now(),unread:1,type:"personal",pinned:true,muted:false,blocked:false,draft:"",verified:true};
+      S.chats.push(ch);
+      S.messages[FEEDBACK_CHAT_ID]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NF",col:1,tx:FEEDBACK_GREET,time:now(),isSupport:true}];
+      saveState(); renderChats();
+      await loadFeedbackMessages();
+    } else if(!show && exists){
+      // Александра выключила бота из Dev Panel (или доступ по какой-то
+      // причине пропал) — чат исчезает, как и договаривались
+      if(S.chat===FEEDBACK_CHAT_ID) openChat(77777);
+      S.chats=S.chats.filter(c=>c.id!==FEEDBACK_CHAT_ID);
+      delete S.messages[FEEDBACK_CHAT_ID];
+      saveState(); renderChats();
+    } else if(show && exists){
+      await loadFeedbackMessages();
+    }
+  }catch(e){ /* тихо игнорируем — не критично для остальной работы приложения */ }
+}
+
+// Подтягивает переписку (свои сообщения + авто-ответы бота) с сервера —
+// нужно и при первом появлении чата, и на случай, если ответ бота пришёл,
+// пока приложение было закрыто (WS-пуш тогда бы его не доставил).
+async function loadFeedbackMessages(){
+  try{
+    const data = await apiGet("/api/feedback/messages");
+    const serverMsgs = (data && data.messages) || [];
+    if(!serverMsgs.length) return;
+    if(!S.messages[FEEDBACK_CHAT_ID]) S.messages[FEEDBACK_CHAT_ID]=[];
+    const existingIds = new Set(S.messages[FEEDBACK_CHAT_ID].filter(m=>m.serverId).map(m=>m.serverId));
+    let added=false;
+    serverMsgs.forEach(sm=>{
+      if(existingIds.has(sm.id)) return;
+      const d=new Date(sm.created_at);
+      S.messages[FEEDBACK_CHAT_ID].push({id:nextId(), serverId:sm.id, t:sm.from_user?"out":"in", fr:"NF", col:1, tx:sm.text, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), read:true, isSupport:!sm.from_user});
+      added=true;
+    });
+    if(added){
+      S.messages[FEEDBACK_CHAT_ID].sort((a,b)=>(a.ts||0)-(b.ts||0));
+      saveState();
+      if(S.chat===FEEDBACK_CHAT_ID) renderMsgs();
     }
   }catch(e){ /* тихо игнорируем — не критично для остальной работы приложения */ }
 }
@@ -10231,7 +10358,7 @@ const SECTION_LABELS = {
   wallets:"💳 Кошельки", stickers:"🐱 Стикеры", users:"👥 Пользователи",
   langs:"🌍 Языки", bots:"🤖 Боты и API", webhooks:"🔗 Вебхуки",
   settings:"⚙️ Настройки", gifts:"🎁 Подарки", verification:"✅ Верификация",
-  custompacks:"🎨 Паки юзеров",
+  custompacks:"🎨 Паки юзеров", feedback:"💬 Обратная связь",
 };
 
 // Скрывает в меню Dev Panel те разделы, доступа к которым у текущей роли
@@ -10964,6 +11091,78 @@ async function revokeVerification(id){
     if(data.warning){ showToast("⚠️ "+data.warning); } else { showToast("🔒 Верификация снята"); }
     renderAdminVerificationsTable();
   }catch(e){ showToast("❌ Нет связи с сервером"); }
+}
+
+// Бот обратной связи (Nexus Feedback) — доступ навсегда у первых 10 000
+// купивших VIP себе; здесь Александра включает/выключает бота целиком и
+// читает входящие сообщения (только читалка — бот сам благодарит за
+// сообщение, отвечать пользователю отсюда не нужно, см. её решение).
+function renderAdminFeedback(){
+  const asb = document.querySelector(".asb");
+  if(asb && !document.getElementById("ani-feedback")){
+    const div = document.createElement("div");
+    div.id = "ani-feedback";
+    div.className = "ani";
+    div.dataset.section = "feedback";
+    div.onclick = ()=>aPage(div,"feedback");
+    div.textContent = "💬 Обратная связь";
+    asb.appendChild(div);
+    const acnt = document.querySelector(".acnt");
+    if(acnt){
+      const page = document.createElement("div");
+      page.className = "apage";
+      page.id = "page-feedback";
+      page.innerHTML = `<div class="atitle">💬 Обратная связь</div><div class="asub2">Чат-бот Nexus Feedback — доступен навсегда первым 10 000, кто купит VIP себе</div>
+        <div class="asec">
+          <div class="trow"><div><div class="trl">Бот включён</div><div style="font-size:11px;color:var(--tx3)">Выключишь — чат сразу пропадёт у всех, у кого есть доступ. Включишь обратно — вернётся, переписка не потеряется</div></div><label class="toggle"><input type="checkbox" id="fb-enabled" onchange="toggleFeedbackBotEnabled(this.checked)"><span class="ts"></span></label></div>
+          <div style="font-size:12px;color:var(--tx3);margin-top:8px">Занято мест: <span id="fb-eligible-count">—</span> / 10 000</div>
+        </div>
+        <div class="asec"><div class="asect">📥 Входящие сообщения</div><div class="tw"><table><thead><tr><th>От кого</th><th>Сообщение</th><th>Дата</th></tr></thead><tbody id="fb-tbl">
+          <tr><td colspan="3" style="text-align:center;color:var(--tx3);padding:14px">Загрузка...</td></tr>
+        </tbody></table></div></div>`;
+      acnt.appendChild(page);
+    }
+  }
+  loadFeedbackBotSettings();
+  renderAdminFeedbackInbox();
+}
+
+async function loadFeedbackBotSettings(){
+  try{
+    const data = await apiGet("/api/settings/feedback-bot");
+    if(!data) return;
+    if(el("fb-enabled")) el("fb-enabled").checked = !!data.enabled;
+    if(el("fb-eligible-count")) el("fb-eligible-count").textContent = (data.eligibleCount ?? 0).toLocaleString("ru");
+  }catch(e){ /* поля останутся пустыми/дефолтными */ }
+}
+
+async function toggleFeedbackBotEnabled(value){
+  try{
+    const data = await apiPatch("/api/settings/feedback-bot", {enabled:value}, true);
+    if(!data || !data.success){
+      showToast("❌ "+(data&&data.error||"Не удалось сохранить"));
+      const cb=el("fb-enabled"); if(cb) cb.checked=!value;
+      return;
+    }
+    showToast(value?"✅ Бот включён":"🔒 Бот выключен — чат пропадёт у всех");
+  }catch(e){
+    showToast("❌ Нет связи с сервером");
+    const cb=el("fb-enabled"); if(cb) cb.checked=!value;
+  }
+}
+
+async function renderAdminFeedbackInbox(){
+  const t = el("fb-tbl"); if(!t) return;
+  try{
+    const data = await apiGet("/api/feedback/admin/inbox");
+    const msgs = (data && data.messages)||[];
+    if(!msgs.length){ t.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--tx3);padding:14px">Сообщений пока нет</td></tr>'; return; }
+    t.innerHTML = msgs.map(m=>`<tr>
+      <td style="color:var(--acc2)">${escHtml(m.name||"—")}${m.uname?" (@"+escHtml(m.uname)+")":""}</td>
+      <td style="max-width:340px;font-size:12px;color:var(--tx2)"><div style="white-space:pre-line">${escHtml(m.text)}</div></td>
+      <td style="color:var(--tx3);white-space:nowrap">${new Date(m.created_at).toLocaleString("ru")}</td>
+    </tr>`).join("");
+  }catch(e){ t.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить</td></tr>'; }
 }
 
 // ⚠️ Раньше читало S.custom_packs — тот же localStorage-ключ, что и у
