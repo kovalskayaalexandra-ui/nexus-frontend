@@ -1068,15 +1068,15 @@ tr:hover td{background:var(--bg3)}
           <div class="fmt-btn" onclick="applyFormat('spoiler')"><span class="fmt-ic">🫥</span><span>Спойлер</span></div>
           <div class="fmt-btn" onclick="promptLink()"><span class="fmt-ic">🔗</span><span>Ссылка</span></div>
         </div>
-        <div class="attb" onclick="toggleAttachMenu(event)" title="Прикрепить файл">
+        <div class="attb" id="attb-wrap" onclick="toggleAttachMenu(event)" title="Прикрепить файл">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           <div class="format-bar" id="attach-menu" style="left:0">
-            <div class="fmt-btn" onclick="pickAttach(event,'media')"><span class="fmt-ic">🖼️</span><span>Галерея</span></div>
-            <div class="fmt-btn" onclick="pickAttach(event,'gif')"><span class="fmt-ic">🎞️</span><span>GIF</span></div>
-            <div class="fmt-btn" onclick="pickAttach(event,'file')"><span class="fmt-ic">📄</span><span>Файл</span></div>
-            <div class="fmt-btn" onclick="pickAttach(event,'music')"><span class="fmt-ic">🎵</span><span>Музыка</span></div>
-            <div class="fmt-btn" onclick="openPollCreate(event)"><span class="fmt-ic">📊</span><span>Опрос</span></div>
-            <div class="fmt-btn" onclick="openShareContact(event)"><span class="fmt-ic">👤</span><span>Контакт</span></div>
+            <div class="fmt-btn" id="attach-item-media" onclick="pickAttach(event,'media')"><span class="fmt-ic">🖼️</span><span>Галерея</span></div>
+            <div class="fmt-btn" id="attach-item-gif" onclick="pickAttach(event,'gif')"><span class="fmt-ic">🎞️</span><span>GIF</span></div>
+            <div class="fmt-btn" id="attach-item-file" onclick="pickAttach(event,'file')"><span class="fmt-ic">📄</span><span>Файл</span></div>
+            <div class="fmt-btn" id="attach-item-music" onclick="pickAttach(event,'music')"><span class="fmt-ic">🎵</span><span>Музыка</span></div>
+            <div class="fmt-btn" id="attach-item-poll" onclick="openPollCreate(event)"><span class="fmt-ic">📊</span><span>Опрос</span></div>
+            <div class="fmt-btn" id="attach-item-contact" onclick="openShareContact(event)"><span class="fmt-ic">👤</span><span>Контакт</span></div>
           </div>
         </div>
         <input type="file" id="file-inp" style="display:none" onchange="attachFile(this)">
@@ -1471,6 +1471,10 @@ tr:hover td{background:var(--bg3)}
         <div class="asec"><div class="asect">📢 Лимиты каналов и групп</div><div class="asub2" style="margin:-4px 0 10px">Защита от сквоттинга брендовых имён — кто-то создаёт кучу каналов ради перепродажи названий</div>
           <div class="trow"><div><div class="trl">Создавать могут только VIP</div><div style="font-size:11px;color:var(--tx3)">Если выключено — может любой пользователь, лимиты ниже всё равно действуют на всех</div></div><label class="toggle"><input type="checkbox" id="chatlim-vip-only" onchange="toggleChannelLimitFlag('vipOnly',this.checked)"><span class="ts"></span></label></div>
           <div class="frow" style="margin-top:10px"><div class="fg"><span class="fl">Максимум каналов на аккаунт</span><input class="fii" type="number" id="chatlim-max-channels" min="0" onchange="saveChannelLimitNumber('maxChannels',this.value)"></div><div class="fg"><span class="fl">Максимум групп на аккаунт</span><input class="fii" type="number" id="chatlim-max-groups" min="0" onchange="saveChannelLimitNumber('maxGroups',this.value)"></div></div>
+        </div>
+        <div class="asec"><div class="asect">📎 Вложения в ботах</div><div class="asub2" style="margin:-4px 0 10px">Пункт "Галерея" (фото/видео) в меню скрепки — отдельно для каждого бота. Остальные пункты меню (GIF/Файл/Музыка/Опрос/Контакт) в ботах не показываются никогда — не подходят по смыслу</div>
+          <div class="trow"><div class="trl">NexusSupport</div><label class="toggle"><input type="checkbox" id="bat-99999" onchange="toggleBotAttach('99999','bat-99999',this.checked)"><span class="ts"></span></label></div>
+          <div class="trow"><div class="trl">Nexus BotFather</div><label class="toggle"><input type="checkbox" id="bat-66666" onchange="toggleBotAttach('66666','bat-66666',this.checked)"><span class="ts"></span></label></div>
         </div>
       </div>
     </div>
@@ -3170,6 +3174,7 @@ function loginOK(){
   loadSupportMessages();
   loadVerifyBotMessages();
   syncFeedbackBotStatus();
+  loadBotAttachSettings();
   loadOfficialPosts();
   loadCrystalCatalog();
   loadStickerPacks();
@@ -3836,6 +3841,7 @@ function openChat(id){
   if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); markChatAsRead(id); refreshChatPeerInfo(ch); }
   ch.unread=0; renderChats();
   applyVoiceVideoRestriction(ch); // сразу из кэша, refreshChatPeerInfo обновит, если поменялось
+  updateAttachMenuForChat(ch);
   applyBotMenuButton(ch.peerIsBot ? ch.withUserId : null);
 
   const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
@@ -5673,10 +5679,13 @@ async function attachFile(inp){
   const isVideo=f.type.startsWith("video/");
   const isAudio=f.type.startsWith("audio/");
 
-  // Официальные боты (включая Nexus Feedback) — можно прикрепить только
-  // изображение (например, скриншот бага), видео/аудио/файлы — нет
-  if(isOfficialBotChat(S.chat) && !isImg){
-    showToast("📎 Здесь можно прикрепить только изображение");
+  // Официальные боты — можно прикрепить только фото/видео (пункт "Галерея"
+  // в меню скрепки), и то только если Александра не выключила его для
+  // конкретно этого бота в Dev Panel. Это защита не от самого меню (там
+  // остальные пункты и так скрыты — см. updateAttachMenuForChat()), а от
+  // прямого вызова в обход меню.
+  if(isOfficialBotChat(S.chat) && (!(isImg||isVideo) || BOT_ATTACH_SETTINGS[String(S.chat)]===false)){
+    showToast("📎 Здесь можно прикрепить только фото или видео");
     return;
   }
 
@@ -5772,12 +5781,15 @@ async function sendFeedbackAttachment(caption){
   const att=pendingAttach;
   pendingAttach=null;
   renderAttachPreview();
+  const isVideo=att.kind==="video";
+  const label=isVideo?"🎥 Видео":"📷 Фото";
   if(!S.messages[FEEDBACK_CHAT_ID]) S.messages[FEEDBACK_CHAT_ID]=[];
-  const fbMsg={id:nextId(),t:"out",tx:caption||"",img:att.previewUrl,uploading:true,time:now(),ts:Date.now(),read:true};
+  const fbMsg={id:nextId(),t:"out",tx:caption||"",uploading:true,time:now(),ts:Date.now(),read:true};
+  if(isVideo) fbMsg.video=att.previewUrl; else fbMsg.img=att.previewUrl;
   S.messages[FEEDBACK_CHAT_ID].push(fbMsg);
   setInputText(""); aResize(el("minput"));
   const sch=S.chats.find(c=>c.id===FEEDBACK_CHAT_ID);
-  if(sch){sch.prev=caption?"📷 "+caption:"📷 Фото";sch.time=now();sch.lastTs=Date.now();sch.draft="";}
+  if(sch){sch.prev=caption?label+" · "+caption:label;sch.time=now();sch.lastTs=Date.now();sch.draft="";}
   renderMsgs(); renderChats(); saveState();
   try{
     const fd=new FormData();
@@ -5787,14 +5799,15 @@ async function sendFeedbackAttachment(caption){
     const upData=await res.json().catch(()=>({}));
     if(!res.ok||!upData.success) throw new Error(upData.error||"Не удалось загрузить файл");
 
-    const data=await apiPost("/api/feedback/messages", {text:caption||"", mediaUrl:upData.url}, true);
+    const data=await apiPost("/api/feedback/messages", {text:caption||"", mediaUrl:upData.url, mediaType:att.kind}, true);
     if(!data || !data.success){
       S.messages[FEEDBACK_CHAT_ID]=S.messages[FEEDBACK_CHAT_ID].filter(m=>m.id!==fbMsg.id);
       renderMsgs(); saveState();
       showToast("❌ "+(data&&data.error||"Не удалось отправить"));
       return;
     }
-    fbMsg.uploading=false; fbMsg.img=upData.url; fbMsg.serverId=data.id;
+    fbMsg.uploading=false; fbMsg.serverId=data.id;
+    if(isVideo) fbMsg.video=upData.url; else fbMsg.img=upData.url;
     if(data.reply){
       const d=new Date(data.reply.createdAt);
       S.messages[FEEDBACK_CHAT_ID].push({id:nextId(), serverId:data.reply.id, t:"in", fr:"NF", col:1, tx:data.reply.text, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), isSupport:true});
@@ -5808,23 +5821,46 @@ async function sendFeedbackAttachment(caption){
   }
 }
 
-// Изображение в NexusSupport/BotFather/Nexus Verify — эти боты и текст-то
-// не сохраняют по-настоящему (локальная имитация переписки, см. их ветки в
-// sendMsg()), поэтому картинка тоже просто показывается локально, без
-// реальной загрузки на сервер — грузить файл ради несуществующего получателя
-// не имеет смысла (в отличие от Nexus Feedback, где есть настоящий адресат —
-// Александра в Dev Panel).
-function sendLocalBotAttachment(caption){
+// Фото/видео в NexusSupport/BotFather/Nexus Verify — эти боты и текст-то не
+// сохраняют по-настоящему (локальная имитация переписки, см. их ветки в
+// sendMsg()), реального адресата тут нет (в отличие от Nexus Feedback, где
+// Александра реально читает вложение в Dev Panel). Но файл всё равно
+// реально грузим на /api/upload (а не просто держим blob-превью) — иначе
+// у video/audio превью — временный blob: URL, который перестаёт работать
+// после перезагрузки страницы (для картинок это не проблема — та превью
+// уже base64, переживает перезагрузку). Настоящий URL с сервера остаётся
+// рабочим и после reload, даже если само "сообщение" нигде на сервере не
+// числится как переписка.
+async function sendLocalBotAttachment(caption){
   const att=pendingAttach;
   pendingAttach=null;
   renderAttachPreview();
   const chatId=S.chat;
+  const isVideo=att.kind==="video";
+  const label=isVideo?"🎥 Видео":"📷 Фото";
   if(!S.messages[chatId]) S.messages[chatId]=[];
-  S.messages[chatId].push({id:nextId(),t:"out",tx:caption||"",img:att.previewUrl,time:now(),ts:Date.now(),read:true});
+  const msg={id:nextId(),t:"out",tx:caption||"",uploading:true,time:now(),ts:Date.now(),read:true};
+  if(isVideo) msg.video=att.previewUrl; else msg.img=att.previewUrl;
+  S.messages[chatId].push(msg);
   setInputText(""); aResize(el("minput"));
   const sch=S.chats.find(c=>c.id===chatId);
-  if(sch){sch.prev=caption?"📷 "+caption:"📷 Фото";sch.time=now();sch.lastTs=Date.now();sch.draft="";}
+  if(sch){sch.prev=caption?label+" · "+caption:label;sch.time=now();sch.lastTs=Date.now();sch.draft="";}
   renderMsgs(); renderChats(); saveState();
+  try{
+    const fd=new FormData();
+    fd.append("file",att.file);
+    const t=getToken();
+    const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
+    const upData=await res.json().catch(()=>({}));
+    if(!res.ok||!upData.success) throw new Error(upData.error||"Не удалось загрузить файл");
+    msg.uploading=false;
+    if(isVideo) msg.video=upData.url; else msg.img=upData.url;
+    renderMsgs(); saveState();
+  }catch(e){
+    msg.uploading=false; msg.failed=true;
+    renderMsgs(); saveState();
+    showToast("❌ Не удалось загрузить файл");
+  }
 }
 
 // ── MEDIA PANEL ──────────────────────────────────────────────
@@ -6677,6 +6713,48 @@ function isSystemChat(chatId){ return chatId===77777 || chatId===88888 || chatId
 // 88888 — это канал с постами, а не бот) — в них нет голосовых/видео-кружочков,
 // и прикрепить можно только изображение (решение Александры, 23 июля 2026).
 function isOfficialBotChat(chatId){ return chatId===99999 || chatId===66666 || chatId===55555 || chatId===FEEDBACK_CHAT_ID; }
+
+// ⚠️ Донастройка сразу после (23 июля 2026): Александра указала, что меню
+// скрепки (GIF/Файл/Музыка/Опрос/Контакт) в ботах ей не подходит вообще, а
+// пункт "Галерея" (фото/видео) должна включать/выключать САМА, отдельно
+// для каждого бота, из Dev Panel — не жёстко захардкожено в коде. Настройка
+// хранится на сервере (GET /api/settings/bot-attachments), тянется один раз
+// при заходе; по умолчанию (пока не подгрузилось/нет сети) — включено, как
+// было раньше, чтобы не мигало пустым меню на старте.
+let BOT_ATTACH_SETTINGS = {"44444":true,"99999":true,"66666":true,"55555":true};
+async function loadBotAttachSettings(){
+  try{
+    const data=await apiGet("/api/settings/bot-attachments");
+    if(data && data.settings) BOT_ATTACH_SETTINGS=data.settings;
+    const ch=S.chats.find(c=>c.id===S.chat);
+    if(ch) updateAttachMenuForChat(ch);
+  }catch(e){ /* тихо игнорируем — останется дефолт "включено" */ }
+}
+
+// Показывает/скрывает пункты меню скрепки под конкретный открытый чат.
+// В обычных чатах — меню как было всегда, без изменений. В официальных
+// ботах: GIF/Файл/Музыка/Опрос/Контакт скрыты ВСЕГДА (не подходят по
+// смыслу для бота, не настраиваются) — только "Галерея" (фото/видео)
+// показывается или нет по настройке из Dev Panel для ЭТОГО КОНКРЕТНОГО
+// бота. Если "Галерея" тоже выключена — вся скрепка целиком прячется,
+// как и с кнопками голосовых/видео (см. applyVoiceVideoRestriction) —
+// не оставляем активную с виду кнопку, которая открывает пустое меню.
+function updateAttachMenuForChat(ch){
+  const wrap=el("attb-wrap");
+  const gif=el("attach-item-gif"), file=el("attach-item-file"), music=el("attach-item-music"),
+        poll=el("attach-item-poll"), contact=el("attach-item-contact"), media=el("attach-item-media");
+  if(!wrap) return;
+  if(isOfficialBotChat(ch?.id)){
+    [gif,file,music,poll,contact].forEach(it=>{ if(it) it.style.display="none"; });
+    const mediaOn = BOT_ATTACH_SETTINGS[String(ch.id)]!==false;
+    if(media) media.style.display=mediaOn?"":"none";
+    wrap.style.display=mediaOn?"":"none";
+    if(!mediaOn) el("attach-menu")?.classList.remove("on");
+  } else {
+    [gif,file,music,poll,contact,media].forEach(it=>{ if(it) it.style.display=""; });
+    wrap.style.display="";
+  }
+}
 
 function blockUser(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
@@ -8152,7 +8230,7 @@ function initAdmin(){
   if(el("bal-admin"))el("bal-admin").textContent=S.bal.toLocaleString();
   // new sections
   loadOverviewStats();
-  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();renderAdminFeedback();loadWelcomeMessage();loadPlatformFlags();loadVipVisibilityToggles();loadRolePermissions();loadChannelLimits();applyDevPanelPermissions();},100);
+  setTimeout(()=>{renderAdminGifts();renderAdminVerifications();renderAdminCustomPacks();renderAdminFeedback();loadWelcomeMessage();loadPlatformFlags();loadVipVisibilityToggles();loadRolePermissions();loadChannelLimits();loadBotAttachToggle('99999','bat-99999');loadBotAttachToggle('66666','bat-66666');applyDevPanelPermissions();},100);
 }
 function renderCurrs(){ const e=el("currs");if(!e)return; e.innerHTML=CURRENCIES.map(c=>`<div class="copt${S.currency===c.code?" on":""}" onclick="selCurr('${c.code}')"><div class="cflag">${c.flag}</div><div class="ccode">${c.sym} ${c.code}</div><div class="cname">${c.nm}</div><div class="crate">1 CR = ${c.rate} ${c.code}</div></div>`).join(""); }
 function selCurr(code){ S.currency=code;const c=CURRENCIES.find(x=>x.code===code);if(c){S.rate=c.rate;if(el("crinp"))el("crinp").value=c.rate;updRate(c.rate);}renderCurrs();showToast("Валюта → "+code);saveState(); }
@@ -8811,6 +8889,7 @@ if(S.loggedIn){
     loadSupportMessages();
     loadVerifyBotMessages();
     syncFeedbackBotStatus();
+    loadBotAttachSettings();
     loadOfficialPosts();
     loadCrystalCatalog();
     loadStickerPacks();
@@ -9505,7 +9584,9 @@ async function loadFeedbackMessages(){
     serverMsgs.forEach(sm=>{
       if(existingIds.has(sm.id)) return;
       const d=new Date(sm.created_at);
-      S.messages[FEEDBACK_CHAT_ID].push({id:nextId(), serverId:sm.id, t:sm.from_user?"out":"in", fr:"NF", col:1, tx:sm.text||"", img:sm.media_url||undefined, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), read:true, isSupport:!sm.from_user});
+      const m={id:nextId(), serverId:sm.id, t:sm.from_user?"out":"in", fr:"NF", col:1, tx:sm.text||"", time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), read:true, isSupport:!sm.from_user};
+      if(sm.media_url){ if(sm.media_type==="video") m.video=sm.media_url; else m.img=sm.media_url; }
+      S.messages[FEEDBACK_CHAT_ID].push(m);
       added=true;
     });
     if(added){
@@ -11146,12 +11227,14 @@ function renderAdminVerifications(){
       page.className = "apage";
       page.id = "page-verify";
       page.innerHTML = `<div class="atitle">✅ Верификация</div><div class="asub2">Заявки на верификацию каналов</div>
+        <div class="asec"><div class="trow"><div><div class="trl">📎 Разрешить прикреплять фото/видео</div><div style="font-size:11px;color:var(--tx3)">Выключишь — скрепка в чате Nexus Verify пропадёт целиком</div></div><label class="toggle"><input type="checkbox" id="nv-attach-toggle" onchange="toggleBotAttach('55555','nv-attach-toggle',this.checked)"><span class="ts"></span></label></div></div>
         <div class="asec"><div class="tw"><table><thead><tr><th>Канал</th><th>Заявитель</th><th>Причина / ссылки</th><th>Дата</th><th>Статус</th><th></th></tr></thead><tbody id="verif-tbl">
           <tr><td colspan="5" style="text-align:center;color:var(--tx3);padding:14px">Загрузка...</td></tr>
         </tbody></table></div></div>`;
       acnt.appendChild(page);
     }
   }
+  loadBotAttachToggle('55555','nv-attach-toggle');
   renderAdminVerificationsTable();
 }
 async function renderAdminVerificationsTable(){
@@ -11233,6 +11316,7 @@ function renderAdminFeedback(){
           <div class="trow"><div><div class="trl">Бот включён</div><div style="font-size:11px;color:var(--tx3)">Выключишь — чат сразу пропадёт у всех, у кого есть доступ. Включишь обратно — вернётся, переписка не потеряется</div></div><label class="toggle"><input type="checkbox" id="fb-enabled" onchange="toggleFeedbackBotEnabled(this.checked)"><span class="ts"></span></label></div>
           <div style="font-size:12px;color:var(--tx3);margin-top:8px">Занято мест: <span id="fb-eligible-count">—</span> / 10 000</div>
         </div>
+        <div class="asec"><div class="trow"><div><div class="trl">📎 Разрешить прикреплять фото/видео</div><div style="font-size:11px;color:var(--tx3)">Выключишь — скрепка в этом чате пропадёт целиком (в меню и так нет GIF/Файла/Музыки/Опроса/Контакта — не подходят для бота)</div></div><label class="toggle"><input type="checkbox" id="fb-attach-toggle" onchange="toggleBotAttach('44444','fb-attach-toggle',this.checked)"><span class="ts"></span></label></div></div>
         <div class="asec"><div class="asect">📥 Входящие сообщения</div><div class="tw"><table><thead><tr><th>От кого</th><th>Сообщение</th><th>Дата</th></tr></thead><tbody id="fb-tbl">
           <tr><td colspan="3" style="text-align:center;color:var(--tx3);padding:14px">Загрузка...</td></tr>
         </tbody></table></div></div>`;
@@ -11240,6 +11324,7 @@ function renderAdminFeedback(){
     }
   }
   loadFeedbackBotSettings();
+  loadBotAttachToggle('44444','fb-attach-toggle');
   renderAdminFeedbackInbox();
 }
 
@@ -11250,6 +11335,34 @@ async function loadFeedbackBotSettings(){
     if(el("fb-enabled")) el("fb-enabled").checked = !!data.enabled;
     if(el("fb-eligible-count")) el("fb-eligible-count").textContent = (data.eligibleCount ?? 0).toLocaleString("ru");
   }catch(e){ /* поля останутся пустыми/дефолтными */ }
+}
+
+// Настройка "Галерея" (фото/видео) в меню скрепки — отдельно для каждого
+// официального бота, используется в трёх разных разделах Dev Panel
+// (Обратная связь/Верификация/Настройки) — один общий код вместо четырёх копий.
+async function loadBotAttachToggle(chatId, elId){
+  try{
+    const data = await apiGet("/api/settings/bot-attachments");
+    if(data && data.settings) BOT_ATTACH_SETTINGS=data.settings;
+    if(el(elId)) el(elId).checked = BOT_ATTACH_SETTINGS[chatId]!==false;
+  }catch(e){ /* поле останется в дефолтном "включено" */ }
+}
+async function toggleBotAttach(chatId, elId, value){
+  try{
+    const data = await apiPatch("/api/settings/bot-attachments", {chatId, enabled:value}, true);
+    if(!data || !data.success){
+      showToast("❌ "+(data&&data.error||"Не удалось сохранить"));
+      const cb=el(elId); if(cb) cb.checked=!value;
+      return;
+    }
+    BOT_ATTACH_SETTINGS=data.settings;
+    const openCh=S.chats.find(c=>c.id===S.chat);
+    if(openCh && String(openCh.id)===chatId) updateAttachMenuForChat(openCh);
+    showToast("✅ Сохранено");
+  }catch(e){
+    showToast("❌ Нет связи с сервером");
+    const cb=el(elId); if(cb) cb.checked=!value;
+  }
 }
 
 async function toggleFeedbackBotEnabled(value){
@@ -11273,11 +11386,18 @@ async function renderAdminFeedbackInbox(){
     const data = await apiGet("/api/feedback/admin/inbox");
     const msgs = (data && data.messages)||[];
     if(!msgs.length){ t.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--tx3);padding:14px">Сообщений пока нет</td></tr>'; return; }
-    t.innerHTML = msgs.map(m=>`<tr>
+    t.innerHTML = msgs.map(m=>{
+      const media = m.media_url
+        ? (m.media_type==="video"
+            ? `<video src="${m.media_url}" controls style="max-width:200px;max-height:200px;border-radius:8px;display:block;margin-bottom:6px"></video>`
+            : `<a href="${m.media_url}" target="_blank" rel="noopener"><img src="${m.media_url}" style="max-width:160px;max-height:160px;border-radius:8px;display:block;margin-bottom:6px"></a>`)
+        : "";
+      return `<tr>
       <td style="color:var(--acc2)">${escHtml(m.name||"—")}${m.uname?" (@"+escHtml(m.uname)+")":""}</td>
-      <td style="max-width:340px;font-size:12px;color:var(--tx2)">${m.media_url?`<a href="${m.media_url}" target="_blank" rel="noopener"><img src="${m.media_url}" style="max-width:160px;max-height:160px;border-radius:8px;display:block;margin-bottom:6px"></a>`:""}${m.text?`<div style="white-space:pre-line">${escHtml(m.text)}</div>`:""}</td>
+      <td style="max-width:340px;font-size:12px;color:var(--tx2)">${media}${m.text?`<div style="white-space:pre-line">${escHtml(m.text)}</div>`:""}</td>
       <td style="color:var(--tx3);white-space:nowrap">${new Date(m.created_at).toLocaleString("ru")}</td>
-    </tr>`).join("");
+    </tr>`;
+    }).join("");
   }catch(e){ t.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить</td></tr>'; }
 }
 
