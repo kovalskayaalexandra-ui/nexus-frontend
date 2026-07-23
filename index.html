@@ -11442,6 +11442,12 @@ async function renderAdminFeedbackInbox(){
   const t = el("fb-tbl"); if(!t) return;
   try{
     const data = await apiGet("/api/feedback/admin/inbox");
+    // ⚠️ apiGet() не проверяет HTTP-статус — ответ с ошибкой сервера (500,
+    // например SQL-ошибка) тоже успешно парсится как JSON и просто не имеет
+    // поля messages. Раньше это молча показывалось как "Сообщений пока
+    // нет" — неотличимо от настоящей пустой ленты, что и увело диагностику
+    // в сторону в прошлый раз. Явно проверяем data.error отдельно.
+    if(data && data.error){ t.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить: '+escHtml(data.error)+'</td></tr>'; return; }
     const msgs = (data && data.messages)||[];
     if(!msgs.length){ t.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--tx3);padding:14px">Сообщений пока нет</td></tr>'; return; }
     t.innerHTML = msgs.map(m=>{
@@ -11497,6 +11503,11 @@ async function renderAdminReportsList(){
   const t=el("reports-tbl"); if(!t) return;
   try{
     const data=await apiGet("/api/reports/admin");
+    // ⚠️ Тот же приём, что и в renderAdminFeedbackInbox() — ответ с ошибкой
+    // сервера успешно парсится как JSON и без этой проверки молча
+    // показывался бы как "Жалоб пока нет", неотличимо от настоящей
+    // пустой ленты.
+    if(data && data.error){ t.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить: '+escHtml(data.error)+'</td></tr>'; return; }
     const reports=(data && data.reports)||[];
     if(!reports.length){ t.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--tx3);padding:14px">Жалоб пока нет</td></tr>'; return; }
     const statusBadge={pending:'<span class="bg bga">Новая</span>', resolved:'<span class="bg bgg">Рассмотрено</span>', dismissed:'<span class="bg" style="background:var(--bg3);color:var(--tx3)">Отклонено</span>'};
