@@ -488,9 +488,15 @@ body.select-mode .msel-check{display:flex}
    поверх крутится узнаваемый значок "загрузка", как в Telegram, пока
    видео реально не готово к проигрыванию (см. hideMediaLoading/
    showMediaLoading, повешены на события самого <video>). */
-.msg-media-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.28);opacity:1;transition:opacity .25s ease;pointer-events:none;border-radius:inherit}
+.msg-media-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.28);opacity:1;transition:opacity .25s ease,background .2s ease;pointer-events:none;border-radius:inherit}
 .msg-media-loading.mml-hide{opacity:0}
 .mml-arc{animation:nxSpin 1.1s linear infinite;transform-origin:17px 17px}
+/* Само не загрузилось за разумное время (или браузер явно сообщил об
+   ошибке) — как в Telegram, превращаем в статичную стрелку "нажми, чтобы
+   загрузить" вместо бесконечно крутящегося кружка в никуда. */
+.msg-media-loading.mml-retry{pointer-events:auto;cursor:pointer;background:rgba(0,0,0,.45)}
+.msg-media-loading.mml-retry .mml-arc{animation:none;opacity:0}
+.msg-media-loading.mml-retry:hover{background:rgba(0,0,0,.6)}
 .msg-video-wrap{position:relative;margin-bottom:4px;border-radius:12px;overflow:hidden;max-width:260px;background:#000}
 .msg-video{display:block;width:100%;max-height:320px;border-radius:12px}
 .msg-video-wrap.uploading .msg-video{filter:brightness(.5)}
@@ -4100,17 +4106,49 @@ function deleteFailedMsg(msgId){
 // Значок "загрузка" для ВХОДЯЩЕГО видео (обычное видео-сообщение и
 // видео-кружочек) — показывается по умолчанию сразу при отрисовке (видео
 // ещё не готово к проигрыванию, пока браузер реально не скачал достаточно
-// данных), прячется по событию video.oncanplay/onloadeddata и появляется
-// заново по onwaiting/onerror (сеть подвисла/пропала). Один и тот же
-// значок переиспользуется в обоих местах вместо копирования разметки.
-const MEDIA_LOADING_HTML = `<div class="msg-media-loading"><svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="2.5"/><circle class="mml-arc" cx="17" cy="17" r="14" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="22 66"/><path d="M17 11v10m-4-4 4 4 4-4" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`;
+// данных), прячется по событию video.oncanplay/onloadeddata. Один и тот
+// же значок переиспользуется в обоих местах вместо копирования разметки.
+// onclick="retryMediaLoad" срабатывает только в состоянии mml-retry (см.
+// ниже) — пока крутится обычный спиннер, клик ничего не делает.
+const MEDIA_LOADING_HTML = `<div class="msg-media-loading" onclick="retryMediaLoad(event,this)"><svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="2.5"/><circle class="mml-arc" cx="17" cy="17" r="14" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="22 66"/><path d="M17 11v10m-4-4 4 4 4-4" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`;
+// Сколько ждать, прежде чем считать, что "само не грузится" и предложить
+// ручную загрузку (стрелка перестаёт крутиться, становится статичной и
+// кликабельной) — так же, как в Telegram: коротких заминок сети (доля
+// секунды) это не касается, они просто не успевают достичь таймаута.
+const MEDIA_STUCK_TIMEOUT_MS = 8000;
 function hideMediaLoading(mediaEl){
   const wrap=mediaEl.closest(".msg-video-wrap, .video-circle-wrap"); if(!wrap) return;
-  const spin=wrap.querySelector(".msg-media-loading"); if(spin) spin.classList.add("mml-hide");
+  const spin=wrap.querySelector(".msg-media-loading"); if(!spin) return;
+  clearTimeout(spin._mmlTimer);
+  spin.classList.add("mml-hide");
+  spin.classList.remove("mml-retry");
 }
 function showMediaLoading(mediaEl){
   const wrap=mediaEl.closest(".msg-video-wrap, .video-circle-wrap"); if(!wrap) return;
-  const spin=wrap.querySelector(".msg-media-loading"); if(spin) spin.classList.remove("mml-hide");
+  const spin=wrap.querySelector(".msg-media-loading"); if(!spin) return;
+  spin.classList.remove("mml-hide");
+  clearTimeout(spin._mmlTimer);
+  spin._mmlTimer=setTimeout(()=>spin.classList.add("mml-retry"), MEDIA_STUCK_TIMEOUT_MS);
+}
+// Браузер явно сообщил об ошибке (не просто "подвисло") — сразу предлагаем
+// ручную загрузку, ждать таймаут смысла нет.
+function failMediaLoading(mediaEl){
+  const wrap=mediaEl.closest(".msg-video-wrap, .video-circle-wrap"); if(!wrap) return;
+  const spin=wrap.querySelector(".msg-media-loading"); if(!spin) return;
+  clearTimeout(spin._mmlTimer);
+  spin.classList.remove("mml-hide");
+  spin.classList.add("mml-retry");
+}
+// Клик по статичной стрелке (только в состоянии "не загрузилось само") —
+// video.load() заново запускает загрузку с того же src, тот же приём, что
+// у кнопки "Отправить повторно" для непринятых исходящих сообщений.
+function retryMediaLoad(e, spinEl){
+  e.stopPropagation();
+  if(!spinEl.classList.contains("mml-retry")) return;
+  const wrap=spinEl.closest(".msg-video-wrap, .video-circle-wrap"); if(!wrap) return;
+  const video=wrap.querySelector("video"); if(!video) return;
+  spinEl.classList.remove("mml-retry");
+  video.load();
 }
 
 // Достраивает список сообщений разделителями дат ПРЯМО ПЕРЕД отрисовкой — по
@@ -4197,7 +4235,11 @@ function renderMsgs(){
         // <video> (canplay/loadeddata — данных достаточно, waiting/error —
         // подвисло или прервалось, показываем обратно).
         const showDownloadSpin=!m.uploading && !isSp;
-        const dlEvents=showDownloadSpin?`onloadeddata="hideMediaLoading(this)" oncanplay="hideMediaLoading(this)" onplaying="hideMediaLoading(this)" onwaiting="showMediaLoading(this)" onstalled="showMediaLoading(this)" onerror="showMediaLoading(this)"`:"";
+        // onloadstart — срабатывает почти сразу, как браузер начинает попытку
+        // загрузки, ещё до onwaiting/onstalled. Запускаем таймер уже отсюда —
+        // гарантия сработать даже если сеть просто "тихо" ничего не отдаёт,
+        // не вызывая явных событий подвисания вообще.
+        const dlEvents=showDownloadSpin?`onloadstart="showMediaLoading(this)" onloadeddata="hideMediaLoading(this)" oncanplay="hideMediaLoading(this)" onplaying="hideMediaLoading(this)" onwaiting="showMediaLoading(this)" onstalled="showMediaLoading(this)" onerror="failMediaLoading(this)"`:"";
         bc+=`<div class="msg-video-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}"><video class="msg-video" src="${m.video}" ${showCtrl?"controls":""} playsinline ${isSp?`onclick="revealSpoiler(${m.id})"`:""} ${dlEvents}></video>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${showDownloadSpin?MEDIA_LOADING_HTML:""}</div>`;
       }
       if(m.audio){
@@ -4217,7 +4259,7 @@ function renderMsgs(){
           bc+=`<div class="video-circle-wrap"><video class="video-circle" src="${m.videoCircle.url}" muted playsinline></video><div class="vc-play-overlay">⏳</div></div>`;
         } else {
           bc+=`<div class="video-circle-wrap" onclick="toggleVideoCirclePlay(this)">
-            <video class="video-circle" src="${m.videoCircle.url}" playsinline muted onloadeddata="hideMediaLoading(this)" oncanplay="hideMediaLoading(this)" onplaying="hideMediaLoading(this)" onwaiting="showMediaLoading(this)" onstalled="showMediaLoading(this)" onerror="showMediaLoading(this)"></video>
+            <video class="video-circle" src="${m.videoCircle.url}" playsinline muted onloadstart="showMediaLoading(this)" onloadeddata="hideMediaLoading(this)" oncanplay="hideMediaLoading(this)" onplaying="hideMediaLoading(this)" onwaiting="showMediaLoading(this)" onstalled="showMediaLoading(this)" onerror="failMediaLoading(this)"></video>
             <svg class="vc-ring" viewBox="0 0 100 100" onmousedown="seekVideoCircle(event,this.closest('.video-circle-wrap'))" ontouchstart="seekVideoCircle(event,this.closest('.video-circle-wrap'))">
               <circle class="vc-ring-bg" cx="50" cy="50" r="47"></circle>
               <circle class="vc-ring-progress" cx="50" cy="50" r="47"></circle>
