@@ -1658,7 +1658,7 @@ tr:hover td{background:var(--bg3)}
 </div></div>
 
 <div class="movl" id="m-vip-direct"><div class="modal">
-  <div class="mtit">👑 Покупка VIP</div>
+  <div class="mtit"><svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-3px"><path d="M4 9l3.5 2.5L12 5l4.5 6.5L20 9l-1.7 8.5H5.7L4 9z" fill="#fbbf24"/><path d="M5.7 17.5h12.6l.5-2.5H5.2l.5 2.5z" fill="#f59e0b"/><circle cx="4" cy="8" r="1.7" fill="#fbbf24"/><circle cx="12" cy="4.2" r="1.9" fill="#fbbf24"/><circle cx="20" cy="8" r="1.7" fill="#fbbf24"/></svg> Покупка VIP</div>
   <div class="msub" id="vip-direct-label">Оформление...</div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-vip-direct');resetVipDirectModalUI()">Отмена</button></div>
   <div id="vip-direct-widget-container" style="display:none;min-height:320px;margin-top:6px"></div>
@@ -8341,9 +8341,9 @@ function renderStore(){
     if(sw&&!document.getElementById("vip-store-section")){
       const vipSec=document.createElement("div");
       vipSec.id="vip-store-section";
-      vipSec.innerHTML=`<div class="ssec" style="margin-top:0">👑 VIP</div>
+      vipSec.innerHTML=`<div class="ssec" style="margin-top:0"><svg viewBox="0 0 24 24" width="14" height="14" style="vertical-align:-2px"><path d="M4 9l3.5 2.5L12 5l4.5 6.5L20 9l-1.7 8.5H5.7L4 9z" fill="#fbbf24"/><path d="M5.7 17.5h12.6l.5-2.5H5.2l.5 2.5z" fill="#f59e0b"/><circle cx="4" cy="8" r="1.7" fill="#fbbf24"/><circle cx="12" cy="4.2" r="1.9" fill="#fbbf24"/><circle cx="20" cy="8" r="1.7" fill="#fbbf24"/></svg> VIP</div>
         <div class="vip-store-banner" onclick="openVIP()">
-          <div style="font-size:36px">👑</div>
+          <svg viewBox="0 0 24 24" width="36" height="36"><path d="M4 9l3.5 2.5L12 5l4.5 6.5L20 9l-1.7 8.5H5.7L4 9z" fill="#fbbf24"/><path d="M5.7 17.5h12.6l.5-2.5H5.2l.5 2.5z" fill="#f59e0b"/><circle cx="4" cy="8" r="1.7" fill="#fbbf24"/><circle cx="12" cy="4.2" r="1.9" fill="#fbbf24"/><circle cx="20" cy="8" r="1.7" fill="#fbbf24"/></svg>
           <div><div style="font-weight:800;font-size:15px;color:var(--am)">${S.vip?.active?"VIP активен ✓":"Nexus VIP"}</div>
           <div style="font-size:12px;color:var(--tx2);margin-top:3px">${S.vip?.active?"До: "+S.vip.until:"Сторис, анимации, все стикеры и ещё 9 функций"}</div></div>
           <div style="margin-left:auto;font-weight:700;font-size:13px;color:var(--am)">${S.vip?.active?"Управлять":"от 500 CR ›"}</div>
@@ -9414,7 +9414,7 @@ function renderVIPScreen(){
   const isVip = S.vip && S.vip.active;
   el("vip-status-block").innerHTML = isVip ? `
     <div class="vip-active-card">
-      <div style="font-size:36px;margin-bottom:8px">👑</div>
+      <div style="margin-bottom:8px"><svg viewBox="0 0 24 24" width="36" height="36"><path d="M4 9l3.5 2.5L12 5l4.5 6.5L20 9l-1.7 8.5H5.7L4 9z" fill="#fbbf24"/><path d="M5.7 17.5h12.6l.5-2.5H5.2l.5 2.5z" fill="#f59e0b"/><circle cx="4" cy="8" r="1.7" fill="#fbbf24"/><circle cx="12" cy="4.2" r="1.9" fill="#fbbf24"/><circle cx="20" cy="8" r="1.7" fill="#fbbf24"/></svg></div>
       <div style="font-weight:800;font-size:18px;color:var(--am);margin-bottom:4px">VIP активен</div>
       <div style="font-size:12px;color:var(--tx2)">До: ${S.vip.until||"Навсегда"}</div>
     </div>
@@ -9514,7 +9514,7 @@ function confirmGiftVip(planId, price){
 function buyVIP(planId, price){
   if(S.bal < price){ showToast("❌ Недостаточно CR. Пополни баланс в Магазине"); return; }
   const plan = VIP_PLANS.find(p=>p.id===planId);
-  el("conf-title").textContent = "👑 Активировать VIP?";
+  el("conf-title").innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-3px"><path d="M4 9l3.5 2.5L12 5l4.5 6.5L20 9l-1.7 8.5H5.7L4 9z" fill="#fbbf24"/><path d="M5.7 17.5h12.6l.5-2.5H5.2l.5 2.5z" fill="#f59e0b"/><circle cx="4" cy="8" r="1.7" fill="#fbbf24"/><circle cx="12" cy="4.2" r="1.9" fill="#fbbf24"/><circle cx="20" cy="8" r="1.7" fill="#fbbf24"/></svg> Активировать VIP?';
   el("conf-body").textContent = `${plan.label} за ${price.toLocaleString()} CR. Будет списано с баланса.`;
   el("conf-ok").textContent = "Активировать";
   el("conf-ok").onclick = async ()=>{
@@ -12056,7 +12056,7 @@ applyTheme(S.theme||"dark");
 <div class="screen" id="screen-vip">
   <div class="topbar">
     <div class="logo" onclick="closeVIP()">⬡ Nexus</div>
-    <div style="font-weight:800;font-size:15px;color:var(--am)">👑 Nexus VIP</div>
+    <div style="font-weight:800;font-size:15px;color:var(--am)"><svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-3px"><path d="M4 9l3.5 2.5L12 5l4.5 6.5L20 9l-1.7 8.5H5.7L4 9z" fill="#fbbf24"/><path d="M5.7 17.5h12.6l.5-2.5H5.2l.5 2.5z" fill="#f59e0b"/><circle cx="4" cy="8" r="1.7" fill="#fbbf24"/><circle cx="12" cy="4.2" r="1.9" fill="#fbbf24"/><circle cx="20" cy="8" r="1.7" fill="#fbbf24"/></svg> Nexus VIP</div>
     <div class="tr">
       <div class="cbal"><span>💎</span><span class="cba" id="bal-vip">1 250</span></div>
       <div class="nbtn" onclick="closeVIP()">← Назад</div>
