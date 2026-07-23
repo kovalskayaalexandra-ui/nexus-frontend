@@ -989,6 +989,7 @@ tr:hover td{background:var(--bg3)}
           <div class="chnm" id="chnm" onclick="openChatInfo()">Чат</div>
           <div class="chst" id="chst" onclick="openChatInfo()" style="cursor:pointer">онлайн</div>
         </div>
+        <div class="ibt" id="e2e-btn" onclick="toggleE2EChat()" title="Включить сквозное шифрование" style="width:33px;height:33px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;display:none;align-items:center;justify-content:center;color:var(--tx2);transition:all .15s;font-size:14px">🔓</div>
         <div class="ibt" onclick="startCall('voice')" title="Голосовой звонок" style="width:33px;height:33px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);transition:all .15s"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.14 12 19.79 19.79 0 0 1 1.07 3.38a2 2 0 0 1 2-2.18H6a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21 16z"/></svg></div>
         <div class="ibt" onclick="startCall('video')" title="Видеозвонок" style="width:33px;height:33px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);transition:all .15s"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>
         <div class="ibt" onclick="toggleChatSearch()" title="Поиск" style="width:33px;height:33px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);transition:all .15s"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></div>
@@ -1181,8 +1182,7 @@ tr:hover td{background:var(--bg3)}
         <select class="fsel" style="width:130px" id="priv-online" onchange="savePrivacy()"><option>Все</option><option selected>Мои контакты</option><option>Никто</option></select>
       </div>
       <div class="settings-row">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">🔐</div><div><div class="settings-row-label">E2E шифрование</div><div class="settings-row-sub">В разработке — сообщения пока НЕ шифруются</div></div></div>
-        <span style="font-size:11px;color:var(--tx3);background:var(--bg3);padding:4px 10px;border-radius:20px;white-space:nowrap">Скоро</span>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">🔐</div><div><div class="settings-row-label">E2E шифрование</div><div class="settings-row-sub">Включается для каждого личного чата отдельно — кнопка 🔒 в шапке чата</div></div></div>
       </div>
       <div class="settings-row" onclick="openBlockedList()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(248,113,113,.1)">🚫</div><div><div class="settings-row-label">Заблокированные</div><div class="settings-row-sub" id="blocked-count">0 пользователей</div></div></div>
@@ -2311,6 +2311,9 @@ function wsHandleMessage(msg){
       if(senderId === S.user?.id) break;
       // Защита от "пустых" сообщений (например, если у собеседника не удалась загрузка файла)
       if(!text && !mediaUrl && !poll && !contact && !gift) break;
+      // 🔒 E2E-рукопожатие — служебное сообщение (публичный ключ ECDH),
+      // не показываем как обычный текст, только считаем общий секрет
+      if(msgType==="e2e_handshake"){ handleIncomingE2EHandshake(chatId, text, senderId); break; }
       if(!S.messages[chatId]) S.messages[chatId] = [];
       // Проверяем что такого сообщения ещё нет
       if(S.messages[chatId].find(m => m.wsId === id || (id && m.dbId === id))) break;
@@ -2360,7 +2363,19 @@ function wsHandleMessage(msg){
         ts: time ? new Date(time).getTime() : Date.now(),
         read: S.chat === chatId
       };
-      if(msgType==="sticker"){
+      if(msgType==="e2e"){
+        // 🔒 Расшифровка асинхронная (Web Crypto) — сообщение уже создано и
+        // будет показано с плейсхолдером, текст подставится, как только
+        // расшифруется (или честно покажет, что на этом устройстве нет ключа)
+        newMsg.e2e = true;
+        newMsg.tx = "🔐 …";
+        decryptE2EText(chatId, text).then(plain=>{
+          newMsg.tx = plain!=null ? plain : "🔒 Сообщение недоступно на этом устройстве";
+          newMsg.e2eFailed = (plain==null);
+          if(S.chat===chatId) renderMsgs();
+          saveState();
+        });
+      } else if(msgType==="sticker"){
         newMsg.t = "sk";
         newMsg.sk = text;
       } else if(mediaUrl){
@@ -3432,6 +3447,13 @@ async function loadMessagesFromDB(chatId){
       // Не дублируем уже загруженные
       if(S.messages[chatId].find(m => m.dbId === dbMsg.id)) return;
       const isMe = dbMsg.user_id === S.user?.id;
+      // 🔒 E2E-рукопожатие — не показываем как сообщение, только (если это
+      // не наше собственное) считаем по нему общий секрет шифрования —
+      // нужно на случай, если пропустили handshake живым WS (были офлайн)
+      if(dbMsg.type==="e2e_handshake"){
+        if(!isMe) handleIncomingE2EHandshake(chatId, dbMsg.text, dbMsg.user_id);
+        return;
+      }
       // ⚠️ В канале — всегда сам канал (не автор поста), в группе — реальный автор.
       // Тот же принцип, что и в обработчике message.new по WebSocket.
       const m = {
@@ -3464,7 +3486,19 @@ async function loadMessagesFromDB(chatId){
         m.rxn=Object.values(grouped);
       }
       if(dbMsg.crystal_gifts_total>0) m.crystalTotal=dbMsg.crystal_gifts_total;
-      if(dbMsg.type==="sticker"){
+      if(dbMsg.type==="e2e"){
+        // AES-GCM симметричен — тем же общим ключом расшифровываем и свои
+        // же сообщения тоже (после перезагрузки страницы локальный
+        // изначальный текст теряется, он хранился только в памяти)
+        m.e2e=true;
+        m.tx="🔐 …";
+        decryptE2EText(chatId, dbMsg.text).then(plain=>{
+          m.tx = plain!=null ? plain : "🔒 Сообщение недоступно на этом устройстве";
+          m.e2eFailed = (plain==null);
+          if(S.chat===chatId) renderMsgs();
+          saveState();
+        });
+      } else if(dbMsg.type==="sticker"){
         m.t="sk";
         m.sk=dbMsg.text;
         m.out=isMe;
@@ -3727,6 +3761,9 @@ function openChat(id){
   // owner/admin, см. renderMembersList().
   const memBtn=el("rp-members-btn");
   if(memBtn)memBtn.style.display=(ch.type==="groups"||ch.type==="channels")?"block":"none";
+
+  // 🔒 Кнопка сквозного шифрования — только для настоящих личных чатов
+  updateE2EButton(ch);
 
   // Кнопка архива — меняет подпись, если чат уже в архиве
   const archBtn=el("rp-archive-btn");
@@ -4057,7 +4094,7 @@ function renderMsgs(){
       if(m.file){
         bc+=`<div class="msg-file" ${m.file.url&&!m.uploading?`onclick="window.open('${m.file.url}','_blank')"`:""}><div class="msg-file-ico">📄</div><div><div class="msg-file-nm">${escHtml(m.file.name)}</div><div class="msg-file-sz">${m.uploading?"загрузка…":(m.file.size?(m.file.size/1024).toFixed(1)+" KB":"")}</div></div></div>`;
       }
-      if(m.tx)bc+=`<span>${formatMsgText(m.tx)}</span>`;
+      if(m.tx)bc+=`<span>${m.e2e?`<span title="${m.e2eFailed?"Не удалось расшифровать на этом устройстве":"Сквозное шифрование"}" style="margin-right:3px">🔒</span>`:""}${formatMsgText(m.tx)}</span>`;
       // link preview — только для "голых" ссылок, не для оформленных [текст](url)
       const rawForPreview=(m.tx||"").replace(/\[[^\]]+\]\(https?:\/\/[^\s)]+\)/g,"");
       const urlMatch=rawForPreview.match(/https?:\/\/[^\s]+/);
@@ -4569,7 +4606,168 @@ function updateSendAsUI(){
   }
 }
 
-function sendMsg(){
+// ══════════════════════════════════════════════════
+//  СКВОЗНОЕ ШИФРОВАНИЕ (E2E) — ECDH + AES-256-GCM
+// ══════════════════════════════════════════════════
+// Реальная реализация, как договорились с Александрой (22 июля 2026):
+// только личные (1-на-1) чаты, только ОДНО устройство за раз — так же,
+// как секретные чаты в Telegram физически устроены. Если открыть тот же
+// чат на другом устройстве/браузере — там своя пара ключей, старые
+// зашифрованные сообщения не расшифруются (ключ шифрования никогда не
+// покидает устройство, поэтому синхронизировать его между устройствами
+// нельзя, не сломав саму суть E2E).
+//
+// Как работает:
+// 1. Включаешь шифрование в чате → генерируется пара ключей ECDH (P-256),
+//    приватный ключ остаётся на устройстве (в IndexedDB, не localStorage —
+//    localStorage не умеет хранить CryptoKey и физически светит сырые байты
+//    в devtools), публичный уходит собеседнику обычным сообщением
+//    (type: 'e2e_handshake' — сервер видит только набор байт, не ключ).
+// 2. Собеседник получает handshake → если у него ещё нет своей пары для
+//    этого чата, создаёт её и отвечает своим публичным ключом. Дальше обе
+//    стороны считают ОБЩИЙ секрет (ECDH) — сам секрет никогда никуда не
+//    передаётся, каждая сторона вычисляет его локально.
+// 3. Текст сообщений шифруется этим общим секретом (AES-256-GCM) ПЕРЕД
+//    отправкой на сервер — на сервере лежит только шифротекст (type: 'e2e').
+// 4. Старые (до включения) сообщения остаются как есть — зашифровать их
+//    задним числом невозможно технически (ключа тогда ещё не было).
+const E2E_DB_NAME="nexus_e2e", E2E_STORE="keys";
+function e2eOpenDb(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(E2E_DB_NAME,1);
+    req.onupgradeneeded=()=>{ if(!req.result.objectStoreNames.contains(E2E_STORE)) req.result.createObjectStore(E2E_STORE); };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function e2eDbGet(key){
+  const db=await e2eOpenDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(E2E_STORE,"readonly");
+    const req=tx.objectStore(E2E_STORE).get(key);
+    req.onsuccess=()=>resolve(req.result||null);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function e2eDbSet(key,value){
+  const db=await e2eOpenDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(E2E_STORE,"readwrite");
+    tx.objectStore(E2E_STORE).put(value,key);
+    tx.oncomplete=()=>resolve();
+    tx.onerror=()=>reject(tx.error);
+  });
+}
+function e2eBufToB64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function e2eB64ToBuf(b64){ const bin=atob(b64); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i); return arr.buffer; }
+
+// Пара ключей ECDH для конкретного чата — создаётся один раз на устройство,
+// хранится в IndexedDB (не extractable приватный ключ — украсть через
+// обычный доступ к странице/localStorage нельзя, только сам браузер может
+// им пользоваться)
+async function e2eGetOrCreateKeyPair(chatId){
+  const stored=await e2eDbGet("kp:"+chatId);
+  if(stored) return stored;
+  const kp=await crypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"}, false, ["deriveKey"]);
+  await e2eDbSet("kp:"+chatId, kp);
+  return kp;
+}
+async function e2eExportPublicKey(publicKey){
+  // Публичный ключ можно экспортировать открыто — в этом весь смысл ECDH,
+  // секретной остаётся только приватная половина
+  const raw=await crypto.subtle.exportKey("raw", publicKey);
+  return e2eBufToB64(raw);
+}
+async function e2eDeriveSharedKey(myPrivateKey, peerPublicKeyB64){
+  const peerKey=await crypto.subtle.importKey("raw", e2eB64ToBuf(peerPublicKeyB64), {name:"ECDH",namedCurve:"P-256"}, false, []);
+  return crypto.subtle.deriveKey({name:"ECDH", public:peerKey}, myPrivateKey, {name:"AES-GCM",length:256}, false, ["encrypt","decrypt"]);
+}
+
+// Пользователь включил шифрование для этого чата — генерируем свою пару и
+// шлём публичный ключ собеседнику. Шифрование становится активным только
+// ПОСЛЕ ответа собеседника (общий секрет нужен от обеих сторон).
+async function toggleE2EChat(){
+  const ch=S.chats.find(c=>c.id===S.chat);
+  if(!ch || ch.type!=="personal"){ showToast("🔒 Доступно только для личных чатов"); return; }
+  if(!(typeof ch.id==="string" && ch.id.length>10)){ showToast("❌ Доступно только для настоящих чатов"); return; }
+  if(ch.e2eActive || ch.e2ePending){
+    // Выключить — забываем ключи на этом устройстве, дальше обычный незашифрованный текст
+    if(!confirm("Выключить шифрование в этом чате? Уже отправленные зашифрованные сообщения останутся нечитаемыми, если включите заново позже.")) return;
+    ch.e2eActive=false; ch.e2ePending=false; saveState();
+    updateE2EButton(ch);
+    showToast("🔓 Шифрование выключено");
+    return;
+  }
+  const kp=await e2eGetOrCreateKeyPair(ch.id);
+  const pubB64=await e2eExportPublicKey(kp.publicKey);
+  ch.e2ePending=true; saveState();
+  updateE2EButton(ch);
+  showToast("🔐 Отправляю запрос на шифрование…");
+  const memberIds=getChatMemberIds(ch);
+  await retrySimpleMsg({id:nextId(),failed:false}, ch.id, ch, memberIds, {chatId:ch.id, text:pubB64, type:"e2e_handshake"}, {text:pubB64, msgType:"e2e_handshake"});
+}
+
+// Пришёл handshake (свой публичный ключ) от собеседника — либо мы сами это
+// затеяли и это ответ, либо собеседник затеял первым. В обоих случаях: если
+// своей пары ещё нет — создаём и отвечаем; в любом случае считаем общий секрет.
+async function handleIncomingE2EHandshake(chatId, peerPublicKeyB64, fromUserId){
+  try{
+    const ch=S.chats.find(c=>c.id===chatId);
+    if(!ch || fromUserId===S.user?.id) return; // не обрабатываем эхо своего же handshake
+    const hadOwnKeyBefore = !!(await e2eDbGet("kp:"+chatId));
+    const kp=await e2eGetOrCreateKeyPair(chatId);
+    const sharedKey=await e2eDeriveSharedKey(kp.privateKey, peerPublicKeyB64);
+    await e2eDbSet("shared:"+chatId, sharedKey);
+    ch.e2eActive=true; ch.e2ePending=false; saveState();
+    if(S.chat===chatId) updateE2EButton(ch);
+    showToast("🔒 Шифрование в чате «"+ch.nm+"» включено");
+    // Если своей пары раньше не было — значит, это собеседник затеял
+    // шифрование первым, нужно ответить своим публичным ключом, иначе у
+    // него общий секрет никогда не появится
+    if(!hadOwnKeyBefore){
+      const pubB64=await e2eExportPublicKey(kp.publicKey);
+      const memberIds=getChatMemberIds(ch);
+      await retrySimpleMsg({id:nextId(),failed:false}, chatId, ch, memberIds, {chatId, text:pubB64, type:"e2e_handshake"}, {text:pubB64, msgType:"e2e_handshake"});
+    }
+  }catch(e){ console.warn("e2e handshake error:", e); }
+}
+
+// Шифрует текст перед отправкой — возвращает JSON-строку {iv, ct} (обе в
+// base64) либо null, если шифрование для этого чата не активно
+async function encryptE2EText(chatId, plaintext){
+  const sharedKey=await e2eDbGet("shared:"+chatId);
+  if(!sharedKey) return null;
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const enc=new TextEncoder().encode(plaintext);
+  const ct=await crypto.subtle.encrypt({name:"AES-GCM", iv}, sharedKey, enc);
+  return JSON.stringify({iv:e2eBufToB64(iv), ct:e2eBufToB64(ct)});
+}
+// Расшифровывает — возвращает текст либо null, если на ЭТОМ устройстве нет
+// нужного ключа (другое устройство/чат не был здесь активирован)
+async function decryptE2EText(chatId, payload){
+  try{
+    const sharedKey=await e2eDbGet("shared:"+chatId);
+    if(!sharedKey) return null;
+    const {iv, ct}=JSON.parse(payload);
+    const dec=await crypto.subtle.decrypt({name:"AES-GCM", iv:e2eB64ToBuf(iv)}, sharedKey, e2eB64ToBuf(ct));
+    return new TextDecoder().decode(dec);
+  }catch(e){ console.warn("e2e decrypt error:", e); return null; }
+}
+
+// Кнопка 🔒 в шапке чата — видна только в личных чатах, отражает текущее
+// состояние (выкл/ждём ответа/включено)
+function updateE2EButton(ch){
+  const btn=el("e2e-btn"); if(!btn) return;
+  if(!ch || ch.type!=="personal" || !(typeof ch.id==="string" && ch.id.length>10)){
+    btn.style.display="none"; return;
+  }
+  btn.style.display="flex";
+  if(ch.e2eActive){ btn.textContent="🔒"; btn.title="Шифрование включено — нажмите, чтобы выключить"; btn.style.color="var(--gr)"; }
+  else if(ch.e2ePending){ btn.textContent="🔐"; btn.title="Устанавливаем шифрование…"; btn.style.color="var(--am)"; }
+  else { btn.textContent="🔓"; btn.title="Включить сквозное шифрование"; btn.style.color="var(--tx2)"; }
+}
+
+async function sendMsg(){
   const inp=el("minput"); const txt=getInputText();
   if(!txt && !pendingAttach) return;
 
@@ -4657,15 +4855,36 @@ function sendMsg(){
   // Сохраняем сообщение в БД (получаем настоящий id) и уже с ним рассылаем через WebSocket
   const chatId=S.chat;
   const memberIds = getChatMemberIds(ch);
-  sendTextToServer(msg, txt, chatId, ch, tm, memberIds);
+  // 🔒 Если в этом чате включено сквозное шифрование — на сервер и по WS
+  // уходит ТОЛЬКО шифротекст, локально (msg.tx) остаётся настоящий текст,
+  // чтобы у самого отправителя он показывался как обычно.
+  let sendType="text", sendText=txt;
+  if(ch?.e2eActive){
+    const enc=await encryptE2EText(chatId, txt);
+    if(enc){
+      sendType="e2e"; sendText=enc; msg.e2e=true; renderMsgs();
+    } else {
+      // ⚠️ Важно: ch.e2eActive говорит "должно быть зашифровано", но ключа
+      // в IndexedDB почему-то нет (например, очистили данные браузера) —
+      // НЕЛЬЗЯ молча отправить как обычный текст под видом "зашифровано",
+      // это была бы та же ложная защищённость, что мы убирали у тумблера.
+      // Честно останавливаем отправку и просим включить шифрование заново.
+      ch.e2eActive=false; updateE2EButton(ch); saveState();
+      showToast("🔒 Ключ шифрования утрачен на этом устройстве — включите шифрование заново");
+      msg.failed=true; renderMsgs();
+      return;
+    }
+  }
+  sendTextToServer(msg, sendText, chatId, ch, tm, memberIds, sendType);
 }
 
-async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds){
+async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds, msgType){
+  msgType = msgType||"text";
   let dbId=null;
   let blockedFromRecipientId=null;
   if(typeof chatId === "string" && chatId.length > 10){
     const ok=await attemptWithAutoRetry(msg, async ()=>{
-      const d=await apiPost("/api/messages", {chatId, text: txt, asChannel: msg.asChannel||null}, true);
+      const d=await apiPost("/api/messages", {chatId, text: txt, type: msgType, asChannel: msg.asChannel||null}, true);
       if(!d || !d.success) return false;
       dbId=d?.message?.id||null;
       blockedFromRecipientId=d?.blockedFromRecipientId||null;
@@ -4678,10 +4897,12 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds){
   // всё равно "отправлено" у нас, просто не летит ему по WS и не покажется
   // при перезагрузке его истории (см. фильтр на сервере)
   const wsMemberIds = blockedFromRecipientId ? memberIds.filter(id=>id!==blockedFromRecipientId) : memberIds;
-  const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, memberIds:wsMemberIds, id:dbId, asChannel: msg.asChannel||null, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||"" } });
+  const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, msgType, memberIds:wsMemberIds, id:dbId, asChannel: msg.asChannel||null, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||"" } });
 
-  // Если WS не подключён — показываем локальный авто-ответ (демо)
-  if(!sent){
+  // Если WS не подключён — показываем локальный авто-ответ (демо). Не
+  // подходит для e2e-сообщений (шифротекст выглядел бы как "ответ" не в
+  // тему) — в этом случае просто пропускаем демо-автоответ.
+  if(!sent && msgType==="text"){
     const stEl=el("chst"); const oc=stEl?.textContent, ocl=stEl?.className;
     setTimeout(()=>{if(stEl){stEl.textContent=T("typing");stEl.className="chst typ";}},700);
     setTimeout(()=>{
