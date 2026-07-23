@@ -3259,11 +3259,26 @@ function fillBotCommand(command){
   sel.removeAllRanges(); sel.addRange(range);
 }
 
-function applyVoiceVideoRestriction(blocked){
+// ⚠️ Александра уточнила (23 июля 2026): в официальных ботах голосовые/
+// видео-кружочки должны быть убраны точечно из этих чатов — не просто
+// заблокированы тостом при клике (кнопка выглядела обычной активной, но
+// молча отказывала). Кнопки теперь скрываются целиком (display:none), не
+// просто приглушаются. "Приглушенные/неактивные" (disabled, opacity .35) —
+// оставлено для другого случая: собеседник в личном чате запретил себе
+// голосовые/видео (VIP-привилегия) — там кнопка уместна, просто недоступна,
+// это другая ситуация, не то же самое, что "здесь такой функции вообще нет".
+function applyVoiceVideoRestriction(ch){
   const micBtn=el("mic-btn"), vcBtn=el("vc-btn");
+  const hideEntirely = isOfficialBotChat(ch?.id);
+  const blocked = !!ch?.peerBlockVoiceVideo;
   [micBtn, vcBtn].forEach(btn=>{
     if(!btn) return;
-    btn.disabled=!!blocked;
+    if(hideEntirely){
+      btn.style.display="none";
+      return;
+    }
+    btn.style.display="";
+    btn.disabled=blocked;
     btn.style.opacity=blocked?".35":"";
     btn.style.cursor=blocked?"not-allowed":"";
     btn.title=blocked?"Собеседник запретил голосовые и видео-сообщения":(btn===micBtn?"Голосовое сообщение":"Видео-кружочек");
@@ -3356,7 +3371,7 @@ async function refreshChatPeerInfo(ch){
         el("chnm").innerHTML=escHtml(chatDisplayName(ch))+verifiedBadgeHTML(ch);
         el("chnm").style.color=ch.peerNameColor||"";
       }
-      applyVoiceVideoRestriction(ch.peerBlockVoiceVideo);
+      applyVoiceVideoRestriction(ch);
       applyBotMenuButton(ch.peerIsBot ? ch.withUserId : null);
     }
     if(changed){ renderChats(); saveState(); }
@@ -3820,7 +3835,7 @@ function openChat(id){
   // Загружаем сообщения из БД если чат реальный
   if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); markChatAsRead(id); refreshChatPeerInfo(ch); }
   ch.unread=0; renderChats();
-  applyVoiceVideoRestriction(ch.peerBlockVoiceVideo); // сразу из кэша, refreshChatPeerInfo обновит, если поменялось
+  applyVoiceVideoRestriction(ch); // сразу из кэша, refreshChatPeerInfo обновит, если поменялось
   applyBotMenuButton(ch.peerIsBot ? ch.withUserId : null);
 
   const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
