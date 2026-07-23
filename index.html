@@ -2314,6 +2314,19 @@ function wsHandleMessage(msg){
       // 🔒 E2E-рукопожатие — служебное сообщение (публичный ключ ECDH),
       // не показываем как обычный текст, только считаем общий секрет
       if(msgType==="e2e_handshake"){ handleIncomingE2EHandshake(chatId, text, senderId); break; }
+      // 🔒 Собеседник выключил шифрование у себя — синхронизируем замочек и
+      // у нас, иначе он навсегда оставался бы "включён" на этой стороне
+      if(msgType==="e2e_disabled"){
+        if(senderId!==S.user?.id){
+          const ch2=S.chats.find(c=>c.id===chatId);
+          if(ch2 && (ch2.e2eActive||ch2.e2ePending)){
+            ch2.e2eActive=false; ch2.e2ePending=false; saveState();
+            if(S.chat===chatId) updateE2EButton(ch2);
+            showToast("🔓 Собеседник выключил шифрование в этом чате");
+          }
+        }
+        break;
+      }
       if(!S.messages[chatId]) S.messages[chatId] = [];
       // Проверяем что такого сообщения ещё нет
       if(S.messages[chatId].find(m => m.wsId === id || (id && m.dbId === id))) break;
@@ -3454,6 +3467,15 @@ async function loadMessagesFromDB(chatId){
         if(!isMe) handleIncomingE2EHandshake(chatId, dbMsg.text, dbMsg.user_id);
         return;
       }
+      // 🔒 Собеседник когда-то выключил шифрование, пока мы не видели этого
+      // живым WS (были офлайн) — применяем при загрузке истории тоже
+      if(dbMsg.type==="e2e_disabled"){
+        if(!isMe){
+          const ch2=S.chats.find(c=>c.id===chatId);
+          if(ch2){ ch2.e2eActive=false; ch2.e2ePending=false; }
+        }
+        return;
+      }
       // ⚠️ В канале — всегда сам канал (не автор поста), в группе — реальный автор.
       // Тот же принцип, что и в обработчике message.new по WebSocket.
       const m = {
@@ -3534,6 +3556,7 @@ async function loadMessagesFromDB(chatId){
       S.messages[chatId].push(m);
     });
     saveState(); renderMsgs();
+    if(S.chat===chatId) updateE2EButton(ch);
   } catch(e){ console.warn("loadMessagesFromDB error:", e); }
 }
 
@@ -4696,6 +4719,13 @@ async function toggleE2EChat(){
     ch.e2eActive=false; ch.e2ePending=false; saveState();
     updateE2EButton(ch);
     showToast("🔓 Шифрование выключено");
+    // ⚠️ Раньше это было чисто локальное действие — собеседник ничего не
+    // узнавал, у него замочек так и оставался "включён" навсегда. Включение
+    // работает правильно только потому, что там ЕСТЬ рукопожатие (оно же и
+    // уведомляет), а выключение своего сообщения не имело вообще — теперь
+    // явно уведомляем собеседника отдельным служебным сообщением.
+    const memberIds=getChatMemberIds(ch);
+    retrySimpleMsg({id:nextId(),failed:false}, ch.id, ch, memberIds, {chatId:ch.id, text:"e2e_off", type:"e2e_disabled"}, {text:"e2e_off", msgType:"e2e_disabled"});
     return;
   }
   const kp=await e2eGetOrCreateKeyPair(ch.id);
