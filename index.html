@@ -4864,6 +4864,14 @@ async function sendMsg(){
 
   // ── Есть прикреплённое фото/видео/файл — отправляем медиа + текст как подпись ──
   if(pendingAttach){
+    // Официальные боты — свой путь отправки (см. ниже), а не общий
+    // sendWithAttachment(): у него нет защиты от нестрокового chatId, для
+    // системных числовых id (99999/66666/55555/44444) это значило бы
+    // реальную загрузку файла на сервер и заведомо обречённый POST
+    // /api/messages с несуществующим chatId — файл загрузился бы впустую,
+    // а сообщение осталось бы висеть "не отправлено".
+    if(S.chat===FEEDBACK_CHAT_ID){ await sendFeedbackAttachment(txt); return; }
+    if(S.chat===99999||S.chat===66666||S.chat===55555){ sendLocalBotAttachment(txt); return; }
     setInputText(""); aResize(inp);
     if(el("char-count"))el("char-count").textContent="";
     sendWithAttachment(txt);
@@ -5332,7 +5340,7 @@ async function computeWaveform(blob, barsCount=40){
 
 async function toggleVoiceRecording(){
   if(voiceRecorder && voiceRecorder.state==="recording"){ stopVoiceRecording(); return; }
-  if(S.chat===99999||S.chat===FEEDBACK_CHAT_ID){ showToast("🎤 Голосовые здесь недоступны"); return; }
+  if(isOfficialBotChat(S.chat)){ showToast("🎤 Голосовые здесь недоступны"); return; }
   try{
     voiceStream=await navigator.mediaDevices.getUserMedia({audio:true});
   }catch(e){
@@ -5465,7 +5473,7 @@ const VC_MAX_SEC=60; // как в Telegram — максимум минута
 let vcRecorder=null, vcChunks=[], vcStream=null, vcStartTs=0, vcTimerInt=null, vcRecording=false;
 
 async function openVideoCircleRecorder(){
-  if(S.chat===99999||S.chat===FEEDBACK_CHAT_ID){ showToast("⭕ Видео-кружочки здесь недоступны"); return; }
+  if(isOfficialBotChat(S.chat)){ showToast("⭕ Видео-кружочки здесь недоступны"); return; }
   try{
     vcStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:400,height:400},audio:true});
   }catch(e){
@@ -5641,7 +5649,7 @@ async function attachFile(inp){
   if(!f)return;
   inp.value=""; // сбрасываем, чтобы можно было выбрать тот же файл ещё раз
 
-  if(S.chat===77777||S.chat===99999||S.chat===FEEDBACK_CHAT_ID){
+  if(S.chat===77777){
     showToast("📎 Прикрепление файлов здесь пока недоступно");
     return;
   }
@@ -5649,6 +5657,14 @@ async function attachFile(inp){
   const isImg=f.type.startsWith("image/");
   const isVideo=f.type.startsWith("video/");
   const isAudio=f.type.startsWith("audio/");
+
+  // Официальные боты (включая Nexus Feedback) — можно прикрепить только
+  // изображение (например, скриншот бага), видео/аудио/файлы — нет
+  if(isOfficialBotChat(S.chat) && !isImg){
+    showToast("📎 Здесь можно прикрепить только изображение");
+    return;
+  }
+
   const kind = isImg?"image":isVideo?"video":isAudio?"audio":"file";
 
   let previewUrl=null;
@@ -5732,6 +5748,68 @@ async function sendWithAttachment(caption){
   const curChat=S.chats.find(c=>c.id===chatId);
   const memberIds=getChatMemberIds(curChat);
   await retryAttachmentMsg(msg, chatId, ch, memberIds);
+}
+
+// Изображение в Nexus Feedback — реально загружается на сервер и доходит до
+// Александры в Dev Panel (attachFile() уже гарантирует, что att.kind==="image",
+// голосовые/видео/файлы сюда не попадают — см. isOfficialBotChat()).
+async function sendFeedbackAttachment(caption){
+  const att=pendingAttach;
+  pendingAttach=null;
+  renderAttachPreview();
+  if(!S.messages[FEEDBACK_CHAT_ID]) S.messages[FEEDBACK_CHAT_ID]=[];
+  const fbMsg={id:nextId(),t:"out",tx:caption||"",img:att.previewUrl,uploading:true,time:now(),ts:Date.now(),read:true};
+  S.messages[FEEDBACK_CHAT_ID].push(fbMsg);
+  setInputText(""); aResize(el("minput"));
+  const sch=S.chats.find(c=>c.id===FEEDBACK_CHAT_ID);
+  if(sch){sch.prev=caption?"📷 "+caption:"📷 Фото";sch.time=now();sch.lastTs=Date.now();sch.draft="";}
+  renderMsgs(); renderChats(); saveState();
+  try{
+    const fd=new FormData();
+    fd.append("file",att.file);
+    const t=getToken();
+    const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
+    const upData=await res.json().catch(()=>({}));
+    if(!res.ok||!upData.success) throw new Error(upData.error||"Не удалось загрузить файл");
+
+    const data=await apiPost("/api/feedback/messages", {text:caption||"", mediaUrl:upData.url}, true);
+    if(!data || !data.success){
+      S.messages[FEEDBACK_CHAT_ID]=S.messages[FEEDBACK_CHAT_ID].filter(m=>m.id!==fbMsg.id);
+      renderMsgs(); saveState();
+      showToast("❌ "+(data&&data.error||"Не удалось отправить"));
+      return;
+    }
+    fbMsg.uploading=false; fbMsg.img=upData.url; fbMsg.serverId=data.id;
+    if(data.reply){
+      const d=new Date(data.reply.createdAt);
+      S.messages[FEEDBACK_CHAT_ID].push({id:nextId(), serverId:data.reply.id, t:"in", fr:"NF", col:1, tx:data.reply.text, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), isSupport:true});
+      if(sch){sch.prev=data.reply.text.slice(0,50);sch.time=now();sch.lastTs=Date.now();}
+    }
+    renderMsgs(); renderChats(); saveState();
+  }catch(e){
+    S.messages[FEEDBACK_CHAT_ID]=S.messages[FEEDBACK_CHAT_ID].filter(m=>m.id!==fbMsg.id);
+    renderMsgs(); saveState();
+    showToast("❌ Нет связи с сервером");
+  }
+}
+
+// Изображение в NexusSupport/BotFather/Nexus Verify — эти боты и текст-то
+// не сохраняют по-настоящему (локальная имитация переписки, см. их ветки в
+// sendMsg()), поэтому картинка тоже просто показывается локально, без
+// реальной загрузки на сервер — грузить файл ради несуществующего получателя
+// не имеет смысла (в отличие от Nexus Feedback, где есть настоящий адресат —
+// Александра в Dev Panel).
+function sendLocalBotAttachment(caption){
+  const att=pendingAttach;
+  pendingAttach=null;
+  renderAttachPreview();
+  const chatId=S.chat;
+  if(!S.messages[chatId]) S.messages[chatId]=[];
+  S.messages[chatId].push({id:nextId(),t:"out",tx:caption||"",img:att.previewUrl,time:now(),ts:Date.now(),read:true});
+  setInputText(""); aResize(el("minput"));
+  const sch=S.chats.find(c=>c.id===chatId);
+  if(sch){sch.prev=caption?"📷 "+caption:"📷 Фото";sch.time=now();sch.lastTs=Date.now();sch.draft="";}
+  renderMsgs(); renderChats(); saveState();
 }
 
 // ── MEDIA PANEL ──────────────────────────────────────────────
@@ -6580,6 +6658,10 @@ function reportAndBlockCurrentChat(){
 // случайно заблокировать/заархивировать, и, в отличие от остальных трёх,
 // это никогда само не снималось (см. фикс в loadState()).
 function isSystemChat(chatId){ return chatId===77777 || chatId===88888 || chatId===99999 || chatId===66666 || chatId===55555 || chatId===FEEDBACK_CHAT_ID; }
+// Официальные боты приложения (не путать с Избранным 77777 и Nexus Official
+// 88888 — это канал с постами, а не бот) — в них нет голосовых/видео-кружочков,
+// и прикрепить можно только изображение (решение Александры, 23 июля 2026).
+function isOfficialBotChat(chatId){ return chatId===99999 || chatId===66666 || chatId===55555 || chatId===FEEDBACK_CHAT_ID; }
 
 function blockUser(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
@@ -9408,7 +9490,7 @@ async function loadFeedbackMessages(){
     serverMsgs.forEach(sm=>{
       if(existingIds.has(sm.id)) return;
       const d=new Date(sm.created_at);
-      S.messages[FEEDBACK_CHAT_ID].push({id:nextId(), serverId:sm.id, t:sm.from_user?"out":"in", fr:"NF", col:1, tx:sm.text, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), read:true, isSupport:!sm.from_user});
+      S.messages[FEEDBACK_CHAT_ID].push({id:nextId(), serverId:sm.id, t:sm.from_user?"out":"in", fr:"NF", col:1, tx:sm.text||"", img:sm.media_url||undefined, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), read:true, isSupport:!sm.from_user});
       added=true;
     });
     if(added){
@@ -11178,7 +11260,7 @@ async function renderAdminFeedbackInbox(){
     if(!msgs.length){ t.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--tx3);padding:14px">Сообщений пока нет</td></tr>'; return; }
     t.innerHTML = msgs.map(m=>`<tr>
       <td style="color:var(--acc2)">${escHtml(m.name||"—")}${m.uname?" (@"+escHtml(m.uname)+")":""}</td>
-      <td style="max-width:340px;font-size:12px;color:var(--tx2)"><div style="white-space:pre-line">${escHtml(m.text)}</div></td>
+      <td style="max-width:340px;font-size:12px;color:var(--tx2)">${m.media_url?`<a href="${m.media_url}" target="_blank" rel="noopener"><img src="${m.media_url}" style="max-width:160px;max-height:160px;border-radius:8px;display:block;margin-bottom:6px"></a>`:""}${m.text?`<div style="white-space:pre-line">${escHtml(m.text)}</div>`:""}</td>
       <td style="color:var(--tx3);white-space:nowrap">${new Date(m.created_at).toLocaleString("ru")}</td>
     </tr>`).join("");
   }catch(e){ t.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить</td></tr>'; }
