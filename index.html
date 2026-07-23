@@ -967,11 +967,11 @@ tr:hover td{background:var(--bg3)}
         <span class="cba" id="baltop">1 250</span>
         <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
       </div>
-      <div class="nbtn" id="t-shop" onclick="openStore()">🛒 Магазин</div>
-      <div class="nbtn" style="color:var(--am);border-color:rgba(251,191,36,.3)" onclick="openVIP()">👑 VIP</div>
-      <div class="nbtn" onclick="openSupport()">💬 Поддержка</div>
-      <div class="nbtn" onclick="openGifts()" style="color:var(--gr)">🎁 Подарки</div>
-      <div class="nbtn" id="t-devp" onclick="openAdmin()">⚙️ Dev Panel</div>
+      <div class="nbtn" id="t-shop" onclick="openStore()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg> Магазин</div>
+      <div class="nbtn" style="color:var(--am);border-color:rgba(251,191,36,.3)" onclick="openVIP()"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2.5l2.5 5.6 6.1.6-4.6 4.1 1.3 6-5.3-3.2-5.3 3.2 1.3-6-4.6-4.1 6.1-.6z"/></svg> VIP</div>
+      <div class="nbtn" onclick="openSupport()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4V5z"/><path d="M8 10h8"/></svg> Поддержка</div>
+      <div class="nbtn" onclick="openGifts()" style="color:var(--gr)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="16" height="11" rx="1"/><path d="M4 9h16M12 9v11"/><path d="M12 9c-1-3-3-5-4.5-5S5 5.5 6 7c.7 1 2.5 2 6 2zm0 0c1-3 3-5 4.5-5S18 5.5 17 7c-.7 1-2.5 2-5 2z"/></svg> Подарки</div>
+      <div class="nbtn" id="t-devp" onclick="openAdmin()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.7 7.7 0 0 0 0-2l2-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-1.7-1L15 3.6h-4l-.4 2.4a7.6 7.6 0 0 0-1.7 1l-2.3-.9-2 3.4L6.6 11a7.7 7.7 0 0 0 0 2l-2 1.5 2 3.4 2.3-.9c.5.4 1.1.8 1.7 1l.4 2.4h4l.4-2.4c.6-.2 1.2-.6 1.7-1l2.3.9 2-3.4-2-1.5z"/></svg> Dev Panel</div>
       <div class="nbtn" onclick="openLP()" style="min-width:auto;padding:5px 9px" id="appflag">🇷🇺</div>
       <div class="upill" onclick="openSettings()">
         <div class="uav" id="uinit">Я</div>
@@ -1081,18 +1081,18 @@ tr:hover td{background:var(--bg3)}
           <div class="fmt-btn" onclick="applyFormat('italic')"><i class="fmt-ic">I</i><span>Курсив</span></div>
           <div class="fmt-btn" onclick="applyFormat('strike')"><s class="fmt-ic">S</s><span>Зачёркнутый</span></div>
           <div class="fmt-btn" onclick="applyFormat('code')"><span class="fmt-ic" style="font-family:monospace">&lt;/&gt;</span><span>Моноширинный</span></div>
-          <div class="fmt-btn" onclick="applyFormat('spoiler')"><span class="fmt-ic">🫥</span><span>Спойлер</span></div>
-          <div class="fmt-btn" onclick="promptLink()"><span class="fmt-ic">🔗</span><span>Ссылка</span></div>
+          <div class="fmt-btn" onclick="applyFormat('spoiler')"><span class="fmt-ic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.2A9.9 9.9 0 0 1 12 5c5 0 8.5 4 10 7-.6 1.2-1.5 2.5-2.7 3.7M6.7 6.7C4.6 8 3 10 2 12c1.5 3 5 7 10 7 1.3 0 2.6-.3 3.7-.7"/><path d="M9.9 10a3 3 0 0 0 4.2 4.2"/></svg></span><span>Спойлер</span></div>
+          <div class="fmt-btn" onclick="promptLink()"><span class="fmt-ic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 14.5l5-5"/><path d="M8 17l-2 2a3.5 3.5 0 0 1-5-5l3-3a3.5 3.5 0 0 1 5-.3M16 7l2-2a3.5 3.5 0 0 1 5 5l-3 3a3.5 3.5 0 0 1-5 .3"/></svg></span><span>Ссылка</span></div>
         </div>
         <div class="attb" id="attb-wrap" onclick="toggleAttachMenu(event)" title="Прикрепить файл">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           <div class="format-bar" id="attach-menu" style="left:0">
-            <div class="fmt-btn" id="attach-item-media" onclick="pickAttach(event,'media')"><span class="fmt-ic">🖼️</span><span>Галерея</span></div>
-            <div class="fmt-btn" id="attach-item-gif" onclick="pickAttach(event,'gif')"><span class="fmt-ic">🎞️</span><span>GIF</span></div>
-            <div class="fmt-btn" id="attach-item-file" onclick="pickAttach(event,'file')"><span class="fmt-ic">📄</span><span>Файл</span></div>
-            <div class="fmt-btn" id="attach-item-music" onclick="pickAttach(event,'music')"><span class="fmt-ic">🎵</span><span>Музыка</span></div>
-            <div class="fmt-btn" id="attach-item-poll" onclick="openPollCreate(event)"><span class="fmt-ic">📊</span><span>Опрос</span></div>
-            <div class="fmt-btn" id="attach-item-contact" onclick="openShareContact(event)"><span class="fmt-ic">👤</span><span>Контакт</span></div>
+            <div class="fmt-btn" id="attach-item-media" onclick="pickAttach(event,'media')"><span class="fmt-ic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg></span><span>Галерея</span></div>
+            <div class="fmt-btn" id="attach-item-gif" onclick="pickAttach(event,'gif')"><span class="fmt-ic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4m10 0h4M3 15h4m10 0h4"/></svg></span><span>GIF</span></div>
+            <div class="fmt-btn" id="attach-item-file" onclick="pickAttach(event,'file')"><span class="fmt-ic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/></svg></span><span>Файл</span></div>
+            <div class="fmt-btn" id="attach-item-music" onclick="pickAttach(event,'music')"><span class="fmt-ic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg></span><span>Музыка</span></div>
+            <div class="fmt-btn" id="attach-item-poll" onclick="openPollCreate(event)"><span class="fmt-ic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V10M12 20V4M19 20v-7"/></svg></span><span>Опрос</span></div>
+            <div class="fmt-btn" id="attach-item-contact" onclick="openShareContact(event)"><span class="fmt-ic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg></span><span>Контакт</span></div>
           </div>
         </div>
         <input type="file" id="file-inp" style="display:none" onchange="attachFile(this)">
@@ -1336,17 +1336,17 @@ tr:hover td{background:var(--bg3)}
   <div class="awrap">
     <div class="asb">
       <div class="asbtitle">Dev Panel</div>
-      <div class="ani on" data-section="overview" onclick="aPage(this,'overview')">📊 Обзор</div>
-      <div class="ani" data-section="official" onclick="aPage(this,'official')">📢 Nexus Official</div>
+      <div class="ani on" data-section="overview" onclick="aPage(this,'overview')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V10M12 20V4M19 20v-7"/></svg> Обзор</div>
+      <div class="ani" data-section="official" onclick="aPage(this,'official')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l8 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M18 9a4 4 0 0 1 0 6"/></svg> Nexus Official</div>
       <div class="ani" data-section="crystals" onclick="aPage(this,'currency')">💎 Crystals</div>
-      <div class="ani" data-section="wallets" onclick="aPage(this,'wallets')">💳 Кошельки</div>
-      <div class="ani" data-section="stickers" onclick="aPage(this,'stickers')">🐱 Стикеры</div>
-      <div class="ani" data-section="users" onclick="aPage(this,'users')">👥 Пользователи</div>
-      <div class="ani" data-section="chatmod" onclick="aPage(this,'chatmod')">🚫 Модерация чатов</div>
-      <div class="ani" data-section="langs" onclick="aPage(this,'langs')">🌍 Языки</div>
-      <div class="ani" data-section="bots" onclick="aPage(this,'bots')">🤖 Боты и API</div>
-      <div class="ani" data-section="webhooks" onclick="aPage(this,'webhooks')">🔗 Вебхуки</div>
-      <div class="ani" data-section="settings" onclick="aPage(this,'settings')">⚙️ Настройки</div>
+      <div class="ani" data-section="wallets" onclick="aPage(this,'wallets')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16" cy="14" r="1.2" fill="currentColor" stroke="none"/></svg> Кошельки</div>
+      <div class="ani" data-section="stickers" onclick="aPage(this,'stickers')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 10h.01M15.5 10h.01"/><path d="M8 14.5c1.2 1.3 2.6 2 4 2s2.8-.7 4-2"/></svg> Стикеры</div>
+      <div class="ani" data-section="users" onclick="aPage(this,'users')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14c2.3.3 4 2 4 4.6"/></svg> Пользователи</div>
+      <div class="ani" data-section="chatmod" onclick="aPage(this,'chatmod')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg> Модерация чатов</div>
+      <div class="ani" data-section="langs" onclick="aPage(this,'langs')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.3 4 5.3 4 8.5s-1.5 6.2-4 8.5c-2.5-2.3-4-5.3-4-8.5s1.5-6.2 4-8.5z"/></svg> Языки</div>
+      <div class="ani" data-section="bots" onclick="aPage(this,'bots')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="2.5"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1" fill="currentColor" stroke="none"/><path d="M8.5 13.5h.01M15.5 13.5h.01"/><path d="M2 12h2m18 0h2"/></svg> Боты и API</div>
+      <div class="ani" data-section="webhooks" onclick="aPage(this,'webhooks')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 14.5l5-5"/><path d="M8 17l-2 2a3.5 3.5 0 0 1-5-5l3-3a3.5 3.5 0 0 1 5-.3M16 7l2-2a3.5 3.5 0 0 1 5 5l-3 3a3.5 3.5 0 0 1-5 .3"/></svg> Вебхуки</div>
+      <div class="ani" data-section="settings" onclick="aPage(this,'settings')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.7 7.7 0 0 0 0-2l2-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-1.7-1L15 3.6h-4l-.4 2.4a7.6 7.6 0 0 0-1.7 1l-2.3-.9-2 3.4L6.6 11a7.7 7.7 0 0 0 0 2l-2 1.5 2 3.4 2.3-.9c.5.4 1.1.8 1.7 1l.4 2.4h4l.4-2.4c.6-.2 1.2-.6 1.7-1l2.3.9 2-3.4-2-1.5z"/></svg> Настройки</div>
     </div>
     <div class="acnt">
       <div class="apage on" id="page-overview">
@@ -2615,7 +2615,7 @@ function wsHandleMessage(msg){
         if(allowedReactions!==undefined) ch.allowedReactions=allowedReactions;
         if(isPrivate!==undefined) ch.isPrivate=isPrivate;
         if(S.chat===chatId){
-          if(el("chnm")) el("chnm").innerHTML=escHtml(chatDisplayName(ch))+verifiedBadgeHTML(ch);
+          if(el("chnm")) el("chnm").innerHTML=escHtml(chatDisplayName(ch))+vipBadgeHTML(ch)+verifiedBadgeHTML(ch);
           updateChatAvatarDisplays(ch);
           // Если сейчас смотрим именно этот чат — сразу прячем/возвращаем поле
           // ввода, не дожидаясь повторного открытия чата или перезагрузки.
@@ -3404,8 +3404,13 @@ function applyVoiceVideoRestriction(ch){
   });
 }
 
+// ⚠️ Раньше корона 👑 собиралась прямо в этой строке — а весь результат
+// потом уходит через escHtml() на месте вызова (см. ниже), которая
+// экранирует < > и превратила бы любой <svg> в буквальный текст. Значок
+// VIP теперь отдельной функцией vipBadgeHTML(), приклеенной СНАРУЖИ
+// escHtml() — тем же способом, что уже сделан verifiedBadgeHTML().
 function chatDisplayName(ch){
-  return ch.nm + (ch.peerVip ? " 👑" : "") + (ch.peerStatusEmoji ? " "+ch.peerStatusEmoji : "");
+  return ch.nm + (ch.peerStatusEmoji ? " "+ch.peerStatusEmoji : "");
 }
 
 // ⚠️ Раньше синяя галочка (is_verified) реально ставилась в базу при
@@ -3424,6 +3429,16 @@ function verifiedBadgeHTML(ch){
   if(!ch || (!ch.verified && !ch.peerVerified)) return "";
   const tip = ch.peerVerified ? "Подтверждённый профиль" : "Подтверждённый канал";
   return `<span class="verify-badge" onmouseenter="showVerifyTip(this,'${tip}')" onmouseleave="hideVerifyTip()">${VERIFY_TICK_SVG}</span>`;
+}
+
+// Значок VIP — заливная пятиконечная звезда вместо эмодзи-короны 👑, тот же
+// приём, что и у VERIFY_TICK_SVG выше: один аккуратный SVG вместо эмодзи,
+// который на разных ОС/браузерах рисуется по-разному. fill="currentColor" —
+// подхватывает цвет из контекста (обычно var(--am), уже используемый для VIP).
+const VIP_STAR_SVG = `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 2.5l2.5 5.6 6.1.6-4.6 4.1 1.3 6-5.3-3.2-5.3 3.2 1.3-6-4.6-4.1 6.1-.6z"/></svg>`;
+function vipBadgeHTML(ch){
+  if(!ch || !ch.peerVip) return "";
+  return `<span class="vip-badge" title="VIP" style="display:inline-flex;vertical-align:middle;color:var(--am);margin:0 1px">${VIP_STAR_SVG}</span>`;
 }
 
 // Общий тултип на весь документ (position:fixed) — не зависит от overflow
@@ -3486,7 +3501,7 @@ async function refreshChatPeerInfo(ch){
     if(!!u.is_bot !== !!ch.peerIsBot){ ch.peerIsBot=!!u.is_bot; changed=true; }
     if(S.chat===ch.id){
       if(el("chnm")){
-        el("chnm").innerHTML=escHtml(chatDisplayName(ch))+verifiedBadgeHTML(ch);
+        el("chnm").innerHTML=escHtml(chatDisplayName(ch))+vipBadgeHTML(ch)+verifiedBadgeHTML(ch);
         el("chnm").style.color=ch.peerNameColor||"";
       }
       applyVoiceVideoRestriction(ch);
@@ -3754,7 +3769,7 @@ function updateUserUI(){
   const nmEl=el("unm");
   if(nmEl){
     const base=u.uname?"@"+u.uname:(u.name||"dev_user");
-    const vip=S.vip?.active?' <span style="font-size:10px;color:var(--am);vertical-align:middle">👑</span>':"";
+    const vip=S.vip?.active?` <span style="display:inline-flex;vertical-align:middle;color:var(--am)" title="VIP">${VIP_STAR_SVG}</span>`:"";
     // Раньше здесь проверялась только VIP-корона, свою же собственную
     // синюю галочку верификации нигде не показывали вообще (даже себе)
     const verified=u.verified?verifiedBadgeHTML({verified:true}):"";
@@ -3871,7 +3886,7 @@ function renderChats(filter=""){
     const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:(ch.ini||"?");
     d.innerHTML=`<div class="chav" style="background:${colBg(ch.col)}">${avHTML}${ch.online?'<div class="odot"></div>':""}</div>
     <div class="cinfo" style="flex:1;overflow:hidden">
-      <div class="cnm"${ch.peerNameColor?` style="color:${ch.peerNameColor}"`:""}>${ch.nm}${ch.peerVip?' <span title="VIP" style="font-size:11px">👑</span>':""}${ch.peerStatusEmoji?' '+ch.peerStatusEmoji:""}${ch.muted?' <span style="font-size:10px;opacity:.5">🔇</span>':""}${verifiedBadgeHTML(ch)}</div>
+      <div class="cnm"${ch.peerNameColor?` style="color:${ch.peerNameColor}"`:""}>${ch.nm}${ch.peerVip?` <span title="VIP" style="display:inline-flex;vertical-align:middle;color:var(--am)">${VIP_STAR_SVG}</span>`:""}${ch.peerStatusEmoji?' '+ch.peerStatusEmoji:""}${ch.muted?' <span style="font-size:10px;opacity:.5">🔇</span>':""}${verifiedBadgeHTML(ch)}</div>
       <div class="cprev">${ch._typing?'<span class="typing-label">печатает...</span>':(ch.draft?'<span class="draft-label">Черновик: </span>'+ch.draft:ch.prev)}</div>
     </div>
     <div class="cmeta">
@@ -3961,7 +3976,7 @@ function openChat(id){
   applyBotMenuButton(ch.peerIsBot ? ch.withUserId : null);
 
   const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
-  if(el("chnm"))el("chnm").innerHTML=escHtml(chatDisplayName(ch))+verifiedBadgeHTML(ch);
+  if(el("chnm"))el("chnm").innerHTML=escHtml(chatDisplayName(ch))+vipBadgeHTML(ch)+verifiedBadgeHTML(ch);
   const st=el("chst");
   if(ch.type==="groups"){if(st){st.textContent=(ch.mbrs||4)+T("members");st.className="chst off";}}
   else if(ch.online){if(st){st.textContent=T("online");st.className="chst";}}
@@ -4783,7 +4798,7 @@ async function saveChatInfo(){
   closeM("m-chsettings");
   renderChats();
   if(S.chat===ch.id){
-    if(el("chnm")) el("chnm").innerHTML=escHtml(chatDisplayName(ch))+verifiedBadgeHTML(ch);
+    if(el("chnm")) el("chnm").innerHTML=escHtml(chatDisplayName(ch))+vipBadgeHTML(ch)+verifiedBadgeHTML(ch);
     updateChatAvatarDisplays(ch);
   }
   saveState();
@@ -8746,7 +8761,7 @@ async function renderUsers(){
         <td style="color:var(--tx3);font-size:11.5px">${u.phone||"—"}</td>
         <td><span class="bg ${roleBadge}">${u.role}</span></td>
         <td style="color:var(--cr)">💎 ${Number(u.balance_cr||0).toLocaleString()}</td>
-        <td>${isVip?"👑":"—"}</td>
+        <td>${isVip?`<span style="display:inline-flex;color:var(--am)" title="VIP">${VIP_STAR_SVG}</span>`:"—"}</td>
         <td style="color:var(--tx3)">${regDate}</td>
         <td>${statusHtml}</td>
         <td style="white-space:nowrap">${banBtn} <button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="editUserRole('${u.id}','${u.role}')">✏️</button> <button class="xbtn am" style="padding:3px 8px;font-size:10px" onclick="grantVipForever('${u.id}','${label}')" title="Выдать VIP навсегда">♾️</button></td>
@@ -10251,7 +10266,7 @@ function renderStoriesBar(){
           ${S.user.avatar?`<img src="${S.user.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(S.user.initials||"Я")}
         </div>
       </div>
-      <div class="story-nm">${isVip?(myActiveStories.length>0?myStoryLabel:"+ Моя"):"👑 VIP"}</div>
+      <div class="story-nm">${isVip?(myActiveStories.length>0?myStoryLabel:"+ Моя"):`<span style="display:inline-flex;vertical-align:middle;color:var(--am)">${VIP_STAR_SVG}</span> VIP`}</div>
     </div>
     ${channelEntries.map(([cid,data])=>`
       <div class="story-av-wrap" onclick="viewChannelStories('${cid}')">
