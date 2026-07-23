@@ -2618,14 +2618,11 @@ function wsHandleMessage(msg){
       const post = msg.payload;
       if(!realOfficialPosts.some(p=>p.id===post.id)){
         realOfficialPosts.unshift(post);
-        if(!S.messages[88888]) S.messages[88888]=[];
-        const d = post.created_at ? new Date(post.created_at) : new Date();
-        S.messages[88888].push({
-          id: nextId(), serverId: post.id, dbId: post.id, t: "in",
-          tx: (post.emoji?post.emoji+" ":"")+post.text,
-          time: d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"),
-          ts: d.getTime(), views: post.views||0,
-        });
+        // ⚠️ Раньше собиралось вручную прямо тут, без fr/frAvatar/col — из-за
+        // этого у новых постов, прилетевших живым WS, аватар всегда был
+        // заглушкой "?". buildOfficialMessages() уже берёт эти поля из самого
+        // канала — тот же приём, что и в official.post.updated/deleted ниже.
+        if(S.chats.find(c=>c.id===88888)) S.messages[88888] = buildOfficialMessages();
         const sch=S.chats.find(c=>c.id===88888);
         if(sch){ sch.prev=(post.emoji||"📢")+" "+post.text; sch.time=now();sch.lastTs=Date.now(); if(S.chat!==88888) sch.unread=(sch.unread||0)+1; }
         if(S.chat===88888) renderMsgs();
@@ -10333,12 +10330,13 @@ function deleteMyStory(id){
 // ══════════════════════════════════════════════════
 //  OFFICIAL NEXUS CHANNEL
 // ══════════════════════════════════════════════════
-const OFFICIAL_POSTS = [
-  {id:1,text:"⬡ **Nexus Messenger v3.0** — крупное обновление!\n\nДобавили: VIP подписку, Сторис, бота поддержки, подарки и многое другое! Обновляйтесь и пишите нам обратную связь 🚀",emoji:"🎉",views:14382,ts:"2026-06-07T14:20:00",reactions:[{e:"🔥",c:892},{e:"❤️",c:654},{e:"👍",c:431}]},
-  {id:2,text:"💎 **Crystals теперь можно дарить!**\n\nОтправляйте подарки друзьям прямо в чате. Редкие и эксклюзивные подарки уже в магазине.",emoji:"🎁",views:8921,ts:"2026-06-07T09:05:00",reactions:[{e:"🎉",c:445},{e:"💎",c:312}]},
-  {id:3,text:"📖 **Сторис для VIP пользователей**\n\nТеперь с VIP можно публиковать несколько сторис, а VIP-админы каналов — до 10. Сторис живут 24 часа.",emoji:"📖",views:6540,ts:"2026-06-05T18:40:00",reactions:[{e:"⭐",c:234},{e:"👍",c:189}]},
-  {id:4,text:"✅ **Верификация каналов открыта!**\n\nПодайте заявку через @NexusVerify и получите синюю галочку. Рассматриваем в течение 3-7 дней.",emoji:"✅",views:5120,ts:"2026-06-04T11:15:00",reactions:[{e:"❤️",c:156},{e:"🔥",c:98}]},
-];
+// ⚠️ Раньше тут были 4 захардкоженных демо-поста (заглушка для показа UI до
+// того, как появился настоящий постинг через Dev Panel) — Александра
+// попросила убрать их (23 июля 2026), раз реальные посты уже работают.
+// Массив остаётся пустым, а не удалён совсем — на него всё ещё ссылаются
+// buildOfficialMessages()/openOfficialChannel() ниже, пустой массив просто
+// ничего туда не добавляет.
+const OFFICIAL_POSTS = [];
 
 // Компактное число просмотров как в Telegram — 14.4K вместо 14382
 function formatViews(n){
@@ -10592,10 +10590,20 @@ let officialPersonalMessages=[];
 // 88888 — Nexus Official теперь работает как любой другой канал, без
 // отдельного экрана: те же сообщения, та же лента.
 function buildOfficialMessages(){
+  // ⚠️ Раньше эти сообщения не получали ни fr, ни frAvatar вообще — рендер
+  // сообщения (см. m.frAvatar?...:(m.fr?m.fr[0]:"?")) поэтому всегда
+  // показывал аватар-заглушку "?", даже у настоящих постов. Канал есть в
+  // S.chats — берём его иконку/аватар/цвет оттуда, как и у любого другого
+  // канала (тот же принцип, что и в loadMessagesFromDB для chIsChannel).
+  const ch = S.chats.find(c=>c.id===88888);
+  const chFr = (ch?.ini||"NO")[0];
+  const chAvatar = ch?.avatar||null;
+  const chCol = ch?.col||4;
   const demo = OFFICIAL_POSTS.map(p=>{
     const d = new Date(p.ts);
     return {
       id: nextId(), serverId: "demo-"+p.id, t: "in",
+      fr: chFr, frAvatar: chAvatar, col: chCol,
       tx: (p.emoji?p.emoji+" ":"")+p.text,
       time: d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"),
       ts: d.getTime(), views: p.views||0,
@@ -10605,6 +10613,7 @@ function buildOfficialMessages(){
     const d = new Date(p.created_at);
     return {
       id: nextId(), serverId: p.id, dbId: p.id, t: "in",
+      fr: chFr, frAvatar: chAvatar, col: chCol,
       tx: (p.emoji?p.emoji+" ":"")+p.text,
       time: d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"),
       ts: d.getTime(), views: p.views||0,
@@ -10614,6 +10623,7 @@ function buildOfficialMessages(){
     const d = new Date(p.created_at);
     return {
       id: nextId(), serverId: "personal-"+p.id, t: "in",
+      fr: chFr, frAvatar: chAvatar, col: chCol,
       tx: p.text,
       time: d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"),
       ts: d.getTime(),
