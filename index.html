@@ -11499,6 +11499,21 @@ function renderAdminReports(){
 
 const REPORT_REASON_LABELS={spam:"🚫 Спам", abuse:"😡 Оскорбления/буллинг", illegal:"⚖️ Незаконный контент", other:"✏️ Другое"};
 
+// ⚠️ Раньше в жалобе сохранялся только текст (message_snapshot) — у
+// голосовых/видео/фото/файлов текст обычно пустой (это просто подпись),
+// поэтому само содержимое, на которое пожаловались, было физически не
+// посмотреть/не послушать. Теперь показываем настоящее вложение —
+// голосовое и видео можно проиграть прямо в карточке жалобы, фото
+// открывается по клику в полный размер, файл — ссылкой на скачивание.
+function reportMediaHTML(r){
+  if(!r.message_media_url) return "";
+  const url=r.message_media_url;
+  if(r.message_media_type==="image") return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" style="max-width:200px;max-height:200px;border-radius:8px;display:block;margin-top:6px"></a>`;
+  if(r.message_media_type==="video"||r.message_media_type==="videoCircle") return `<video src="${url}" controls style="max-width:220px;max-height:220px;border-radius:8px;display:block;margin-top:6px"></video>`;
+  if(r.message_media_type==="voice"||r.message_media_type==="audio") return `<audio src="${url}" controls style="display:block;margin-top:6px;max-width:240px"></audio>`;
+  return `<a href="${url}" target="_blank" rel="noopener" style="display:block;margin-top:6px;font-size:11.5px;color:var(--acc2)">📎 ${escHtml(r.message_file_name||"Файл")}</a>`;
+}
+
 async function renderAdminReportsList(){
   const t=el("reports-tbl"); if(!t) return;
   try{
@@ -11513,7 +11528,7 @@ async function renderAdminReportsList(){
     const statusBadge={pending:'<span class="bg bga">Новая</span>', resolved:'<span class="bg bgg">Рассмотрено</span>', dismissed:'<span class="bg" style="background:var(--bg3);color:var(--tx3)">Отклонено</span>'};
     t.innerHTML=reports.map(r=>{
       const targetLabel = r.target_type==="message"
-        ? `💬 Сообщение в «${escHtml(r.chat_name||"—")}»${r.message_snapshot?`<div style="font-size:11px;color:var(--tx3);margin-top:2px;white-space:pre-line">${escHtml(r.message_snapshot.slice(0,140))}</div>`:""}`
+        ? `💬 Сообщение в «${escHtml(r.chat_name||"—")}»${r.message_snapshot?`<div style="font-size:11px;color:var(--tx3);margin-top:2px;white-space:pre-line">${escHtml(r.message_snapshot.slice(0,140))}</div>`:""}${reportMediaHTML(r)}`
         : `${r.chat_type==="channels"?"📢":r.chat_type==="groups"?"👥":"👤"} «${escHtml(r.chat_name||"—")}»${r.admin_blocked?' <span class="bg bgr">уже закрыт</span>':""}`;
       const reportedLabel = r.reported_name ? escHtml(r.reported_name)+(r.reported_uname?" (@"+escHtml(r.reported_uname)+")":"") : "—";
       let actions="";
