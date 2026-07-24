@@ -1128,6 +1128,9 @@ tr:hover td{background:var(--bg3)}
         <button class="mic-btn" id="vc-btn" onclick="openVideoCircleRecorder()" title="Видео-кружочек">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m10 9 5 3-5 3z"/></svg>
         </button>
+        <button class="mic-btn" id="sched-btn" onclick="openScheduleTimePicker()" title="Отправить позже" style="display:none">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+        </button>
         <button class="sndbtn" onclick="sendMsg()"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4 20-7z"/><path d="M22 2 11 13"/></svg></button>
       </div>
     </div>
@@ -1154,6 +1157,7 @@ tr:hover td{background:var(--bg3)}
       <div class="rp-actions">
         <button class="rp-action-btn" id="rp-members-btn" onclick="openMembers()" style="display:none"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14c2.3.3 4 2 4 4.6"/></svg> Участники</button>
         <button class="rp-action-btn" id="rp-chsettings-btn" onclick="openChannelSettings()" style="display:none"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.7 7.7 0 0 0 0-2l2-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-1.7-1L15 3.6h-4l-.4 2.4a7.6 7.6 0 0 0-1.7 1l-2.3-.9-2 3.4L6.6 11a7.7 7.7 0 0 0 0 2l-2 1.5 2 3.4 2.3-.9c.5.4 1.1.8 1.7 1l.4 2.4h4l.4-2.4c.6-.2 1.2-.6 1.7-1l2.3.9 2-3.4-2-1.5z"/></svg> Настройки канала</button>
+        <button class="rp-action-btn" id="rp-scheduled-btn" onclick="openScheduledMessages()" style="display:none"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg> Отложенные сообщения</button>
         <button class="rp-action-btn" onclick="pinChat()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 15v5"/></svg> Закрепить чат</button>
         <button class="rp-action-btn" onclick="muteChat()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/><path d="M3 3l18 18"/></svg> Заглушить</button>
         <button class="rp-action-btn" onclick="archiveChat()" id="rp-archive-btn"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg> В архив</button>
@@ -2531,6 +2535,26 @@ function wsHandleMessage(msg){
       break;
     }
 
+    // Собственное отложенное сообщение реально опубликовалось — в отличие
+    // от "message.new" (которое сервер шлёт ВСЕМ, КРОМЕ автора, точно как
+    // при обычной отправке), это событие идёт только самому автору, потому
+    // что у отложенного сообщения нет локальной оптимистичной копии — оно
+    // не показывалось в ленте до этого момента вообще.
+    case "message.scheduled_delivered": {
+      const { chatId, id, text, time } = msg.payload;
+      if(!S.messages[chatId]) S.messages[chatId]=[];
+      if(S.messages[chatId].find(m=>m.dbId===id)) break;
+      const d=time?new Date(time):new Date();
+      const newMsg={id:nextId(), dbId:id, t:"out", tx:text, time:d.toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}), ts:d.getTime(), read:false};
+      S.messages[chatId].push(newMsg);
+      const ch2=S.chats.find(c=>c.id===chatId);
+      if(ch2){ ch2.prev=text; ch2.time=newMsg.time; ch2.lastTs=d.getTime(); }
+      if(S.chat===chatId) renderMsgs();
+      renderChats(); saveState();
+      if(S.scheduledModalChatId===chatId) renderScheduledList();
+      break;
+    }
+
     case "poll.vote": {
       const { chatId, msgId, poll } = msg.payload;
       const list = S.messages[chatId];
@@ -3437,6 +3461,18 @@ function applyVoiceVideoRestriction(ch){
   });
 }
 
+// Отложенная отправка — как и в настоящем Telegram, недоступна в секретных
+// (E2E) чатах и в локально-симулированных системных чатах (Избранное,
+// Поддержка и т.д. — это не настоящие сообщения на сервере, откладывать
+// там нечего). См. правило "не блокировать тостом, а прятать целиком" —
+// [[nexus-collaboration-rules]].
+function applyScheduleButtonVisibility(ch){
+  const btn=el("sched-btn"), menuBtn=el("rp-scheduled-btn");
+  const eligible = typeof ch?.id==="string" && ch.id.length>10 && !ch.e2eActive;
+  if(btn) btn.style.display = eligible ? "" : "none";
+  if(menuBtn) menuBtn.style.display = eligible ? "" : "none";
+}
+
 // ⚠️ Раньше корона 👑 собиралась прямо в этой строке — а весь результат
 // потом уходит через escHtml() на месте вызова (см. ниже), которая
 // экранирует < > и превратила бы любой <svg> в буквальный текст. Значок
@@ -4015,6 +4051,7 @@ function openChat(id){
   if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); markChatAsRead(id); refreshChatPeerInfo(ch); }
   ch.unread=0; renderChats();
   applyVoiceVideoRestriction(ch); // сразу из кэша, refreshChatPeerInfo обновит, если поменялось
+  applyScheduleButtonVisibility(ch);
   updateAttachMenuForChat(ch);
   applyBotMenuButton(ch.peerIsBot ? ch.withUserId : null);
 
@@ -5125,6 +5162,7 @@ function updateE2EButton(ch){
   if(ch.e2eActive){ btn.textContent="🔒"; btn.title="Шифрование включено — нажмите, чтобы выключить"; btn.style.color="var(--gr)"; }
   else if(ch.e2ePending){ btn.textContent="🔐"; btn.title="Устанавливаем шифрование…"; btn.style.color="var(--am)"; }
   else { btn.textContent="🔓"; btn.title="Включить сквозное шифрование"; btn.style.color="var(--tx2)"; }
+  applyScheduleButtonVisibility(ch);
 }
 
 async function sendMsg(){
@@ -5319,6 +5357,84 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds, msgType){
       renderChats(); if(!ch?.muted)showNotif(ch, rep.tx); saveState();
     },1800);
   }
+}
+
+// ── ОТЛОЖЕННАЯ ОТПРАВКА ("отправить позже", как в Telegram) ────────────
+// Пока только для обычного текста в настоящих чатах — см. applyScheduleButtonVisibility.
+// В отличие от обычной отправки, здесь НЕТ локального оптимистичного
+// сообщения: как и в Telegram, отложенное сообщение не показывается в
+// ленте вообще (ни автору, ни собеседнику), пока сервер его не опубликует
+// (см. WS-событие "message.scheduled_delivered" ниже).
+function toDatetimeLocalValue(d){
+  const p=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function openScheduleTimePicker(){
+  if(!getInputText()){ showToast("✏️ Сначала введите текст сообщения"); return; }
+  if(pendingAttach){ showToast("🕓 Пока можно отложить только текстовое сообщение"); return; }
+  if(S.editingId){ showToast("🕓 Сначала завершите редактирование сообщения"); return; }
+  const inp=el("sched-dt-input"); if(!inp) return;
+  inp.min=toDatetimeLocalValue(new Date(Date.now()+60000));
+  inp.value=toDatetimeLocalValue(new Date(Date.now()+3600000)); // по умолчанию через час, как в Telegram
+  el("m-schedule").classList.add("on");
+}
+async function confirmScheduleSend(){
+  const inp=el("sched-dt-input");
+  if(!inp?.value){ showToast("Выберите дату и время"); return; }
+  const when=new Date(inp.value);
+  if(!(when>new Date())){ showToast("Выберите время в будущем"); return; }
+  const txt=getInputText();
+  if(!txt) return;
+  const chatId=S.chat;
+  closeM("m-schedule");
+  setInputText(""); aResize(el("minput"));
+  if(el("char-count"))el("char-count").textContent="";
+  const d=await apiPost("/api/messages", {chatId, text:txt, type:"text", scheduledAt: when.toISOString()}, true);
+  if(!d || !d.success){
+    showToast("❌ "+(d&&d.error||"Не удалось запланировать"));
+    setInputText(txt); aResize(el("minput")); // возвращаем текст, чтобы не потерялся
+    return;
+  }
+  showToast("🕓 Запланировано на "+when.toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}));
+  if(S.scheduledModalChatId===chatId) renderScheduledList();
+}
+async function openScheduledMessages(){
+  S.scheduledModalChatId=S.chat;
+  el("m-scheduled").classList.add("on");
+  el("scheduled-list").innerHTML=`<div style="color:var(--tx3);font-size:12.5px;padding:20px;text-align:center">Загрузка…</div>`;
+  await renderScheduledList();
+}
+async function renderScheduledList(){
+  const chatId=S.scheduledModalChatId;
+  const box=el("scheduled-list"); if(!box) return;
+  let items=[];
+  try{
+    const d=await apiGet("/api/messages/chat/"+chatId+"/scheduled");
+    items=d.messages||[];
+  }catch(e){}
+  box.innerHTML = items.length ? items.map(m=>{
+    const when=new Date(m.scheduled_at).toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+    return `<div style="border:1px solid var(--brd);border-radius:10px;padding:10px 12px">
+      <div style="font-size:11.5px;color:var(--acc);font-weight:600;margin-bottom:5px">🕓 ${when}</div>
+      <div style="font-size:13.5px;margin-bottom:10px;word-break:break-word;white-space:pre-wrap">${escHtml(m.text||"")}</div>
+      <div style="display:flex;gap:6px">
+        <button class="rp-action-btn" style="width:auto;flex:1;justify-content:center" onclick="sendScheduledNow('${m.id}')">Отправить сейчас</button>
+        <button class="rp-action-btn rd" style="width:auto;flex:1;justify-content:center" onclick="cancelScheduled('${m.id}')">Отменить</button>
+      </div>
+    </div>`;
+  }).join("") : `<div style="color:var(--tx3);font-size:12.5px;padding:20px;text-align:center">Нет отложенных сообщений</div>`;
+}
+async function sendScheduledNow(id){
+  const d=await apiPost("/api/messages/"+id+"/send-now", {}, true);
+  if(!d || !d.success){ showToast("❌ "+(d&&d.error||"Не удалось отправить")); return; }
+  showToast("✅ Отправлено");
+  renderScheduledList();
+}
+async function cancelScheduled(id){
+  const d=await apiDelete("/api/messages/"+id, {forAll:true});
+  if(!d || !d.success){ showToast("❌ Не удалось отменить"); return; }
+  showToast("🗑️ Отменено");
+  renderScheduledList();
 }
 
 async function sendSticker(sk){
@@ -12631,6 +12747,21 @@ applyTheme(S.theme||"dark");
   <div class="mtit">🗄️ Архив</div>
   <div id="archive-list" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-archive')">Закрыть</button></div>
+</div></div>
+
+<!-- MODAL: ОТПРАВИТЬ ПОЗЖЕ (выбор даты/времени) -->
+<div class="movl" id="m-schedule"><div class="modal">
+  <div class="mtit">🕓 Отправить позже</div>
+  <div class="msub">Сообщение будет ждать в очереди и отправится автоматически в выбранное время.</div>
+  <div class="fg"><span class="fl">Дата и время</span><input class="fii" type="datetime-local" id="sched-dt-input"></div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-schedule')">Отмена</button><button class="xbtn" onclick="confirmScheduleSend()">Запланировать</button></div>
+</div></div>
+
+<!-- MODAL: ОТЛОЖЕННЫЕ СООБЩЕНИЯ (список по текущему чату) -->
+<div class="movl" id="m-scheduled"><div class="modal">
+  <div class="mtit">🕓 Отложенные сообщения</div>
+  <div id="scheduled-list" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:8px"></div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-scheduled')">Закрыть</button></div>
 </div></div>
 
 <!-- MODAL: GIFT VIP — RECIPIENT -->
