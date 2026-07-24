@@ -2472,7 +2472,7 @@ function wsHandleMessage(msg){
       break;
 
     case "message.new": {
-      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, fileSize, poll, contact, spoiler, waveform, gift, msgType, asChannel, senderName, senderAvatar, senderStatusEmoji, senderNameColor } = msg.payload;
+      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, fileSize, poll, contact, spoiler, waveform, gift, msgType, asChannel, senderName, senderAvatar, senderStatusEmoji, senderNameColor, forwardAuthorName, forwardAuthorId } = msg.payload;
       // Не добавляем своё же сообщение (оно уже есть локально)
       if(senderId === S.user?.id) break;
       // Защита от "пустых" сообщений (например, если у собеседника не удалась загрузка файла)
@@ -2541,6 +2541,7 @@ function wsHandleMessage(msg){
         // внизу поста, если владелец канала включил её в настройках (см.
         // ch.signMessages и рендер .mt в renderMsgs)
         authorName: senderName || null,
+        authorId: senderId || null,
         col: chIsChannel ? (ch?.col||0) : colorFromId(senderId),
         asChannel: asChannel || undefined,
         tx: text,
@@ -2548,6 +2549,9 @@ function wsHandleMessage(msg){
         ts: time ? new Date(time).getTime() : Date.now(),
         read: S.chat === chatId
       };
+      // "Переслано от X" — раньше вообще не долетало вживую (только после
+      // перезагрузки чата), см. комментарий у forwardAuthorName в index.js
+      if(forwardAuthorName) newMsg.fwd={fromName:forwardAuthorName, fromCol:colorFromId(forwardAuthorId), fromId:forwardAuthorId||null};
       if(msgType==="e2e"){
         // 🔒 Расшифровка асинхронная (Web Crypto) — сообщение уже создано и
         // будет показано с плейсхолдером, текст подставится, как только
@@ -3865,6 +3869,7 @@ async function loadMessagesFromDB(chatId){
         frStatusEmoji: chIsChannel ? null : (dbMsg.sender_status_emoji||null),
         frNameColor: chIsChannel ? null : (dbMsg.sender_name_color||null),
         authorName: dbMsg.sender_name || null, // см. комментарий у authorName в обработчике WS message.new
+        authorId: dbMsg.user_id || null,
         col: chIsChannel ? (ch?.col||0) : colorFromId(dbMsg.user_id),
         asChannel: dbMsg.as_channel || undefined,
         tx: dbMsg.text || "",
@@ -3878,7 +3883,7 @@ async function loadMessagesFromDB(chatId){
       // forwarded_author_name уже приходит пустым с сервера, если автор
       // пересылки был скрыт (см. GET /api/messages/:chatId) — здесь просто
       // отражаем то, что сервер решил показать, а не решаем это на фронте
-      if(dbMsg.forwarded_author_name) m.fwd={fromName:dbMsg.forwarded_author_name, fromCol:colorFromId(dbMsg.forwarded_author_id)};
+      if(dbMsg.forwarded_author_name) m.fwd={fromName:dbMsg.forwarded_author_name, fromCol:colorFromId(dbMsg.forwarded_author_id), fromId:dbMsg.forwarded_author_id||null};
       // Реакции приходят с сервера построчно (кто, каким эмодзи) —
       // сворачиваем в формат {эмодзи, счётчик, моя ли} для отрисовки
       if(dbMsg.reactions && dbMsg.reactions.length){
@@ -4529,7 +4534,14 @@ function renderMsgs(){
         bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${colBg(m.col||0)}">${escHtml(curCh.nm||"Канал")}</div>`;
       }
       if(m.asChannel)bc+=`<div class="as-channel-tag"><div class="sas-av" style="background:${colBg(m.asChannel.col)};width:18px;height:18px;font-size:9px">${m.asChannel.ini}</div>📢 ${m.asChannel.nm}</div>`;
-      if(m.fwd)bc+=`<div class="as-channel-tag" style="opacity:.8">↪️ Переслано от <b style="margin-left:3px">${escHtml(m.fwd.fromName)}</b></div>`;
+      // Раньше имя было просто текстом — как в Telegram, кликабельно, если
+      // знаем настоящего автора (fromId). Открывает переписку с ним (сам
+      // человек, не канал/группа целиком — см. NEXUS_PROJECT_NOTES.md,
+      // почему полноценная ссылка на канал-источник это отдельная задача).
+      if(m.fwd){
+        const clickable = m.fwd.fromId && m.fwd.fromId!==S.user?.id;
+        bc+=`<div class="as-channel-tag" style="opacity:.8${clickable?";cursor:pointer":""}"${clickable?` onclick="event.stopPropagation();startChatWithUser('${m.fwd.fromId}','${escHtml(m.fwd.fromName).replace(/'/g,"\\'")}',${m.fwd.fromCol||0})"`:""}>↪️ Переслано от <b style="margin-left:3px${clickable?";text-decoration:underline":""}">${escHtml(m.fwd.fromName)}</b></div>`;
+      }
       if(m.reply)bc+=`<div class="rprev"><div class="rprevnm">${m.reply.fr}</div><div class="rprevtx">${m.reply.tx}</div></div>`;
       if(m.img){
         const isSp=m.spoiler && !m.spoilerRevealed;
@@ -8683,7 +8695,8 @@ function buildForwardedMsg(m, hideAuthor, srcChat){
     // звено (та же логика, что и на сервере, см. messages.js)
     const authorName = m.fwd ? m.fwd.fromName : (m.t==="out" ? (S.user?.name||"Вы") : (srcChat?.nm||"Пользователь"));
     const authorCol = m.fwd ? m.fwd.fromCol : (m.t==="out" ? 0 : (srcChat?.col||0));
-    msg.fwd={fromName:authorName, fromCol:authorCol};
+    const authorId = m.fwd ? m.fwd.fromId : (m.t==="out" ? S.user?.id : (m.authorId || srcChat?.withUserId || null));
+    msg.fwd={fromName:authorName, fromCol:authorCol, fromId:authorId||null};
   }
   return msg;
 }
@@ -8714,7 +8727,11 @@ async function sendForwardedMsg(localMsg, m, toId, toCh, hideAuthor, srcChatId){
       text:body.text, mediaUrl:body.mediaUrl||null, mediaType:body.mediaType||null,
       fileName:body.fileName||null, fileSize:body.fileSize||null, spoiler:body.spoiler||false, waveform:body.waveform||null,
       contact:body.contact||null, msgType:body.type||"text",
-      senderName:S.user?.name||"", senderAvatar:S.user?.avatar||"", senderStatusEmoji:S.user?.statusEmoji||"", senderNameColor:S.user?.nameColor||""
+      senderName:S.user?.name||"", senderAvatar:S.user?.avatar||"", senderStatusEmoji:S.user?.statusEmoji||"", senderNameColor:S.user?.nameColor||"",
+      // Раньше "Переслано от X" не долетало собеседнику вживую — см. комментарий
+      // у forwardAuthorName в index.js. Если автор скрыт (hideAuthor), localMsg.fwd
+      // вообще не установлен (buildForwardedMsg) — тогда просто ничего не шлём.
+      forwardAuthorName: localMsg.fwd?.fromName || null, forwardAuthorId: localMsg.fwd?.fromId || null,
     }});
     if(typeof d.sourceForwardCount==="number"){
       const srcM=(S.messages[srcChatId]||[]).find(x=>x.dbId===m.dbId);
