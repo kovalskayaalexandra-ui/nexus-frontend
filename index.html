@@ -212,8 +212,8 @@ button,input,textarea,select{font-family:inherit}
 .ci:hover{background:var(--bg3)}
 .ci.on{background:var(--bg4)}
 .ci.on::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;background:var(--acc2);border-radius:0 3px 3px 0}
-.ci.pinned::after{content:"📌";position:absolute;right:10px;top:8px;font-size:10px;opacity:.5}
 .ci.muted .cnm::after{content:" 🔇";font-size:10px;opacity:.5}
+.avwrap{position:relative;flex-shrink:0}
 .chav{width:43px;height:43px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
   font-weight:800;font-size:13px;color:#fff;position:relative;overflow:hidden}
 .chav img{width:100%;height:100%;object-fit:cover}
@@ -222,6 +222,7 @@ button,input,textarea,select{font-family:inherit}
 .cprev{font-size:var(--fs-3);color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
 .cmeta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0}
 .ctime{font-size:var(--fs-1);color:var(--tx3)}
+.pin-ico{font-size:10px;opacity:.55;margin-right:3px;vertical-align:middle}
 .badge{background:var(--acc);color:#fff;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:999px}
 .badge.muted{background:var(--tx3)}
 
@@ -2438,7 +2439,7 @@ function wsHandleMessage(msg){
           id: chatId,
           nm: "Новый чат",
           ini: "??",
-          col: Math.floor(Math.random()*8),
+          col: colorFromId(senderId),
           online: true,
           prev: text,
           time: now(),
@@ -2565,8 +2566,8 @@ function wsHandleMessage(msg){
       if(!S.chats.find(c=>c.id===chat.id)){
         S.chats.unshift({
           id:chat.id, nm:chat.nm, ini:chat.nm.slice(0,2).toUpperCase(),
-          col:Math.floor(Math.random()*COLS.length), online:false,
-          prev:(chat.type==="channels"?"Канал создан":"Группа создана"), time:now(),
+          col:colorFromId(chat.id), online:false,
+          prev:(chat.type==="channels"?"Канал создан":"Группа создана"), time:now(), lastTs:Date.now(),
           unread:0, type:chat.type, mbrs:2, myRole:"member", mine:false,
           pinned:false, muted:false, blocked:false, draft:""
         });
@@ -3584,6 +3585,10 @@ async function loadChatsFromDB(){
       if(existing){
         existing.prev = dbChat.last_message || existing.prev;
         existing.time = dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : existing.time;
+        if(dbChat.last_message_at) existing.lastTs = Math.max(existing.lastTs||0, new Date(dbChat.last_message_at).getTime());
+        // Самолечение: раньше цвет назначался случайно при каждом создании чата на клиенте —
+        // здесь пересчитываем его по стабильному хэшу, чтобы старые сохранённые чаты тоже починились
+        existing.col = isPersonal ? (otherUser ? colorFromId(otherUser.userId) : existing.col) : colorFromId(dbChat.id);
         if(otherUser) existing.withUserId = otherUser.userId;
         if(!isPersonal){
           existing.memberIds = others.map(m => m.userId);
@@ -3616,11 +3621,12 @@ async function loadChatsFromDB(){
           id: dbChat.id,
           nm: displayName,
           ini: (displayName||"Ч").slice(0,2).toUpperCase(),
-          col: Math.floor(Math.random()*8),
+          col: isPersonal && otherUser ? colorFromId(otherUser.userId) : colorFromId(dbChat.id),
           online: false,
           avatar: isPersonal ? (otherUser?.avatar || "") : "",
           prev: dbChat.last_message || "",
           time: dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : "",
+          lastTs: dbChat.last_message_at ? new Date(dbChat.last_message_at).getTime() : 0,
           unread: 0,
           type: dbChat.type || "personal",
           pinned: !!dbChat.pinned,
@@ -3900,7 +3906,7 @@ function renderChats(filter=""){
   let list=S.tab==="all"?[...S.chats]:S.chats.filter(x=>x.type===S.tab);
   list=list.filter(x=>!x.blocked && !x.archived);
   if(filter)list=list.filter(x=>x.nm.toLowerCase().includes(filter.toLowerCase()));
-  list.sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0));
+  list.sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0) || (b.lastTs||0)-(a.lastTs||0));
 
   // Строка "Архив" сверху списка — только если там реально что-то есть
   const archivedCount=S.chats.filter(x=>x.archived && !x.blocked).length;
@@ -3921,13 +3927,13 @@ function renderChats(filter=""){
     d.className="ci"+(ch.id===S.chat?" on":"")+(ch.pinned?" pinned":"")+(ch.muted?" muted":"");
     d.onclick=()=>openChat(ch.id);
     const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:(ch.ini||"?");
-    d.innerHTML=`<div class="chav" style="background:${colBg(ch.col)}">${avHTML}${ch.online?'<div class="odot"></div>':""}</div>
+    d.innerHTML=`<div class="avwrap"><div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>${ch.online?'<div class="odot"></div>':""}</div>
     <div class="cinfo" style="flex:1;overflow:hidden">
       <div class="cnm"${ch.peerNameColor?` style="color:${ch.peerNameColor}"`:""}>${ch.nm}${ch.peerVip?` <span title="VIP" style="display:inline-flex;vertical-align:middle;color:var(--am)">${VIP_STAR_SVG}</span>`:""}${ch.peerStatusEmoji?' '+ch.peerStatusEmoji:""}${ch.muted?' <span style="font-size:10px;opacity:.5">🔇</span>':""}${verifiedBadgeHTML(ch)}</div>
       <div class="cprev">${ch._typing?'<span class="typing-label">печатает...</span>':(ch.draft?'<span class="draft-label">Черновик: </span>'+ch.draft:ch.prev)}</div>
     </div>
     <div class="cmeta">
-      <div class="ctime">${formatChatListTime(ch.lastTs) ?? ch.time}</div>
+      <div class="ctime">${ch.pinned?'<span class="pin-ico" title="Закреплено">📌</span>':""}${formatChatListTime(ch.lastTs) ?? ch.time}</div>
       ${ch.unread>0?`<div class="badge${ch.muted?" muted":""}">${ch.unread>99?"99+":ch.unread}</div>`:""}
     </div>`;
     c.appendChild(d);
@@ -3963,7 +3969,7 @@ function renderGlobalSearchResults(users, query){
   }
   wrap.innerHTML=`<div class="gsr-label">Глобальный поиск</div>`+users.map(u=>{
     const nm=u.name||u.username||"Пользователь";
-    const col=Math.floor(Math.random()*8);
+    const col=colorFromId(u.id);
     const safeNm=escHtml(nm).replace(/'/g,"\\'");
     const avHTML=u.avatar_url?`<img src="${u.avatar_url}" style="width:100%;height:100%;object-fit:cover">`:nm[0].toUpperCase();
     return `<div class="ci" onclick="openChatFromSearch('${u.id}','${safeNm}',${col})">
@@ -4642,7 +4648,7 @@ async function doJoinByLink(codeOverride){
     let ch=S.chats.find(c=>c.id===chat.id);
     if(!ch){
       ch={id:chat.id, nm:chat.name||"Чат", ini:(chat.name||"Ч").slice(0,2).toUpperCase(),
-        col:Math.floor(Math.random()*COLS.length), online:false, prev:"Вы вступили в чат", time:now(),
+        col:colorFromId(chat.id), online:false, prev:"Вы вступили в чат", time:now(), lastTs:Date.now(),
         unread:0, type:chat.type, mbrs:2, myRole:"member", mine:false, inviteLink:chat.invite_link,
         pinned:false, muted:false, blocked:false, draft:""};
       S.chats.unshift(ch);
@@ -7778,7 +7784,7 @@ async function searchNewChat(v){
   try {
     const data = await apiGet("/api/users/search?q="+encodeURIComponent(v));
     (data.users||[]).filter(u=>u.id!==S.user?.id).forEach(u=>{
-      if(!local.find(c=>c.id===u.id)) local.push({id:u.id,nm:u.name||u.username||"?",uname:u.username||"",col:Math.floor(Math.random()*8),online:false});
+      if(!local.find(c=>c.id===u.id)) local.push({id:u.id,nm:u.name||u.username||"?",uname:u.username||"",col:colorFromId(u.id),online:false});
     });
   } catch(e){}
   el("nc-results").innerHTML=local.map(c=>{
@@ -7845,8 +7851,9 @@ async function doCreateGroup(){
   }
   const realId=data.chat.id;
   const serverInviteLink=data.chat.invite_link||null;
+  const newChatId=realId||nextId();
 
-  const newChat={id:realId||nextId(),nm:nm,ini:nm.slice(0,2).toUpperCase(),col:Math.floor(Math.random()*COLS.length),online:false,prev:isChannel?"Канал создан":"Группа создана",time:now(),unread:0,type:isChannel?"channels":"groups",mbrs:members.length,members:members,memberIds:memberIds,myRole:"owner",mine:isChannel,pinned:false,muted:false,blocked:false,draft:"",inviteLink:serverInviteLink,isPrivate:false};
+  const newChat={id:newChatId,nm:nm,ini:nm.slice(0,2).toUpperCase(),col:colorFromId(newChatId),online:false,prev:isChannel?"Канал создан":"Группа создана",time:now(),lastTs:Date.now(),unread:0,type:isChannel?"channels":"groups",mbrs:members.length,members:members,memberIds:memberIds,myRole:"owner",mine:isChannel,pinned:false,muted:false,blocked:false,draft:"",inviteLink:serverInviteLink,isPrivate:false};
   S.chats.unshift(newChat);
   if(!S.messages[newChat.id])S.messages[newChat.id]=[{id:nextId(),t:"sys",tx:isChannel?"Вы создали канал «"+nm+"»":"Вы создали группу «"+nm+"»"},{id:nextId(),t:"date",tx:"Сегодня",ts:Date.now()}];
   closeM("m-group"); renderChats(); openChat(newChat.id); saveState();
@@ -8273,7 +8280,7 @@ async function searchAddMember(v){
   try {
     const data=await apiGet("/api/users/search?q="+encodeURIComponent(v));
     (data.users||[]).filter(u=>u.id!==S.user?.id && !existingIds.includes(String(u.id))).forEach(u=>{
-      if(!results.find(c=>c.id===u.id)) results.push({id:u.id,nm:u.name||u.username||"?",uname:u.username||"",col:Math.floor(Math.random()*8)});
+      if(!results.find(c=>c.id===u.id)) results.push({id:u.id,nm:u.name||u.username||"?",uname:u.username||"",col:colorFromId(u.id)});
     });
   } catch(e){}
   el("addmember-results").innerHTML=results.map(c=>`<div class="mem-item" onclick="addMemberToGroup('${c.id}','${(c.nm||"").replace(/'/g,"")}','${c.uname||""}',${c.col||0})"><div class="mem-av" style="background:${colBg(c.col||0)}">${(c.nm||"?")[0]}</div><div class="mem-info"><div class="mem-nm">${c.nm}</div><div class="mem-sub">${c.uname?"@"+c.uname:""}</div></div><span style="color:var(--acc);font-size:20px">＋</span></div>`).join("");
