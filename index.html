@@ -2709,6 +2709,21 @@ function wsHandleMessage(msg){
       break;
     }
 
+    // Кто-то (мы сами с другого устройства, или кто угодно, кому мы
+    // переслали это раньше) переслал одно из наших сообщений — обновляем
+    // счётчик у всех, кто сейчас смотрит исходный чат, не только у того,
+    // кто нажал "Переслать" (тот же паттерн, что и message.viewed выше)
+    case "message.forwarded": {
+      const { chatId, messageId, forwardCount } = msg.payload;
+      const m=(S.messages[chatId]||[]).find(x=>x.dbId===messageId);
+      if(m) m.forwardCount=forwardCount;
+      const span=document.querySelector(`[data-fwdcount-for="${messageId}"]`);
+      if(span) span.textContent=forwardCount.toLocaleString("ru");
+      else if(S.chat===chatId) renderMsgs(); // счётчика ещё не было на экране (был 0) — перерисовать, чтобы появился
+      saveState();
+      break;
+    }
+
     case "reaction.update": {
       // Кто-то другой поставил/снял реакцию — обновляем у себя, чтобы
       // видеть в реальном времени, не только после перезахода в чат
@@ -3709,9 +3724,14 @@ async function loadMessagesFromDB(chatId){
         time: new Date(dbMsg.created_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}),
         ts: new Date(dbMsg.created_at).getTime(),
         views: dbMsg.views||0,
+        forwardCount: dbMsg.forward_count||0,
         read: isMe ? !!dbMsg.read_at : true,
         edited: !!dbMsg.edited_at
       };
+      // forwarded_author_name уже приходит пустым с сервера, если автор
+      // пересылки был скрыт (см. GET /api/messages/:chatId) — здесь просто
+      // отражаем то, что сервер решил показать, а не решаем это на фронте
+      if(dbMsg.forwarded_author_name) m.fwd={fromName:dbMsg.forwarded_author_name, fromCol:colorFromId(dbMsg.forwarded_author_id)};
       // Реакции приходят с сервера построчно (кто, каким эмодзи) —
       // сворачиваем в формат {эмодзи, счётчик, моя ли} для отрисовки
       if(dbMsg.reactions && dbMsg.reactions.length){
@@ -4405,7 +4425,14 @@ function renderMsgs(){
       const urlMatch=rawForPreview.match(/https?:\/\/[^\s]+/);
       if(urlMatch)bc+=`<div class="lnkprev" style="cursor:pointer" onclick="window.open('${urlMatch[0].replace(/'/g,"%27")}','_blank')"><div class="lnktitle">🔗 ${urlMatch[0].replace(/https?:\/\//,"").slice(0,40)}</div><div class="lnkdesc">Открыть ссылку</div></div>`;
       const viewsHTML = (curCh?.type==="channels" && m.dbId) ? ` · 👁 <span data-views-for="${m.dbId}">${(m.views||0).toLocaleString("ru")}</span>` : "";
-      bc+=`<div class="mt">${m.time||""}${viewsHTML}${m.t==="out"?ticksHTML(m):""}</div>`;
+      // Счётчик пересылок — как в Telegram, показываем на ИСХОДНОМ
+      // сообщении (том, которое переслали), а не на новых пересланных
+      // копиях в других чатах — у любого типа чата, не только в каналах.
+      // data-fwdcount-for — для живого обновления по WS (см. case
+      // "message.forwarded" в wsHandleMessage), тот же приём, что и у
+      // data-views-for.
+      const fwdCountHTML = (m.forwardCount>0 && m.dbId) ? ` · <svg viewBox="0 0 24 24" width="10" height="10" style="vertical-align:-1px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6"/><path d="M3 8v3a4 4 0 0 0 4 4h12"/></svg> <span data-fwdcount-for="${m.dbId}">${m.forwardCount.toLocaleString("ru")}</span>` : "";
+      bc+=`<div class="mt">${m.time||""}${viewsHTML}${fwdCountHTML}${m.t==="out"?ticksHTML(m):""}</div>`;
       if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${r.e} ${r.c}</div>`).join("")}</div>`;
       if(m.crystalTotal>0)bc+=`<div class="rxns"><div class="rxn crystal-total-badge" onclick="quickAddCrystal(${m.id})" title="Нажмите, чтобы подарить ещё 1 💎">💎 ${m.crystalTotal.toLocaleString()}</div></div>`;
       if(m.edited)bc+='';
@@ -8271,7 +8298,32 @@ function openForward(){
   el("fwd-hide-author")?.classList.remove("on");
   el("m-forward").classList.add("on");
 }
-// Собирает копию содержимого сообщения для пересылки — любой тип, не только текст
+// ⚠️ Раньше пересылка была ПОЛНОСТЬЮ локальной — buildForwardedMsg() только
+// собирала копию для localStorage отправителя, doForward() ни разу не
+// обращался к серверу. Пересланное сообщение никогда не доходило до
+// собеседника вообще (классический для этого проекта баг "работает только
+// у того, кто нажал"). Исправлено 24 июля 2026, заодно с реальным счётчиком
+// пересылок (как в Telegram) — см. src/routes/messages.js.
+
+// Тело запроса на сервер — тот же набор полей, что уже шлёт обычная
+// отправка (retryAttachmentMsg/retrySimpleMsg), просто источник данных —
+// уже загруженный на сервер файл исходного сообщения, а не новая загрузка.
+function buildForwardPostBody(m, hideAuthor){
+  const body={text:m.tx||"", forwardedFromId:m.dbId||null, hideForwardAuthor:!!hideAuthor};
+  if(m.t==="sk"){ body.text=m.sk; body.type="sticker"; }
+  else if(m.img){ body.mediaUrl=m.img; body.mediaType="image"; if(m.spoiler) body.spoiler=true; }
+  else if(m.video){ body.mediaUrl=m.video; body.mediaType="video"; if(m.spoiler) body.spoiler=true; }
+  else if(m.videoCircle){ body.mediaUrl=m.videoCircle.url; body.mediaType="videoCircle"; }
+  else if(m.voice){ body.mediaUrl=m.voice.url; body.mediaType="voice"; body.waveform=m.voice.waveform||null; body.fileSize=m.voice.size||0; }
+  else if(m.audio){ body.mediaUrl=m.audio.url; body.mediaType="audio"; body.fileName=m.audio.name||null; }
+  else if(m.file){ body.mediaUrl=m.file.url; body.mediaType="file"; body.fileName=m.file.name||null; }
+  else if(m.contact){ body.contact=m.contact; }
+  return body;
+}
+
+// Локальная копия для мгновенного отображения у самого отправителя, пока
+// идёт запрос к серверу — то же содержимое, что и buildForwardPostBody(),
+// просто в форме, которую понимает renderMsgs().
 function buildForwardedMsg(m, hideAuthor, srcChat){
   const tm=now();
   const msg={id:nextId(),t:"out",time:tm,read:false};
@@ -8285,36 +8337,90 @@ function buildForwardedMsg(m, hideAuthor, srcChat){
   if(m.contact) msg.contact=m.contact;
   if(m.sk){ msg.t="sk"; msg.sk=m.sk; }
   if(!hideAuthor){
-    const authorName = m.t==="out" ? (S.user?.name||"Вы") : (srcChat?.nm||"Пользователь");
-    const authorCol = m.t==="out" ? 0 : (srcChat?.col||0);
+    // Пересылаем уже пересланное — берём ПЕРВОИСТОЧНИК, не промежуточное
+    // звено (та же логика, что и на сервере, см. messages.js)
+    const authorName = m.fwd ? m.fwd.fromName : (m.t==="out" ? (S.user?.name||"Вы") : (srcChat?.nm||"Пользователь"));
+    const authorCol = m.fwd ? m.fwd.fromCol : (m.t==="out" ? 0 : (srcChat?.col||0));
     msg.fwd={fromName:authorName, fromCol:authorCol};
   }
   return msg;
 }
 
+// Реально отправляет пересланное сообщение на сервер + уведомляет участников
+// целевого чата по WS (как обычная отправка), и отдельно — участников
+// ИСХОДНОГО чата с обновлённым счётчиком пересылок на оригинале.
+async function sendForwardedMsg(localMsg, m, toId, toCh, hideAuthor, srcChatId){
+  const isRealTarget = typeof toId==="string" && toId.length>10;
+  if(!isRealTarget || !m.dbId){
+    // Демо-чат или сообщение без серверного id (совсем старые локальные
+    // данные) — реально отправить некуда, помечаем как неотправленное,
+    // а не тихо притворяемся, что всё получилось.
+    if(!m.dbId){ localMsg.failed=true; if(S.chat===toId) renderMsgs(); saveState(); }
+    return;
+  }
+  const body=buildForwardPostBody(m, hideAuthor);
+  body.chatId=toId;
+  try{
+    const d=await apiPost("/api/messages", body, true);
+    if(!d || !d.success){ localMsg.failed=true; if(S.chat===toId) renderMsgs(); saveState(); return; }
+    const dbId=d?.message?.id||null;
+    if(dbId){ localMsg.dbId=dbId; saveState(); }
+    const memberIds=getChatMemberIds(toCh);
+    const wsMemberIds = d.blockedFromRecipientId ? memberIds.filter(id=>id!==d.blockedFromRecipientId) : memberIds;
+    wsSendReliable({type:"message.send", payload:{
+      chatId:toId, memberIds:wsMemberIds, id:dbId,
+      text:body.text, mediaUrl:body.mediaUrl||null, mediaType:body.mediaType||null,
+      fileName:body.fileName||null, fileSize:body.fileSize||null, spoiler:body.spoiler||false, waveform:body.waveform||null,
+      contact:body.contact||null, msgType:body.type||"text",
+      senderName:S.user?.name||"", senderAvatar:S.user?.avatar||"", senderStatusEmoji:S.user?.statusEmoji||"", senderNameColor:S.user?.nameColor||""
+    }});
+    if(typeof d.sourceForwardCount==="number"){
+      const srcM=(S.messages[srcChatId]||[]).find(x=>x.dbId===m.dbId);
+      if(srcM){ srcM.forwardCount=d.sourceForwardCount; saveState(); if(S.chat===srcChatId) renderMsgs(); }
+      const srcCh=S.chats.find(c=>c.id===srcChatId);
+      if(srcCh){
+        const srcMemberIds=getChatMemberIds(srcCh);
+        wsSendReliable({type:"message.forwarded", payload:{chatId:srcChatId, messageId:m.dbId, forwardCount:d.sourceForwardCount, memberIds:srcMemberIds}});
+      }
+    }
+  }catch(e){
+    console.warn("forward send error:", e);
+    localMsg.failed=true; if(S.chat===toId) renderMsgs(); saveState();
+  }
+}
+
 function doForward(toId){
   if(!S.messages[toId])S.messages[toId]=[];
   const tm=now();
-  const srcMsgs=S.messages[S.chat]||[];
-  const srcChat=S.chats.find(c=>c.id===S.chat);
+  const srcChatId=S.chat;
+  const srcMsgs=S.messages[srcChatId]||[];
+  const srcChat=S.chats.find(c=>c.id===srcChatId);
+  const toCh=S.chats.find(c=>c.id===toId);
   const hideAuthor=el("fwd-hide-author")?.classList.contains("on");
   // Множественная пересылка
   if(S.fwdMultiple && S.fwdMultiple.length){
     let cnt=0;
     S.fwdMultiple.forEach(id=>{
       const m=srcMsgs.find(x=>x.id===id);
-      if(m){ S.messages[toId].push(buildForwardedMsg(m,hideAuthor,srcChat)); cnt++; }
+      if(m){
+        const localMsg=buildForwardedMsg(m,hideAuthor,srcChat);
+        S.messages[toId].push(localMsg);
+        sendForwardedMsg(localMsg, m, toId, toCh, hideAuthor, srcChatId);
+        cnt++;
+      }
     });
     S.fwdMultiple=null;
-    const ch=S.chats.find(c=>c.id===toId); if(ch){ch.prev="↪️ Пересланное";ch.time=tm;ch.lastTs=Date.now();}
-    closeM("m-forward"); renderChats(); saveState(); showToast(`↪️ Переслано (${cnt}) в «${ch?.nm||"чат"}»`);
+    if(toCh){toCh.prev="↪️ Пересланное";toCh.time=tm;toCh.lastTs=Date.now();}
+    closeM("m-forward"); if(S.chat===toId) renderMsgs(); renderChats(); saveState(); showToast(`↪️ Переслано (${cnt}) в «${toCh?.nm||"чат"}»`);
     return;
   }
   // Одиночная пересылка
   const m=srcMsgs.find(x=>x.id===S.fwdId); if(!m)return;
-  S.messages[toId].push(buildForwardedMsg(m,hideAuthor,srcChat));
-  const ch=S.chats.find(c=>c.id===toId); if(ch){ch.prev="↪️ Пересланное";ch.time=tm;ch.lastTs=Date.now();}
-  closeM("m-forward"); renderChats(); saveState(); showToast("↪️ Переслано в «"+(ch?.nm||"чат")+"»");
+  const localMsg=buildForwardedMsg(m,hideAuthor,srcChat);
+  S.messages[toId].push(localMsg);
+  sendForwardedMsg(localMsg, m, toId, toCh, hideAuthor, srcChatId);
+  if(toCh){toCh.prev="↪️ Пересланное";toCh.time=tm;toCh.lastTs=Date.now();}
+  closeM("m-forward"); if(S.chat===toId) renderMsgs(); renderChats(); saveState(); showToast("↪️ Переслано в «"+(toCh?.nm||"чат")+"»");
 }
 
 // ── CALLS ──────────────────────────────────────────────────
