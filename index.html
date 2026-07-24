@@ -4552,7 +4552,7 @@ function renderMsgs(){
   renderRightPanelMedia(curCh);
   let prevGroupKey=null;
   buildRenderList((S.messages[S.chat]||[]).filter(m=>!m._deletedForAll && !m._deletedForMe)).forEach(m=>{
-    if(m.t==="date"){const d=document.createElement("div");d.className="ddiv";d.innerHTML=`<span>${m.ts?getDateLabel(m.ts):m.tx}</span>`;c.appendChild(d);prevGroupKey=null;return;}
+    if(m.t==="date"){const d=document.createElement("div");d.className="ddiv";d.innerHTML=`<span>${m.ts?getDateLabel(m.ts):escHtml(m.tx)}</span>`;c.appendChild(d);prevGroupKey=null;return;}
     if(m.t==="sys"){const s=document.createElement("div");s.className="sysmsg";s.textContent=m.tx;c.appendChild(s);prevGroupKey=null;return;}
     const isOut=(m.t==="out"||(m.t==="gift"&&m.out)||(m.t==="sk"&&m.out));
     // Группировка подряд идущих сообщений одного автора, как в Telegram —
@@ -4606,7 +4606,7 @@ function renderMsgs(){
       } else if(m.t!=="out" && curCh?.type==="channels" && !m.asChannel && !groupsWithPrev){
         bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${colBg(m.col||0)}">${escHtml(curCh.nm||"Канал")}</div>`;
       }
-      if(m.asChannel)bc+=`<div class="as-channel-tag"><div class="sas-av" style="background:${colBg(m.asChannel.col)};width:18px;height:18px;font-size:9px">${m.asChannel.ini}</div>📢 ${m.asChannel.nm}</div>`;
+      if(m.asChannel)bc+=`<div class="as-channel-tag"><div class="sas-av" style="background:${colBg(m.asChannel.col)};width:18px;height:18px;font-size:9px">${escHtml(m.asChannel.ini)}</div>📢 ${escHtml(m.asChannel.nm)}</div>`;
       // Раньше имя было просто текстом. Как в Telegram: если исходный пост
       // был из КАНАЛА — источник сам канал (не тот админ, что нажал
       // "опубликовать"), клик открывает/показывает канал. Иначе — источник
@@ -4619,7 +4619,7 @@ function renderMsgs(){
           : `startChatWithUser('${m.fwd.fromId}','${escHtml(m.fwd.fromName).replace(/'/g,"\\'")}',${m.fwd.fromCol||0})`;
         bc+=`<div class="as-channel-tag" style="opacity:.8${clickable?";cursor:pointer":""}"${clickable?` onclick="event.stopPropagation();${clickJS}"`:""}>↪️ Переслано от <b style="margin-left:3px${clickable?";text-decoration:underline":""}">${escHtml(m.fwd.fromName)}</b></div>`;
       }
-      if(m.reply)bc+=`<div class="rprev"><div class="rprevnm">${m.reply.fr}</div><div class="rprevtx">${m.reply.tx}</div></div>`;
+      if(m.reply)bc+=`<div class="rprev"><div class="rprevnm">${escHtml(m.reply.fr)}</div><div class="rprevtx">${escHtml(m.reply.tx)}</div></div>`;
       if(m.img){
         const isSp=m.spoiler && !m.spoilerRevealed;
         bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${m.img}" loading="lazy" ${m.uploading?"":(isSp?`onclick="revealSpoiler(${m.id})"`:`onclick="openImgViewer('${m.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
@@ -4712,6 +4712,7 @@ function renderMsgs(){
     }
     row.innerHTML=h; c.appendChild(row);
   });
+  emojifyEl(c);
   if(wasAtBottom){
     c.scrollTop=c.scrollHeight;
     hideScrollDownBtn();
