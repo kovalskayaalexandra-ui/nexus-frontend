@@ -406,6 +406,16 @@ body.select-mode .msel-check{display:flex}
 .sndbtn:active{transform:scale(.97)}
 .char-count{font-size:10px;color:var(--tx3);align-self:center;min-width:28px;text-align:right}
 
+/* Отклик на нажатие — раньше был только у .abtn и .sndbtn, из ~22 кнопок в
+   приложении. Централизованно: настоящие <button> ловятся автоматически,
+   плюс явно перечислены основные кликабельные <div>-"кнопки" (единой
+   системы кнопок пока нет — см. §6 аудита, это отдельная, более крупная
+   задача на будущее, здесь только отклик на нажатие). .sndbtn/.abtn
+   выше уже сами задают чуть другой масштаб — их :active побеждает по
+   специфичности, эта общая заготовка их не трогает. */
+button{transition:transform .1s}
+button:active,.nbtn:active,.fmt-btn:active,.call-btn:active{transform:scale(.96)}
+
 /* ═══ MEDIA PANEL ═══ */
 .mpanel{position:absolute;bottom:57px;right:0;left:0;background:var(--bg2);border-top:1px solid var(--brd);z-index:50;display:none;box-shadow:0 -4px 20px rgba(0,0,0,.3)}
 .mpanel.on{display:block}
@@ -493,6 +503,12 @@ body.select-mode .msel-check{display:flex}
 /* ═══ MODALS ═══ */
 .movl{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
 .movl.on{display:flex}
+/* Закрытие модалки — то же плавное появление (fadeUp), проигранное в
+   обратном порядке, вместо мгновенного исчезновения. closeM() добавляет
+   класс closing, ждёт длительность анимации и только потом снимает on —
+   see closeM() ниже. */
+@keyframes fadeDown{from{opacity:1;transform:none}to{opacity:0;transform:translateY(14px)}}
+.movl .modal.closing{animation:fadeDown .18s ease-in forwards}
 .msg-img-wrap{position:relative;margin-bottom:4px;border-radius:12px;overflow:hidden;max-width:260px}
 .msg-img{display:block;width:100%;max-height:320px;object-fit:cover;border-radius:12px;cursor:pointer}
 .msg-img-wrap.uploading .msg-img{filter:brightness(.5)}
@@ -569,7 +585,14 @@ body.select-mode .msel-check{display:flex}
 
 /* ═══ PROFILE SCREEN ═══ */
 .screen{display:none;position:fixed;inset:0;z-index:400;flex-direction:column;background:var(--bg)}
-.screen.on{display:flex}
+/* Переход в Настройки/Контакты/Админку и т.п. — раньше вообще без анимации
+   в обе стороны (просто display:none↔flex). closeScreen() ниже работает
+   по той же схеме, что и closeM() для модалок — closing играет reverse-
+   анимацию, потом снимается on. */
+@keyframes screenIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes screenOut{from{opacity:1;transform:none}to{opacity:0;transform:translateY(16px)}}
+.screen.on{display:flex;animation:screenIn .22s ease-out}
+.screen.closing{display:flex;animation:screenOut .18s ease-in forwards}
 .settings-body{flex:1;overflow-y:auto;padding:24px;max-width:680px;width:100%;margin:0 auto}
 .settings-section{background:var(--bg2);border:1px solid var(--brd);border-radius:14px;margin-bottom:var(--sp-4);overflow:hidden}
 .settings-section-title{font-weight:700;font-size:var(--fs-2);letter-spacing:1.2px;text-transform:uppercase;
@@ -3869,9 +3892,9 @@ function setLang(code){
 
 // ── SCREENS ──────────────────────────────────────────────────────
 function openStore(){ el("screen-store").classList.add("on"); renderStore(); }
-function closeStore(){ el("screen-store").classList.remove("on"); }
+function closeStore(){ closeScreen("screen-store"); }
 function openAdmin(){ el("screen-admin").classList.add("on"); initAdmin(); }
-function closeAdmin(){ el("screen-admin").classList.remove("on"); }
+function closeAdmin(){ closeScreen("screen-admin"); }
 function openSettings(){
   el("screen-settings").classList.add("on");
   const u=S.user;
@@ -3904,9 +3927,9 @@ function openSettings(){
   if(el("theme-sel"))el("theme-sel").value=S.theme||"dark";
   applyLang();
 }
-function closeSettings(){ el("screen-settings").classList.remove("on"); }
+function closeSettings(){ closeScreen("screen-settings"); }
 function openContacts(){ el("screen-contacts").classList.add("on"); renderContacts(); }
-function closeContacts(){ el("screen-contacts").classList.remove("on"); }
+function closeContacts(){ closeScreen("screen-contacts"); }
 
 // ── BALANCE ──────────────────────────────────────────────────────
 function updBal(){
@@ -8576,7 +8599,27 @@ function showNotif(chat, previewText){
 
 // ── TOAST ──────────────────────────────────────────────────
 function showToast(msg){ const t=document.createElement("div"); t.style.cssText="background:var(--bg3);border:1px solid var(--brd2);border-radius:999px;padding:7px 17px;font-size:12.5px;color:var(--tx);box-shadow:0 8px 32px rgba(0,0,0,.5);pointer-events:none;animation:fadeUp .2s ease-out"; t.textContent=msg; el("tc").appendChild(t); setTimeout(()=>t.remove(),2200); }
-function closeM(id){ el(id)&&el(id).classList.remove("on"); }
+// Симметричное закрытие: играем fadeDown в обратном порядке от открытия,
+// и только когда анимация реально закончилась — снимаем on (иначе
+// display:none оборвал бы её на середине). Модалки без .modal (видео-
+// кружочек, редактор сторис и т.п. — своя разметка на весь экран) просто
+// закрываются как раньше, мгновенно, у них и открытие без анимации.
+function closeM(id){
+  const wrap=el(id); if(!wrap) return;
+  const box=wrap.querySelector(".modal");
+  if(!box){ wrap.classList.remove("on"); return; }
+  box.classList.add("closing");
+  setTimeout(()=>{ wrap.classList.remove("on"); box.classList.remove("closing"); }, 180);
+}
+// Тот же приём для полноэкранных разделов (Настройки/Контакты/Админка и
+// т.д.) — используется в closeSettings()/closeContacts()/closeAdmin()/
+// closeStore()/closeVIP()/closeGifts()/closeStories() ниже. Экран звонка
+// (call-screen) сюда не входит — у него своя, отдельная от .screen вёрстка.
+function closeScreen(id){
+  const s=el(id); if(!s) return;
+  s.classList.add("closing");
+  setTimeout(()=>{ s.classList.remove("on"); s.classList.remove("closing"); }, 180);
+}
 
 // ── STORE ──────────────────────────────────────────────────
 function renderStore(){
@@ -9641,7 +9684,7 @@ function openVIP(){
   renderVIPScreen();
   el("screen-vip").classList.add("on");
 }
-function closeVIP(){ el("screen-vip").classList.remove("on"); }
+function closeVIP(){ closeScreen("screen-vip"); }
 
 function renderVIPScreen(){
   // plans
@@ -9878,7 +9921,7 @@ function viewFriendStories(userId){
   el("screen-stories").classList.add("on");
   startStoryTimer();
 }
-function closeStories(){ el("screen-stories").classList.remove("on"); clearInterval(storyState.timer); pauseStoryVideo(); }
+function closeStories(){ closeScreen("screen-stories"); clearInterval(storyState.timer); pauseStoryVideo(); }
 
 function pauseStoryVideo(){ const v=el("story-media-video"); if(v) v.pause(); }
 
@@ -10631,7 +10674,7 @@ function openGifts(recipientName){
   renderGiftInventory();
   el("screen-gifts").classList.add("on");
 }
-function closeGifts(){ el("screen-gifts").classList.remove("on"); }
+function closeGifts(){ closeScreen("screen-gifts"); }
 
 function renderGiftsCatalog(rarity){
   // Сортируем: легендарные первыми (как в Telegram — лимитированные сверху)
