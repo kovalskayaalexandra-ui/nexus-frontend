@@ -500,6 +500,11 @@ button:active,.nbtn:active,.fmt-btn:active,.call-btn:active{transform:scale(.96)
 .ctx.has-media .ctx-media-item{display:flex}
 .ctx.has-selection .ctxi.ctx-bulk-item{display:flex}
 .ctx.has-selection .ctxsep.ctx-bulk-item{display:block}
+/* Защита от пересылки — не прячем пункт целиком (это НЕ "фичи не существует
+   в принципе", а "владелец канала сейчас её запретил") — тот же приём, что
+   уже используется у голосовых/видео, заблокированных приватностью
+   собеседника, см. applyVoiceVideoRestriction() и правило в памяти. */
+.ctx.fwd-protected .ctx-fwd-item{opacity:.4;cursor:not-allowed;pointer-events:none}
 
 /* ═══ RXNS PICKER ═══ */
 .rxn-picker{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:999px;padding:5px 8px;z-index:1001;display:none;align-items:center;gap:4px;box-shadow:0 8px 32px rgba(0,0,0,.5)}
@@ -1590,7 +1595,7 @@ tr:hover td{background:var(--bg3)}
 <!-- ══ CTX MENU ══ -->
 <div class="ctx" id="ctx">
   <div class="ctxi ctx-bulk-item" onclick="selCopyAll()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="13" rx="1.5"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h3"/></svg> Скопировать выделенные</div>
-  <div class="ctxi ctx-bulk-item" onclick="selForwardAll()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6"/><path d="M3 8v3a4 4 0 0 0 4 4h12"/></svg> Переслать выделенные</div>
+  <div class="ctxi ctx-bulk-item ctx-fwd-item" onclick="selForwardAll()" id="ctx-forward-bulk-item"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6"/><path d="M3 8v3a4 4 0 0 0 4 4h12"/></svg> Переслать выделенные</div>
   <div class="ctxi ctx-bulk-item rd" onclick="selDeleteForMe()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg> Удалить выделенные у меня</div>
   <div class="ctxi ctx-bulk-item rd" onclick="selDeleteAll()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg> Удалить выделенные у всех</div>
   <div class="ctxsep ctx-bulk-item"></div>
@@ -1599,7 +1604,7 @@ tr:hover td{background:var(--bg3)}
   <div class="ctxi ctx-media-item" onclick="ctxDownload()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Скачать</div>
   <div class="ctxi" onclick="ctxCopy()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="13" rx="1.5"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h3"/></svg> Копировать</div>
   <div class="ctxi" onclick="ctxPin()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 15v5"/></svg> Закрепить</div>
-  <div class="ctxi" onclick="ctxForward()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6"/><path d="M3 8v3a4 4 0 0 0 4 4h12"/></svg> Переслать</div>
+  <div class="ctxi ctx-fwd-item" onclick="ctxForward()" id="ctx-forward-item"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6"/><path d="M3 8v3a4 4 0 0 0 4 4h12"/></svg> Переслать</div>
   <div class="ctxi" onclick="ctxSaveToFav()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l2.7 5.9 6.3.6-4.7 4.3 1.3 6.2L12 17l-5.6 3 1.3-6.2-4.7-4.3 6.3-.6z"/></svg> В Избранное</div>
   <div class="ctxi" onclick="ctxSelect()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12l2.5 2.5L16 9"/></svg> Выделить</div>
   <div class="ctxi" onclick="ctxReact(event)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 10h.01M15.5 10h.01"/><path d="M8 14.5c1.2 1.3 2.6 2 4 2s2.8-.7 4-2"/></svg> Реакция</div>
@@ -1823,6 +1828,10 @@ tr:hover td{background:var(--bg3)}
   <div class="perm-row" id="chset-signmsg-row">
     <span class="perm-label">Подпись автора<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Показывать имя того, кто опубликовал пост, рядом со временем (как в Telegram)</div></span>
     <div class="perm-tgl" id="chset-signmessages" onclick="toggleSignMessages(this)"></div>
+  </div>
+  <div class="perm-row" id="chset-fwdprotect-row">
+    <span class="perm-label">Защита от пересылки<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Никто не сможет переслать отсюда сообщения в другие чаты</div></span>
+    <div class="perm-tgl" id="chset-forwardprotection" onclick="toggleForwardProtection(this)"></div>
   </div>
   <div class="perm-row" id="chset-restrict-row">
     <span class="perm-label">Только админы могут писать<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Остальные участники смогут только читать (как в Telegram)</div></span>
@@ -2472,7 +2481,7 @@ function wsHandleMessage(msg){
       break;
 
     case "message.new": {
-      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, fileSize, poll, contact, spoiler, waveform, gift, msgType, asChannel, senderName, senderAvatar, senderStatusEmoji, senderNameColor, forwardAuthorName, forwardAuthorId } = msg.payload;
+      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, fileSize, poll, contact, spoiler, waveform, gift, msgType, asChannel, senderName, senderAvatar, senderStatusEmoji, senderNameColor, forwardAuthorName, forwardAuthorId, forwardFromChatId, forwardFromChatType, forwardFromChatName, forwardFromChatAvatar } = msg.payload;
       // Не добавляем своё же сообщение (оно уже есть локально)
       if(senderId === S.user?.id) break;
       // Защита от "пустых" сообщений (например, если у собеседника не удалась загрузка файла)
@@ -2551,7 +2560,11 @@ function wsHandleMessage(msg){
       };
       // "Переслано от X" — раньше вообще не долетало вживую (только после
       // перезагрузки чата), см. комментарий у forwardAuthorName в index.js
-      if(forwardAuthorName) newMsg.fwd={fromName:forwardAuthorName, fromCol:colorFromId(forwardAuthorId), fromId:forwardAuthorId||null};
+      if(forwardFromChatType==="channels"){
+        newMsg.fwd={fromName:forwardFromChatName||"Канал", fromCol:colorFromId(forwardFromChatId), fromAvatar:forwardFromChatAvatar||null, fromType:"channel", fromChatId:forwardFromChatId};
+      } else if(forwardAuthorName){
+        newMsg.fwd={fromName:forwardAuthorName, fromCol:colorFromId(forwardAuthorId), fromId:forwardAuthorId||null, fromType:"user"};
+      }
       if(msgType==="e2e"){
         // 🔒 Расшифровка асинхронная (Web Crypto) — сообщение уже создано и
         // будет показано с плейсхолдером, текст подставится, как только
@@ -2726,7 +2739,7 @@ function wsHandleMessage(msg){
     }
 
     case "chat.updated": {
-      const { chatId, name, description, avatar, username, restrictSendMessages, reactionsEnabled, allowedReactions, isPrivate, signMessages } = msg.payload;
+      const { chatId, name, description, avatar, username, restrictSendMessages, reactionsEnabled, allowedReactions, isPrivate, signMessages, forwardProtection } = msg.payload;
       const ch=S.chats.find(c=>c.id===chatId);
       if(ch){
         if(name){ ch.nm=name; ch.ini=name.slice(0,2).toUpperCase(); }
@@ -2740,6 +2753,7 @@ function wsHandleMessage(msg){
         if(allowedReactions!==undefined) ch.allowedReactions=allowedReactions;
         if(isPrivate!==undefined) ch.isPrivate=isPrivate;
         if(signMessages!==undefined) ch.signMessages=signMessages;
+        if(forwardProtection!==undefined) ch.forwardProtection=forwardProtection;
         if(S.chat===chatId){
           if(el("chnm")) el("chnm").innerHTML=escHtml(chatDisplayName(ch))+vipBadgeHTML(ch)+verifiedBadgeHTML(ch);
           updateChatAvatarDisplays(ch);
@@ -3753,6 +3767,7 @@ async function loadChatsFromDB(){
         existing.reactionsEnabled = dbChat.reactions_enabled!==false;
         existing.allowedReactions = dbChat.allowed_reactions||[];
         existing.signMessages = !!dbChat.sign_messages;
+        existing.forwardProtection = !!dbChat.forward_protection;
         existing.isPrivate = !!dbChat.is_private;
         // Закреп/мьют/архив — раньше были чисто локальными, теперь синхронизируются с сервера
         existing.pinned = !!dbChat.pinned;
@@ -3783,6 +3798,7 @@ async function loadChatsFromDB(){
           reactionsEnabled: dbChat.reactions_enabled!==false,
           allowedReactions: dbChat.allowed_reactions||[],
           signMessages: !!dbChat.sign_messages,
+          forwardProtection: !!dbChat.forward_protection,
           isPrivate: !!dbChat.is_private,
           withUserId: otherUser ? otherUser.userId : undefined,
           memberIds: !isPersonal ? others.map(m => m.userId) : undefined,
@@ -3880,10 +3896,17 @@ async function loadMessagesFromDB(chatId){
         read: isMe ? !!dbMsg.read_at : true,
         edited: !!dbMsg.edited_at
       };
-      // forwarded_author_name уже приходит пустым с сервера, если автор
-      // пересылки был скрыт (см. GET /api/messages/:chatId) — здесь просто
-      // отражаем то, что сервер решил показать, а не решаем это на фронте
-      if(dbMsg.forwarded_author_name) m.fwd={fromName:dbMsg.forwarded_author_name, fromCol:colorFromId(dbMsg.forwarded_author_id), fromId:dbMsg.forwarded_author_id||null};
+      // forwarded_author_name/forwarded_from_chat_* приходят пустыми с сервера,
+      // если автор пересылки был скрыт (см. GET /api/messages/:chatId) — здесь
+      // просто отражаем то, что сервер решил показать, а не решаем на фронте.
+      // Пересланный ПОСТ КАНАЛА — источник сам канал (Telegram показывает
+      // "Переслано от [Канал]", а не от админа, который нажал "опубликовать"),
+      // иначе — обычный человек-автор.
+      if(dbMsg.forwarded_from_chat_type==="channels"){
+        m.fwd={fromName:dbMsg.forwarded_from_chat_name||"Канал", fromCol:colorFromId(dbMsg.forwarded_from_chat_id), fromAvatar:dbMsg.forwarded_from_chat_avatar||null, fromType:"channel", fromChatId:dbMsg.forwarded_from_chat_id, fromPrivate:!!dbMsg.forwarded_from_chat_private};
+      } else if(dbMsg.forwarded_author_name){
+        m.fwd={fromName:dbMsg.forwarded_author_name, fromCol:colorFromId(dbMsg.forwarded_author_id), fromId:dbMsg.forwarded_author_id||null, fromType:"user"};
+      }
       // Реакции приходят с сервера построчно (кто, каким эмодзи) —
       // сворачиваем в формат {эмодзи, счётчик, моя ли} для отрисовки
       if(dbMsg.reactions && dbMsg.reactions.length){
@@ -4534,13 +4557,17 @@ function renderMsgs(){
         bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${colBg(m.col||0)}">${escHtml(curCh.nm||"Канал")}</div>`;
       }
       if(m.asChannel)bc+=`<div class="as-channel-tag"><div class="sas-av" style="background:${colBg(m.asChannel.col)};width:18px;height:18px;font-size:9px">${m.asChannel.ini}</div>📢 ${m.asChannel.nm}</div>`;
-      // Раньше имя было просто текстом — как в Telegram, кликабельно, если
-      // знаем настоящего автора (fromId). Открывает переписку с ним (сам
-      // человек, не канал/группа целиком — см. NEXUS_PROJECT_NOTES.md,
-      // почему полноценная ссылка на канал-источник это отдельная задача).
+      // Раньше имя было просто текстом. Как в Telegram: если исходный пост
+      // был из КАНАЛА — источник сам канал (не тот админ, что нажал
+      // "опубликовать"), клик открывает/показывает канал. Иначе — источник
+      // человек, клик открывает переписку с ним.
       if(m.fwd){
-        const clickable = m.fwd.fromId && m.fwd.fromId!==S.user?.id;
-        bc+=`<div class="as-channel-tag" style="opacity:.8${clickable?";cursor:pointer":""}"${clickable?` onclick="event.stopPropagation();startChatWithUser('${m.fwd.fromId}','${escHtml(m.fwd.fromName).replace(/'/g,"\\'")}',${m.fwd.fromCol||0})"`:""}>↪️ Переслано от <b style="margin-left:3px${clickable?";text-decoration:underline":""}">${escHtml(m.fwd.fromName)}</b></div>`;
+        const isChanSrc = m.fwd.fromType==="channel";
+        const clickable = isChanSrc ? !!m.fwd.fromChatId : (m.fwd.fromId && m.fwd.fromId!==S.user?.id);
+        const clickJS = isChanSrc
+          ? `openForwardSourceChat('${m.fwd.fromChatId}','${escHtml(m.fwd.fromName).replace(/'/g,"\\'")}',${m.fwd.fromPrivate?"true":"false"})`
+          : `startChatWithUser('${m.fwd.fromId}','${escHtml(m.fwd.fromName).replace(/'/g,"\\'")}',${m.fwd.fromCol||0})`;
+        bc+=`<div class="as-channel-tag" style="opacity:.8${clickable?";cursor:pointer":""}"${clickable?` onclick="event.stopPropagation();${clickJS}"`:""}>↪️ Переслано от <b style="margin-left:3px${clickable?";text-decoration:underline":""}">${escHtml(m.fwd.fromName)}</b></div>`;
       }
       if(m.reply)bc+=`<div class="rprev"><div class="rprevnm">${m.reply.fr}</div><div class="rprevtx">${m.reply.tx}</div></div>`;
       if(m.img){
@@ -4770,6 +4797,13 @@ function openChannelSettings(){
   const signRow=el("chset-signmsg-row");
   if(signRow) signRow.style.display = isChannel ? "flex" : "none";
   if(el("chset-signmessages")) el("chset-signmessages").classList.toggle("on", !!ch.signMessages);
+  // Защита от пересылки — доступна и каналу, и группе (тот же тумблер
+  // "Приватный чат" уже общий для обоих), но только если чат приватный —
+  // для публичного чата защищать пересылку не имеет смысла, его и так
+  // может открыть кто угодно по ссылке
+  const fwdProtectRow=el("chset-fwdprotect-row");
+  if(fwdProtectRow) fwdProtectRow.style.display = ch.isPrivate ? "flex" : "none";
+  if(el("chset-forwardprotection")) el("chset-forwardprotection").classList.toggle("on", !!ch.forwardProtection);
   if(isChannel){
     el("chsettings-name").textContent="📢 "+ch.nm;
     if(!S.channelSettings[ch.id]) S.channelSettings[ch.id]={allowPostInChats:true};
@@ -4945,6 +4979,21 @@ async function toggleSignMessages(elm){
   showToast(newVal?"✅ Подпись автора включена":"Подпись автора выключена");
 }
 
+// Защита от пересылки — как в Telegram ("Запретить пересылку и сохранение").
+// Доступна и каналу, и группе — но только пока чат приватный (см. toggleChPrivate/
+// openChannelSettings). В отличие от "Скрыть автора" (решает пересылающий, для
+// КАЖДОЙ конкретной пересылки) — это решает владелец ЗАРАНЕЕ, за всех: если
+// включено, пересылка отсюда вообще недоступна никому. Настоящая блокировка —
+// на сервере (POST /api/messages), тумблер здесь просто её включает/выключает.
+async function toggleForwardProtection(elm){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch) return;
+  const newVal=!ch.forwardProtection;
+  elm.classList.toggle("on", newVal);
+  const ok = await saveChatSettingField(ch, {forwardProtection:newVal});
+  if(!ok){ elm.classList.toggle("on", !newVal); return; }
+  showToast(newVal?"🔒 Пересылка отсюда запрещена":"Пересылка отсюда разрешена");
+}
+
 async function toggleChPrivate(elm){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch) return;
   const newVal=!ch.isPrivate;
@@ -4952,6 +5001,18 @@ async function toggleChPrivate(elm){
   const ok = await saveChatSettingField(ch, {isPrivate:newVal});
   if(!ok){ elm.classList.toggle("on", !newVal); return; }
   showToast(newVal?"🔒 Канал приватный":"🌍 Канал публичный");
+  // "Защита от пересылки" имеет смысл только для приватного чата — сразу
+  // показываем/прячем строку в этом же открытом окне настроек, не
+  // заставляя закрывать и открывать заново, чтобы увидеть появившийся пункт.
+  // Если чат перестал быть приватным — реально снимаем и саму защиту тоже
+  // (не только прячем тумблер), иначе она осталась бы включена "невидимо":
+  // пересылка продолжала бы блокироваться, а объясняющего тумблера уже нет.
+  const fwdProtectRow=el("chset-fwdprotect-row");
+  if(fwdProtectRow) fwdProtectRow.style.display = newVal ? "flex" : "none";
+  if(!newVal && ch.forwardProtection){
+    el("chset-forwardprotection")?.classList.remove("on");
+    await saveChatSettingField(ch, {forwardProtection:false});
+  }
 }
 
 function updateReactionsSummary(chatId){
@@ -6499,6 +6560,15 @@ function showCtx(e,id){
   const msgObj=(S.messages[S.chat]||[]).find(x=>x.id===id);
   const hasMedia=!!(msgObj && (msgObj.img||msgObj.video||msgObj.videoCircle||msgObj.voice||msgObj.audio||msgObj.file));
   m.classList.toggle("has-media", hasMedia);
+  // Защита от пересылки — владелец канала запретил пересылать вообще
+  // (настоящая блокировка на сервере тоже есть, см. POST /api/messages —
+  // здесь только UX, чтобы не молча получать ошибку после выбора чата)
+  const curChForCtx=S.chats.find(c=>c.id===S.chat);
+  const fwdProtected=!!curChForCtx?.forwardProtection;
+  m.classList.toggle("fwd-protected", fwdProtected);
+  const fwdTitle = fwdProtected ? "Владелец запретил пересылку из этого чата" : "";
+  const fwdItem=el("ctx-forward-item"); if(fwdItem) fwdItem.title=fwdTitle;
+  const fwdBulkItem=el("ctx-forward-bulk-item"); if(fwdBulkItem) fwdBulkItem.title=fwdTitle;
   // Координаты для мыши и для тача
   const x = e.clientX || (e.touches && e.touches[0]?.clientX) || (e.changedTouches && e.changedTouches[0]?.clientX) || window.innerWidth/2;
   const y = e.clientY || (e.touches && e.touches[0]?.clientY) || (e.changedTouches && e.changedTouches[0]?.clientY) || window.innerHeight/2;
@@ -8121,6 +8191,18 @@ async function startChatWithUser(userId, userName, col){
     }
   } catch(e){ showToast("❌ Не удалось создать чат"); }
 }
+// Клик по каналу-источнику пересланного поста. Полноценного "предпросмотра
+// чужого канала" (как в Telegram — превью постов + кнопка "Подписаться" не
+// вступая) у Nexus пока нет — это отдельная задача на будущее. Пока: если
+// уже состоишь в этом канале — просто открываем; если нет и канал закрытый —
+// честно говорим, что закрыт (как и просила Александра), а не тихо ничего
+// не делаем; если публичный, но не подписан — просим найти его в поиске.
+function openForwardSourceChat(chatId, name, isPrivate){
+  const ch = S.chats.find(c=>c.id===chatId);
+  if(ch){ openChat(ch.id); return; }
+  if(isPrivate){ showToast("🔒 «"+name+"» — закрытый канал, у вас нет доступа"); return; }
+  showToast("📢 «"+name+"» — вы не подписаны, найдите канал через поиск");
+}
 function openNewContact(){ closeContacts(); openNewChat(); }
 
 // ── NEW CHAT ──────────────────────────────────────────────────
@@ -8691,12 +8773,21 @@ function buildForwardedMsg(m, hideAuthor, srcChat){
   if(m.contact) msg.contact=m.contact;
   if(m.sk){ msg.t="sk"; msg.sk=m.sk; }
   if(!hideAuthor){
-    // Пересылаем уже пересланное — берём ПЕРВОИСТОЧНИК, не промежуточное
-    // звено (та же логика, что и на сервере, см. messages.js)
-    const authorName = m.fwd ? m.fwd.fromName : (m.t==="out" ? (S.user?.name||"Вы") : (srcChat?.nm||"Пользователь"));
-    const authorCol = m.fwd ? m.fwd.fromCol : (m.t==="out" ? 0 : (srcChat?.col||0));
-    const authorId = m.fwd ? m.fwd.fromId : (m.t==="out" ? S.user?.id : (m.authorId || srcChat?.withUserId || null));
-    msg.fwd={fromName:authorName, fromCol:authorCol, fromId:authorId||null};
+    if(m.fwd){
+      // Пересылаем уже пересланное — берём ПЕРВОИСТОЧНИК как есть (канал или
+      // человек, что бы там ни было), не промежуточное звено (та же логика,
+      // что и на сервере, см. messages.js)
+      msg.fwd={...m.fwd};
+    } else if(srcChat?.type==="channels"){
+      // Пересылаем пост НАПРЯМУЮ из канала — источник сам канал, а не
+      // конкретный админ, который его опубликовал (как в Telegram)
+      msg.fwd={fromName:srcChat.nm, fromCol:srcChat.col||0, fromAvatar:srcChat.avatar||null, fromType:"channel", fromChatId:srcChat.id, fromPrivate:!!srcChat.isPrivate};
+    } else {
+      const authorName = m.t==="out" ? (S.user?.name||"Вы") : (m.authorName || srcChat?.nm || "Пользователь");
+      const authorCol = m.t==="out" ? 0 : (m.col!=null ? m.col : (srcChat?.col||0));
+      const authorId = m.t==="out" ? S.user?.id : (m.authorId || srcChat?.withUserId || null);
+      msg.fwd={fromName:authorName, fromCol:authorCol, fromId:authorId||null, fromType:"user"};
+    }
   }
   return msg;
 }
@@ -8731,7 +8822,13 @@ async function sendForwardedMsg(localMsg, m, toId, toCh, hideAuthor, srcChatId){
       // Раньше "Переслано от X" не долетало собеседнику вживую — см. комментарий
       // у forwardAuthorName в index.js. Если автор скрыт (hideAuthor), localMsg.fwd
       // вообще не установлен (buildForwardedMsg) — тогда просто ничего не шлём.
-      forwardAuthorName: localMsg.fwd?.fromName || null, forwardAuthorId: localMsg.fwd?.fromId || null,
+      // Источник — канал (fromType==="channel") или человек, см. buildForwardedMsg.
+      forwardAuthorName: localMsg.fwd?.fromType==="user" ? localMsg.fwd?.fromName||null : null,
+      forwardAuthorId: localMsg.fwd?.fromType==="user" ? localMsg.fwd?.fromId||null : null,
+      forwardFromChatId: localMsg.fwd?.fromType==="channel" ? localMsg.fwd?.fromChatId||null : null,
+      forwardFromChatType: localMsg.fwd?.fromType==="channel" ? "channels" : null,
+      forwardFromChatName: localMsg.fwd?.fromType==="channel" ? localMsg.fwd?.fromName||null : null,
+      forwardFromChatAvatar: localMsg.fwd?.fromType==="channel" ? localMsg.fwd?.fromAvatar||null : null,
     }});
     if(typeof d.sourceForwardCount==="number"){
       const srcM=(S.messages[srcChatId]||[]).find(x=>x.dbId===m.dbId);
