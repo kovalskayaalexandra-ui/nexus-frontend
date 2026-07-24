@@ -254,10 +254,16 @@ button,input,textarea,select{font-family:inherit}
 .send-as-btn.active{background:rgba(108,99,255,.12);border-color:rgba(108,99,255,.4);color:var(--acc2);font-weight:500}
 .sas-av{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:600;flex-shrink:0}
 .as-channel-tag{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--acc2);margin-bottom:4px;opacity:.9}
-.spoiler{background:var(--tx2);color:transparent;border-radius:4px;padding:0 3px;cursor:pointer;transition:all .25s;filter:blur(0.3px);user-select:none;position:relative}
+.spoiler{background:var(--tx2);color:transparent;border-radius:4px;padding:0 3px;cursor:pointer;transition:background .25s,color .25s;user-select:none;position:relative;overflow:hidden}
 .spoiler::selection{background:transparent}
 .spoiler:not(.revealed){text-shadow:0 0 8px var(--tx1)}
-.spoiler.revealed{background:rgba(128,128,128,.15);color:inherit;cursor:auto;filter:none;text-shadow:none;user-select:text}
+/* Бегущий блик поверх спойлера — как в Telegram, текст/картинка не просто
+   притушены, а ещё и слегка "живут", пока не раскрыты */
+.spoiler:not(.revealed)::before{content:"";position:absolute;inset:0;
+  background:linear-gradient(115deg,transparent 0%,rgba(255,255,255,.45) 45%,rgba(255,255,255,.45) 55%,transparent 100%);
+  background-size:250% 100%;animation:spoilerShimmer 2.2s linear infinite}
+.spoiler.revealed{background:rgba(128,128,128,.15);color:inherit;cursor:auto;text-shadow:none;user-select:text}
+@keyframes spoilerShimmer{0%{background-position:150% 0}100%{background-position:-50% 0}}
 .format-bar{display:none;flex-direction:column;position:absolute;bottom:100%;left:12px;margin-bottom:6px;background:var(--bg1);border:1px solid var(--brd);border-radius:12px;padding:5px;gap:1px;box-shadow:0 10px 28px rgba(0,0,0,.35);z-index:50;min-width:180px}
 .format-bar.on{display:flex}
 .fmt-btn{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13.5px;color:var(--tx1);transition:.12s;user-select:none}
@@ -407,9 +413,14 @@ body.select-mode .msel-check{display:flex}
 .ap-name{font-size:12px;color:var(--tx1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
 .ap-spoiler{display:none;align-items:center;gap:5px;font-size:11px;color:var(--tx2);cursor:pointer;margin-top:3px}
 .ap-spoiler input{cursor:pointer}
-.msg-img-wrap.spoiler .msg-img{filter:blur(22px) brightness(.7)}
-.msg-video-wrap.spoiler .msg-video{filter:blur(22px) brightness(.7)}
-.spoiler-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;font-size:12px;font-weight:600;text-align:center;padding:0 14px;text-shadow:0 1px 4px rgba(0,0,0,.6)}
+.msg-img-wrap.spoiler .msg-img{filter:blur(26px) saturate(1.3) brightness(.8)}
+.msg-video-wrap.spoiler .msg-video{filter:blur(26px) saturate(1.3) brightness(.8)}
+/* Тот же бегущий блик, что и у текстового спойлера — иначе размытая
+   картинка просто выглядит "притушенной", а не как активный спойлер */
+.msg-img-wrap.spoiler::after,.msg-video-wrap.spoiler::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(115deg,transparent 0%,rgba(255,255,255,.22) 45%,rgba(255,255,255,.22) 55%,transparent 100%);
+  background-size:250% 100%;animation:spoilerShimmer 2.4s linear infinite}
+.spoiler-overlay{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;font-size:12px;font-weight:600;text-align:center;padding:0 14px;text-shadow:0 1px 4px rgba(0,0,0,.6)}
 .ibar{background:var(--bg2);border-top:1px solid var(--brd);padding:8px 11px;display:flex;align-items:flex-end;gap:6px;flex-shrink:0;position:relative}
 .attb{width:35px;height:35px;background:var(--bg3);border:1px solid var(--brd);border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);flex-shrink:0;position:relative}
 .attb:hover{background:var(--bg4);color:var(--acc2)}
@@ -1809,6 +1820,10 @@ tr:hover td{background:var(--bg3)}
     <span class="perm-label">Писать от имени канала в чатах<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Разрешить админам писать в личных чатах и группах от имени этого канала</div></span>
     <div class="perm-tgl" id="chset-allowpost" onclick="toggleChSetting('allowPostInChats',this)"></div>
   </div>
+  <div class="perm-row" id="chset-signmsg-row">
+    <span class="perm-label">Подпись автора<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Показывать имя того, кто опубликовал пост, рядом со временем (как в Telegram)</div></span>
+    <div class="perm-tgl" id="chset-signmessages" onclick="toggleSignMessages(this)"></div>
+  </div>
   <div class="perm-row" id="chset-restrict-row">
     <span class="perm-label">Только админы могут писать<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Остальные участники смогут только читать (как в Telegram)</div></span>
     <div class="perm-tgl" id="chset-restrict" onclick="toggleRestrictSendMessages(this)"></div>
@@ -2520,6 +2535,12 @@ function wsHandleMessage(msg){
         frAvatar: chIsChannel ? (ch?.avatar||null) : (senderAvatar||null),
         frStatusEmoji: chIsChannel ? null : (senderStatusEmoji||null),
         frNameColor: chIsChannel ? null : (senderNameColor||null),
+        // В отличие от frName (который специально пуст в канале — см.
+        // комментарий выше про "от лица канала"), authorName всегда несёт
+        // настоящего автора поста — нужен для опциональной подписи "Имя, время"
+        // внизу поста, если владелец канала включил её в настройках (см.
+        // ch.signMessages и рендер .mt в renderMsgs)
+        authorName: senderName || null,
         col: chIsChannel ? (ch?.col||0) : colorFromId(senderId),
         asChannel: asChannel || undefined,
         tx: text,
@@ -2701,7 +2722,7 @@ function wsHandleMessage(msg){
     }
 
     case "chat.updated": {
-      const { chatId, name, description, avatar, username, restrictSendMessages, reactionsEnabled, allowedReactions, isPrivate } = msg.payload;
+      const { chatId, name, description, avatar, username, restrictSendMessages, reactionsEnabled, allowedReactions, isPrivate, signMessages } = msg.payload;
       const ch=S.chats.find(c=>c.id===chatId);
       if(ch){
         if(name){ ch.nm=name; ch.ini=name.slice(0,2).toUpperCase(); }
@@ -2714,12 +2735,14 @@ function wsHandleMessage(msg){
         if(reactionsEnabled!==undefined) ch.reactionsEnabled=reactionsEnabled;
         if(allowedReactions!==undefined) ch.allowedReactions=allowedReactions;
         if(isPrivate!==undefined) ch.isPrivate=isPrivate;
+        if(signMessages!==undefined) ch.signMessages=signMessages;
         if(S.chat===chatId){
           if(el("chnm")) el("chnm").innerHTML=escHtml(chatDisplayName(ch))+vipBadgeHTML(ch)+verifiedBadgeHTML(ch);
           updateChatAvatarDisplays(ch);
           // Если сейчас смотрим именно этот чат — сразу прячем/возвращаем поле
           // ввода, не дожидаясь повторного открытия чата или перезагрузки.
           if(restrictSendMessages!==undefined) updateInputPermissionUI(ch);
+          if(signMessages!==undefined) renderMsgs(); // подпись авторов появляется/пропадает сразу
         }
         renderChats(); saveState();
       }
@@ -3711,6 +3734,7 @@ async function loadChatsFromDB(){
         // Реакции и приватность — раньше были чисто локальными (S.channelSettings)
         existing.reactionsEnabled = dbChat.reactions_enabled!==false;
         existing.allowedReactions = dbChat.allowed_reactions||[];
+        existing.signMessages = !!dbChat.sign_messages;
         existing.isPrivate = !!dbChat.is_private;
         // Закреп/мьют/архив — раньше были чисто локальными, теперь синхронизируются с сервера
         existing.pinned = !!dbChat.pinned;
@@ -3740,6 +3764,7 @@ async function loadChatsFromDB(){
           restrictSendMessages: !!dbChat.restrict_send_messages,
           reactionsEnabled: dbChat.reactions_enabled!==false,
           allowedReactions: dbChat.allowed_reactions||[],
+          signMessages: !!dbChat.sign_messages,
           isPrivate: !!dbChat.is_private,
           withUserId: otherUser ? otherUser.userId : undefined,
           memberIds: !isPersonal ? others.map(m => m.userId) : undefined,
@@ -3825,6 +3850,7 @@ async function loadMessagesFromDB(chatId){
         frAvatar: chIsChannel ? (ch?.avatar||null) : (dbMsg.sender_avatar||null),
         frStatusEmoji: chIsChannel ? null : (dbMsg.sender_status_emoji||null),
         frNameColor: chIsChannel ? null : (dbMsg.sender_name_color||null),
+        authorName: dbMsg.sender_name || null, // см. комментарий у authorName в обработчике WS message.new
         col: chIsChannel ? (ch?.col||0) : colorFromId(dbMsg.user_id),
         asChannel: dbMsg.as_channel || undefined,
         tx: dbMsg.text || "",
@@ -4570,7 +4596,12 @@ function renderMsgs(){
       // "message.forwarded" в wsHandleMessage), тот же приём, что и у
       // data-views-for.
       const fwdCountHTML = (m.forwardCount>0 && m.dbId) ? ` · <svg viewBox="0 0 24 24" width="10" height="10" style="vertical-align:-1px" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6"/><path d="M3 8v3a4 4 0 0 0 4 4h12"/></svg> <span data-fwdcount-for="${m.dbId}">${m.forwardCount.toLocaleString("ru")}</span>` : "";
-      bc+=`<div class="mt">${m.time||""}${viewsHTML}${fwdCountHTML}${m.t==="out"?ticksHTML(m):""}</div>`;
+      // Подпись автора — опционально для каналов (см. §"Подпись автора" в
+      // настройках канала, ch.signMessages). Наверху поста по-прежнему
+      // всегда сам канал (см. sender-name-tag выше) — подпись это ДОПОЛНЕНИЕ
+      // внизу рядом со временем, как в реальном Telegram, а не замена.
+      const signatureHTML = (curCh?.type==="channels" && curCh?.signMessages && m.authorName && !m.asChannel) ? `${escHtml(m.authorName)}, ` : "";
+      bc+=`<div class="mt">${signatureHTML}${m.time||""}${viewsHTML}${fwdCountHTML}${m.t==="out"?ticksHTML(m):""}</div>`;
       if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${r.e} ${r.c}</div>`).join("")}</div>`;
       if(m.crystalTotal>0)bc+=`<div class="rxns"><div class="rxn crystal-total-badge" onclick="quickAddCrystal(${m.id})" title="Нажмите, чтобы подарить ещё 1 💎">💎 ${m.crystalTotal.toLocaleString()}</div></div>`;
       if(m.edited)bc+='';
@@ -4708,6 +4739,11 @@ function openChannelSettings(){
   chSetAvatarFile = null;
 
   el("chset-allowpost-row").style.display = isChannel ? "flex" : "none";
+  // Подпись автора — только для каналов. В группе и так всегда виден
+  // настоящий автор каждого сообщения, скрывать/подписывать там нечего.
+  const signRow=el("chset-signmsg-row");
+  if(signRow) signRow.style.display = isChannel ? "flex" : "none";
+  if(el("chset-signmessages")) el("chset-signmessages").classList.toggle("on", !!ch.signMessages);
   if(isChannel){
     el("chsettings-name").textContent="📢 "+ch.nm;
     if(!S.channelSettings[ch.id]) S.channelSettings[ch.id]={allowPostInChats:true};
@@ -4867,6 +4903,20 @@ async function toggleReactionsEnabled(elm){
   if(!ok){ elm.classList.toggle("on", !newVal); return; }
   el("chset-reactions-picker-row").style.display=newVal?"block":"none";
   showToast(newVal?"✅ Реакции разрешены":"🔒 Реакции запрещены");
+}
+
+// Подпись автора поста — как в Telegram-каналах: если включена, под постом
+// рядом со временем добавляется настоящее имя того, кто именно опубликовал
+// (владелец/канал сам по себе всё равно всегда показывается наверху поста —
+// подпись это ДОПОЛНЕНИЕ, а не замена, см. рендер .mt в renderMsgs)
+async function toggleSignMessages(elm){
+  const ch=S.chats.find(c=>c.id===S.chat); if(!ch) return;
+  const newVal=!ch.signMessages;
+  elm.classList.toggle("on", newVal);
+  const ok = await saveChatSettingField(ch, {signMessages:newVal});
+  if(!ok){ elm.classList.toggle("on", !newVal); return; }
+  if(S.chat===ch.id) renderMsgs();
+  showToast(newVal?"✅ Подпись автора включена":"Подпись автора выключена");
 }
 
 async function toggleChPrivate(elm){
