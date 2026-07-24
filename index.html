@@ -239,8 +239,14 @@ button,input,textarea,select{font-family:inherit}
 .chnm:hover{color:var(--acc2)}
 .chst{font-size:11px;color:var(--gr)}
 .chst.off{color:var(--tx3)}
-.chst.typ{color:var(--acc2);animation:pl 1.2s ease-in-out infinite}
-@keyframes pl{0%,100%{opacity:1}50%{opacity:.35}}
+.chst.typ{color:var(--acc2)}
+/* Точки "печатает…" — раньше мигала прозрачность всей надписи целиком,
+   теперь как в Telegram/WhatsApp: сам текст статичен, прыгают только точки */
+.typing-dots{display:inline-flex;gap:2px;margin-left:3px;vertical-align:middle}
+.typing-dots span{width:4px;height:4px;border-radius:50%;background:currentColor;display:inline-block;animation:typingBounce 1.2s infinite ease-in-out}
+.typing-dots span:nth-child(2){animation-delay:.15s}
+.typing-dots span:nth-child(3){animation-delay:.3s}
+@keyframes typingBounce{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-3px);opacity:1}}
 .pinbar{background:rgba(108,99,255,.06);border-bottom:1px solid var(--brd);padding:5px 13px;display:flex;align-items:center;gap:7px;font-size:11.5px;cursor:pointer;flex-shrink:0}
 .send-as-row{padding:6px 13px 0;flex-shrink:0}
 .send-as-btn{display:flex;align-items:center;gap:7px;background:var(--bg3);border:1px solid var(--brd);border-radius:99px;padding:5px 12px 5px 5px;font-size:12px;color:var(--tx2);cursor:pointer;transition:.15s}
@@ -294,9 +300,21 @@ body.select-mode .msel-check{display:flex}
 .mrow.selected .msel-check{background:var(--acc);border-color:var(--acc)}
 .pintxt{color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
 .msgs{flex:1;overflow-y:auto;padding:14px 16px 6px;display:flex;flex-direction:column;gap:3px;background:var(--msgs-bg,transparent)}
+/* Раньше лента всегда прыгала вниз при любом изменении, даже читая историю
+   выше — теперь прокрутка вниз только если и так был внизу (см. renderMsgs),
+   иначе показываем эту всплывающую кнопку вместо принудительной прокрутки */
+.scroll-down-btn{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:60;
+  display:none;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--brd2);
+  border-radius:999px;padding:8px 16px;font-size:12.5px;font-weight:600;color:var(--tx);
+  cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.35);animation:fadeUp .2s ease-out}
+.scroll-down-btn:hover{background:var(--bg4);border-color:var(--acc)}
 .ddiv{text-align:center;margin:8px 0}
 .ddiv span{background:var(--bg3);border:1px solid var(--brd);padding:3px 11px;border-radius:999px;font-size:var(--fs-2);color:var(--tx3)}
 .mrow{display:flex;align-items:flex-end;gap:6px;max-width:74%;animation:mi .2s ease-out}
+/* Группировка подряд идущих сообщений одного автора — .mav у продолжения
+   прячется через visibility (не display), чтобы сохранить его ширину для
+   выравнивания пузырей, как в Telegram */
+.mrow.group-continue{margin-top:-2px}
 @keyframes mi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 .mrow.out{margin-left:auto;flex-direction:row-reverse}
 .mrow.in{margin-right:auto}
@@ -368,7 +386,7 @@ body.select-mode .msel-check{display:flex}
 .lnktitle{font-size:11.5px;font-weight:600;color:var(--acc2);margin-bottom:2px}
 .lnkdesc{font-size:10.5px;color:var(--tx2)}
 .draft-label{font-size:10px;color:var(--am);font-weight:600}
-.typing-label{color:var(--acc2);font-weight:600;animation:pl 1.2s ease-in-out infinite}
+.typing-label{color:var(--acc2);font-weight:600}
 
 /* ═══ INPUT BAR ═══ */
 .rstrip{display:none;padding:6px 13px 0;background:var(--bg2)}
@@ -1075,6 +1093,10 @@ tr:hover td{background:var(--bg3)}
       </div>
 
       <div class="msgs" id="msgs"></div>
+      <div class="scroll-down-btn" id="scroll-down-btn" onclick="scrollMsgsToBottom()" style="display:none">
+        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+        Новые сообщения
+      </div>
 
       <div class="mpanel" id="mpanel">
         <div class="mptabs">
@@ -2980,7 +3002,7 @@ function wsHandleMessage(msg){
       if(S.chat === chatId){
         // Собеседник печатает в открытом сейчас чате — обновляем статус в шапке
         const stEl = el("chst");
-        if(stEl){ stEl.textContent = "печатает..."; stEl.className = "chst typ"; }
+        if(stEl){ stEl.innerHTML = typingDotsHTML("печатает"); stEl.className = "chst typ"; }
         clearTimeout(wsTypingTimer);
         wsTypingTimer = setTimeout(() => {
           if(stEl){ stEl.textContent = "онлайн"; stEl.className = "chst"; }
@@ -3528,6 +3550,13 @@ function verifiedBadgeHTML(ch){
 // который на разных ОС/браузерах рисуется по-разному. fill="currentColor" —
 // подхватывает цвет из контекста (обычно var(--am), уже используемый для VIP).
 const VIP_STAR_SVG = `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 2.5l2.5 5.6 6.1.6-4.6 4.1 1.3 6-5.3-3.2-5.3 3.2 1.3-6-4.6-4.1 6.1-.6z"/></svg>`;
+// Индикатор "печатает" — раньше был просто пульсирующей прозрачностью всей
+// надписи целиком, теперь три прыгающих точки (как в Telegram/WhatsApp),
+// текст остаётся статичным. Общая функция — используется и в шапке чата
+// (#chst), и в превью списка чатов (.typing-label).
+function typingDotsHTML(label){
+  return `${label}<span class="typing-dots"><span></span><span></span><span></span></span>`;
+}
 function vipBadgeHTML(ch){
   if(!ch || !ch.peerVip) return "";
   return `<span class="vip-badge" title="VIP" style="display:inline-flex;vertical-align:middle;color:var(--am);margin:0 1px">${VIP_STAR_SVG}</span>`;
@@ -3989,7 +4018,7 @@ function renderChats(filter=""){
     d.innerHTML=`<div class="avwrap"><div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>${ch.online?'<div class="odot"></div>':""}</div>
     <div class="cinfo" style="flex:1;overflow:hidden">
       <div class="cnm"${ch.peerNameColor?` style="color:${ch.peerNameColor}"`:""}>${ch.nm}${ch.peerVip?` <span title="VIP" style="display:inline-flex;vertical-align:middle;color:var(--am)">${VIP_STAR_SVG}</span>`:""}${ch.peerStatusEmoji?' '+ch.peerStatusEmoji:""}${ch.muted?' <span style="font-size:10px;opacity:.5">🔇</span>':""}${verifiedBadgeHTML(ch)}</div>
-      <div class="cprev">${ch._typing?'<span class="typing-label">печатает...</span>':(ch.draft?'<span class="draft-label">Черновик: </span>'+ch.draft:ch.prev)}</div>
+      <div class="cprev">${ch._typing?`<span class="typing-label">${typingDotsHTML("печатает")}</span>`:(ch.draft?'<span class="draft-label">Черновик: </span>'+ch.draft:ch.prev)}</div>
     </div>
     <div class="cmeta">
       <div class="ctime">${ch.pinned?'<span class="pin-ico" title="Закреплено">📌</span>':""}${formatChatListTime(ch.lastTs) ?? ch.time}</div>
@@ -4372,16 +4401,46 @@ function buildRenderList(msgs){
   return out;
 }
 
+// Отслеживаем предыдущий отрисованный чат/счётчик сообщений — не сохраняется
+// между перезагрузками (обычные let-переменные), нужны только пока открыто приложение
+let _lastRenderedChat=null, _lastMsgCount={};
 function renderMsgs(){
-  const c=el("msgs"); c.innerHTML="";
+  const c=el("msgs");
+  const switchedChat=_lastRenderedChat!==S.chat;
+  // Раньше лента при ЛЮБОМ изменении (новое сообщение, реакция, правка)
+  // принудительно прыгала вниз, даже если человек читает историю выше.
+  // Запоминаем, был ли пользователь и так уже внизу (или это вообще другой
+  // чат — тогда всегда идём вниз), и на сколько он был выше низа — чтобы
+  // после полной перерисовки списка (см. ниже) вернуть его на то же место,
+  // а не в самый верх.
+  const wasAtBottom = switchedChat || (c.scrollHeight-c.scrollTop-c.clientHeight<80);
+  const distanceFromBottom = c.scrollHeight-c.scrollTop;
+  c.innerHTML="";
   const curCh=S.chats.find(x=>x.id===S.chat);
   renderUnknownBar(curCh);
   renderRightPanelMedia(curCh);
+  let prevGroupKey=null;
   buildRenderList((S.messages[S.chat]||[]).filter(m=>!m._deletedForAll && !m._deletedForMe)).forEach(m=>{
-    if(m.t==="date"){const d=document.createElement("div");d.className="ddiv";d.innerHTML=`<span>${m.ts?getDateLabel(m.ts):m.tx}</span>`;c.appendChild(d);return;}
-    if(m.t==="sys"){const s=document.createElement("div");s.className="sysmsg";s.textContent=m.tx;c.appendChild(s);return;}
+    if(m.t==="date"){const d=document.createElement("div");d.className="ddiv";d.innerHTML=`<span>${m.ts?getDateLabel(m.ts):m.tx}</span>`;c.appendChild(d);prevGroupKey=null;return;}
+    if(m.t==="sys"){const s=document.createElement("div");s.className="sysmsg";s.textContent=m.tx;c.appendChild(s);prevGroupKey=null;return;}
+    const isOut=(m.t==="out"||(m.t==="gift"&&m.out)||(m.t==="sk"&&m.out));
+    // Группировка подряд идущих сообщений одного автора, как в Telegram —
+    // аватар/имя показываем только у первого сообщения в очереди. Своего
+    // senderId на сообщении нет: для группы/канала сверяем по имени автора
+    // (frName) или по identity "от имени канала" (asChannel), для канала —
+    // всегда один и тот же автор (сам канал). Разделитель даты и системное
+    // сообщение (обработаны выше, prevGroupKey=null) всегда рвут группу,
+    // как и смена направления (входящее/исходящее).
+    let groupKey=null;
+    if(!isOut){
+      groupKey = curCh?.type==="channels" ? "channel"
+        : m.asChannel ? "asChannel:"+(m.asChannel.id??m.asChannel.nm)
+        : (m.frName || m.fr || "?");
+    }
+    const groupsWithPrev = !isOut && groupKey!==null && groupKey===prevGroupKey;
+    prevGroupKey = isOut ? null : groupKey;
     const row=document.createElement("div");
-    row.className="mrow "+((m.t==="out"||(m.t==="gift"&&m.out)||(m.t==="sk"&&m.out))?"out":"in")+(S.selectedMsgs.includes(m.id)?" selected":"");
+    row.className="mrow "+(isOut?"out":"in")+(groupsWithPrev?" group-continue":"")+(S.selectedMsgs.includes(m.id)?" selected":"");
     row.dataset.msgId=m.id;
     row.dataset.id=m.id;
     // В режиме выделения клик по строке переключает выбор
@@ -4392,7 +4451,7 @@ function renderMsgs(){
     let h="";
     // Чекбокс для режима выделения
     if(m.t!=="date"&&m.t!=="sys")h+=`<div class="msel-check">${S.selectedMsgs.includes(m.id)?"✓":""}</div>`;
-    if(m.t!=="out" && !(m.t==="gift"&&m.out) && !(m.t==="sk"&&m.out))h+=`<div class="mav" style="background:${m.frAvatar?"none":colBg(m.col||0)};padding:0;overflow:hidden">${m.frAvatar?`<img src="${m.frAvatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(m.fr?m.fr[0]:"?")}</div>`;
+    if(m.t!=="out" && !(m.t==="gift"&&m.out) && !(m.t==="sk"&&m.out))h+=`<div class="mav" style="background:${m.frAvatar?"none":colBg(m.col||0)};padding:0;overflow:hidden${groupsWithPrev?";visibility:hidden":""}">${m.frAvatar?`<img src="${m.frAvatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(m.fr?m.fr[0]:"?")}</div>`;
     if(m.t==="sk"){
       h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="lpStart(event,${m.id})" ontouchend="lpEnd()" ontouchmove="lpEnd()">${isStickerImg(m.sk)?`<img src="${m.sk}" style="width:150px;height:150px;object-fit:contain">`:m.sk}</div>${m.t==="sk"&&(m.failed||m.out)?`<div class="mt" style="justify-content:center">${m.time||""}${m.out?ticksHTML(m):""}</div>`:""}`;
     }else if(m.t==="gift"){
@@ -4411,9 +4470,9 @@ function renderMsgs(){
       // Имя над сообщением — в ГРУППЕ это реальный автор, в КАНАЛЕ это сам
       // канал (не конкретный админ, который нажал "отправить" — как у
       // "Топор+" в референсе: имя канала текстом над каждым постом).
-      if(m.t!=="out" && curCh?.type==="groups" && m.frName && !m.asChannel){
+      if(m.t!=="out" && curCh?.type==="groups" && m.frName && !m.asChannel && !groupsWithPrev){
         bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${m.frNameColor||colBg(m.col||0)}">${escHtml(m.frName)}${m.frStatusEmoji?' '+escHtml(m.frStatusEmoji):""}</div>`;
-      } else if(m.t!=="out" && curCh?.type==="channels" && !m.asChannel){
+      } else if(m.t!=="out" && curCh?.type==="channels" && !m.asChannel && !groupsWithPrev){
         bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${colBg(m.col||0)}">${escHtml(curCh.nm||"Канал")}</div>`;
       }
       if(m.asChannel)bc+=`<div class="as-channel-tag"><div class="sas-av" style="background:${colBg(m.asChannel.col)};width:18px;height:18px;font-size:9px">${m.asChannel.ini}</div>📢 ${m.asChannel.nm}</div>`;
@@ -4506,9 +4565,29 @@ function renderMsgs(){
     }
     row.innerHTML=h; c.appendChild(row);
   });
-  c.scrollTop=c.scrollHeight;
+  if(wasAtBottom){
+    c.scrollTop=c.scrollHeight;
+    hideScrollDownBtn();
+  } else {
+    // Человек читал историю выше — остаёмся на том же месте (по расстоянию
+    // от низа, не по scrollTop напрямую: список каждый раз перерисовывается
+    // с нуля, старый scrollTop уже ничего не значит для новой высоты)
+    c.scrollTop=Math.max(0, c.scrollHeight-distanceFromBottom);
+    const curCount=(S.messages[S.chat]||[]).length;
+    if(!switchedChat && _lastMsgCount[S.chat]!==undefined && curCount>_lastMsgCount[S.chat]) showScrollDownBtn();
+  }
+  _lastMsgCount[S.chat]=(S.messages[S.chat]||[]).length;
+  _lastRenderedChat=S.chat;
   if(curCh?.type==="channels") countChannelViews(curCh);
 }
+function showScrollDownBtn(){ const b=el("scroll-down-btn"); if(b) b.style.display="flex"; }
+function hideScrollDownBtn(){ const b=el("scroll-down-btn"); if(b) b.style.display="none"; }
+function scrollMsgsToBottom(){ const c=el("msgs"); if(c) c.scrollTop=c.scrollHeight; hideScrollDownBtn(); }
+// Если человек долистал вниз сам (не через кнопку) — прячем кнопку сама собой
+el("msgs")?.addEventListener("scroll", ()=>{
+  const c=el("msgs");
+  if(c && c.scrollHeight-c.scrollTop-c.clientHeight<80) hideScrollDownBtn();
+});
 
 // Засчитывает просмотр постов канала — один раз на сообщение за сессию,
 // чтобы не спамить сервер повторными вызовами при каждой перерисовке.
@@ -5227,7 +5306,7 @@ async function sendMsg(){
     if(sch){sch.prev=txt;sch.time=now();sch.lastTs=Date.now();}
     renderMsgs(); renderChats(); saveState();
     const st=el("chst");
-    if(st){st.textContent="печатает...";st.className="chst typ";}
+    if(st){st.innerHTML=typingDotsHTML("печатает");st.className="chst typ";}
     setTimeout(()=>{
       if(st){st.textContent=T("online");st.className="chst";}
       const ans=getSupportAnswer(txt);
@@ -5246,7 +5325,7 @@ async function sendMsg(){
     if(sch){sch.prev=txt;sch.time=now();sch.lastTs=Date.now();}
     renderMsgs(); renderChats(); saveState();
     const st=el("chst");
-    if(st){st.textContent="печатает...";st.className="chst typ";}
+    if(st){st.innerHTML=typingDotsHTML("печатает");st.className="chst typ";}
     setTimeout(async ()=>{
       if(st){st.textContent=T("online");st.className="chst";}
       const ans=await getBotFatherReply(txt);
@@ -5369,7 +5448,7 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds, msgType){
   // тему) — в этом случае просто пропускаем демо-автоответ.
   if(!sent && msgType==="text"){
     const stEl=el("chst"); const oc=stEl?.textContent, ocl=stEl?.className;
-    setTimeout(()=>{if(stEl){stEl.textContent=T("typing");stEl.className="chst typ";}},700);
+    setTimeout(()=>{if(stEl){stEl.innerHTML=typingDotsHTML(T("typing"));stEl.className="chst typ";}},700);
     setTimeout(()=>{
       if(stEl){stEl.textContent=oc;stEl.className=ocl;}
       const reps=["Понял! 👍","Окей 😊","Огонь! 🔥","Договорились ✅","Интересно 💡","🐱","💯","Хорошо!","Спасибо!","👌"];
