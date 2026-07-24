@@ -1528,23 +1528,23 @@ tr:hover td{background:var(--bg3)}
 
 <!-- ══ CTX MENU ══ -->
 <div class="ctx" id="ctx">
-  <div class="ctxi ctx-bulk-item" onclick="selCopyAll()">📋 Скопировать выделенные</div>
-  <div class="ctxi ctx-bulk-item" onclick="selForwardAll()">↪️ Переслать выделенные</div>
-  <div class="ctxi ctx-bulk-item rd" onclick="selDeleteForMe()">🗑️ Удалить выделенные у меня</div>
-  <div class="ctxi ctx-bulk-item rd" onclick="selDeleteAll()">🗑️ Удалить выделенные у всех</div>
+  <div class="ctxi ctx-bulk-item" onclick="selCopyAll()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="13" rx="1.5"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h3"/></svg> Скопировать выделенные</div>
+  <div class="ctxi ctx-bulk-item" onclick="selForwardAll()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6"/><path d="M3 8v3a4 4 0 0 0 4 4h12"/></svg> Переслать выделенные</div>
+  <div class="ctxi ctx-bulk-item rd" onclick="selDeleteForMe()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg> Удалить выделенные у меня</div>
+  <div class="ctxi ctx-bulk-item rd" onclick="selDeleteAll()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg> Удалить выделенные у всех</div>
   <div class="ctxsep ctx-bulk-item"></div>
-  <div class="ctxi" onclick="ctxReply()">↩️ Ответить</div>
-  <div class="ctxi" onclick="ctxEdit()">✏️ Редактировать</div>
-  <div class="ctxi ctx-media-item" onclick="ctxDownload()">⬇️ Скачать</div>
-  <div class="ctxi" onclick="ctxCopy()">📋 Копировать</div>
-  <div class="ctxi" onclick="ctxPin()">📌 Закрепить</div>
-  <div class="ctxi" onclick="ctxForward()">↪️ Переслать</div>
-  <div class="ctxi" onclick="ctxSaveToFav()">⭐ В Избранное</div>
-  <div class="ctxi" onclick="ctxSelect()">☑️ Выделить</div>
-  <div class="ctxi" onclick="ctxReact(event)">😀 Реакция</div>
-  <div class="ctxi" onclick="ctxReport()">⚠️ Пожаловаться</div>
+  <div class="ctxi" onclick="ctxReply()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 6l-6 6 6 6"/><path d="M21 8v3a4 4 0 0 1-4 4H5"/></svg> Ответить</div>
+  <div class="ctxi" onclick="ctxEdit()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4L16 5l3 3L8 19l-4 1z"/><path d="M14 7l3 3"/></svg> Редактировать</div>
+  <div class="ctxi ctx-media-item" onclick="ctxDownload()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Скачать</div>
+  <div class="ctxi" onclick="ctxCopy()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="13" rx="1.5"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h3"/></svg> Копировать</div>
+  <div class="ctxi" onclick="ctxPin()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 15v5"/></svg> Закрепить</div>
+  <div class="ctxi" onclick="ctxForward()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6"/><path d="M3 8v3a4 4 0 0 0 4 4h12"/></svg> Переслать</div>
+  <div class="ctxi" onclick="ctxSaveToFav()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l2.7 5.9 6.3.6-4.7 4.3 1.3 6.2L12 17l-5.6 3 1.3-6.2-4.7-4.3 6.3-.6z"/></svg> В Избранное</div>
+  <div class="ctxi" onclick="ctxSelect()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12l2.5 2.5L16 9"/></svg> Выделить</div>
+  <div class="ctxi" onclick="ctxReact(event)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 10h.01M15.5 10h.01"/><path d="M8 14.5c1.2 1.3 2.6 2 4 2s2.8-.7 4-2"/></svg> Реакция</div>
+  <div class="ctxi" onclick="ctxReport()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2 20h20L12 4z"/><path d="M12 10v4"/><circle cx="12" cy="17" r=".9" fill="currentColor" stroke="none"/></svg> Пожаловаться</div>
   <div class="ctxsep"></div>
-  <div class="ctxi rd" onclick="openDelModal()">🗑️ Удалить</div>
+  <div class="ctxi rd" onclick="openDelModal()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg> Удалить</div>
 </div>
 
 <!-- REACTION PICKER -->
@@ -1875,7 +1875,7 @@ tr:hover td{background:var(--bg3)}
 
 <!-- MODAL: FORWARD -->
 <div class="movl" id="m-forward"><div class="modal">
-  <div class="mtit">↪️ Переслать</div>
+  <div class="mtit"><svg viewBox="0 0 24 24" width="16" height="16" style="vertical-align:-3px" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6"/><path d="M3 8v3a4 4 0 0 0 4 4h12"/></svg> Переслать</div>
   <div class="msub">Выберите чат для пересылки</div>
   <div class="fg" style="margin:10px 0;display:flex;align-items:center;justify-content:space-between">
     <span class="fl" style="margin:0">🙈 Скрыть автора</span>
