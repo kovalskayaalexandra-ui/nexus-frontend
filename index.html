@@ -2586,14 +2586,27 @@ function wsHandleMessage(msg){
     // что у отложенного сообщения нет локальной оптимистичной копии — оно
     // не показывалось в ленте до этого момента вообще.
     case "message.scheduled_delivered": {
-      const { chatId, id, text, time } = msg.payload;
+      const { chatId, id, text, time, mediaUrl, mediaType, fileName, fileSize, spoiler, waveform } = msg.payload;
       if(!S.messages[chatId]) S.messages[chatId]=[];
       if(S.messages[chatId].find(m=>m.dbId===id)) break;
       const d=time?new Date(time):new Date();
       const newMsg={id:nextId(), dbId:id, t:"out", tx:text, time:d.toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}), ts:d.getTime(), read:false};
+      // Та же ветка по типу вложения, что и в case "message.new" — отложенным
+      // можно запланировать не только текст, но и фото/видео/файл (см.
+      // scheduleAttachmentSend), поэтому автору нужно показать само вложение,
+      // не только подпись.
+      if(mediaUrl){
+        if(mediaType==="image"){ newMsg.img=mediaUrl; if(spoiler) newMsg.spoiler=true; }
+        else if(mediaType==="video"){ newMsg.video=mediaUrl; if(spoiler) newMsg.spoiler=true; }
+        else if(mediaType==="audio") newMsg.audio={ url:mediaUrl, name:fileName||"Аудио" };
+        else if(mediaType==="voice") newMsg.voice={ url:mediaUrl, duration:0, waveform:waveform||null, size:fileSize||0 };
+        else if(mediaType==="videoCircle") newMsg.videoCircle={ url:mediaUrl, duration:0 };
+        else newMsg.file={ name:fileName||"Файл", url:mediaUrl };
+      }
       S.messages[chatId].push(newMsg);
+      const prevTx = mediaUrl ? (mediaType==="image"?"📷 Фото":mediaType==="video"?"🎥 Видео":mediaType==="videoCircle"?"⭕ Видео-кружочек":mediaType==="voice"?"🎤 Голосовое":mediaType==="audio"?"🎵 "+(fileName||"Аудио"):"📎 "+(fileName||"Файл")) : text;
       const ch2=S.chats.find(c=>c.id===chatId);
-      if(ch2){ ch2.prev=text; ch2.time=newMsg.time; ch2.lastTs=d.getTime(); }
+      if(ch2){ ch2.prev=prevTx; ch2.time=newMsg.time; ch2.lastTs=d.getTime(); }
       if(S.chat===chatId) renderMsgs();
       renderChats(); saveState();
       if(S.scheduledModalChatId===chatId) renderScheduledList();
@@ -5472,8 +5485,11 @@ function toDatetimeLocalValue(d){
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function openScheduleTimePicker(){
-  if(!getInputText()){ showToast("✏️ Сначала введите текст сообщения"); return; }
-  if(pendingAttach){ showToast("🕓 Пока можно отложить только текстовое сообщение"); return; }
+  // Текст ИЛИ вложение (фото/видео/файл через скрепку) — любое из двух,
+  // как и обычная отправка. Голосовые/видео-кружочки/стикеры/опросы/
+  // контакты пока не отложить — у них отдельные экраны записи/выбора,
+  // не общий composer, это отдельная задача на будущее.
+  if(!getInputText() && !pendingAttach){ showToast("✏️ Сначала введите текст или прикрепите файл"); return; }
   if(S.editingId){ showToast("🕓 Сначала завершите редактирование сообщения"); return; }
   const inp=el("sched-dt-input"); if(!inp) return;
   inp.min=toDatetimeLocalValue(new Date(Date.now()+60000));
@@ -5485,6 +5501,7 @@ async function confirmScheduleSend(){
   if(!inp?.value){ showToast("Выберите дату и время"); return; }
   const when=new Date(inp.value);
   if(!(when>new Date())){ showToast("Выберите время в будущем"); return; }
+  if(pendingAttach){ await scheduleAttachmentSend(when); return; }
   const txt=getInputText();
   if(!txt) return;
   const chatId=S.chat;
@@ -5499,6 +5516,38 @@ async function confirmScheduleSend(){
   }
   showToast("🕓 Запланировано на "+when.toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}));
   if(S.scheduledModalChatId===chatId) renderScheduledList();
+}
+// Тот же принцип, что и у текста: без локальной оптимистичной копии — файл
+// реально грузится и сохраняется на сервере сразу, но остаётся невидимым
+// (как и текстовое отложенное) до момента публикации.
+async function scheduleAttachmentSend(when){
+  const att=pendingAttach;
+  const caption=getInputText();
+  const chatId=S.chat;
+  closeM("m-schedule");
+  pendingAttach=null; renderAttachPreview();
+  setInputText(""); aResize(el("minput"));
+  if(el("char-count"))el("char-count").textContent="";
+  showToast("⏳ Загружаем файл…");
+  try{
+    const fd=new FormData();
+    fd.append("file",att.file);
+    const t=getToken();
+    const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
+    const upData=await res.json().catch(()=>({}));
+    if(!res.ok||!upData.success) throw new Error(upData.error||"Не удалось загрузить файл");
+    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:upData.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,scheduledAt:when.toISOString()},true);
+    if(!d || !d.success){
+      showToast("❌ "+(d&&d.error||"Не удалось запланировать"));
+      pendingAttach=att; renderAttachPreview(); setInputText(caption); aResize(el("minput"));
+      return;
+    }
+    showToast("🕓 Запланировано на "+when.toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}));
+    if(S.scheduledModalChatId===chatId) renderScheduledList();
+  }catch(e){
+    showToast("❌ Нет связи с сервером");
+    pendingAttach=att; renderAttachPreview(); setInputText(caption); aResize(el("minput"));
+  }
 }
 async function openScheduledMessages(){
   S.scheduledModalChatId=S.chat;
@@ -5516,9 +5565,13 @@ async function renderScheduledList(){
   }catch(e){}
   box.innerHTML = items.length ? items.map(m=>{
     const when=new Date(m.scheduled_at).toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+    const mediaLabel = m.media_type==="image"?"📷 Фото":m.media_type==="video"?"🎥 Видео":m.media_type==="videoCircle"?"⭕ Видео-кружочек":m.media_type==="audio"?"🎵 "+(m.file_name||"Аудио"):m.media_type?"📎 "+(m.file_name||"Файл"):"";
+    const thumbHTML = (m.media_type==="image"&&m.media_url) ? `<img src="${m.media_url}" style="max-width:100%;max-height:140px;border-radius:8px;display:block;margin-bottom:8px;object-fit:cover">` : "";
     return `<div style="border:1px solid var(--brd);border-radius:10px;padding:10px 12px">
       <div style="font-size:11.5px;color:var(--acc);font-weight:600;margin-bottom:5px">🕓 ${when}</div>
-      <div style="font-size:13.5px;margin-bottom:10px;word-break:break-word;white-space:pre-wrap">${escHtml(m.text||"")}</div>
+      ${thumbHTML}
+      ${mediaLabel?`<div style="font-size:12.5px;color:var(--tx2);margin-bottom:4px">${mediaLabel}</div>`:""}
+      ${m.text?`<div style="font-size:13.5px;margin-bottom:10px;word-break:break-word;white-space:pre-wrap">${escHtml(m.text)}</div>`:`<div style="margin-bottom:10px"></div>`}
       <div style="display:flex;gap:6px">
         <button class="rp-action-btn" style="width:auto;flex:1;justify-content:center" onclick="sendScheduledNow('${m.id}')">Отправить сейчас</button>
         <button class="rp-action-btn rd" style="width:auto;flex:1;justify-content:center" onclick="cancelScheduled('${m.id}')">Отменить</button>
