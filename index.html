@@ -3547,9 +3547,23 @@ function applyVoiceVideoRestriction(ch){
 // Поддержка и т.д. — это не настоящие сообщения на сервере, откладывать
 // там нечего). См. правило "не блокировать тостом, а прятать целиком" —
 // [[nexus-collaboration-rules]].
+// ⚠️ 24 июля 2026: раньше эта проверка не учитывала, может ли ЭТОТ
+// пользователь вообще писать в чат — тумблер и пункт меню показывались и
+// обычным подписчикам канала, и участникам group с "только админы", и
+// замьюченным лично людям, хотя они и обычное-то сообщение отправить не
+// могут. Та же проверка прав, что уже есть в updateInputPermissionUI().
 function applyScheduleButtonVisibility(ch){
   const btn=el("sched-btn"), menuBtn=el("rp-scheduled-btn");
-  const eligible = typeof ch?.id==="string" && ch.id.length>10 && !ch.e2eActive;
+  let eligible = typeof ch?.id==="string" && ch.id.length>10 && !ch.e2eActive;
+  if(eligible){
+    const myRole=myRoleIn(ch);
+    const isOwnerOrAdmin = myRole==="owner" || myRole==="admin";
+    const isChannelReadOnly = ch.type==="channels" && !isOwnerOrAdmin;
+    const isGroupRestricted = ch.type==="groups" && ch.restrictSendMessages && !isOwnerOrAdmin;
+    const me = ch.members?.find(m=>String(m.id)===String(S.user?.id));
+    const isMemberMuted = !!(me && me.canWrite===false);
+    eligible = !isChannelReadOnly && !isGroupRestricted && !isMemberMuted;
+  }
   if(btn) btn.style.display = eligible ? "" : "none";
   if(menuBtn) menuBtn.style.display = eligible ? "" : "none";
 }
@@ -10521,6 +10535,10 @@ function updateInputPermissionUI(ch){
 
   const ibar=document.querySelector(".ibar");
   if(ibar) ibar.style.display = hideInput ? "none" : "";
+  // Права могли поменяться не только при открытии чата (openChat уже сам
+  // вызывает applyScheduleButtonVisibility), но и "на лету" — например,
+  // владелец только что забрал у меня право писать, пока я в чате.
+  applyScheduleButtonVisibility(ch);
 
   if(isMemberMuted) showReadOnlyNotice("🔇 Вам запретили писать в этом чате");
   else if(isChannelReadOnly) showReadOnlyNotice("🔒 Только владелец и админы канала могут отправлять сообщения");
