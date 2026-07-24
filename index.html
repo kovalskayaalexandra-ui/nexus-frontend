@@ -3847,7 +3847,7 @@ function updateUserUI(){
   const initEl=el("uinit"); if(initEl){ if(u.avatar){initEl.innerHTML=`<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;}else{initEl.textContent=u.initials||"Я";} }
   const nmEl=el("unm");
   if(nmEl){
-    const base=u.uname?"@"+u.uname:(u.name||"dev_user");
+    const base=u.name||(u.uname?"@"+u.uname:"dev_user");
     const vip=S.vip?.active?` <span style="display:inline-flex;vertical-align:middle;color:var(--am)" title="VIP">${VIP_STAR_SVG}</span>`:"";
     // Раньше здесь проверялась только VIP-корона, свою же собственную
     // синюю галочку верификации нигде не показывали вообще (даже себе)
