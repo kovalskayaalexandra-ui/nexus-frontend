@@ -4573,6 +4573,12 @@ document.addEventListener("touchstart",e=>{
   const t=e.touches[0];
   if(t.clientX>SWIPE_BACK_EDGE_PX){ swipeBackState=null; return; }
   if(e.target.closest(".voice-wave-wrap, .video-circle-wrap, .vc-ring")){ swipeBackState=null; return; }
+  // Найдено при финальном регресс-тесте (этап 15): .msgs имеет padding-left:16px,
+  // так что самый левый ~8px входящего пузыря физически попадает в 24px-зону
+  // края экрана — без этой проверки редкий свайп вправо у самого края пузыря
+  // мог бы одновременно вооружить и это (закрыть чат), и свайп-ответ (этап 11,
+  // тоже вправо). Пузырь сообщения — забота этапа 11, не наша здесь.
+  if(e.target.closest(".bub")){ swipeBackState=null; return; }
   swipeBackState={x0:t.clientX,y0:t.clientY,aborted:false};
 },{passive:true});
 document.addEventListener("touchmove",e=>{
