@@ -860,6 +860,33 @@ body.mobile-mode:has(.rp.mobile-open) .mobile-tabbar{display:none}
 .mobile-mode .sndbtn{width:44px;height:44px}
 .mobile-mode .ibi{padding:9px;margin:-9px 0}
 
+/* ══ ЖЕСТЫ В СПИСКЕ ЧАТОВ (этап 10) ══
+   Свайп — новый absolute-оверлей поверх строки (.ci-actions), не трогает
+   существующую разметку/CSS самой .ci (avwrap/cinfo/cmeta и её переиспользование
+   в строке "Архив" и в результатах глобального поиска — см. renderChats()) —
+   по умолчанию сдвинут за правый край (translate3d(100%)), появляется только
+   по классу .swipe-open, который ставит touch-логика ниже, только в мобильном
+   layout. Долгое нажатие — отдельный мультивыбор чатов (.chat-select-mode),
+   аналогично уже существующему выбору сообщений (.select-mode), но со своим
+   классом/баром, чтобы не пересекаться с той системой. */
+.ci{overflow:hidden}
+.ci-actions{position:absolute;inset:0;display:flex;transform:translate3d(100%,0,0);transition:transform .18s ease;z-index:5}
+.ci.swipe-open .ci-actions{transform:translate3d(0,0,0)}
+.ci-act{flex:1;display:flex;align-items:center;justify-content:center;font-size:19px;color:#fff;cursor:pointer}
+.ci-act-pin{background:var(--acc2)}
+.ci-act-mute{background:#d9a441}
+.ci-act-arch{background:#6c7a8c}
+.ci-act-del{background:var(--rd)}
+body.chat-select-mode .ci-actions{display:none}
+.ci-select-check{display:none;width:20px;height:20px;border-radius:50%;border:2px solid var(--tx3);
+  flex-shrink:0;align-items:center;justify-content:center;font-size:12px;color:#fff}
+body.chat-select-mode .ci-select-check{display:flex}
+.ci.selected .ci-select-check{background:var(--acc2);border-color:var(--acc2)}
+.chat-select-bar{display:none;background:var(--bg2);border-bottom:1px solid var(--brd);padding:9px 14px;
+  align-items:center;gap:11px;font-size:13px;flex-shrink:0}
+.chat-select-bar.on{display:flex}
+.csb-act{cursor:pointer;font-size:18px;padding:4px}
+
 /* ══ GIFTS (редизайн в стиле Telegram) ══ */
 .gifts-catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:18px}
 .gift-card{background:var(--bg2);border:1.5px solid var(--brd);border-radius:18px;padding:18px 14px 14px;text-align:center;cursor:pointer;transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s,border-color .2s;position:relative;overflow:hidden}
@@ -1160,6 +1187,16 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <input id="sb-search" placeholder="Поиск чатов..." oninput="filterChats(this.value)">
         <button class="new-chat-btn" onclick="openContacts()" title="Контакты" style="margin-right:4px">👥</button>
         <button class="new-chat-btn" onclick="openNewChat()" title="Новый чат">+</button>
+      </div>
+      <div class="chat-select-bar" id="chat-select-bar">
+        <span style="cursor:pointer;font-size:18px;color:var(--tx2)" onclick="exitChatSelectMode()">✕</span>
+        <span style="font-weight:600"><span id="chat-select-count">0</span> выбрано</span>
+        <span style="margin-left:auto;display:flex;gap:14px">
+          <span class="csb-act" title="Закрепить / открепить" onclick="chatSelectPin()">📌</span>
+          <span class="csb-act" title="Заглушить / включить звук" onclick="chatSelectMute()">🔇</span>
+          <span class="csb-act" title="В архив" onclick="chatSelectArchive()">🗄️</span>
+          <span class="csb-act" title="Удалить" onclick="chatSelectDelete()" style="color:var(--rd)">🗑️</span>
+        </span>
       </div>
       <div class="clist" id="clist"></div>
       <div class="clist" id="global-search-results"></div>
@@ -2221,6 +2258,8 @@ const DEFAULT_STATE = {
   pinnedByChat: {},
   selectMode: false,
   selectedMsgs: [],
+  chatSelectMode: false,
+  selectedChats: [],
   pinViewIdx: 0,
   sessions: [
     {id:1,device:"Chrome / Windows 11",ip:"185.220.101.x",active:true,date:"Сейчас"},
@@ -4217,8 +4256,7 @@ function renderChats(filter=""){
 
   list.forEach(ch=>{
     const d=document.createElement("div");
-    d.className="ci"+(ch.id===S.chat?" on":"")+(ch.pinned?" pinned":"")+(ch.muted?" muted":"");
-    d.onclick=()=>openChat(ch.id);
+    d.className="ci"+(ch.id===S.chat?" on":"")+(ch.pinned?" pinned":"")+(ch.muted?" muted":"")+(S.chatSelectMode&&S.selectedChats.includes(ch.id)?" selected":"");
     const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:(ch.ini||"?");
     d.innerHTML=`<div class="avwrap"><div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>${ch.online?'<div class="odot"></div>':""}</div>
     <div class="cinfo" style="flex:1;overflow:hidden">
@@ -4228,7 +4266,33 @@ function renderChats(filter=""){
     <div class="cmeta">
       <div class="ctime">${ch.pinned?'<span class="pin-ico" title="Закреплено">📌</span>':""}${formatChatListTime(ch.lastTs) ?? ch.time}</div>
       ${ch.unread>0?`<div class="badge${ch.muted?" muted":""}">${ch.unread>99?"99+":ch.unread}</div>`:""}
+    </div>
+    <div class="ci-select-check">${S.chatSelectMode&&S.selectedChats.includes(ch.id)?"✓":""}</div>
+    <div class="ci-actions">
+      <div class="ci-act ci-act-pin" title="Закрепить">📌</div>
+      <div class="ci-act ci-act-mute" title="Заглушить">🔇</div>
+      <div class="ci-act ci-act-arch" title="В архив">🗄️</div>
+      <div class="ci-act ci-act-del" title="Удалить">🗑️</div>
     </div>`;
+    d.onclick=()=>{
+      if(suppressNextChatRowClick){ suppressNextChatRowClick=false; return; }
+      if(S.chatSelectMode){ toggleChatSelect(ch.id); return; }
+      if(d.classList.contains("swipe-open")){ d.classList.remove("swipe-open"); return; }
+      openChat(ch.id);
+    };
+    d.querySelector(".ci-act-pin").onclick=(e)=>{ e.stopPropagation(); d.classList.remove("swipe-open"); pinChat(ch.id); };
+    d.querySelector(".ci-act-mute").onclick=(e)=>{ e.stopPropagation(); d.classList.remove("swipe-open"); muteChat(ch.id); };
+    d.querySelector(".ci-act-arch").onclick=(e)=>{ e.stopPropagation(); d.classList.remove("swipe-open"); archiveChat(ch.id); };
+    d.querySelector(".ci-act-del").onclick=(e)=>{ e.stopPropagation(); d.classList.remove("swipe-open"); openChat(ch.id,{skipMobileSlide:true}); deleteChatCompletely(); };
+    // ⚠️ Именно HTML-атрибуты (setAttribute), а не d.ontouchstart=fn — присвоение
+    // через JS-свойство ontouchstart/ontouchmove/ontouchend ненадёжно (в части
+    // окружений, включая тестовое окружение этой сессии, эти IDL-свойства не
+    // подключены к реальной доставке событий, если движок не считает страницу
+    // touch-устройством, хотя addEventListener/HTML-атрибуты работают всегда) —
+    // тот же приём, что уже используется у lpStart/lpEnd для сообщений.
+    d.setAttribute("ontouchstart","chatRowTouchStart(event,this,"+(typeof ch.id==="string"?`'${ch.id}'`:ch.id)+")");
+    d.setAttribute("ontouchmove","chatRowTouchMove(event)");
+    d.setAttribute("ontouchend","chatRowTouchEnd(event,this)");
     c.appendChild(d);
   });
 }
@@ -4499,6 +4563,135 @@ document.addEventListener("touchend",e=>{
   swipeBackState=null;
   if(dx>SWIPE_BACK_THRESHOLD_PX && swipeBackActive()) popNavEntry();
 });
+
+// ══════════════════════════════════════════════════
+//  ЖЕСТЫ В СПИСКЕ ЧАТОВ (этап 10 дорожной карты)
+// ══════════════════════════════════════════════════
+// Свайп по строке — быстрые действия (закрепить/заглушить/архив/удалить),
+// долгое нажатие — мультивыбор чатов. Оба жеста читают один и тот же
+// touchmove, поэтому распознаются вместе: сдвиг пальца отменяет долгое
+// нажатие (как и для сообщений, см. lpStart/lpEnd), вертикальный сдвиг
+// отменяет свайп (это скролл списка, не жест по строке).
+let chatLpTimer=null, chatSwipeState=null, chatSwipeOpenRow=null, suppressNextChatRowClick=false;
+const CHAT_SWIPE_THRESHOLD_PX=60, CHAT_SWIPE_MOVE_TOLERANCE_PX=10;
+function chatRowTouchStart(e,rowEl,id){
+  clearTimeout(chatLpTimer);
+  const t=e.touches[0];
+  chatSwipeState={x0:t.clientX,y0:t.clientY,aborted:false};
+  chatLpTimer=setTimeout(()=>{
+    if(!isMobileLayout()) return;
+    chatSwipeState=null;
+    // Флаг на модульном уровне, а не на элементе (rowEl.dataset) — вход в
+    // мультивыбор ниже вызывает renderChats(), который ПЕРЕСОЗДАЁТ все строки
+    // списка заново, включая эту; флаг на старом, уже выброшенном элементе
+    // синтетический click (приходящий уже после touchend, на НОВОЙ строке) не
+    // проглотил бы.
+    suppressNextChatRowClick=true;
+    if(navigator.vibrate) navigator.vibrate(40);
+    if(!S.chatSelectMode) enterChatSelectMode(id); else toggleChatSelect(id);
+  },450);
+}
+function chatRowTouchMove(e){
+  if(!chatSwipeState||chatSwipeState.aborted) return;
+  const t=e.touches[0];
+  const dx=t.clientX-chatSwipeState.x0, dy=t.clientY-chatSwipeState.y0;
+  if(Math.abs(dx)>CHAT_SWIPE_MOVE_TOLERANCE_PX||Math.abs(dy)>CHAT_SWIPE_MOVE_TOLERANCE_PX) clearTimeout(chatLpTimer);
+  if(Math.abs(dy)>Math.abs(dx)) chatSwipeState.aborted=true;
+}
+function chatRowTouchEnd(e,rowEl){
+  clearTimeout(chatLpTimer);
+  const state=chatSwipeState; chatSwipeState=null;
+  if(!isMobileLayout()||S.chatSelectMode) return; // в режиме мультивыбора тап уже обработан onclick→toggleChatSelect
+  if(!state||state.aborted) return;
+  const t=e.changedTouches[0];
+  const dx=t.clientX-state.x0;
+  if(dx<-CHAT_SWIPE_THRESHOLD_PX){
+    if(chatSwipeOpenRow && chatSwipeOpenRow!==rowEl) chatSwipeOpenRow.classList.remove("swipe-open");
+    rowEl.classList.add("swipe-open");
+    chatSwipeOpenRow=rowEl;
+  } else if(rowEl.classList.contains("swipe-open")){
+    e.preventDefault(); // не даём синтетическому click сразу открыть чат — это был жест "закрыть панель", не тап
+    rowEl.classList.remove("swipe-open");
+    chatSwipeOpenRow=null;
+  }
+}
+
+function enterChatSelectMode(id){
+  S.chatSelectMode=true; S.selectedChats=[];
+  document.body.classList.add("chat-select-mode");
+  el("chat-select-bar")?.classList.add("on");
+  toggleChatSelect(id);
+}
+function exitChatSelectMode(){
+  S.chatSelectMode=false; S.selectedChats=[];
+  document.body.classList.remove("chat-select-mode");
+  el("chat-select-bar")?.classList.remove("on");
+  renderChats();
+}
+function toggleChatSelect(id){
+  const idx=S.selectedChats.indexOf(id);
+  if(idx!==-1) S.selectedChats.splice(idx,1); else S.selectedChats.push(id);
+  const cnt=el("chat-select-count"); if(cnt) cnt.textContent=S.selectedChats.length;
+  if(!S.selectedChats.length){ exitChatSelectMode(); return; }
+  renderChats();
+}
+function chatSelectPin(){
+  const n=S.selectedChats.length;
+  S.selectedChats.forEach(id=>pinChat(id,true));
+  showToast(`📌 Изменено закреплений: ${n}`);
+  exitChatSelectMode();
+}
+function chatSelectMute(){
+  const n=S.selectedChats.length;
+  S.selectedChats.forEach(id=>muteChat(id,true));
+  showToast(`🔇 Изменено уведомлений: ${n}`);
+  exitChatSelectMode();
+}
+function chatSelectArchive(){
+  const n=S.selectedChats.length;
+  S.selectedChats.forEach(id=>archiveChat(id,true));
+  showToast(`🗄️ В архив: ${n}`);
+  exitChatSelectMode();
+}
+// Массовое удаление — намеренно НЕ переиспользует deleteChatCompletely()
+// напрямую (она полагается на S.chat и показывает свой confirm() на каждый
+// вызов — для N выбранных чатов это было бы N всплывающих подтверждений
+// подряд). Вместо этого — то же ветвление "покинуть группу/канал, если не
+// владелец" / "удалить полностью", но с ОДНИМ общим подтверждением.
+function chatSelectDelete(){
+  const ids=[...S.selectedChats];
+  const targets=ids.map(id=>S.chats.find(c=>c.id===id)).filter(ch=>ch && !isSystemChat(ch.id));
+  if(!targets.length) return;
+  const leaveCount=targets.filter(ch=>(ch.type==="groups"||ch.type==="channels") && !canModerateChat(ch)).length;
+  const deleteCount=targets.length-leaveCount;
+  let msg;
+  if(leaveCount && deleteCount) msg=`Удалить ${deleteCount} чат(ов) и покинуть ${leaveCount} групп(ы)/канал(ов)? Это не отменяется.`;
+  else if(leaveCount) msg=`Покинуть ${leaveCount} групп(ы)/канал(ов)? Это не отменяется.`;
+  else msg=`Удалить ${deleteCount} чат(ов) полностью? Это не отменяется.`;
+  if(!confirm(msg)) return;
+
+  const wasCurrentChatDeleted=targets.some(ch=>ch.id===S.chat);
+  targets.forEach(ch=>{
+    const chatId=ch.id;
+    const isRealChat=typeof chatId==="string" && chatId.length>10;
+    const isGroupOrChannel=ch.type==="groups"||ch.type==="channels";
+    if(isGroupOrChannel && !canModerateChat(ch)){
+      S.chats=S.chats.filter(c=>c.id!==chatId); delete S.messages[chatId];
+      if(isRealChat) apiDelete("/api/chats/"+chatId+"/leave").catch(e=>console.warn("leave chat error:",e));
+    } else {
+      const memberIds=getChatMemberIds(ch);
+      S.chats=S.chats.filter(c=>c.id!==chatId); delete S.messages[chatId];
+      if(isRealChat){
+        apiDelete("/api/chats/"+chatId).catch(e=>console.warn("delete chat error:",e));
+        wsSendReliable({type:"chat.delete", payload:{chatId, memberIds}});
+      }
+    }
+  });
+  saveState();
+  if(wasCurrentChatDeleted) openChat(77777);
+  showToast(`🗑️ Удалено/покинуто чатов: ${targets.length}`);
+  exitChatSelectMode();
+}
 
 // ── MESSAGES ──────────────────────────────────────────────────
 // Форматирование текста сообщения: экранирование HTML + спойлеры ||текст||
@@ -7517,28 +7710,33 @@ function saveChatMemberPref(chatId, field, value){
   apiPatch("/api/chats/"+chatId+"/member-prefs", {[field]:value}, true).catch(e=>console.warn("save chat pref error:",e));
 }
 
-function pinChat(){
-  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
-  ch.pinned=!ch.pinned; renderChats(); showToast(ch.pinned?"📌 Чат закреплён":"Чат откреплён"); saveState();
+// chatId/silent — опциональные (этап 10 дорожной карты, добавлены для свайп-
+// действий и мультивыбора в списке чатов на мобильном): по умолчанию (без
+// аргументов) поведение 1-в-1 как раньше — действует на текущий открытый чат,
+// с тостом. Все существующие вызовы (кнопки в .rp, openChatInfo() и т.д.) не
+// передают аргументы и продолжают работать без изменений.
+function pinChat(chatId=S.chat, silent=false){
+  const ch=S.chats.find(c=>c.id===chatId); if(!ch)return;
+  ch.pinned=!ch.pinned; renderChats(); if(!silent) showToast(ch.pinned?"📌 Чат закреплён":"Чат откреплён"); saveState();
   saveChatMemberPref(ch.id, "pinned", ch.pinned);
 }
-function muteChat(){
-  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
-  ch.muted=!ch.muted; renderChats(); showToast(ch.muted?"🔇 Заглушено":"🔔 Уведомления включены"); saveState();
+function muteChat(chatId=S.chat, silent=false){
+  const ch=S.chats.find(c=>c.id===chatId); if(!ch)return;
+  ch.muted=!ch.muted; renderChats(); if(!silent) showToast(ch.muted?"🔇 Заглушено":"🔔 Уведомления включены"); saveState();
   saveChatMemberPref(ch.id, "muted", ch.muted);
 }
-function archiveChat(){
-  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
-  if(isSystemChat(ch.id)){ showToast("🔒 Это системный чат, его нельзя архивировать"); return; }
+function archiveChat(chatId=S.chat, silent=false){
+  const ch=S.chats.find(c=>c.id===chatId); if(!ch)return;
+  if(isSystemChat(ch.id)){ if(!silent) showToast("🔒 Это системный чат, его нельзя архивировать"); return; }
   ch.archived=!ch.archived;
   renderChats(); saveState();
   saveChatMemberPref(ch.id, "archived", ch.archived);
   if(ch.archived){
-    showToast("🗄️ Чат перемещён в архив");
-    openChat(77777); // безопасный переход, раз текущий чат только что спрятан из списка
+    if(!silent) showToast("🗄️ Чат перемещён в архив");
+    if(chatId===S.chat) openChat(77777); // безопасный переход, только если архивируем именно текущий открытый чат
   } else {
     const archBtn=el("rp-archive-btn"); if(archBtn) archBtn.textContent="🗄️ В архив";
-    showToast("📤 Чат возвращён из архива");
+    if(!silent) showToast("📤 Чат возвращён из архива");
   }
 }
 function unarchiveChat(chatId){
