@@ -924,6 +924,31 @@ body.chat-select-mode .ci-select-check{display:flex}
    подпись без явной высоты под палец. */
 .mobile-mode .nbtn{padding:10px 14px;min-height:40px}
 
+/* Плавающая круглая кнопка "Новый чат" на мобильном — как FAB у Telegram,
+   вместо квадратной кнопки в один ряд со строкой поиска. Только сама "+",
+   кнопка "👥 Контакты" рядом остаётся как была. */
+.mobile-mode #fab-newchat{position:fixed;right:16px;bottom:72px;width:54px;height:54px;
+  border-radius:50%;font-size:26px;box-shadow:0 4px 14px rgba(108,99,255,.5);z-index:440}
+.mobile-mode .layout.chat-open #fab-newchat{display:none}
+
+/* На мобильном было два одинаковых по смыслу поля поиска разом (в шапке и
+   в списке чатов) — прячем шапочное, оставляем то, что в списке чатов
+   (у него и так более полный поиск — filterChats(), с дозапросом на
+   сервер), плюс добавляем ему иконку-лупу, как у шапочного. */
+.mobile-mode .tsrch{display:none}
+
+/* Баг с шапкой на мобильном: Магазин/VIP/Поддержка/Подарки/Dev Panel/флаг
+   языка физически не помещались на узком экране и обрезались за краем —
+   на мобильном прячем весь этот ряд кнопок (флаг языка и так дублируется
+   строкой "Язык" в Настройках), сами разделы теперь доступны через новый
+   блок "Ещё" в мобильных Настройках (settings-row, mset-devp и рядом). */
+.mobile-mode .tr .nbtn{display:none}
+.settings-section.mobile-only-quick{display:none}
+.mobile-mode .settings-section.mobile-only-quick{display:block}
+.sb-toolbar{position:relative}
+.sb-toolbar svg.sb-search-ico{position:absolute;left:19px;top:50%;transform:translateY(-50%);opacity:.35;pointer-events:none}
+.sb-toolbar input#sb-search{padding-left:30px}
+
 /* ══ GIFTS (редизайн в стиле Telegram) ══ */
 .gifts-catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:18px}
 .gift-card{background:var(--bg2);border:1.5px solid var(--brd);border-radius:18px;padding:18px 14px 14px;text-align:center;cursor:pointer;transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s,border-color .2s;position:relative;overflow:hidden}
@@ -1221,9 +1246,10 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <div class="stab" onclick="setTab(this,'channels')" id="stab-ch">Каналы</div>
       </div>
       <div class="sb-toolbar">
+        <svg class="sb-search-ico" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input id="sb-search" placeholder="Поиск чатов..." oninput="filterChats(this.value)">
         <button class="new-chat-btn" onclick="openContacts()" title="Контакты" style="margin-right:4px">👥</button>
-        <button class="new-chat-btn" onclick="openNewChat()" title="Новый чат">+</button>
+        <button class="new-chat-btn" id="fab-newchat" onclick="openNewChat()" title="Новый чат">+</button>
       </div>
       <div class="chat-select-bar" id="chat-select-bar">
         <span style="cursor:pointer;font-size:18px;color:var(--tx2)" onclick="exitChatSelectMode()">✕</span>
@@ -1485,6 +1511,30 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       <div class="settings-row">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(56,189,248,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.3 4 5.3 4 8.5s-1.5 6.2-4 8.5c-2.5-2.3-4-5.3-4-8.5s1.5-6.2 4-8.5z"/></svg></div><div><div class="settings-row-label">Язык</div><div class="settings-row-sub" id="settings-lang-sub">Русский</div></div></div>
         <button class="xbtn sec" style="padding:5px 11px;font-size:11.5px" onclick="openLP()">Изменить</button>
+      </div>
+    </div>
+
+    <div class="settings-section mobile-only-quick">
+      <div class="settings-section-title">Ещё</div>
+      <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openStore()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">🛒</div><div><div class="settings-row-label">Магазин</div></div></div>
+        <div class="settings-row-arrow">›</div>
+      </div>
+      <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openVIP()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(251,191,36,.1)">⭐</div><div><div class="settings-row-label">VIP</div></div></div>
+        <div class="settings-row-arrow">›</div>
+      </div>
+      <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openSupport()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">💬</div><div><div class="settings-row-label">Поддержка</div></div></div>
+        <div class="settings-row-arrow">›</div>
+      </div>
+      <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openGifts()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">🎁</div><div><div class="settings-row-label">Подарки</div></div></div>
+        <div class="settings-row-arrow">›</div>
+      </div>
+      <div class="settings-row" id="mset-devp" style="display:none" onclick="el('screen-settings').classList.remove('on');openAdmin()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(108,99,255,.1)">⚙️</div><div><div class="settings-row-label">Dev Panel</div></div></div>
+        <div class="settings-row-arrow">›</div>
       </div>
     </div>
 
@@ -4178,6 +4228,8 @@ function updateUserUI(){
   }
   const devBtn=el("t-devp");
   if(devBtn) devBtn.style.display=isDevPanelAllowed()?"":"none";
+  const devBtnMobile=el("mset-devp");
+  if(devBtnMobile) devBtnMobile.style.display=isDevPanelAllowed()?"":"none";
 }
 
 // ── LANG PICKER ──────────────────────────────────────────────────
@@ -4294,15 +4346,16 @@ function renderChats(filter=""){
   list.sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0) || (b.lastTs||0)-(a.lastTs||0));
 
   // Строка "Архив" сверху списка — только если там реально что-то есть
-  const archivedCount=S.chats.filter(x=>x.archived && !x.blocked).length;
-  if(archivedCount>0 && !filter){
+  const archivedChats=S.chats.filter(x=>x.archived && !x.blocked);
+  if(archivedChats.length>0 && !filter){
     const ad=document.createElement("div");
     ad.className="ci";
     ad.onclick=()=>openArchive();
+    const preview=archivedChats.slice(0,3).map(x=>escHtml(x.nm)).join(", ");
     ad.innerHTML=`<div class="chav" style="background:var(--bg3);color:var(--tx2)">🗄️</div>
     <div class="cinfo" style="flex:1;overflow:hidden">
       <div class="cnm">Архив</div>
-      <div class="cprev">${archivedCount} ${archivedCount===1?"чат":"чатов"}</div>
+      <div class="cprev">${preview}</div>
     </div>`;
     c.appendChild(ad);
   }
@@ -8213,7 +8266,9 @@ function openChatInfo(){
   el("ui-birthday-row").style.display="none";
   el("ui-gifts-row").style.display="none";
   el("ui-members-row").style.display="none";
+  el("ui-add-contact-row").style.display="none";
   el("ui-bottom-actions").innerHTML="";
+  el("ui-header").style.background = colBg(ch.col);
 
   const msgs=S.messages[ch.id]||[];
   const counts=countChatContent(msgs);
@@ -8239,8 +8294,10 @@ function openChatInfo(){
       uiActionBtn("💬","Чат",`closeM('m-user-info')`),
       uiActionBtn(ch.muted?"🔇":"🔔",ch.muted?"Вкл. звук":"Без звука",`muteChat();openChatInfo()`),
       uiActionBtn("📞","Звонок",`closeM('m-user-info');showToast('📞 Звонки — скоро')`),
-      uiActionBtn("⋯","Ещё",`closeM('m-user-info')`),
+      uiActionBtn("🎁","Подарок",`closeM('m-user-info');openGifts()`),
     ].join("");
+
+    if(!isSystem && !ch.isContact) el("ui-add-contact-row").style.display="block";
 
     if(ch.withUserId){
       apiGet("/api/users/"+ch.withUserId).then(d=>{
@@ -8284,7 +8341,7 @@ function openChatInfo(){
     const actions=[uiActionBtn(ch.muted?"🔇":"🔔",ch.muted?"Вкл. звук":"Без звука",`muteChat();openChatInfo()`)];
     if(ch.type==="groups"||ch.type==="channels") actions.push(uiActionBtn("👥","Участники",`closeM('m-user-info');openMembers()`));
     if(canEdit) actions.push(uiActionBtn("⚙️","Управление",`closeM('m-user-info');openChannelSettings()`));
-    actions.push(uiActionBtn("⋯","Ещё",`closeM('m-user-info')`));
+    actions.push(uiActionBtn("🎁","Подарок",`closeM('m-user-info');openGifts()`));
     el("ui-actions").innerHTML = isSystem ? "" : actions.join("");
 
     if(!isSystem){
@@ -13785,7 +13842,7 @@ applyTheme(S.theme||"dark");
   <div id="ui-header" style="position:relative;padding:20px 20px 16px;background:linear-gradient(135deg,var(--acc2),var(--acc3));display:flex;flex-direction:column;align-items:center">
     <div onclick="closeM('m-user-info')" style="position:absolute;top:12px;right:12px;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.25);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px">✕</div>
     <div id="ui-avatar" style="width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;margin-bottom:10px;overflow:hidden;background:rgba(255,255,255,.2);color:#fff;border:2px solid rgba(255,255,255,.4)"></div>
-    <div id="ui-name" style="font-weight:700;font-size:17px;text-align:center;color:#fff">Имя</div>
+    <div id="ui-name" style="font-weight:700;font-size:20px;text-align:center;color:#fff">Имя</div>
     <div id="ui-status" style="color:rgba(255,255,255,.85);font-size:12px;margin-top:3px"></div>
   </div>
 
@@ -13797,6 +13854,7 @@ applyTheme(S.theme||"dark");
       <div id="ui-uname" style="color:var(--acc2);font-size:13.5px"></div>
       <div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Имя пользователя</div>
     </div>
+    <div id="ui-add-contact-row" style="padding:12px 16px;border-bottom:1px solid var(--brd);display:none;cursor:pointer;color:var(--acc2);font-size:13.5px" onclick="closeM('m-user-info');addCurrentChatToContacts()">➕ Добавить в контакты</div>
     <div id="ui-bio-row" style="padding:10px 16px;border-bottom:1px solid var(--brd);display:none">
       <div id="ui-bio" style="font-size:13px;line-height:1.5"></div>
       <div style="font-size:10.5px;color:var(--tx3);margin-top:2px">О себе</div>
