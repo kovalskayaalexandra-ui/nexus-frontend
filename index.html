@@ -1279,7 +1279,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       <div class="recording-bar" id="recording-bar">
         <div class="rec-dot"></div>
         <div class="rec-timer" id="rec-timer">0:00</div>
-        <div class="rec-hint">Запись голосового…</div>
+        <div class="rec-hint" id="rec-hint">Запись голосового…</div>
         <button class="rec-btn" onclick="cancelVoiceRecording()" title="Отменить">🗑️</button>
         <button class="rec-btn rec-btn-ok" onclick="stopVoiceRecording()" title="Готово">✓</button>
       </div>
@@ -1317,7 +1317,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <button class="mic-btn" id="bot-menu-btn" onclick="openBotCommandMenu()" title="Команды бота" style="display:none">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
         </button>
-        <button class="mic-btn" id="mic-btn" onclick="toggleVoiceRecording()" title="Голосовое сообщение">
+        <button class="mic-btn" id="mic-btn" onclick="onMicBtnClick(event)" ontouchstart="micTouchStart(event)" ontouchmove="micTouchMove(event)" ontouchend="micTouchEnd(event)" title="Голосовое сообщение">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
         </button>
         <button class="mic-btn" id="vc-btn" onclick="openVideoCircleRecorder()" title="Видео-кружочек">
@@ -6584,6 +6584,66 @@ function stopVoiceRecording(){
     if(pendingAttach && pendingAttach.previewUrl===previewUrl) pendingAttach.waveform=wf;
   };
   voiceRecorder.stop();
+}
+
+// ══════════════════════════════════════════════════
+//  ЗАПИСЬ ГОЛОСОВЫХ — HOLD / SLIDE-CANCEL / SLIDE-LOCK (этап 12 дорожной карты)
+// ══════════════════════════════════════════════════
+// РИСК ВЫСОКИЙ — единственная фича дорожной карты, задевающая рабочую
+// основную функцию (запись голосовых), а не просто добавляющая новое.
+// Поэтому ничего в существующем пайплайне не переписано: toggleVoiceRecording()/
+// stopVoiceRecording()/cancelVoiceRecording() вызываются как есть, в нужные
+// моменты — это только новый слой жестов поверх кнопки микрофона. Десктоп
+// (клик по иконке — старт, клик по "✓"/"🗑️" в баре — стоп/отмена) не
+// тронут вообще: жест включается только когда реальный touchstart
+// подтверждён на мобильной раскладке (isMobileLayout()), иначе onclick
+// работает как раньше.
+// ⚠️ Видео-кружочки НЕ переведены на этот же жест в этом заходе — у них уже
+// есть отдельный явный модальный экран (открыть → нажать запись → нажать
+// стоп), это принципиально другой, более многошаговый и уже сознательно
+// выбранный поток, не «быстрый инлайн-жест поверх иконки» как у голосовых.
+// Переводить его на hold/slide/lock — отдельная, более крупная и рискованная
+// задача (пришлось бы менять сам поток открытия модалки), не входит сюда.
+const MIC_CANCEL_THRESHOLD_PX=80, MIC_LOCK_THRESHOLD_PX=50;
+let micGestureState=null, justHandledMicTouch=false;
+function micTouchStart(e){
+  if(!isMobileLayout()) return; // десктоп — обычное поведение через onMicBtnClick/onclick
+  if(voiceRecorder && voiceRecorder.state==="recording") return; // уже пишем (например, после lock) — не новый жест
+  const t=e.touches[0];
+  micGestureState={x0:t.clientX,y0:t.clientY,cancelled:false,locked:false};
+  toggleVoiceRecording(); // существующая функция — сейчас не пишем, значит просто стартует запись
+}
+function micTouchMove(e){
+  if(!micGestureState) return;
+  const t=e.touches[0];
+  const dx=t.clientX-micGestureState.x0, dy=t.clientY-micGestureState.y0;
+  if(!micGestureState.locked && dy<-MIC_LOCK_THRESHOLD_PX){
+    micGestureState.locked=true;
+    if(navigator.vibrate) navigator.vibrate(30);
+    const hint=el("rec-hint"); if(hint) hint.textContent="🔒 Заблокировано — отпустите, запись продолжится";
+    return;
+  }
+  if(!micGestureState.locked){
+    const nowCancelled=dx<-MIC_CANCEL_THRESHOLD_PX;
+    if(nowCancelled!==micGestureState.cancelled){
+      micGestureState.cancelled=nowCancelled;
+      if(nowCancelled && navigator.vibrate) navigator.vibrate(20);
+      const hint=el("rec-hint"); if(hint) hint.textContent=nowCancelled?"← Отпустите для отмены":"Запись голосового…";
+    }
+  }
+}
+function micTouchEnd(e){
+  if(!micGestureState) return;
+  const state=micGestureState; micGestureState=null;
+  justHandledMicTouch=true; // проглатывает синтетический click, идущий следом за этим touchend
+  const hint=el("rec-hint"); if(hint) hint.textContent="Запись голосового…";
+  if(state.locked) return; // руки свободны — запись продолжается, стоп/отмена — через кнопки .recording-bar как обычно
+  if(state.cancelled) cancelVoiceRecording();
+  else stopVoiceRecording();
+}
+function onMicBtnClick(e){
+  if(justHandledMicTouch){ justHandledMicTouch=false; return; }
+  toggleVoiceRecording(); // десктоп/мышь — прежнее поведение без изменений
 }
 
 // Воспроизведение голосового в чате: play/pause + прогресс-бар
