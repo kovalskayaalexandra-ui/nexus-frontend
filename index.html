@@ -9730,6 +9730,47 @@ async function getTinkoffPublicKey(){
 // opts: { productKey, summaryId, payBtnId, containerId, statusId, onDone }
 // ⚠️ Кнопку "Отмена" НЕ прячем никогда — иначе человеку некуда деться,
 // если передумал или форма не грузится (уже наступали на эти грабли)
+// ══════════════════════════════════════════════════
+//  ОПЛАТА В ANDROID-ПРИЛОЖЕНИИ — НАСТОЯЩИЙ ВНЕШНИЙ БРАУЗЕР (этап 21 дорожной карты)
+// ══════════════════════════════════════════════════
+// Google Play требует Google Play Billing для покупок внутри приложений из
+// Play Store — мы её сознательно не подключаем (см. мобильную дорожную
+// карту), вместо этого платежи должны идти через настоящий внешний браузер,
+// а не webview/iframe "внутри" самого приложения. Обычный редирект
+// (location.href на чужой домен ЮKassa/Stripe, см. INTL-ветку ниже) уже и
+// так этого добивается сам по себе — Trusted Web Activity автоматически
+// передаёт управление системному браузеру, как только верхний адрес уходит
+// на домен вне подтверждённой области сайта. Но встроенный виджет Тинькофф
+// (startTinkoffWidgetPayment) рисует форму оплаты в iframe ВНУТРИ нашей же
+// страницы — верхний адрес никогда не меняется, значит TWA никогда не
+// передаёт управление наружу, и с точки зрения Google это выглядит как
+// платёж "внутри приложения". Поэтому именно для Тинькофф-пути внутри
+// Android-приложения — отдельная ветка: тот же самый /api/payments/create
+// (он и так уже возвращает paymentUrl — этим же URL пользуется сам виджет
+// внутри iframe), но вместо передачи в iframe — открываем его напрямую.
+function isRunningInTwa(){
+  return document.referrer.startsWith("android-app://");
+}
+async function startTinkoffExternalBrowserPayment(opts){
+  const { productKey, summaryId, payBtnId, statusId, onDone } = opts;
+  if(el(summaryId)) el(summaryId).style.display="none";
+  if(el(payBtnId)) el(payBtnId).style.display="none";
+  try{
+    const data = await apiPost("/api/payments/create", { productKey }, true);
+    if(!data || !data.paymentUrl){
+      showToast("❌ "+(data&&data.error||"Не удалось создать платёж"));
+      return;
+    }
+    window.open(data.paymentUrl, "_blank");
+    if(el(statusId)) el(statusId).style.display="block";
+    pollTinkoffPaymentStatus(data.orderId, ()=>{
+      if(el(statusId)) el(statusId).style.display="none";
+      onDone();
+    });
+  }catch(e){
+    showToast("❌ Нет связи с сервером");
+  }
+}
 async function startTinkoffWidgetPayment(opts){
   const { productKey, summaryId, payBtnId, containerId, statusId, onDone } = opts;
   const container = el(containerId);
@@ -9821,8 +9862,7 @@ async function completeBuy(){
   }
 
   if(S.user?.billing_region === "ru"){
-    // RU — встроенный виджет, форма карты/СБП остаётся на нашей странице
-    startTinkoffWidgetPayment({
+    const payOpts = {
       productKey,
       summaryId: "mbuy-summary", payBtnId: "mbuy-pay-btn",
       containerId: "tinkoff-widget-container", statusId: "tinkoff-widget-status",
@@ -9831,7 +9871,11 @@ async function completeBuy(){
         showToast("✅ Оплата прошла! Баланс обновится через секунду...");
         pollBalanceAfterPayment();
       }
-    });
+    };
+    // Внутри Android-приложения — настоящий внешний браузер (см. startTinkoffExternalBrowserPayment),
+    // на обычном сайте — как и раньше, встроенный виджет, форма карты/СБП остаётся на странице
+    if(isRunningInTwa()) startTinkoffExternalBrowserPayment(payOpts);
+    else startTinkoffWidgetPayment(payOpts);
     return;
   }
 
@@ -10843,7 +10887,7 @@ async function buyVIPDirect(productKey){
   if(S.user?.billing_region === "ru"){
     if(el("vip-direct-label")) el("vip-direct-label").textContent = productKey==="vip_year" ? "VIP на 1 год" : "VIP на 1 месяц";
     el("m-vip-direct").classList.add("on");
-    startTinkoffWidgetPayment({
+    const payOpts = {
       productKey,
       summaryId: null, payBtnId: null,
       containerId: "vip-direct-widget-container", statusId: "vip-direct-widget-status",
@@ -10852,7 +10896,9 @@ async function buyVIPDirect(productKey){
         showToast("✅ Оплата прошла! Баланс обновится через секунду...");
         pollBalanceAfterPayment();
       }
-    });
+    };
+    if(isRunningInTwa()) startTinkoffExternalBrowserPayment(payOpts);
+    else startTinkoffWidgetPayment(payOpts);
     return;
   }
 
