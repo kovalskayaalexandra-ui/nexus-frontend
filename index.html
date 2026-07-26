@@ -898,6 +898,15 @@ body.chat-select-mode .ci-select-check{display:flex}
 .mobile-mode .dev-panel-mobile-notice{display:flex}
 .mobile-mode #screen-admin .awrap{display:none}
 
+/* ══ ПОЛИРОВКА ВТОРОСТЕПЕННЫХ ЭКРАНОВ (этап 14) ══
+   Настройки/Контакты/Магазин/VIP/Подарки/Верификация уже используют
+   отзывчивые grid (auto-fill,minmax) и max-width:100% — структурно уже
+   мобильно-дружелюбны (как и было отмечено в дорожной карте), точечная
+   правка — только touch-таргет кнопки "← Назад"/действий (.nbtn, 16
+   применений по всем этим экранам), у которой была только текстовая
+   подпись без явной высоты под палец. */
+.mobile-mode .nbtn{padding:10px 14px;min-height:40px}
+
 /* ══ GIFTS (редизайн в стиле Telegram) ══ */
 .gifts-catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:18px}
 .gift-card{background:var(--bg2);border:1.5px solid var(--brd);border-radius:18px;padding:18px 14px 14px;text-align:center;cursor:pointer;transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s,border-color .2s;position:relative;overflow:hidden}
