@@ -2,8 +2,14 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
 <title>Nexus Messenger</title>
+<!-- PWA-основа (этап 2 мобильной дорожной карты) — нужна и для "Добавить на экран",
+     и как фундамент для будущей TWA-сборки (Android-приложение в Google Play) -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6c63ff">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <!-- Twemoji: рисованные картинки эмодзи вместо системного шрифта — одинаковый вид на любой ОС, как в Telegram/Discord/Slack. MIT + CC-BY-4.0 (jdecked/twemoji, преемник twitter/twemoji). -->
 <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@17.0.3/dist/twemoji.min.js"></script>
@@ -4328,6 +4334,30 @@ function emojifyEl(node){
     tn.parentNode.replaceChild(frag,tn);
   });
 }
+
+// ══════════════════════════════════════════════════
+//  МОБИЛЬНЫЙ РЕЖИМ — этапы 1 и 3 дорожной карты
+// ══════════════════════════════════════════════════
+// Единая точка входа для всей будущей мобильной адаптации. Пока ничего в
+// разметке не переключает, кроме самого класса .mobile-mode на <body> — это
+// просто фундамент, на который опираются следующие этапы (список чатов ↔
+// открытый чат в один экран и т.д.). Не путать с 3 существующими desktop-
+// ориентированными @media (строки ~787-789) — те не трогаем вообще.
+const MOBILE_BREAKPOINT_MQ="(max-width:600px)"; // взято из реального CSS web.telegram.org, не с потолка
+function isMobileLayout(){
+  return window.matchMedia(MOBILE_BREAKPOINT_MQ).matches;
+}
+function applyMobileModeClass(){
+  document.body.classList.toggle("mobile-mode",isMobileLayout());
+}
+window.matchMedia(MOBILE_BREAKPOINT_MQ).addEventListener("change",applyMobileModeClass);
+// Подстраховка: в части окружений (в т.ч. замечено при автоматизированном
+// тестировании через инструмент ресайза окна) событие "change" у matchMedia
+// не всегда срабатывает само по себе — обычный "resize" от окна дублирует
+// проверку и не даёт риска рассинхронизации класса с реальной шириной экрана.
+window.addEventListener("resize",applyMobileModeClass);
+applyMobileModeClass();
+
 function formatMsgText(raw){
   let safe = escHtml(raw);
   // Ссылки [текст](url)
