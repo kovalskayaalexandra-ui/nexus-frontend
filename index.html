@@ -272,7 +272,7 @@ button,input,textarea,select{font-family:inherit}
   background-size:250% 100%;animation:spoilerShimmer 2.2s linear infinite}
 .spoiler.revealed{background:rgba(128,128,128,.15);color:inherit;cursor:auto;text-shadow:none;user-select:text}
 @keyframes spoilerShimmer{0%{background-position:150% 0}100%{background-position:-50% 0}}
-.format-bar{display:none;flex-direction:column;position:absolute;bottom:100%;left:12px;margin-bottom:6px;background:var(--bg1);border:1px solid var(--brd);border-radius:12px;padding:5px;gap:1px;box-shadow:0 10px 28px rgba(0,0,0,.35);z-index:50;min-width:180px}
+.format-bar{display:none;flex-direction:column;position:absolute;bottom:100%;left:12px;margin-bottom:6px;background:var(--bg3);border:1px solid var(--brd);border-radius:12px;padding:5px;gap:1px;box-shadow:0 10px 28px rgba(0,0,0,.35);z-index:50;min-width:180px}
 .format-bar.on{display:flex}
 .fmt-btn{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13.5px;color:var(--tx1);transition:.12s;user-select:none}
 .fmt-btn:hover{background:var(--bg3)}
@@ -818,7 +818,8 @@ tr:hover td{background:var(--bg3)}
    спорить за нижние 56px с содержимым экрана. .screen — не потомок .layout
    (отдельный оверлей на уровне body), поэтому :has() ниже проверяет body. */
 .mobile-tabbar{display:none;position:fixed;bottom:0;left:0;right:0;height:56px;z-index:450;
-  background:var(--bg2);border-top:1px solid var(--brd);align-items:center;justify-content:space-around}
+  background:var(--bg2);border-top:1px solid var(--brd);align-items:center;justify-content:space-around;
+  box-shadow:0 -2px 14px rgba(0,0,0,.22)}
 body.mobile-mode .mobile-tabbar{display:flex}
 body.mobile-mode:has(.screen.on) .mobile-tabbar{display:none}
 body.mobile-mode:has(.rp.mobile-open) .mobile-tabbar{display:none}
@@ -839,7 +840,9 @@ body.mobile-mode:has(.rp.mobile-open) .mobile-tabbar{display:none}
 .mobile-mode .rp-back-btn{display:flex;position:absolute;top:10px;left:10px;width:33px;height:33px;background:var(--bg3);
   border:1px solid var(--brd);border-radius:8px;cursor:pointer;align-items:center;justify-content:center;color:var(--tx2)}
 .mobile-mode .rphdr{position:relative}
-.mobile-mode .rp.mobile-open{display:flex;position:fixed;inset:0;width:100%;z-index:460;background:var(--bg2)}
+.mobile-mode .rp.mobile-open{display:flex;position:fixed;inset:0;width:100%;z-index:460;background:var(--bg2);
+  animation:screenIn .22s ease-out}
+.mobile-mode .rp.mobile-open.closing{animation:screenOut .18s ease-in forwards}
 
 /* ══ КОМПОЗЕР ПОД ПАЛЕЦ (этап 8) ══
    .format-bar — общий класс и для #attach-menu (Галерея/GIF/Файл/Музыка/
@@ -853,9 +856,18 @@ body.mobile-mode:has(.rp.mobile-open) .mobile-tabbar{display:none}
    отступает на 56px от низа экрана под таб-бар, см. этап 6), а не от края
    экрана — лист сам естественно не перекрывает таб-бар, проверено через
    getBoundingClientRect в браузере, а не только предположением о CSS. */
+@keyframes sheetIn{from{opacity:0;transform:translateY(100%)}to{opacity:1;transform:translateY(0)}}
 .mobile-mode .format-bar.on{position:fixed;left:0;right:0;bottom:0;top:auto;margin:0;
   border-radius:16px 16px 0 0;min-width:0;width:100%;max-height:60vh;overflow-y:auto;
-  padding:8px;z-index:60;box-shadow:0 -8px 30px rgba(0,0,0,.4)}
+  padding:8px;z-index:60;box-shadow:0 -8px 30px rgba(0,0,0,.45);
+  /* "Стеклянный" нижний лист — полупрозрачный фон + блюр контента под ним
+     (та же техника, что уже используется у .lpick — существующего bottom
+     sheet выбора языка: rgba/blur на слое, а не сплошной непрозрачный фон).
+     color-mix — чтобы полупрозрачность работала одинаково на всех 3 темах
+     (тёмная/AMOLED/светлая), не хардкодя rgb под конкретную тему. */
+  background:color-mix(in srgb, var(--bg3) 88%, transparent);
+  -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+  animation:sheetIn .22s cubic-bezier(.25,.8,.35,1)}
 .mobile-mode .format-bar.on .fmt-btn{padding:14px 12px;font-size:14.5px}
 .mobile-mode .attb,.mobile-mode .mic-btn{width:42px;height:42px}
 .mobile-mode .sndbtn{width:44px;height:44px}
@@ -4546,7 +4558,12 @@ function openChatInfoScreen(){
   pushNavEntry(closeChatInfoScreen);
 }
 function closeChatInfoScreen(){
-  const rp=el("rp"); if(rp) rp.classList.remove("mobile-open");
+  const rp=el("rp"); if(!rp) return;
+  // Тот же приём, что и closeScreen() для обычных .screen — проиграть
+  // screenOut перед тем, как снять mobile-open, иначе анимация обрежется
+  // мгновенным display:none (см. .rp{display:none} на десктопе/≤900px).
+  rp.classList.add("closing");
+  setTimeout(()=>{ rp.classList.remove("mobile-open"); rp.classList.remove("closing"); }, 180);
 }
 
 // ══════════════════════════════════════════════════
