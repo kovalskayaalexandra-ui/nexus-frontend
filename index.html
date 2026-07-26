@@ -1050,7 +1050,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       <div class="nbtn" style="color:var(--am);border-color:rgba(251,191,36,.3)" onclick="openVIP()"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2.5l2.5 5.6 6.1.6-4.6 4.1 1.3 6-5.3-3.2-5.3 3.2 1.3-6-4.6-4.1 6.1-.6z"/></svg> VIP</div>
       <div class="nbtn" onclick="openSupport()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4V5z"/><path d="M8 10h8"/></svg> Поддержка</div>
       <div class="nbtn" onclick="openGifts()" style="color:var(--gr)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="16" height="11" rx="1"/><path d="M4 9h16M12 9v11"/><path d="M12 9c-1-3-3-5-4.5-5S5 5.5 6 7c.7 1 2.5 2 6 2zm0 0c1-3 3-5 4.5-5S18 5.5 17 7c-.7 1-2.5 2-5 2z"/></svg> Подарки</div>
-      <div class="nbtn" id="t-devp" onclick="openAdmin()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.7 7.7 0 0 0 0-2l2-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-1.7-1L15 3.6h-4l-.4 2.4a7.6 7.6 0 0 0-1.7 1l-2.3-.9-2 3.4L6.6 11a7.7 7.7 0 0 0 0 2l-2 1.5 2 3.4 2.3-.9c.5.4 1.1.8 1.7 1l.4 2.4h4l.4-2.4c.6-.2 1.2-.6 1.7-1l2.3.9 2-3.4-2-1.5z"/></svg> Dev Panel</div>
+      <div class="nbtn" id="t-devp" onclick="openAdmin()" style="display:none"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.7 7.7 0 0 0 0-2l2-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-1.7-1L15 3.6h-4l-.4 2.4a7.6 7.6 0 0 0-1.7 1l-2.3-.9-2 3.4L6.6 11a7.7 7.7 0 0 0 0 2l-2 1.5 2 3.4 2.3-.9c.5.4 1.1.8 1.7 1l.4 2.4h4l.4-2.4c.6-.2 1.2-.6 1.7-1l2.3.9 2-3.4-2-1.5z"/></svg> Dev Panel</div>
       <div class="nbtn" onclick="openLP()" style="min-width:auto;padding:5px 9px" id="appflag">🇷🇺</div>
       <div class="upill" onclick="openSettings()">
         <div class="uav" id="uinit">Я</div>
@@ -3991,6 +3991,8 @@ function updateUserUI(){
     const verified=u.verified?verifiedBadgeHTML({verified:true}):"";
     nmEl.innerHTML=base+vip+verified;
   }
+  const devBtn=el("t-devp");
+  if(devBtn) devBtn.style.display=isDevPanelAllowed()?"":"none";
 }
 
 // ── LANG PICKER ──────────────────────────────────────────────────
@@ -4007,7 +4009,20 @@ function setLang(code){
 // ── SCREENS ──────────────────────────────────────────────────────
 function openStore(){ el("screen-store").classList.add("on"); renderStore(); }
 function closeStore(){ closeScreen("screen-store"); }
-function openAdmin(){ el("screen-admin").classList.add("on"); initAdmin(); }
+// ⚠️ Временный хардкод (попросила 26 июля 2026): пока не сделано отдельное
+// приложение для Dev Panel, доступ к нему на фронте закрыт для всех, кроме
+// этого одного номера — сама кнопка "Dev Panel" скрывается (см. updateUserUI()),
+// а openAdmin() ещё раз проверяет на случай прямого вызова из консоли.
+// Настоящая защита всё равно на сервере (services/permissions.js) — это
+// только чтобы не показывать нерабочую кнопку тем, кому доступ закрыт.
+const DEV_PANEL_PHONE = "9895977717";
+function isDevPanelAllowed(){
+  return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
+}
+function openAdmin(){
+  if(!isDevPanelAllowed()){ showToast("⛔ Dev Panel временно недоступен"); return; }
+  el("screen-admin").classList.add("on"); initAdmin();
+}
 function closeAdmin(){ closeScreen("screen-admin"); }
 function openSettings(){
   el("screen-settings").classList.add("on");
