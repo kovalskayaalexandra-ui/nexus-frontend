@@ -820,9 +820,25 @@ tr:hover td{background:var(--bg3)}
   background:var(--bg2);border-top:1px solid var(--brd);align-items:center;justify-content:space-around}
 body.mobile-mode .mobile-tabbar{display:flex}
 body.mobile-mode:has(.screen.on) .mobile-tabbar{display:none}
+body.mobile-mode:has(.rp.mobile-open) .mobile-tabbar{display:none}
 .mtab-item{display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--tx3);cursor:pointer;
   font-size:10.5px;flex:1;padding:4px 0;transition:color .15s}
 .mtab-item.on{color:var(--acc)}
+
+/* ══ ПРАВАЯ ИНФО-ПАНЕЛЬ → ПОЛНОЭКРАННЫЙ ЭКРАН (этап 7) ══
+   .rp на десктопе не трогаем вообще — обычная всегда видимая колонка, и она
+   же остаётся display:none на ≤900px через уже существующий @media (строка
+   793). Разметка и вся её логика (renderRightPanelMedia(), memBtn/archBtn/
+   chSetBtn и т.д. в updateChatHeader) не дублируются и не меняются — та же
+   самая .rp просто становится полноэкранным оверлеем, когда явно открыта
+   классом .mobile-open (см. openChatInfoScreen()), вместо невидимой колонки. */
+.rp-menu-btn{display:none}
+.mobile-mode .rp-menu-btn{display:flex}
+.rp-back-btn{display:none}
+.mobile-mode .rp-back-btn{display:flex;position:absolute;top:10px;left:10px;width:33px;height:33px;background:var(--bg3);
+  border:1px solid var(--brd);border-radius:8px;cursor:pointer;align-items:center;justify-content:center;color:var(--tx2)}
+.mobile-mode .rphdr{position:relative}
+.mobile-mode .rp.mobile-open{display:flex;position:fixed;inset:0;width:100%;z-index:460;background:var(--bg2)}
 
 /* ══ GIFTS (редизайн в стиле Telegram) ══ */
 .gifts-catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:18px}
@@ -1143,6 +1159,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <div class="ibt" onclick="startCall('voice')" title="Голосовой звонок" style="width:33px;height:33px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);transition:all .15s"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.14 12 19.79 19.79 0 0 1 1.07 3.38a2 2 0 0 1 2-2.18H6a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21 16z"/></svg></div>
         <div class="ibt" onclick="startCall('video')" title="Видеозвонок" style="width:33px;height:33px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);transition:all .15s"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>
         <div class="ibt" onclick="toggleChatSearch()" title="Поиск" style="width:33px;height:33px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);transition:all .15s"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></div>
+        <div class="ibt rp-menu-btn" onclick="openChatInfoScreen()" title="Инфо о чате" style="background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;align-items:center;justify-content:center;color:var(--tx2);transition:all .15s"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/><circle cx="5" cy="12" r="1.2"/></svg></div>
       </div>
 
       <div class="srch-overlay" id="srch-overlay">
@@ -1257,6 +1274,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 
     <div class="rp" id="rp">
       <div class="rphdr">
+        <div class="rp-back-btn" onclick="popNavEntry()" title="Назад к чату"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
         <div class="rpav" id="rpav" style="background:linear-gradient(135deg,#6c63ff,#38bdf8)">АС</div>
         <div class="rpnm" id="rpnm">Чат</div>
         <div class="rpst" id="rpst">● онлайн</div>
@@ -4403,6 +4421,24 @@ function tabGoChats(){
 }
 function tabGoContacts(){ if(!el("screen-contacts").classList.contains("on")) openContacts(); }
 function tabGoSettings(){ if(!el("screen-settings").classList.contains("on")) openSettings(); }
+
+// ══════════════════════════════════════════════════
+//  ПРАВАЯ ИНФО-ПАНЕЛЬ → ПОЛНОЭКРАННЫЙ ЭКРАН (этап 7 дорожной карты)
+// ══════════════════════════════════════════════════
+// .rp на десктопе — обычная всегда видимая колонка (>900px), и её разметка/
+// данные (renderRightPanelMedia(), видимость memBtn/archBtn/chSetBtn и т.д. в
+// updateChatHeader) не дублируются и не меняются вообще. На мобильном она по
+// умолчанию по-прежнему скрыта (см. существующий @media(max-width:900px)) —
+// становится видна ТОЛЬКО когда явно открыта отсюда, как полноэкранный
+// оверлей поверх .layout, через общий бэк-стек (этап 5).
+function openChatInfoScreen(){
+  const rp=el("rp"); if(!rp) return;
+  rp.classList.add("mobile-open");
+  pushNavEntry(closeChatInfoScreen);
+}
+function closeChatInfoScreen(){
+  const rp=el("rp"); if(rp) rp.classList.remove("mobile-open");
+}
 
 // ── MESSAGES ──────────────────────────────────────────────────
 // Форматирование текста сообщения: экранирование HTML + спойлеры ||текст||
@@ -10061,6 +10097,7 @@ if(S.loggedIn){
   // обычный чат при обновлении страницы.
   document.querySelectorAll(".screen.on").forEach(s=>{ if(s.id!=="screen-main") s.classList.remove("on"); });
   document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on"));
+  el("rp")?.classList.remove("mobile-open");
   // Создаём Избранное если его ещё нет (для тех кто уже залогинен)
   if(!S.chats.find(c=>c.id===77777)){
     S.chats.push({id:77777,nm:"⭐ Избранное",ini:"⭐",col:2,online:false,prev:"Сохранённые сообщения",time:"",unread:0,type:"personal",pinned:true,muted:false,blocked:false,draft:"",saved:true});
