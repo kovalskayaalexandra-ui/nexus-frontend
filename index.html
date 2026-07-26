@@ -4460,6 +4460,46 @@ function closeChatInfoScreen(){
   const rp=el("rp"); if(rp) rp.classList.remove("mobile-open");
 }
 
+// ══════════════════════════════════════════════════
+//  СВАЙП-НАЗАД НА ОТКРЫТОМ ЧАТЕ (этап 9 дорожной карты)
+// ══════════════════════════════════════════════════
+// Жест только от ЛЕВОГО КРАЯ экрана (как системный "назад" на Android) — не
+// от произвольной точки чата. Это намеренно: свайп прямо по сообщению — уже
+// занят под "ответ на сообщение" (этап 11, тоже горизонтальный жест), а край
+// экрана для сообщений и голосовых/видео-кружков физически недостижим (там
+// всегда есть отступ под аватар/поля пузыря), поэтому конфликта с ними в
+// принципе не возникает — простой список повторяет требование раздела
+// рисков дорожной карты. Никакого визуального "следования за пальцем" —
+// решение принимается только по итоговому смещению при отпускании (проще и
+// надёжнее проверить без реального сенсорного экрана, см. оговорку выше про
+// то, что этот тестовый браузер не композитит кадры).
+const SWIPE_BACK_EDGE_PX=24, SWIPE_BACK_THRESHOLD_PX=70;
+let swipeBackState=null;
+function swipeBackActive(){
+  return document.body.classList.contains("mobile-mode")
+    && document.querySelector(".layout")?.classList.contains("chat-open");
+}
+document.addEventListener("touchstart",e=>{
+  if(!swipeBackActive()){ swipeBackState=null; return; }
+  const t=e.touches[0];
+  if(t.clientX>SWIPE_BACK_EDGE_PX){ swipeBackState=null; return; }
+  if(e.target.closest(".voice-wave-wrap, .video-circle-wrap, .vc-ring")){ swipeBackState=null; return; }
+  swipeBackState={x0:t.clientX,y0:t.clientY,aborted:false};
+},{passive:true});
+document.addEventListener("touchmove",e=>{
+  if(!swipeBackState||swipeBackState.aborted) return;
+  const t=e.touches[0];
+  const dx=t.clientX-swipeBackState.x0, dy=t.clientY-swipeBackState.y0;
+  if(Math.abs(dy)>Math.abs(dx)) swipeBackState.aborted=true; // вертикальный скролл — не наш жест
+},{passive:true});
+document.addEventListener("touchend",e=>{
+  if(!swipeBackState||swipeBackState.aborted){ swipeBackState=null; return; }
+  const t=e.changedTouches[0];
+  const dx=t.clientX-swipeBackState.x0;
+  swipeBackState=null;
+  if(dx>SWIPE_BACK_THRESHOLD_PX && swipeBackActive()) popNavEntry();
+});
+
 // ── MESSAGES ──────────────────────────────────────────────────
 // Форматирование текста сообщения: экранирование HTML + спойлеры ||текст||
 function escHtml(s){
