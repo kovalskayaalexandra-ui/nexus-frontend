@@ -794,6 +794,22 @@ tr:hover td{background:var(--bg3)}
 @media(max-width:700px){.asb{display:none}}
 @media(max-width:580px){.sb{width:58px}.cinfo,.cmeta{display:none}}
 
+/* ══ МОБИЛЬНАЯ НАВИГАЦИЯ (этап 4 дорожной карты) ══
+   Всё ниже — ТОЛЬКО под .mobile-mode (класс на body, см. applyMobileModeClass()
+   в скрипте) — на десктопе не действует вообще, три media-запроса выше не
+   трогаем. Список чатов и открытый чат становятся двумя экранами одного и
+   того же .layout — видна только одна. Прячем через translate3d, а не
+   display:none — список должен продолжать жить в фоне (получать WS-события,
+   обновлять непрочитанные), а не замирать, пока невиден. */
+.mobile-mode .layout{position:relative}
+.mobile-mode .sb{position:absolute;inset:0;width:100%;z-index:2;transform:translate3d(0,0,0);transition:transform .25s ease}
+.mobile-mode .cm{position:absolute;inset:0;width:100%;transform:translate3d(100%,0,0);transition:transform .25s ease;z-index:1}
+.mobile-mode .layout.chat-open .sb{transform:translate3d(-100%,0,0)}
+.mobile-mode .layout.chat-open .cm{transform:translate3d(0,0,0);z-index:2}
+.mobile-mode .resize-handle{display:none}
+.mobile-mode .back-btn{display:flex}
+.back-btn{display:none;width:33px;height:33px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;align-items:center;justify-content:center;color:var(--tx2);flex-shrink:0}
+
 /* ══ GIFTS (редизайн в стиле Telegram) ══ */
 .gifts-catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:18px}
 .gift-card{background:var(--bg2);border:1.5px solid var(--brd);border-radius:18px;padding:18px 14px 14px;text-align:center;cursor:pointer;transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s,border-color .2s;position:relative;overflow:hidden}
@@ -1085,6 +1101,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 
     <div class="cm">
       <div class="chdr">
+        <div class="back-btn" onclick="closeMobileChat()" title="Назад к списку чатов"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
         <div class="av" id="chav" style="background:linear-gradient(135deg,#6c63ff,#38bdf8)">АС</div>
         <div class="chin">
           <div class="chnm" id="chnm" onclick="openChatInfo()">Чат</div>
@@ -3410,7 +3427,7 @@ async function doReg(){
 function loginOK(){
   S.loggedIn=true; saveState();
   document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on"));
-  updateUserUI(); renderChats(); openChat(S.chat||1); updBal();
+  updateUserUI(); renderChats(); openChat(S.chat||1,{skipMobileSlide:true}); updBal();
   updateLogoText();
   // Подключаем WebSocket
   setTimeout(wsConnect, 300);
@@ -4199,7 +4216,7 @@ function globalSearch(v){
 }
 
 // ── OPEN CHAT ──────────────────────────────────────────────────
-function openChat(id){
+function openChat(id,opts){
   // save draft of previous chat
   const prev=S.chats.find(c=>c.id===S.chat);
   if(prev){ prev.draft=getInputText(); }
@@ -4281,6 +4298,22 @@ function openChat(id){
 
   renderMsgs(); cancelReply(); cancelEdit(); closeMPanel();
   S.chat=id; saveState();
+
+  // Мобильная навигация (этап 4): по умолчанию открытие чата "заезжает"
+  // поверх списка. opts.skipMobileSlide — для автоматического открытия при
+  // старте приложения/восстановлении сессии, где сначала должен быть виден
+  // список чатов, а не сразу переписка (см. loginOK() и восстановление сессии).
+  if(isMobileLayout() && !(opts&&opts.skipMobileSlide)){
+    const layoutEl=document.querySelector(".layout");
+    if(layoutEl) layoutEl.classList.add("chat-open");
+  }
+}
+// Кнопка "← Назад" в шапке чата на мобильном — возвращает к списку чатов, не
+// трогая сам открытый чат (он остаётся отрисованным в фоне, просто невиден,
+// см. CSS .mobile-mode .layout.chat-open)
+function closeMobileChat(){
+  const layoutEl=document.querySelector(".layout");
+  if(layoutEl) layoutEl.classList.remove("chat-open");
 }
 
 // ── MESSAGES ──────────────────────────────────────────────────
@@ -9946,7 +9979,7 @@ if(S.loggedIn){
     if(!S.messages[77777]) S.messages[77777]=[{id:1,t:"sys",tx:"Это ваше Избранное — сохраняйте сюда важные сообщения, ссылки и заметки. Видите только вы."}];
     saveState();
   }
-  updateUserUI(); renderChats(); openChat(S.chat||1); updBal();
+  updateUserUI(); renderChats(); openChat(S.chat||1,{skipMobileSlide:true}); updBal();
   updateLogoText();
   // Подключаем WebSocket при старте если уже залогинены
   setTimeout(wsConnect, 500);
