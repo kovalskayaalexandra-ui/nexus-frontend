@@ -888,6 +888,16 @@ body.chat-select-mode .ci-select-check{display:flex}
 .chat-select-bar.on{display:flex}
 .csb-act{cursor:pointer;font-size:18px;padding:4px}
 
+/* ══ DEV PANEL → ТОЛЬКО ДЛЯ ДЕСКТОПА (этап 13) ══
+   .awrap (сайдбар .asb + контент .acnt — 16 разделов, таблицы, графики) уже
+   и так частично ломался на узких экранах (.asb пропадал на ≤700px без
+   замены, см. существующий @media строка 795) — вместо попытки ужать всё
+   это под палец показываем плашку, как у уже существующего screen-maintenance. */
+.dev-panel-mobile-notice{display:none;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;gap:14px;flex:1;padding:60px 24px}
+.mobile-mode .dev-panel-mobile-notice{display:flex}
+.mobile-mode #screen-admin .awrap{display:none}
+
 /* ══ GIFTS (редизайн в стиле Telegram) ══ */
 .gifts-catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:18px}
 .gift-card{background:var(--bg2);border:1.5px solid var(--brd);border-radius:18px;padding:18px 14px 14px;text-align:center;cursor:pointer;transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s,border-color .2s;position:relative;overflow:hidden}
@@ -1550,6 +1560,11 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       <div class="cbal"><span>💎</span><span class="cba" id="bal-admin">1 250</span></div>
       <div class="nbtn" onclick="closeAdmin()">← Назад</div>
     </div>
+  </div>
+  <div class="dev-panel-mobile-notice">
+    <div style="font-size:44px">🖥️</div>
+    <div style="font-size:16px;font-weight:700">Dev Panel доступен только с компьютера</div>
+    <div style="font-size:13px;color:var(--tx2);max-width:280px">16 разделов, таблицы и графики административной панели не адаптированы под маленький экран — откройте Nexus в браузере на компьютере.</div>
   </div>
   <div class="awrap">
     <div class="asb">
