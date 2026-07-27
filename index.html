@@ -855,6 +855,12 @@ tr:hover td{background:var(--bg3)}
 .mobile-mode .layout.chat-open .cm{transform:translate3d(0,0,0);z-index:2}
 .mobile-mode .resize-handle{display:none}
 .mobile-mode .back-btn{display:flex}
+/* Старое правило строки 842 (@media 580px) прячет .cinfo/.cmeta для десктопного
+   режима "узкое окно = иконки без текста" — на реальном телефоне это то же
+   самое условие ширины, но здесь список должен быть полным, с именами.
+   Без этой строки имя/превью чата пропадают на всех телефонах. */
+.mobile-mode .cinfo{display:block}
+.mobile-mode .cmeta{display:flex}
 .back-btn{display:none;width:33px;height:33px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;cursor:pointer;align-items:center;justify-content:center;color:var(--tx2);flex-shrink:0}
 
 /* ══ НИЖНЯЯ ПАНЕЛЬ ВКЛАДОК (этап 6) ══
