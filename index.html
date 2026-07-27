@@ -2781,7 +2781,7 @@ function wsHandleMessage(msg){
 
     case "auth.error":
       console.warn("WS auth error:", msg.error);
-      if(msg.banned) forceLogoutBanned(msg.error);
+      if(msg.banned || msg.accountDeleted) forceLogoutBanned(msg.error);
       break;
 
     // Сервер разорвал соединение сразу при бане — раньше забаненный, у
@@ -3409,6 +3409,12 @@ function clearToken(){ localStorage.removeItem("nexus_token"); }
 // одном месте, чтобы не дублировать в каждой из функций-обёрток ниже.
 function checkBannedResponse(data){
   if(data && data.banned){ forceLogoutBanned(data.error); }
+  // ⚠️ Раньше accountDeleted обрабатывался только в самом экране входа — если
+  // аккаунт самоудалили с другого устройства ПОКА в этой сессии уже был вход,
+  // обычные API-запросы молча получали accountDeleted:true и ничего не
+  // происходило (человек продолжал сидеть в "живом" приложении на удалённом
+  // аккаунте). Тот же принудительный выход, что и при бане, просто с другим текстом.
+  else if(data && data.accountDeleted){ forceLogoutBanned(data.error||"Этот аккаунт был удалён"); }
   return data;
 }
 
@@ -4502,11 +4508,21 @@ function filterChats(v){
   _searchDebounce=setTimeout(async ()=>{
     try{
       const data=await apiGet("/api/users/search?q="+encodeURIComponent(q));
+      // ⚠️ Раньше при ошибке сервера (data.error, без data.users) код молча
+      // считал результат пустым списком — поиск выглядел как "никого нет",
+      // хотя на самом деле запрос не выполнился (например, сервер недоступен).
+      if(!data || !Array.isArray(data.users)){
+        if(wrap) wrap.innerHTML=`<div class="gsr-label">Глобальный поиск</div><div style="color:var(--tx3);font-size:12.5px;padding:4px 16px 12px">⚠️ Не удалось выполнить поиск — проверьте соединение</div>`;
+        return;
+      }
       // Не показываем повторно тех, с кем уже есть чат — они и так видны выше, среди локальных
       const localIds=new Set(S.chats.filter(c=>c.withUserId).map(c=>c.withUserId));
-      const results=(data.users||[]).filter(u=>u.id!==S.user?.id && !localIds.has(u.id));
+      const results=data.users.filter(u=>u.id!==S.user?.id && !localIds.has(u.id));
       renderGlobalSearchResults(results, q);
-    }catch(e){ console.warn("global search error:", e); }
+    }catch(e){
+      console.warn("global search error:", e);
+      if(wrap) wrap.innerHTML=`<div class="gsr-label">Глобальный поиск</div><div style="color:var(--tx3);font-size:12.5px;padding:4px 16px 12px">⚠️ Не удалось выполнить поиск — проверьте соединение</div>`;
+    }
   }, 300);
 }
 function renderGlobalSearchResults(users, query){
@@ -6300,24 +6316,17 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds, msgType){
   // всё равно "отправлено" у нас, просто не летит ему по WS и не покажется
   // при перезагрузке его истории (см. фильтр на сервере)
   const wsMemberIds = blockedFromRecipientId ? memberIds.filter(id=>id!==blockedFromRecipientId) : memberIds;
-  const sent = wsSend({ type:"message.send", payload:{ chatId, text:txt, msgType, memberIds:wsMemberIds, id:dbId, asChannel: msg.asChannel||null, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||"" } });
-
-  // Если WS не подключён — показываем локальный авто-ответ (демо). Не
-  // подходит для e2e-сообщений (шифротекст выглядел бы как "ответ" не в
-  // тему) — в этом случае просто пропускаем демо-автоответ.
-  if(!sent && msgType==="text"){
-    const stEl=el("chst"); const oc=stEl?.textContent, ocl=stEl?.className;
-    setTimeout(()=>{if(stEl){stEl.innerHTML=typingDotsHTML(T("typing"));stEl.className="chst typ";}},700);
-    setTimeout(()=>{
-      if(stEl){stEl.textContent=oc;stEl.className=ocl;}
-      const reps=["Понял! 👍","Окей 😊","Огонь! 🔥","Договорились ✅","Интересно 💡","🐱","💯","Хорошо!","Спасибо!","👌"];
-      const rep={id:nextId(),t:"in",fr:ch?.ini?.[0]||"А",tx:reps[Math.floor(Math.random()*reps.length)],time:tm,col:ch?.col||0};
-      if(!S.messages[chatId])S.messages[chatId]=[];
-      S.messages[chatId].push(rep); if(ch){ch.prev=rep.tx;ch.time=tm;ch.lastTs=Date.now();}
-      if(S.chat===chatId) renderMsgs();
-      renderChats(); if(!ch?.muted)showNotif(ch, rep.tx); saveState();
-    },1800);
-  }
+  // ⚠️ 27 июля 2026: раньше здесь был fallback "если WS не подключён —
+  // сгенерировать локальный фейковый ответ через 1.8с" (демо-режим для
+  // разработки без бэкенда). Удалено — для настоящих чатов с реальными
+  // пользователями это создавало полностью фиктивную переписку: собеседник
+  // никогда не отправлял эти "ответы", они существовали только на экране
+  // отправителя и не появлялись у самого собеседника при входе в реальный
+  // аккаунт. Реальное сообщение уже сохранено на сервере (apiPost выше) —
+  // если WS в моменте не подключён, получатель всё равно увидит сообщение
+  // при следующей загрузке истории/WS-реконнекте, никакой фейковый "ответ"
+  // тут не нужен и не должен придумываться.
+  wsSend({ type:"message.send", payload:{ chatId, text:txt, msgType, memberIds:wsMemberIds, id:dbId, asChannel: msg.asChannel||null, senderName: S.user?.name||"", senderAvatar: S.user?.avatar||"", senderStatusEmoji: S.user?.statusEmoji||"", senderNameColor: S.user?.nameColor||"" } });
 }
 
 // ── ОТЛОЖЕННАЯ ОТПРАВКА ("отправить позже", как в Telegram) ────────────
