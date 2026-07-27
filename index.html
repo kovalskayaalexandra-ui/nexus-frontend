@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<!-- Явно говорим браузеру/Android "мы уже тёмные сами" — иначе системная
+     "Принудительная тёмная тема" на некоторых Android-устройствах пытается
+     затемнить уже тёмную страницу сама и в первую очередь ломает именно
+     текст (аватарки при этом не трогает, т.к. это background у div, а не
+     текст) — похоже, это и есть причина пропадающих имён чатов в списке. -->
+<meta name="color-scheme" content="dark">
 <title>Angie Messenger</title>
 <!-- PWA-основа (этап 2 мобильной дорожной карты) — нужна и для "Добавить на экран",
      и как фундамент для будущей TWA-сборки (Android-приложение в Google Play).
@@ -19,6 +25,7 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
+  color-scheme:dark;
   --bg:#121620;--bg2:#171b28;--bg3:#1e2332;--bg4:#262c40;
   --brd:rgba(255,255,255,.08);--brd2:rgba(255,255,255,.16);
   --acc:#6c63ff;--acc2:#a78bfa;--acc3:#38bdf8;
