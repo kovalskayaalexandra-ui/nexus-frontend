@@ -1445,10 +1445,15 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <button class="mic-btn" id="vc-btn" onclick="onVcBtnClick(event)" ontouchstart="micTouchStart(event)" ontouchmove="micTouchMove(event)" ontouchend="micTouchEnd(event)" title="Видео-кружочек">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m10 9 5 3-5 3z"/></svg>
         </button>
-        <button class="mic-btn" id="sched-btn" onclick="openScheduleTimePicker()" title="Отправить позже" style="display:none">
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+        <div class="format-bar" id="send-opts-menu" style="left:auto;right:0">
+          <div class="fmt-btn" onclick="closeSendOptionsMenu();sendMsg();"><span class="fmt-ic">📤</span><span>Отправить сейчас</span></div>
+          <div class="fmt-btn" id="send-opt-schedule" onclick="closeSendOptionsMenu();openScheduleTimePicker();"><span class="fmt-ic">🕒</span><span>Отправить по расписанию</span></div>
+        </div>
+        <button class="sndbtn" onclick="onSendBtnClick(event)"
+          onmousedown="sendPressStart(event)" onmouseup="sendPressEnd(event)" onmouseleave="sendPressEnd(event)"
+          ontouchstart="sendPressStart(event)" ontouchend="sendPressEnd(event)" ontouchcancel="sendPressEnd(event)">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4 20-7z"/><path d="M22 2 11 13"/></svg>
         </button>
-        <button class="sndbtn" onclick="sendMsg()"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4 20-7z"/><path d="M22 2 11 13"/></svg></button>
       </div>
     </div>
 
@@ -3873,8 +3878,14 @@ function applyVoiceVideoRestriction(ch){
 // обычным подписчикам канала, и участникам group с "только админы", и
 // замьюченным лично людям, хотя они и обычное-то сообщение отправить не
 // могут. Та же проверка прав, что уже есть в updateInputPermissionUI().
+// ⚠️ Обновление (как в Telegram): отдельной иконки-часиков в строке ввода
+// больше нет — «Отправить по расписанию» теперь пункт меню по долгому
+// нажатию на кнопку отправки (см. sendPressStart/openSendOptionsMenu).
+// curScheduleEligible запоминает результат именно ДЛЯ ЭТОГО чата, чтобы
+// меню могло скрыть пункт без пересчёта прав в момент открытия.
+let curScheduleEligible=false;
 function applyScheduleButtonVisibility(ch){
-  const btn=el("sched-btn"), menuBtn=el("rp-scheduled-btn");
+  const menuBtn=el("rp-scheduled-btn");
   let eligible = typeof ch?.id==="string" && ch.id.length>10 && !ch.e2eActive;
   if(eligible){
     const myRole=myRoleIn(ch);
@@ -3885,7 +3896,7 @@ function applyScheduleButtonVisibility(ch){
     const isMemberMuted = !!(me && me.canWrite===false);
     eligible = !isChannelReadOnly && !isGroupRestricted && !isMemberMuted;
   }
-  if(btn) btn.style.display = eligible ? "" : "none";
+  curScheduleEligible=eligible;
   if(menuBtn) menuBtn.style.display = eligible ? "" : "none";
 }
 
@@ -6502,6 +6513,41 @@ function toggleAttachMenu(e){
 }
 // Закрываем меню вложений по клику вне него
 document.addEventListener("click", e=>{ if(!e.target.closest(".attb")) dismissSheet(el("attach-menu")); });
+
+// ── КНОПКА ОТПРАВКИ: долгое нажатие = "Отправить сейчас"/"по расписанию" ──
+// Как в Telegram: обычный тап — отправляет сразу (без изменений), удержание —
+// показывает меню вместо отправки. justHandledSendPress глотает клик, идущий
+// следом за touchend/mouseup, ТОЛЬКО когда меню реально было показано —
+// обычный быстрый тап проходит через onclick=sendMsg() как и раньше.
+const SEND_LONGPRESS_MS=380;
+let sendPressState=null, justHandledSendPress=false;
+function sendPressStart(e){
+  if(sendPressState) return; // уже жмём (touch+ghost-mouse на одном и том же нажатии)
+  const state={};
+  sendPressState=state;
+  state.timer=setTimeout(()=>{
+    if(sendPressState!==state) return;
+    justHandledSendPress=true;
+    if(navigator.vibrate) navigator.vibrate(15);
+    openSendOptionsMenu();
+  }, SEND_LONGPRESS_MS);
+}
+function sendPressEnd(e){
+  if(!sendPressState) return;
+  clearTimeout(sendPressState.timer);
+  sendPressState=null;
+}
+function onSendBtnClick(e){
+  if(justHandledSendPress){ justHandledSendPress=false; return; }
+  sendMsg();
+}
+function openSendOptionsMenu(){
+  const schedItem=el("send-opt-schedule");
+  if(schedItem) schedItem.style.display=curScheduleEligible?"":"none";
+  el("send-opts-menu").classList.add("on");
+}
+function closeSendOptionsMenu(){ dismissSheet(el("send-opts-menu")); }
+document.addEventListener("click", e=>{ if(!e.target.closest(".sndbtn") && !e.target.closest("#send-opts-menu")) dismissSheet(el("send-opts-menu")); });
 
 function pickAttach(e,kind){
   e.stopPropagation();
