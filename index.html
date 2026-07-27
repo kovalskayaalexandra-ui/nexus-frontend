@@ -8486,6 +8486,16 @@ function openChatInfo(){
 
     if(ch.withUserId){
       apiGet("/api/users/"+ch.withUserId).then(d=>{
+        // ⚠️ Username раньше брался ТОЛЬКО из локального кэша чата (ch.uname) —
+        // если он не был сохранён локально (старый чат, не было ресинка), строка
+        // так и оставалась скрытой, хотя сервер username отдаёт всегда без
+        // ограничений приватности. Теперь обновляем и локальный кэш, и строку
+        // тем же живым запросом, что уже используется для bio/дня рождения.
+        if(d.user?.username){
+          ch.uname=d.user.username;
+          el("ui-uname").textContent="@"+d.user.username;
+          el("ui-uname-row").style.display="block";
+        }
         if(d.user?.bio){ el("ui-bio").textContent=d.user.bio; el("ui-bio-row").style.display="block"; }
         if(d.user?.birthday){
           const [y,mo,da]=d.user.birthday.split("-").map(Number);
