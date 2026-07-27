@@ -3930,7 +3930,12 @@ const VERIFY_TICK_SVG = `<svg class="verify-tick-svg" viewBox="0 0 24 24" xmlns=
 function verifiedBadgeHTML(ch){
   if(!ch || (!ch.verified && !ch.peerVerified)) return "";
   const tip = ch.peerVerified ? "Подтверждённый профиль" : "Подтверждённый канал";
-  return `<span class="verify-badge" onmouseenter="showVerifyTip(this,'${tip}')" onmouseleave="hideVerifyTip()">${VERIFY_TICK_SVG}</span>`;
+  // onmouseenter/onmouseleave — для десктопа (наведение мышью). На мобильном
+  // hover-событий нет вовсе — тап только показывал подсказку (mouseenter
+  // эмулируется), а скрыть было нечем (mouseleave не приходит), подсказка
+  // залипала навсегда. onclick + автоскрытие в showVerifyTip() чинят это,
+  // не трогая десктопное поведение.
+  return `<span class="verify-badge" onmouseenter="showVerifyTip(this,'${tip}')" onmouseleave="hideVerifyTip()" onclick="event.stopPropagation();showVerifyTip(this,'${tip}')">${VERIFY_TICK_SVG}</span>`;
 }
 
 // Значок VIP — заливная пятиконечная звезда вместо эмодзи-короны 👑, тот же
@@ -3952,7 +3957,9 @@ function vipBadgeHTML(ch){
 
 // Общий тултип на весь документ (position:fixed) — не зависит от overflow
 // родителей значка, поэтому реально всплывает поверх всего остального
+let verifyTipHideTimer=null;
 function showVerifyTip(anchorEl, text){
+  clearTimeout(verifyTipHideTimer);
   let tip = document.getElementById("global-verify-tip");
   if(!tip){
     tip = document.createElement("div");
@@ -3968,8 +3975,11 @@ function showVerifyTip(anchorEl, text){
   left = Math.max(4, Math.min(left, window.innerWidth - tw - 4));
   tip.style.left = left+"px";
   tip.style.top = Math.max(4, r.top - th - 8)+"px";
+  // Автоскрытие — на мобильном нет mouseleave, который бы её убрал
+  verifyTipHideTimer=setTimeout(hideVerifyTip, 1800);
 }
 function hideVerifyTip(){
+  clearTimeout(verifyTipHideTimer);
   const tip = document.getElementById("global-verify-tip");
   if(tip) tip.style.display = "none";
 }
