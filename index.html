@@ -4400,7 +4400,7 @@ function renderChats(filter=""){
     ad.onclick=()=>openArchive();
     const preview=archivedChats.slice(0,3).map(x=>escHtml(x.nm)).join(", ");
     ad.innerHTML=`<div class="chav" style="background:var(--bg3);color:var(--tx2)">🗄️</div>
-    <div class="cinfo" style="flex:1;overflow:hidden;min-width:0">
+    <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
       <div class="cnm">Архив</div>
       <div class="cprev">${preview}</div>
     </div>`;
@@ -4412,7 +4412,7 @@ function renderChats(filter=""){
     d.className="ci"+(ch.id===S.chat?" on":"")+(ch.pinned?" pinned":"")+(ch.muted?" muted":"")+(S.chatSelectMode&&S.selectedChats.includes(ch.id)?" selected":"");
     const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:(ch.ini||"?");
     d.innerHTML=`<div class="avwrap"><div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>${ch.online?'<div class="odot"></div>':""}</div>
-    <div class="cinfo" style="flex:1;overflow:hidden;min-width:0">
+    <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
       <div class="cnm"${ch.peerNameColor?` style="color:${ch.peerNameColor}"`:""}>${ch.nm}${ch.peerVip?` <span title="VIP" style="display:inline-flex;vertical-align:middle;color:var(--am)">${VIP_STAR_SVG}</span>`:""}${ch.peerStatusEmoji?' '+ch.peerStatusEmoji:""}${ch.muted?' <span style="font-size:10px;opacity:.5">🔇</span>':""}${verifiedBadgeHTML(ch)}</div>
       <div class="cprev">${ch._typing?`<span class="typing-label">${typingDotsHTML("печатает")}</span>`:(ch.draft?'<span class="draft-label">Черновик: </span>'+ch.draft:ch.prev)}</div>
     </div>
@@ -4484,7 +4484,7 @@ function renderGlobalSearchResults(users, query){
     const avHTML=u.avatar_url?`<img src="${u.avatar_url}" style="width:100%;height:100%;object-fit:cover">`:nm[0].toUpperCase();
     return `<div class="ci" onclick="openChatFromSearch('${u.id}','${safeNm}',${col})">
       <div class="chav" style="background:${colBg(col)}">${avHTML}</div>
-      <div class="cinfo" style="flex:1;overflow:hidden;min-width:0">
+      <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
         <div class="cnm">${escHtml(nm)}</div>
         <div class="cprev">${u.username?"@"+escHtml(u.username):"Найден по глобальному поиску"}</div>
       </div>
@@ -4508,7 +4508,7 @@ function globalSearch(v){
     d.className="ci"+(ch.id===S.chat?" on":"");
     d.onclick=()=>openChat(ch.id);
     d.innerHTML=`<div class="chav" style="background:${colBg(ch.col)}">${ch.ini||"?"}</div>
-    <div class="cinfo" style="flex:1;overflow:hidden;min-width:0"><div class="cnm">${ch.nm}</div><div class="cprev">${ch.prev}</div></div>
+    <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)"><div class="cnm">${ch.nm}</div><div class="cprev">${ch.prev}</div></div>
     <div class="cmeta"><div class="ctime">${ch.time}</div></div>`;
     c.appendChild(d);
   });
@@ -8041,7 +8041,7 @@ function renderArchiveList(){
     const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:(ch.ini||"?");
     return `<div class="ci" style="border-radius:10px" onclick="closeM('m-archive');openChat(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})">
       <div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>
-      <div class="cinfo" style="flex:1;overflow:hidden;min-width:0">
+      <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
         <div class="cnm">${ch.nm}</div>
         <div class="cprev">${ch.prev||""}</div>
       </div>
