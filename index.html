@@ -1232,8 +1232,6 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
     <input type="file" id="reg-avatar-inp" accept="image/*" style="display:none" onchange="previewRegAvatar(this)">
     <label class="fl">Имя</label>
     <input class="fi" id="rname" placeholder="Ваше имя" style="margin-bottom:12px">
-    <label class="fl">Имя пользователя</label>
-    <input class="fi" id="runame" placeholder="@username" style="margin-bottom:12px">
     <label class="fl">Bio (необязательно)</label>
     <input class="fi" id="rbio" placeholder="Расскажите о себе" style="margin-bottom:12px">
     <div class="pw">
@@ -3664,7 +3662,7 @@ async function verifyCode(){
     }
 
     if(data.isNew){
-      showA("auth-register");
+      showA("auth-reg");
     } else {
       saveState(); loginOK();
     }
@@ -3680,28 +3678,27 @@ function previewRegAvatar(inp){ if(!inp.files[0])return; const r=new FileReader(
 async function doReg(){
   const nm=el("rname").value.trim(); if(!nm){showToast("❌ Введите имя");return;}
   const ph=el("rphinp").value.replace(/\D/g,""); if(!ph||ph.length<6){showToast("❌ Введите номер");return;}
-  const rawUname=el("runame").value.trim();
-  let uname;
-  if(rawUname){
-    const unameCheck=validateUsername(rawUname); if(!unameCheck.ok) return;
-    uname=unameCheck.value;
-  } else {
-    // Username не ввели явно — автогенерация из имени. Тут молча вырезаем
-    // недопустимые символы (кириллицу и т.п.), это не то, что пользователь
-    // явно набирал, поэтому ошибку по этому поводу показывать не за что
-    uname=nm.toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/gi,"") || "user"+Math.floor(Math.random()*100000);
-  }
+  // ⚠️ Своё имя пользователя (username) можно выбрать только с VIP (см.
+  // PATCH /api/users/me) — при регистрации VIP ни у кого ещё нет, поэтому
+  // поле для его ручного ввода убрано отсюда целиком. Автогенерация из
+  // имени, как и раньше для пустого поля — молча вырезаем недопустимые
+  // символы (кириллицу и т.п.), это не то, что пользователь явно набирал.
+  const uname=nm.toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/gi,"") || "user"+Math.floor(Math.random()*100000);
   const bio=el("rbio").value.trim();
 
-  const btn=document.querySelector("#auth-register .abtn");
+  const btn=document.querySelector("#auth-reg .abtn");
   if(btn){ btn.disabled=true; btn.textContent="⏳..."; }
 
   try {
     const data = await apiPost("/api/auth/register", { name:nm, username:uname, bio }, true);
-    if(data && !data.success){ showToast("❌ "+(data.error||"Ошибка регистрации")); if(btn){btn.disabled=false;btn.textContent=T("regtit");} return; }
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Ошибка регистрации — попробуйте ещё раз")); if(btn){btn.disabled=false;btn.textContent=T("regtit");} return; }
   } catch(e){
-    // Если API недоступен — всё равно входим (данные в S.user уже есть)
-    console.warn("Register API error:", e);
+    // ⚠️ Раньше при сбое сети код всё равно логинил пользователя локально,
+    // как будто профиль сохранился — а на сервере имя/username/bio могли
+    // остаться дефолтными. Теперь честно останавливаемся и даём попробовать снова.
+    showToast("❌ Нет связи с сервером — попробуйте ещё раз");
+    if(btn){ btn.disabled=false; btn.textContent=T("regtit"); }
+    return;
   }
 
   S.user={
