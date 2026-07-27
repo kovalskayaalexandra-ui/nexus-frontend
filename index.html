@@ -486,6 +486,13 @@ body.select-mode .msel-check{display:flex}
 .ibar:has(#minput.empty) .sndbtn{display:none}
 .ibar:not(:has(#minput.empty)) #mic-btn{display:none}
 .ibar:not(:has(#minput.empty)) #vc-btn{display:none}
+/* Мобильный режим: одна кнопка микрофон/видео-кружок вместо двух сразу,
+   как в Telegram — короткий тап переключает режим (setMicVideoMode() в
+   скрипте), удержание сразу начинает запись текущего режима. На десктопе
+   ничего не меняется — там обе кнопки остаются как были (правила выше). */
+body.mobile-mode .ibar:has(#minput.empty) #vc-btn{display:none}
+body.mobile-mode.micvid-video .ibar:has(#minput.empty) #mic-btn{display:none}
+body.mobile-mode.micvid-video .ibar:has(#minput.empty) #vc-btn{display:flex}
 .sndbtn:hover{transform:scale(1.07)}
 .sndbtn:active{transform:scale(.97)}
 .char-count{font-size:10px;color:var(--tx3);align-self:center;min-width:28px;text-align:right}
@@ -3854,7 +3861,7 @@ function applyVoiceVideoRestriction(ch){
     btn.style.opacity=blocked?".35":"";
     btn.style.cursor=blocked?"not-allowed":"";
     btn.title=blocked?"Собеседник запретил голосовые и видео-сообщения":(btn===micBtn?"Голосовое сообщение":"Видео-кружочек");
-    btn.onclick=blocked?(()=>showToast("🔒 Собеседник запретил голосовые и видео-сообщения")):(btn===micBtn?toggleVoiceRecording:openVideoCircleRecorder);
+    btn.onclick=blocked?(()=>showToast("🔒 Собеседник запретил голосовые и видео-сообщения")):(btn===micBtn?onMicBtnClick:openVideoCircleRecorder);
   });
 }
 
@@ -6798,51 +6805,98 @@ function stopVoiceRecording(){
 // тронут вообще: жест включается только когда реальный touchstart
 // подтверждён на мобильной раскладке (isMobileLayout()), иначе onclick
 // работает как раньше.
-// ⚠️ Видео-кружочки НЕ переведены на этот же жест в этом заходе — у них уже
-// есть отдельный явный модальный экран (открыть → нажать запись → нажать
-// стоп), это принципиально другой, более многошаговый и уже сознательно
-// выбранный поток, не «быстрый инлайн-жест поверх иконки» как у голосовых.
-// Переводить его на hold/slide/lock — отдельная, более крупная и рискованная
-// задача (пришлось бы менять сам поток открытия модалки), не входит сюда.
-const MIC_CANCEL_THRESHOLD_PX=80, MIC_LOCK_THRESHOLD_PX=50;
-let micGestureState=null, justHandledMicTouch=false;
+// Обновление (единая кнопка микрофон/видео, как в Telegram): видео-кружочки
+// теперь ТОЖЕ запускаются этим же удержанием — короткий тап меняет режим
+// (см. setMicVideoMode), удержание вызывает openVideoCircleRecorder()+
+// toggleVideoCircleRecording() напрямую. Слайд-блокировка для видео оставляет
+// существующую модалку открытой (её ручная кнопка "⏹" продолжает работать
+// как раньше) — слайд-отмена для видео есть, а вот полноэкранного превью
+// прямо во время удержания (как в настоящем Telegram) нет, это осталось
+// отдельной, более крупной задачей на будущее.
+const MIC_CANCEL_THRESHOLD_PX=80, MIC_LOCK_THRESHOLD_PX=50, MIC_HOLD_MS=180;
+let micGestureState=null, justHandledMicTouch=false, micVideoMode="voice";
+
+// Единая кнопка микрофон/видео-кружок на мобильном (как в Telegram): короткий
+// тап без удержания — просто переключает режим (см. setMicVideoMode), сама
+// запись не начинается. Удержание дольше MIC_HOLD_MS — запускает запись
+// текущего режима. Десктоп это не затрагивает: #vc-btn там остаётся отдельной
+// видимой кнопкой ("body.mobile-mode" гейтит все CSS-правила выше), клик по
+// ней там идёт напрямую через openVideoCircleRecorder(), как и раньше.
+function setMicVideoMode(mode){
+  if(micVideoMode===mode) return;
+  micVideoMode=mode;
+  document.body.classList.toggle("micvid-video", mode==="video");
+}
+
 function micTouchStart(e){
   if(!isMobileLayout()) return; // десктоп — обычное поведение через onMicBtnClick/onclick
-  if(voiceRecorder && voiceRecorder.state==="recording") return; // уже пишем (например, после lock) — не новый жест
+  if((voiceRecorder && voiceRecorder.state==="recording") || vcRecording) return; // уже пишем (например, после lock) — не новый жест
   const t=e.touches[0];
-  micGestureState={x0:t.clientX,y0:t.clientY,cancelled:false,locked:false};
-  toggleVoiceRecording(); // существующая функция — сейчас не пишем, значит просто стартует запись
+  const state={x0:t.clientX,y0:t.clientY,cancelled:false,locked:false,started:false};
+  micGestureState=state;
+  state.holdTimer=setTimeout(()=>{
+    if(micGestureState!==state) return;
+    state.started=true;
+    if(navigator.vibrate) navigator.vibrate(15);
+    if(micVideoMode==="video"){
+      openVideoCircleRecorder().then(()=>{
+        const modalOpen=el("m-videocircle")?.classList.contains("on");
+        if(!modalOpen) return; // не дали доступ к камере — тост об ошибке уже показан
+        if(micGestureState===state && state.started) toggleVideoCircleRecording();
+        else cancelVideoCircle(); // палец отпустили раньше, чем открылась камера — закрываем без записи
+      });
+    } else {
+      toggleVoiceRecording(); // существующая функция — сейчас не пишем, значит просто стартует запись
+    }
+  }, MIC_HOLD_MS);
 }
 function micTouchMove(e){
   if(!micGestureState) return;
+  const state=micGestureState;
+  if(!state.started) return; // ждём порога удержания — жесты слайда пока не считаем
   const t=e.touches[0];
-  const dx=t.clientX-micGestureState.x0, dy=t.clientY-micGestureState.y0;
-  if(!micGestureState.locked && dy<-MIC_LOCK_THRESHOLD_PX){
-    micGestureState.locked=true;
+  const dx=t.clientX-state.x0, dy=t.clientY-state.y0;
+  if(!state.locked && dy<-MIC_LOCK_THRESHOLD_PX){
+    state.locked=true;
     if(navigator.vibrate) navigator.vibrate(30);
-    const hint=el("rec-hint"); if(hint) hint.textContent="🔒 Заблокировано — отпустите, запись продолжится";
+    // Голосовое — руки свободны, дальше как обычно через .recording-bar.
+    // Видео — модалка остаётся открытой, кнопка "⏹" внутри неё работает как обычно.
+    if(micVideoMode==="voice"){ const hint=el("rec-hint"); if(hint) hint.textContent="🔒 Заблокировано — отпустите, запись продолжится"; }
     return;
   }
-  if(!micGestureState.locked){
+  if(!state.locked){
     const nowCancelled=dx<-MIC_CANCEL_THRESHOLD_PX;
-    if(nowCancelled!==micGestureState.cancelled){
-      micGestureState.cancelled=nowCancelled;
+    if(nowCancelled!==state.cancelled){
+      state.cancelled=nowCancelled;
       if(nowCancelled && navigator.vibrate) navigator.vibrate(20);
-      const hint=el("rec-hint"); if(hint) hint.textContent=nowCancelled?"← Отпустите для отмены":"Запись голосового…";
+      if(micVideoMode==="voice"){
+        const hint=el("rec-hint"); if(hint) hint.textContent=nowCancelled?"← Отпустите для отмены":"Запись голосового…";
+      }
     }
   }
 }
 function micTouchEnd(e){
   if(!micGestureState) return;
   const state=micGestureState; micGestureState=null;
+  clearTimeout(state.holdTimer);
   justHandledMicTouch=true; // проглатывает синтетический click, идущий следом за этим touchend
+  if(!state.started){
+    // Быстрый тап без удержания — запись ещё не началась, просто меняем режим
+    setMicVideoMode(micVideoMode==="voice"?"video":"voice");
+    return;
+  }
+  if(state.locked) return; // руки свободны — запись продолжается, стоп/отмена — через ручные кнопки как обычно
+  if(micVideoMode==="video"){
+    if(state.cancelled) cancelVideoCircle(); else finishVideoCircle();
+    return;
+  }
   const hint=el("rec-hint"); if(hint) hint.textContent="Запись голосового…";
-  if(state.locked) return; // руки свободны — запись продолжается, стоп/отмена — через кнопки .recording-bar как обычно
   if(state.cancelled) cancelVoiceRecording();
   else stopVoiceRecording();
 }
 function onMicBtnClick(e){
   if(justHandledMicTouch){ justHandledMicTouch=false; return; }
+  if(isMobileLayout() && micVideoMode==="video"){ openVideoCircleRecorder(); return; }
   toggleVoiceRecording(); // десктоп/мышь — прежнее поведение без изменений
 }
 
