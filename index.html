@@ -3986,6 +3986,11 @@ async function refreshChatPeerInfo(ch){
       ch.ini=u.name.slice(0,2).toUpperCase();
       changed=true;
     }
+    // ⚠️ username раньше вообще не синхронизировался сюда — startChatWithUser()
+    // создаёт чат без поля uname, и оно так и оставалось пустым навсегда,
+    // из-за чего поиск существующего чата по @username не находил его
+    // (см. renderChats()). Теперь подтягивается вместе с остальным профилем.
+    if((u.username||"")!==(ch.uname||"")){ ch.uname=u.username||""; changed=true; }
     const newAvatar=u.avatar||u.avatar_url||"";
     if(newAvatar!==(ch.avatar||"")){
       ch.avatar=newAvatar;
@@ -4423,7 +4428,13 @@ function renderChats(filter=""){
   const c=el("clist"); c.innerHTML="";
   let list=S.tab==="all"?[...S.chats]:S.chats.filter(x=>x.type===S.tab);
   list=list.filter(x=>!x.blocked && !x.archived);
-  if(filter)list=list.filter(x=>x.nm.toLowerCase().includes(filter.toLowerCase()));
+  // ⚠️ Раньше искало только по имени (x.nm) — уже добавленный в чаты
+  // человек не находился по своему username, даже если чат с ним уже
+  // открыт. Тот же приём "имя ИЛИ @username", что уже есть в searchNewChat().
+  if(filter){
+    const f=filter.toLowerCase();
+    list=list.filter(x=>x.nm.toLowerCase().includes(f) || ("@"+(x.uname||"")).toLowerCase().includes(f));
+  }
   list.sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0) || (b.lastTs||0)-(a.lastTs||0));
 
   // Строка "Архив" сверху списка — только если там реально что-то есть
