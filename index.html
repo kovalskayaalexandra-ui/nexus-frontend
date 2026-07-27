@@ -15,6 +15,30 @@
      приложение само обновляет текст на экране, отсюда и пропадавшие имена
      чатов в списке у некоторых пользователей. -->
 <meta name="google" content="notranslate">
+<!-- Автообновление без ручной очистки кэша (как в Telegram Web) — при
+     каждом открытии проверяем ETag/Last-Modified этой же страницы лёгким
+     HEAD-запросом в обход кэша; если он изменился с прошлого раза, значит
+     вышло обновление — молча перезагружаем страницу с новым query-параметром,
+     чтобы браузер гарантированно скачал свежую версию, а не отдал из кэша.
+     Флаг в localStorage не даёт зациклиться: после перезагрузки версия уже
+     совпадёт, и повторной перезагрузки не будет. -->
+<script>
+(function(){
+  try{
+    fetch(location.pathname, {method:"HEAD", cache:"no-store"}).then(function(r){
+      var v = r.headers.get("etag") || r.headers.get("last-modified");
+      if(!v) return;
+      var stored = localStorage.getItem("angie_page_version");
+      if(stored && stored !== v){
+        localStorage.setItem("angie_page_version", v);
+        location.replace(location.pathname + "?v=" + encodeURIComponent(v));
+      } else if(!stored){
+        localStorage.setItem("angie_page_version", v);
+      }
+    }).catch(function(){});
+  }catch(e){}
+})();
+</script>
 <title>Angie Messenger</title>
 <!-- PWA-основа (этап 2 мобильной дорожной карты) — нужна и для "Добавить на экран",
      и как фундамент для будущей TWA-сборки (Android-приложение в Google Play).
