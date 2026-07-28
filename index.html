@@ -2717,12 +2717,25 @@ const WS_URL  = "wss://nexus-backend-production-bebb.up.railway.app";
 let ws = null;
 let wsReconnectTimer = null;
 let wsConnected = false;
+let wsHasAuthedOnce = false; // отличаем первый вход (уже всё свежее) от переподключения
+
+// Как в Telegram — пока соединения нет (или оно восстанавливается), в шапке
+// вместо названия приложения показываем "Соединение...". Трогаем .logo/.alogo
+// тем же способом, что и updateLogoText(), но не лезем в document.title и
+// остальные места, которые обновляет она — незачем при каждом обрыве связи.
+function updateConnectionIndicator(connecting){
+  const isRu = detectIsRussianRegion();
+  document.querySelectorAll(".logo, .alogo").forEach(elm=>{
+    elm.textContent = connecting ? (isRu?"Соединение...":"Connecting...") : (isRu?"⬡ Энджи":"⬡ Angie");
+  });
+}
 
 function wsConnect(){
   if(ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   const token = getToken();
   if(!token){ return; }
 
+  updateConnectionIndicator(true);
   try { ws = new WebSocket(WS_URL); } catch(e){ wsScheduleReconnect(); return; }
 
   ws.onopen = () => {
@@ -2741,6 +2754,7 @@ function wsConnect(){
 
   ws.onclose = () => {
     wsConnected = false;
+    updateConnectionIndicator(true);
     wsScheduleReconnect();
   };
 
@@ -2775,6 +2789,19 @@ function wsHandleMessage(msg){
   switch(msg.type){
 
     case "auth.ok":
+      updateConnectionIndicator(false);
+      // ⚠️ Раньше здесь ничего не происходило — после разрыва связи (свернули/
+      // закрыли приложение, пропал интернет и т.п.) сокет переподключался и
+      // авторизовался заново, но ничего не досинхронизировал. Сообщения,
+      // отправленные, пока связи не было, оставались невидимы, пока не
+      // выйти и не зайти заново. Теперь при КАЖДОМ переподключении (не при
+      // самом первом входе — там и так всё только что загружено) обновляем
+      // список чатов и историю открытого чата, как делает Telegram.
+      if(wsHasAuthedOnce){
+        loadChatsFromDB();
+        if(S.chat) loadMessagesFromDB(S.chat);
+      }
+      wsHasAuthedOnce = true;
       break;
 
     case "auth.error":
