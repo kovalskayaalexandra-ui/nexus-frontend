@@ -1539,9 +1539,9 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(251,191,36,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fbbf24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><div><div class="settings-row-label">Кто видит мой номер</div></div></div>
         <select class="fsel" style="width:130px" id="priv-phone" onchange="savePrivacy()"><option>Все</option><option selected>Мои контакты</option><option>Никто</option></select>
       </div>
-      <div class="settings-row">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg></div><div><div class="settings-row-label">Кто видит онлайн</div></div></div>
-        <select class="fsel" style="width:130px" id="priv-online" onchange="savePrivacy()"><option>Все</option><option selected>Мои контакты</option><option>Никто</option></select>
+      <div class="settings-row" onclick="openEditProfile()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg></div><div><div class="settings-row-label">Кто видит онлайн</div><div class="settings-row-sub">👑 Скрыть время захода — в редактировании профиля</div></div></div>
+        <div class="settings-row-arrow">›</div>
       </div>
       <div class="settings-row">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#67e8f9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="3.2"/><path d="M10.3 12.7 19 4m-4 4 2 2m-6-2 2 2"/></svg></div><div><div class="settings-row-label">E2E шифрование</div><div class="settings-row-sub">Включается для каждого личного чата отдельно — кнопка 🔒 в шапке чата</div></div></div>
@@ -4384,7 +4384,6 @@ function openSettings(){
     }
   }
   if(el("priv-phone"))el("priv-phone").value=S.privacy.phone;
-  if(el("priv-online"))el("priv-online").value=S.privacy.online;
   if(el("notif-push"))el("notif-push").checked=S.notifSettings.push;
   if(el("notif-sound"))el("notif-sound").checked=S.notifSettings.sound;
   if(el("notif-preview"))el("notif-preview").checked=S.notifSettings.preview;
@@ -4525,7 +4524,10 @@ function filterChats(v){
   const q=v.trim();
   _searchDebounce=setTimeout(async ()=>{
     try{
-      const data=await apiGet("/api/users/search?q="+encodeURIComponent(q));
+      const [data, chatData]=await Promise.all([
+        apiGet("/api/users/search?q="+encodeURIComponent(q)),
+        apiGet("/api/chats/search?q="+encodeURIComponent(q))
+      ]);
       // ⚠️ Раньше при ошибке сервера (data.error, без data.users) код молча
       // считал результат пустым списком — поиск выглядел как "никого нет",
       // хотя на самом деле запрос не выполнился (например, сервер недоступен).
@@ -4536,21 +4538,26 @@ function filterChats(v){
       // Не показываем повторно тех, с кем уже есть чат — они и так видны выше, среди локальных
       const localIds=new Set(S.chats.filter(c=>c.withUserId).map(c=>c.withUserId));
       const results=data.users.filter(u=>u.id!==S.user?.id && !localIds.has(u.id));
-      renderGlobalSearchResults(results, q);
+      // Публичные каналы, найденные по названию/username — раньше найти канал
+      // можно было только по прямой ссылке-приглашению, даже "публичный" был
+      // не находим через поиск. Уже открытые (мы уже подписаны) не дублируем.
+      const knownChatIds=new Set(S.chats.map(c=>c.id));
+      const channels=(chatData&&Array.isArray(chatData.chats)?chatData.chats:[]).filter(c=>!knownChatIds.has(c.id));
+      renderGlobalSearchResults(results, channels, q);
     }catch(e){
       console.warn("global search error:", e);
       if(wrap) wrap.innerHTML=`<div class="gsr-label">Глобальный поиск</div><div style="color:var(--tx3);font-size:12.5px;padding:4px 16px 12px">⚠️ Не удалось выполнить поиск — проверьте соединение</div>`;
     }
   }, 300);
 }
-function renderGlobalSearchResults(users, query){
+function renderGlobalSearchResults(users, channels, query){
   const wrap=el("global-search-results");
   if(!wrap) return;
-  if(!users.length){
-    wrap.innerHTML=`<div class="gsr-label">Глобальный поиск</div><div style="color:var(--tx3);font-size:12.5px;padding:4px 16px 12px">Никого не найдено по «${escHtml(query)}»</div>`;
+  if(!users.length && !channels.length){
+    wrap.innerHTML=`<div class="gsr-label">Глобальный поиск</div><div style="color:var(--tx3);font-size:12.5px;padding:4px 16px 12px">Ничего не найдено по «${escHtml(query)}»</div>`;
     return;
   }
-  wrap.innerHTML=`<div class="gsr-label">Глобальный поиск</div>`+users.map(u=>{
+  let html=`<div class="gsr-label">Глобальный поиск</div>`+users.map(u=>{
     const nm=u.name||u.username||"Пользователь";
     const col=colorFromId(u.id);
     const safeNm=escHtml(nm).replace(/'/g,"\\'");
@@ -4563,12 +4570,54 @@ function renderGlobalSearchResults(users, query){
       </div>
     </div>`;
   }).join("");
+  if(channels.length){
+    html+=`<div class="gsr-label">Каналы</div>`+channels.map(c=>{
+      const nm=c.name||"Канал";
+      const col=colorFromId(c.id);
+      const safeNm=escHtml(nm).replace(/'/g,"\\'");
+      const safeUname=escHtml(c.username||"").replace(/'/g,"\\'");
+      const avHTML=c.avatar_url?`<img src="${c.avatar_url}" style="width:100%;height:100%;object-fit:cover">`:nm[0].toUpperCase();
+      const cnt=parseInt(c.member_count,10)||0;
+      const sub=(c.username?"@"+escHtml(c.username)+" · ":"")+cnt+" "+pluralSubs(cnt);
+      return `<div class="ci" onclick="joinChannelFromSearch('${c.id}','${safeNm}','${safeUname}',${col})">
+        <div class="chav" style="background:${colBg(col)}">${avHTML}</div>
+        <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
+          <div class="cnm">${escHtml(nm)}${c.is_verified?verifiedBadgeHTML({verified:true}):""}</div>
+          <div class="cprev">${sub}</div>
+        </div>
+      </div>`;
+    }).join("");
+  }
+  wrap.innerHTML=html;
+}
+// "5 подписчиков"/"2 подписчика"/"1 подписчик" — простое склонение для счётчика в поиске каналов
+function pluralSubs(n){
+  const n10=n%10, n100=n%100;
+  if(n100>=11&&n100<=14) return "подписчиков";
+  if(n10===1) return "подписчик";
+  if(n10>=2&&n10<=4) return "подписчика";
+  return "подписчиков";
 }
 function openChatFromSearch(userId, nm, col){
   startChatWithUser(userId, nm, col);
   el("sb-search").value="";
   el("global-search-results").innerHTML="";
   renderChats();
+}
+async function joinChannelFromSearch(id, nm, uname, col){
+  const existing=S.chats.find(c=>c.id===id);
+  if(existing){ openChat(existing.id); el("sb-search").value=""; el("global-search-results").innerHTML=""; return; }
+  try{
+    const data=await apiPost("/api/chats/"+id+"/join-public", {}, true);
+    if(!data?.success){ showToast("❌ "+(data?.error||"Не удалось подписаться")); return; }
+    const c=data.chat;
+    const ch={id:c.id, nm:c.name||nm, ini:(c.name||nm||"?").slice(0,2).toUpperCase(), col:col||0, online:false,
+      prev:"Вы подписались на канал", time:now(), unread:0, type:"channels", pinned:false, muted:false, blocked:false,
+      draft:"", uname:c.username||uname||"", avatar:c.avatar_url||"", myRole:"member", verified:!!c.is_verified};
+    S.chats.unshift(ch); saveState(); renderChats(); openChat(ch.id);
+  }catch(e){ showToast("❌ Нет связи с сервером"); }
+  el("sb-search").value="";
+  el("global-search-results").innerHTML="";
 }
 function globalSearch(v){
   if(!v){ renderChats(); return; }
@@ -5667,6 +5716,7 @@ function copyInviteLink(){
 }
 async function regenerateInviteLink(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
+  if(!canI("inviteLinks")){ showToast("🔒 Нет прав управлять ссылкой-приглашением"); return; }
   if(typeof ch.id!=="string" || ch.id.length<10){ showToast("❌ Сначала сохрани чат на сервере"); return; }
   if(!confirm("Старая ссылка перестанет работать. Создать новую?")) return;
   try{
@@ -8719,7 +8769,7 @@ async function saveProfile(){
       showToast("⚠️ Сохранено локально, но не на сервере — поиск других может не найти");
     });
 }
-function savePrivacy(){ S.privacy={phone:el("priv-phone")?.value,online:el("priv-online")?.value}; saveState(); showToast("✅ Приватность сохранена"); }
+function savePrivacy(){ S.privacy={phone:el("priv-phone")?.value}; saveState(); showToast("✅ Приватность сохранена"); }
 function saveNotif(){ S.notifSettings={push:el("notif-push")?.checked,sound:el("notif-sound")?.checked,preview:el("notif-preview")?.checked}; saveState(); }
 // Три полноценных набора значений — раньше переключались только --bg/--bg2,
 // AMOLED и "остальное" делили одни и те же тёмные цвета, светлой темы
@@ -9295,13 +9345,13 @@ function canModerateChat(ch){
 }
 
 function fullPerms(){
-  return {changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, manageStream:true, addAdmins:true, anonymous:false};
+  return {changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, addAdmins:true, anonymous:false};
 }
 function adminPerms(){
-  return {changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, manageStream:true, addAdmins:false, anonymous:false};
+  return {changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, addAdmins:false, anonymous:false};
 }
 function memberPerms(){
-  return {changeInfo:false, deleteMsg:false, banUsers:false, inviteLinks:false, pinMsg:false, manageStream:false, addAdmins:false, anonymous:false};
+  return {changeInfo:false, deleteMsg:false, banUsers:false, inviteLinks:false, pinMsg:false, addAdmins:false, anonymous:false};
 }
 
 const PERM_LABELS={
@@ -9310,12 +9360,11 @@ const PERM_LABELS={
   banUsers:"Блокировка/удаление участников",
   inviteLinks:"Пригласительные ссылки",
   pinMsg:"Закрепление сообщений",
-  manageStream:"Управление трансляциями",
   addAdmins:"Назначение администраторов",
   anonymous:"Анонимность"
 };
 // Какие права уже реально работают (подключены к действиям)
-const PERM_ACTIVE={changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:false, pinMsg:true, manageStream:false, addAdmins:true, anonymous:false};
+const PERM_ACTIVE={changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, addAdmins:true, anonymous:false};
 
 let curMemberId=null; // ID участника с которым работаем
 
