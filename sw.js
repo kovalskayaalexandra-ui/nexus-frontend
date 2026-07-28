@@ -14,6 +14,22 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// Тап по системному уведомлению о новом сообщении (см. notifyRealMessage()
+// в index.html) — переводим фокус на уже открытую вкладку, если она есть,
+// иначе открываем новую. Полноценный переход сразу в нужный чат по chatId —
+// отдельная задача на потом (там, где появится настоящий push с сервера).
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ('focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow('/');
+    })
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 

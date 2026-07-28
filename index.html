@@ -2950,7 +2950,7 @@ function wsHandleMessage(msg){
       if(ch){ ch.prev = prevTx; ch.time=now();ch.lastTs=Date.now(); if(S.chat !== chatId) ch.unread = (ch.unread||0)+1; }
       if(S.chat === chatId) { renderMsgs(); markChatAsRead(chatId); }
       renderChats(); saveState();
-      if(!ch?.muted && S.chat !== chatId) showNotif(ch, prevTx);
+      if(!ch?.muted && S.chat !== chatId) { showNotif(ch, prevTx); notifyRealMessage(ch, prevTx); }
       break;
     }
 
@@ -8805,7 +8805,69 @@ async function saveProfile(){
     });
 }
 function savePrivacy(){ S.privacy={phone:el("priv-phone")?.value}; saveState(); showToast("✅ Приватность сохранена"); }
-function saveNotif(){ S.notifSettings={push:el("notif-push")?.checked,sound:el("notif-sound")?.checked,preview:el("notif-preview")?.checked}; saveState(); }
+function saveNotif(){
+  S.notifSettings={push:el("notif-push")?.checked,sound:el("notif-sound")?.checked,preview:el("notif-preview")?.checked};
+  saveState();
+  if(S.notifSettings.push) ensureNotifPermission();
+}
+// Спрашиваем разрешение на системные уведомления один раз — пока браузер сам
+// не спросил (Notification.permission==="default"). Если человек уже отказал
+// раньше ("denied"), повторно не долбим — это либо навсегда, либо до ручного
+// разрешения в настройках самого браузера.
+function ensureNotifPermission(){
+  if(typeof Notification==="undefined") return;
+  if(Notification.permission==="default") Notification.requestPermission().catch(()=>{});
+}
+// Короткий двухтональный "динь" синтезируется на лету (Web Audio) — без
+// отдельного mp3-файла, чтобы не тащить бинарник в единственный index.html.
+let _notifAudioCtx=null;
+function playNotifSound(){
+  try{
+    if(!_notifAudioCtx) _notifAudioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const ctx=_notifAudioCtx;
+    if(ctx.state==="suspended") ctx.resume();
+    const now=ctx.currentTime;
+    [[0,880],[0.12,1174.66]].forEach(([offset,freq])=>{
+      const osc=ctx.createOscillator(), gain=ctx.createGain();
+      osc.type="sine"; osc.frequency.value=freq;
+      gain.gain.setValueAtTime(0.0001, now+offset);
+      gain.gain.exponentialRampToValueAtTime(0.18, now+offset+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now+offset+0.22);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now+offset); osc.stop(now+offset+0.25);
+    });
+  }catch(e){ /* Web Audio недоступен — просто без звука, не критично */ }
+}
+// Настоящее системное уведомление (звук + пуш браузера/ОС) — раньше
+// единственной обратной связью на новое сообщение была in-app полоска
+// showNotif() (см. ниже), которая не видна, если вкладка свёрнута или
+// приложение не в фокусе. Через ServiceWorkerRegistration.showNotification()
+// (а не голый конструктор Notification — на части мобильных браузеров он
+// не поддерживается напрямую со страницы) работает, пока процесс вкладки
+// жив, включая свёрнутое состояние. НЕ работает, если вкладка/приложение
+// закрыты полностью — для этого нужен настоящий push с сервера (VAPID,
+// подписки, отдельная задача, договорились делать позже).
+function notifyRealMessage(chat, previewText){
+  if(!S.notifSettings?.push || !chat) return;
+  if(S.notifSettings.sound!==false) playNotifSound();
+  ensureNotifPermission();
+  if(typeof Notification==="undefined" || Notification.permission!=="granted") return;
+  const title=chat.nm||"Angie";
+  const body=S.notifSettings.preview===false ? "Новое сообщение" : (previewText||"Новое сообщение");
+  const opts={body, icon:"icon-192.png", badge:"icon-192.png", tag:"chat-"+chat.id, data:{chatId:chat.id}};
+  const showViaConstructor=()=>{
+    try{
+      const n=new Notification(title, opts);
+      n.onclick=()=>{ window.focus(); openChat(chat.id); n.close(); };
+    }catch(e){ /* конструктор недоступен на этом браузере — без SW уведомление просто пропускаем */ }
+  };
+  if(navigator.serviceWorker && navigator.serviceWorker.ready){
+    navigator.serviceWorker.ready.then(reg=>{
+      if(reg && reg.showNotification) reg.showNotification(title, opts);
+      else showViaConstructor();
+    }).catch(showViaConstructor);
+  } else showViaConstructor();
+}
 // Три полноценных набора значений — раньше переключались только --bg/--bg2,
 // AMOLED и "остальное" делили одни и те же тёмные цвета, светлой темы
 // физически не было. Тёмная палитра заодно пересмотрена — менее чёрная,
@@ -11006,6 +11068,7 @@ if(S.loggedIn){
     // смена настроек другим админом, и т.д.) не доходило без полного
     // выхода и повторного входа — тот же класс бага, что был у ботов.
     loadChatsFromDB();
+    if(S.notifSettings?.push) ensureNotifPermission();
   }
 } else {
   el("auth-welcome").classList.add("on");
