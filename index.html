@@ -2137,7 +2137,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
     <span class="perm-label">Приватный чат<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Вступить можно только по ссылке-приглашению</div></span>
     <div class="perm-tgl" id="chset-private" onclick="toggleChPrivate(this)"></div>
   </div>
-  <div class="fg" style="margin-bottom:10px">
+  <div class="fg" id="chset-invite-row" style="margin-bottom:10px">
     <span class="fl">Ссылка-приглашение</span>
     <div style="display:flex;gap:6px;margin-top:6px">
       <input class="fii" id="chset-invite-link" readonly style="flex:1;font-size:11.5px">
@@ -5621,6 +5621,11 @@ function openChannelSettings(){
 
   el("chset-private").classList.toggle("on", !!ch.isPrivate);
   el("chset-invite-link").value = ch.inviteLink ? buildRealInviteLink(ch.inviteLink) : "Ссылка появится после сохранения";
+  // Ссылка-приглашение имеет смысл только для приватного чата — публичный и
+  // так находится через поиск (см. joinChannelFromSearch), отдельная ссылка
+  // ему не нужна и только путает, что чат закрытый, когда это не так.
+  const inviteRow=el("chset-invite-row");
+  if(inviteRow) inviteRow.style.display = ch.isPrivate ? "block" : "none";
 
   // "Удалить группу/канал" — только для владельца (создателя), не для админов
   const isOwner = ch.mine || myRoleIn(ch)==="owner";
@@ -5806,6 +5811,9 @@ async function toggleChPrivate(elm){
     el("chset-forwardprotection")?.classList.remove("on");
     await saveChatSettingField(ch, {forwardProtection:false});
   }
+  // Ссылка-приглашение — тот же принцип: видна только пока чат приватный
+  const inviteRow=el("chset-invite-row");
+  if(inviteRow) inviteRow.style.display = newVal ? "block" : "none";
 }
 
 function updateReactionsSummary(chatId){
