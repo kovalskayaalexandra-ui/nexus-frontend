@@ -4135,6 +4135,11 @@ async function loadChatsFromDB(){
         existing.pinned = !!dbChat.pinned;
         existing.archived = !!dbChat.archived;
         existing.muted = mutedFromServer;
+        // Настоящее число непрочитанных с сервера — не трогаем, если сейчас
+        // открыт именно этот чат (там непрочитанного и так 0, но markChatAsRead()
+        // мог ещё не долететь до сервера в этот самый момент — не хотим
+        // перезаписать бейдж гонкой)
+        if(S.chat !== dbChat.id) existing.unread = parseInt(dbChat.unread_count,10)||0;
       } else {
         // Добавляем новый чат из БД
         S.chats.push({
@@ -4147,7 +4152,7 @@ async function loadChatsFromDB(){
           prev: dbChat.last_message || "",
           time: dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : "",
           lastTs: dbChat.last_message_at ? new Date(dbChat.last_message_at).getTime() : 0,
-          unread: 0,
+          unread: parseInt(dbChat.unread_count,10)||0,
           type: dbChat.type || "personal",
           pinned: !!dbChat.pinned,
           muted: mutedFromServer,
@@ -4764,6 +4769,18 @@ function openChat(id,opts){
 function closeMobileChat(){
   const layoutEl=document.querySelector(".layout");
   if(layoutEl) layoutEl.classList.remove("chat-open");
+  // ⚠️ На мобильном (в отличие от десктопа с двумя колонками, где S.chat
+  // обязан оставаться указывать на видимый чат) вернулись к списку — сам
+  // чат больше не виден на экране, но S.chat раньше всё равно продолжал
+  // на него указывать. Из-за этого: (а) строка в списке навсегда оставалась
+  // подсвечена "как открытая" (в Telegram такого нет — заметила Александра),
+  // (б) новое сообщение в этом чате не увеличивало счётчик непрочитанных,
+  // потому что код считал чат всё ещё открытым и сразу помечал прочитанным.
+  if(isMobileLayout()){
+    S.chat=null;
+    saveState();
+    renderChats();
+  }
 }
 
 // ══════════════════════════════════════════════════
