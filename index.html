@@ -856,6 +856,13 @@ tr:hover td{background:var(--bg3)}
    того же .layout — видна только одна. Прячем через translate3d, а не
    display:none — список должен продолжать жить в фоне (получать WS-события,
    обновлять непрочитанные), а не замирать, пока невиден. */
+/* Александра сравнила с Telegram Android (28 июля 2026): там и текст, и
+   аватарки в списке чатов заметно крупнее — у нас мельче. Шрифт — через тот
+   же токен-скейл --fs-1..5 (используется по всему приложению), просто
+   переопределяем его под .mobile-mode, а не трогаем :root — на десктопе
+   размеры остаются как были, это жалоба именно про мобильную версию. */
+.mobile-mode{--fs-1:11px;--fs-2:12px;--fs-3:14px;--fs-4:16px;--fs-5:17px}
+.mobile-mode .chav{width:50px;height:50px;font-size:15px}
 .mobile-mode .layout{position:relative}
 .mobile-mode .sb{position:absolute;top:0;left:0;right:0;bottom:56px;width:100%;z-index:2;transform:translate3d(0,0,0);transition:transform .25s ease}
 .mobile-mode .cm{position:absolute;top:0;left:0;right:0;bottom:56px;width:100%;transform:translate3d(100%,0,0);transition:transform .25s ease;z-index:1}
@@ -1322,7 +1329,10 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
           <span class="csb-act" title="Удалить" onclick="chatSelectDelete()" style="color:var(--rd)">🗑️</span>
         </span>
       </div>
-      <div class="clist" id="clist"></div>
+      <div id="pull-archive" style="height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;transition:height .2s ease">
+        <div id="pull-archive-icon" style="width:40px;height:40px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:18px;transform:scale(.5);opacity:.4;transition:transform .1s,opacity .1s,background .1s">🗄️</div>
+      </div>
+      <div class="clist" id="clist" ontouchstart="pullArchiveStart(event)" ontouchmove="pullArchiveMove(event)" ontouchend="pullArchiveEnd()"></div>
       <div class="clist" id="global-search-results"></div>
     </div>
 
@@ -8292,6 +8302,46 @@ function unarchiveChat(chatId){
   saveChatMemberPref(ch.id, "archived", false);
   showToast("Чат восстановлен из архива");
 }
+// ── PULL-DOWN ДЛЯ ОТКРЫТИЯ АРХИВА (мобильный список чатов, как в Telegram) ──
+// Раньше архив открывался только тапом по его строке в списке (и то — только
+// когда в нём уже что-то есть, см. renderChats()). В Telegram есть ещё и
+// потягивание списка вниз от самого верха — Александра явно попросила это
+// добавить. Тянем, только если список проскроллен в самый верх (иначе это
+// обычный скролл), с "тугим" резиновым коэффициентом; иконка растёт и
+// подсвечивается акцентным цветом, когда пройден порог срабатывания.
+let pullArchiveStartY=null, pullArchiveActive=false;
+const PULL_ARCHIVE_MAX=90, PULL_ARCHIVE_TRIGGER=64;
+function pullArchiveStart(e){
+  const list=el("clist");
+  if(!isMobileLayout() || !list || list.scrollTop>0 || (e.touches&&e.touches.length>1)){ pullArchiveStartY=null; pullArchiveActive=false; return; }
+  pullArchiveStartY=e.touches[0].clientY;
+  pullArchiveActive=true;
+}
+function pullArchiveMove(e){
+  if(!pullArchiveActive || pullArchiveStartY==null) return;
+  const dy=e.touches[0].clientY-pullArchiveStartY;
+  if(dy<=0) return; // тянут вверх/скроллят как обычно — не наше дело
+  const dist=Math.min(dy*0.5, PULL_ARCHIVE_MAX);
+  const box=el("pull-archive"), icon=el("pull-archive-icon");
+  if(box) box.style.height=dist+"px";
+  if(icon){
+    const p=Math.min(dist/PULL_ARCHIVE_TRIGGER,1);
+    icon.style.transform="scale("+(0.5+0.5*p)+")";
+    icon.style.opacity=0.4+0.6*p;
+    icon.style.background=p>=1?"var(--acc)":"var(--bg3)";
+  }
+}
+function pullArchiveEnd(){
+  if(!pullArchiveActive){ pullArchiveStartY=null; return; }
+  pullArchiveActive=false;
+  const box=el("pull-archive");
+  const dist=box?(parseFloat(box.style.height)||0):0;
+  if(box) box.style.height="0px";
+  const icon=el("pull-archive-icon");
+  if(icon){ icon.style.transform="scale(.5)"; icon.style.opacity=".4"; icon.style.background="var(--bg3)"; }
+  pullArchiveStartY=null;
+  if(dist>=PULL_ARCHIVE_TRIGGER) openArchive();
+}
 function openArchive(){ renderArchiveList(); el("m-archive").classList.add("on"); }
 function renderArchiveList(){
   const list=S.chats.filter(c=>c.archived && !c.blocked);
@@ -8548,12 +8598,58 @@ function countChatContent(msgs){
   });
   return c;
 }
-function uiStatRow(icon,label,count){
+// type — ключ для openMediaBrowse (фото/видео/файлы/ссылки/голосовые/аудио/опросы);
+// без type (только у счётчика участников) — открывает список участников напрямую.
+function uiStatRow(icon,label,count,type){
   if(!count) return "";
-  return `<div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--brd);cursor:pointer" onclick="closeM('m-user-info');showToast('👀 Просмотр по типам — скоро')">
+  const action = type ? `openMediaBrowse('${type}')` : `openMembers()`;
+  return `<div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--brd);cursor:pointer" onclick="closeM('m-user-info');${action}">
     <span style="font-size:16px;width:20px;text-align:center;flex-shrink:0">${icon}</span>
     <span style="font-size:13.5px;color:var(--acc2)">${count.toLocaleString("ru")} ${label}</span>
   </div>`;
+}
+// Пункты профиля чата (N фото/видео/файлов/...) раньше были кликабельны, но
+// клик просто показывал тост "скоро" — счётчики (countChatContent) при этом
+// были настоящими, только сам просмотр не был построен. Данные берём из
+// S.messages[chatId] — тех же, что уже используются для самих счётчиков
+// (у чата подгружены последние 50 сообщений, так же как и в самой переписке).
+function emptyMediaMsg(label){ return `<div style="padding:24px 8px;text-align:center;color:var(--tx3);font-size:13px">Пока нет ${label}</div>`; }
+function openMediaBrowse(type){
+  const chatId=S.chat; if(!chatId) return;
+  const msgs=S.messages[chatId]||[];
+  const TITLES={photos:"Фото",videos:"Видео",files:"Файлы",links:"Ссылки",voice:"Голосовые",audio:"Аудиофайлы",polls:"Опросы"};
+  el("mb-title").textContent=TITLES[type]||"Медиа";
+  const list=el("mb-list");
+  list.style.display="block"; list.style.gridTemplateColumns=""; list.style.gap="";
+
+  if(type==="photos"){
+    const items=msgs.filter(m=>m.img);
+    list.style.display="grid"; list.style.gridTemplateColumns="repeat(3,1fr)"; list.style.gap="4px";
+    list.innerHTML=items.length?items.map(m=>`<div style="aspect-ratio:1;overflow:hidden;border-radius:6px;cursor:pointer" onclick="closeM('m-media-browse');openImgViewer('${m.img}')"><img src="${m.img}" style="width:100%;height:100%;object-fit:cover"></div>`).join(""):emptyMediaMsg("фото");
+  } else if(type==="videos"){
+    const items=msgs.filter(m=>m.video||m.videoCircle);
+    list.style.display="grid"; list.style.gridTemplateColumns="repeat(2,1fr)"; list.style.gap="6px";
+    list.innerHTML=items.length?items.map(m=>`<video src="${m.video||m.videoCircle?.url}" controls style="width:100%;border-radius:6px;background:#000;max-height:180px"></video>`).join(""):emptyMediaMsg("видео");
+  } else if(type==="files"){
+    const items=msgs.filter(m=>m.file);
+    list.innerHTML=items.length?items.map(m=>`<a href="${m.file.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--brd);color:var(--tx);text-decoration:none"><span style="font-size:20px;flex-shrink:0">📎</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px">${escHtml(m.file.name||"Файл")}</span></a>`).join(""):emptyMediaMsg("файлов");
+  } else if(type==="links"){
+    const urlRe=/(https?:\/\/[^\s<]+)/gi;
+    const items=[];
+    msgs.forEach(m=>{ if(m.tx){ const found=m.tx.match(urlRe); if(found) items.push(...found); } });
+    list.innerHTML=items.length?items.map(u=>`<a href="${escHtml(u)}" target="_blank" rel="noopener" style="display:block;padding:10px 4px;border-bottom:1px solid var(--brd);color:var(--acc2);font-size:13px;word-break:break-all;text-decoration:none">${escHtml(u)}</a>`).join(""):emptyMediaMsg("ссылок");
+  } else if(type==="voice" || type==="audio"){
+    const items=msgs.filter(m=>type==="voice"?m.voice:m.audio);
+    list.innerHTML=items.length?items.map(m=>{
+      const src=type==="voice"?m.voice.url:m.audio.url;
+      const label=type==="voice"?"🎤 Голосовое":"🎵 "+escHtml(m.audio.name||"Аудио");
+      return `<div style="padding:10px 4px;border-bottom:1px solid var(--brd)"><div style="font-size:12.5px;color:var(--tx2);margin-bottom:4px">${label}</div><audio controls src="${src}" style="width:100%;height:32px"></audio></div>`;
+    }).join(""):emptyMediaMsg(type==="voice"?"голосовых":"аудиофайлов");
+  } else if(type==="polls"){
+    const items=msgs.filter(m=>m.poll);
+    list.innerHTML=items.length?items.map(m=>`<div style="padding:10px 4px;border-bottom:1px solid var(--brd);font-size:13.5px">📊 ${escHtml(m.poll.question)}</div>`).join(""):emptyMediaMsg("опросов");
+  }
+  el("m-media-browse").classList.add("on");
 }
 function uiActionBtn(icon,label,onclick){
   return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border-radius:10px;background:var(--bg3);cursor:pointer" onclick="${onclick}">
@@ -8582,13 +8678,13 @@ function openChatInfo(){
   const msgs=S.messages[ch.id]||[];
   const counts=countChatContent(msgs);
   const statsHTML=[
-    uiStatRow("🖼️","фото",counts.photos),
-    uiStatRow("🎥","видео",counts.videos),
-    uiStatRow("📎","файлов",counts.files),
-    uiStatRow("🔗","ссылок",counts.links),
-    uiStatRow("🎤","голосовых",counts.voice),
-    uiStatRow("🎵","аудиофайлов",counts.audio),
-    uiStatRow("📊","опросов",counts.polls),
+    uiStatRow("🖼️","фото",counts.photos,"photos"),
+    uiStatRow("🎥","видео",counts.videos,"videos"),
+    uiStatRow("📎","файлов",counts.files,"files"),
+    uiStatRow("🔗","ссылок",counts.links,"links"),
+    uiStatRow("🎤","голосовых",counts.voice,"voice"),
+    uiStatRow("🎵","аудиофайлов",counts.audio,"audio"),
+    uiStatRow("📊","опросов",counts.polls,"polls"),
   ].join("");
   el("ui-stats-list").innerHTML=statsHTML;
 
@@ -14187,6 +14283,13 @@ applyTheme(S.theme||"dark");
 <div class="movl" id="m-imgview" onclick="if(event.target===this)closeM('m-imgview')">
   <img id="imgview-img" src="" style="max-width:92vw;max-height:92vh;border-radius:10px;object-fit:contain">
 </div>
+
+<!-- MODAL: MEDIA/FILES/LINKS BROWSER (профиль чата → "N фото/файлов/ссылок") -->
+<div class="movl" id="m-media-browse"><div class="modal">
+  <div class="mtit" id="mb-title">Медиа</div>
+  <div id="mb-list" style="max-height:60vh;overflow-y:auto;margin-top:4px"></div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-media-browse')">Закрыть</button></div>
+</div></div>
 
 <!-- MODAL: POLL CREATE -->
 <div class="movl" id="m-poll-create"><div class="modal">
