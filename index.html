@@ -2506,6 +2506,20 @@ function loadState(){
       const parsed = JSON.parse(saved);
       // Migration: merge saved with defaults to handle new fields in updates
       S = deepMerge(DEFAULT_STATE, parsed);
+      // ⚠️ 28 июля 2026, найденный вживую критичный баг: chatSelectMode/selectedChats —
+      // чисто временное состояние экрана (режим выбора нескольких чатов для
+      // массовых действий), но saveState() сохраняет вообще весь S целиком,
+      // включая эти поля. Если долгое нажатие (даже случайное) включило режим
+      // выбора и saveState() успел сохраниться ДО выхода из него (например,
+      // приложение свернули/закрыли) — при следующей загрузке S.chatSelectMode
+      // восстанавливался как true, но визуальные признаки режима (панель выбора,
+      // класс на body) выставляются только внутри enterChatSelectMode(), которая
+      // тут не вызывается. В итоге человек НАВСЕГДА застревал в режиме выбора
+      // без единого визуального признака — обычный тап по чату молча ставил
+      // галочку выбора (toggleChatSelect) вместо открытия чата. Эти поля не
+      // должны переживать перезагрузку в принципе — всегда сбрасываем.
+      S.chatSelectMode = false;
+      S.selectedChats = [];
       // Эти каталоги ВСЕГДА берутся из кода (не из localStorage),
       // чтобы обновления подарков/планов сразу появлялись у всех пользователей.
       // Пользовательские данные (баланс, мои подарки, чаты) при этом сохраняются.
@@ -4547,11 +4561,9 @@ function renderChats(filter=""){
       <div class="ci-act ci-act-del" title="Удалить">🗑️</div>
     </div>`;
     d.onclick=()=>{
-      showToast("🔧 клик дошёл: "+ch.nm); // ВРЕМЕННАЯ диагностика — уберём сразу после того, как найдём причину
-      if(suppressNextChatRowClick){ showToast("🔧 …но съеден suppressNextChatRowClick"); suppressNextChatRowClick=false; return; }
-      if(S.chatSelectMode){ showToast("🔧 …но съеден chatSelectMode"); toggleChatSelect(ch.id); return; }
-      if(d.classList.contains("swipe-open")){ showToast("🔧 …но съеден swipe-open"); d.classList.remove("swipe-open"); return; }
-      showToast("🔧 зову openChat()");
+      if(suppressNextChatRowClick){ suppressNextChatRowClick=false; return; }
+      if(S.chatSelectMode){ toggleChatSelect(ch.id); return; }
+      if(d.classList.contains("swipe-open")){ d.classList.remove("swipe-open"); return; }
       openChat(ch.id);
     };
     d.querySelector(".ci-act-pin").onclick=(e)=>{ e.stopPropagation(); d.classList.remove("swipe-open"); pinChat(ch.id); };
@@ -4705,7 +4717,6 @@ function globalSearch(v){
 
 // ── OPEN CHAT ──────────────────────────────────────────────────
 function openChat(id,opts){
-  showToast("🔧 openChat() начал выполняться, mobile="+isMobileLayout()); // ВРЕМЕННАЯ диагностика
   // save draft of previous chat
   const prev=S.chats.find(c=>c.id===S.chat);
   if(prev){ prev.draft=getInputText(); }
