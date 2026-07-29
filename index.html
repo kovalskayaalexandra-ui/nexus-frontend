@@ -1333,13 +1333,17 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <div id="pull-archive-icon" style="width:40px;height:40px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:18px;transform:scale(.5);opacity:.4;transition:transform .1s,opacity .1s,background .1s">🗄️</div>
       </div>
       <!-- ⚠️ 28 июля 2026: touch-обработчики pull-to-archive временно сняты —
-           после их появления перестал открываться любой чат тапом на мобильном,
-           мёртвая зона не помогла до конца, отключаем совсем, пока не найдём
-           настоящую причину, чтобы не держать сломанным основной функционал.
-           Ниже — только флаг "идёт касание", без единой мутации DOM в touchmove
-           (в отличие от pull-архива), нужен только чтобы не дёргать renderChats()
-           из фоновой досинхронизации ровно во время тапа (см. chatListTouchActive). -->
-      <div class="clist" id="clist" ontouchstart="chatListTouchActive=true" ontouchend="chatListTouchActive=false" ontouchcancel="chatListTouchActive=false"></div>
+           после их появления перестал открываться любой чат тапом на мобильном —
+           расследование показало, что настоящая причина была не в жесте (см.
+           loadState()/chatSelectMode), поэтому жест возвращён обратно, с той же
+           мёртвой зоной (PULL_ARCHIVE_DEADZONE) и флагом "идёт касание"
+           (chatListTouchActive, не даёт фоновой досинхронизации дёрнуть
+           renderChats() прямо во время тапа). -->
+      <div class="clist" id="clist"
+        ontouchstart="chatListTouchActive=true; pullArchiveStart(event)"
+        ontouchmove="pullArchiveMove(event)"
+        ontouchend="chatListTouchActive=false; pullArchiveEnd()"
+        ontouchcancel="chatListTouchActive=false; pullArchiveEnd()"></div>
       <div class="clist" id="global-search-results"></div>
     </div>
 
