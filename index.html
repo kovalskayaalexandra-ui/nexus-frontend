@@ -8359,19 +8359,25 @@ function pullArchiveEnd(){
   pullArchiveStartY=null;
   if(wasEngaged && dist>=PULL_ARCHIVE_TRIGGER) openArchive();
 }
-function openArchive(){ renderArchiveList(); el("m-archive").classList.add("on"); }
+// ⚠️ Раньше Архив открывался маленьким всплывающим окном (.movl/.modal) —
+// Александра сравнила с Telegram Android: там "Архив чатов" открывается
+// полноэкранным списком в том же стиле, что и обычный список чатов, а не
+// отдельным попапом. Теперь #screen-archive — обычный .screen, как
+// Настройки/Контакты, с тем же .clist и теми же .ci-строками.
+function openArchive(){ renderArchiveList(); el("screen-archive").classList.add("on"); pushNavEntry(()=>closeScreen("screen-archive")); }
+function closeArchive(){ popNavEntry(); }
 function renderArchiveList(){
   const list=S.chats.filter(c=>c.archived && !c.blocked);
   const box=el("archive-list"); if(!box)return;
   box.innerHTML = list.length ? list.map(ch=>{
     const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:(ch.ini||"?");
-    return `<div class="ci" style="border-radius:10px" onclick="closeM('m-archive');openChat(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})">
+    return `<div class="ci" onclick="closeArchive();openChat(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})">
       <div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>
       <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
         <div class="cnm">${ch.nm}</div>
         <div class="cprev">${ch.prev||""}</div>
       </div>
-      <button class="rp-action-btn" style="width:auto;padding:6px 10px;font-size:11.5px" onclick="event.stopPropagation();unarchiveChat(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})">Вернуть</button>
+      <button class="rp-action-btn" style="width:auto;padding:6px 10px;font-size:11.5px;flex-shrink:0" onclick="event.stopPropagation();unarchiveChat(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})">Вернуть</button>
     </div>`;
   }).join("") : `<div style="color:var(--tx3);font-size:12.5px;padding:20px;text-align:center">Архив пуст</div>`;
 }
@@ -14428,12 +14434,15 @@ applyTheme(S.theme||"dark");
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-security')">Закрыть</button></div>
 </div></div>
 
-<!-- MODAL: ARCHIVE -->
-<div class="movl" id="m-archive"><div class="modal">
-  <div class="mtit">🗄️ Архив</div>
-  <div id="archive-list" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
-  <div class="macts"><button class="xbtn sec" onclick="closeM('m-archive')">Закрыть</button></div>
-</div></div>
+<!-- ══ ARCHIVE SCREEN (полноэкранный, как основной список чатов) ══ -->
+<div class="screen" id="screen-archive">
+  <div class="topbar">
+    <div class="logo" onclick="closeArchive()">⬡ Angie</div>
+    <div style="font-weight:700;font-size:14px">Архив</div>
+    <div class="tr"><div class="nbtn" onclick="closeArchive()">← Назад</div></div>
+  </div>
+  <div class="clist" id="archive-list"></div>
+</div>
 
 <!-- MODAL: ОТПРАВИТЬ ПОЗЖЕ (выбор даты/времени) -->
 <div class="movl" id="m-schedule"><div class="modal">
