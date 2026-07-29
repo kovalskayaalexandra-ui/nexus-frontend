@@ -399,6 +399,21 @@ body.select-mode .msel-check{display:flex}
 .crystal-total-badge{cursor:pointer;background:linear-gradient(135deg,rgba(103,232,249,.18),rgba(108,99,255,.18));border-color:rgba(103,232,249,.4);color:var(--cr);font-weight:700;transition:transform .1s}
 .crystal-total-badge:hover{transform:scale(1.06)}
 
+/* 29 июля 2026: фотоальбом (несколько фото в одном сообщении, как в
+   Telegram) — каждое фото технически своё отдельное сообщение (общий
+   group_id, см. backend), тут просто визуально склеиваем подряд идущие
+   пузыри в один: гасим 3px-отступ между строками (.msgs{gap:3px}) и
+   выпрямляем стыкующиеся углы, оставляя "хвостик" только на самом
+   последнем фото группы, как у обычного пузыря. */
+.mrow.grp-img{margin-top:-3px}
+.mrow.grp-img .bub{border-radius:6px}
+.mrow.grp-img.grp-first .bub{border-top-left-radius:16px;border-top-right-radius:16px}
+.mrow.grp-img.grp-last .bub{border-bottom-left-radius:16px;border-bottom-right-radius:16px}
+.mrow.grp-img.grp-last.out .bub{border-bottom-right-radius:3px}
+.mrow.grp-img.grp-last.in .bub{border-bottom-left-radius:3px}
+.mrow.grp-img .msg-img-wrap{width:230px;height:230px}
+.mrow.grp-img .msg-img{width:100%;height:100%;object-fit:cover}
+
 /* Анимация кристалльного подарка — 5 секунд, парящие кристаллики + вспышка числа */
 .crystal-gift-fx{position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:20}
 .cgfx-burst{
@@ -464,6 +479,12 @@ body.select-mode .msel-check{display:flex}
 .ap-name{font-size:12px;color:var(--tx1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
 .ap-spoiler{display:none;align-items:center;gap:5px;font-size:11px;color:var(--tx2);cursor:pointer;margin-top:3px}
 .ap-spoiler input{cursor:pointer}
+.attach-preview-group{display:none;padding:8px 13px;background:var(--bg2);gap:10px;align-items:center}
+.attach-preview-group.on{display:flex}
+.apg-strip{flex:1;display:flex;gap:6px;overflow-x:auto;min-width:0}
+.apg-thumb{position:relative;width:44px;height:44px;border-radius:9px;overflow:hidden;background:var(--bg3);flex-shrink:0}
+.apg-thumb img{width:100%;height:100%;object-fit:cover}
+.apg-remove{position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer}
 .msg-img-wrap.spoiler .msg-img{filter:blur(26px) saturate(1.3) brightness(.8)}
 .msg-video-wrap.spoiler .msg-video{filter:blur(26px) saturate(1.3) brightness(.8)}
 /* Тот же бегущий блик, что и у текстового спойлера — иначе размытая
@@ -1464,6 +1485,14 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
           <label class="ap-spoiler" id="ap-spoiler-wrap"><input type="checkbox" id="ap-spoiler-cb" onchange="toggleAttachSpoiler(this)"> 🫥 Спойлер</label>
         </div>
         <div class="rsx" onclick="cancelPendingAttach()">✕</div>
+      </div>
+
+      <!-- 29 июля 2026: превью фотоальбома (несколько фото выбрано разом из
+           галереи) — отдельная от #attach-preview полоса, чтобы не
+           переусложнять уже рабочий одиночный предпросмотр. -->
+      <div class="attach-preview-group" id="attach-preview-group">
+        <div class="apg-strip" id="apg-strip"></div>
+        <div class="rsx" onclick="cancelPendingAttachGroup()">✕</div>
       </div>
 
       <div class="unknown-bar" id="unknown-bar"></div>
@@ -2938,7 +2967,7 @@ function wsHandleMessage(msg){
       break;
 
     case "message.new": {
-      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, fileSize, poll, contact, spoiler, waveform, gift, msgType, asChannel, senderName, senderAvatar, senderStatusEmoji, senderNameColor, forwardAuthorName, forwardAuthorId, forwardFromChatId, forwardFromChatType, forwardFromChatName, forwardFromChatAvatar } = msg.payload;
+      const { chatId, text, senderId, time, id, mediaUrl, mediaType, fileName, fileSize, poll, contact, spoiler, waveform, gift, msgType, asChannel, senderName, senderAvatar, senderStatusEmoji, senderNameColor, forwardAuthorName, forwardAuthorId, forwardFromChatId, forwardFromChatType, forwardFromChatName, forwardFromChatAvatar, groupId } = msg.payload;
       // Не добавляем своё же сообщение (оно уже есть локально)
       if(senderId === S.user?.id) break;
       // Защита от "пустых" сообщений (например, если у собеседника не удалась загрузка файла)
@@ -3013,7 +3042,8 @@ function wsHandleMessage(msg){
         tx: text,
         time: time ? new Date(time).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : now(),
         ts: time ? new Date(time).getTime() : Date.now(),
-        read: S.chat === chatId
+        read: S.chat === chatId,
+        groupId: groupId || null
       };
       // "Переслано от X" — раньше вообще не долетало вживую (только после
       // перезагрузки чата), см. комментарий у forwardAuthorName в index.js
@@ -4382,7 +4412,8 @@ async function loadMessagesFromDB(chatId){
         views: dbMsg.views||0,
         forwardCount: dbMsg.forward_count||0,
         read: isMe ? !!dbMsg.read_at : true,
-        edited: !!dbMsg.edited_at
+        edited: !!dbMsg.edited_at,
+        groupId: dbMsg.group_id || null
       };
       // forwarded_author_name/forwarded_from_chat_* приходят пустыми с сервера,
       // если автор пересылки был скрыт (см. GET /api/messages/:chatId) — здесь
@@ -5354,12 +5385,16 @@ async function retryAttachmentMsg(m, chatId, ch, memberIds){
     else m.file.url=data.url;
     renderMsgs(); saveState();
 
-    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null},true);
+    // groupId — только у фотоальбома (см. sendImageGroup); для обычных
+    // одиночных вложений m.groupId всегда undefined, apiPost/wsSend просто
+    // не понесут это поле вообще, ничего не меняется для существующих
+    // одиночных фото/видео/аудио/файлов/голосовых/видео-кружочков.
+    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,groupId:m.groupId||undefined},true);
     if(!d || !d.success) return false;
     const dbId=d?.message?.id||null;
     if(dbId){ m.dbId=dbId; saveState(); }
     const wsMemberIds = d.blockedFromRecipientId ? memberIds.filter(id=>id!==d.blockedFromRecipientId) : memberIds;
-    wsSend({type:"message.send",payload:{chatId,text:caption||"",memberIds:wsMemberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,id:dbId,senderName:S.user?.name||"", senderAvatar:S.user?.avatar||"", senderStatusEmoji:S.user?.statusEmoji||"", senderNameColor:S.user?.nameColor||""}});
+    wsSend({type:"message.send",payload:{chatId,text:caption||"",memberIds:wsMemberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,groupId:m.groupId||undefined,id:dbId,senderName:S.user?.name||"", senderAvatar:S.user?.avatar||"", senderStatusEmoji:S.user?.statusEmoji||"", senderNameColor:S.user?.nameColor||""}});
     return true;
   });
   m.uploading=false;
@@ -5461,10 +5496,20 @@ function renderMsgs(){
   renderUnknownBar(curCh);
   renderRightPanelMedia(curCh);
   let prevGroupKey=null;
-  buildRenderList((S.messages[S.chat]||[]).filter(m=>!m._deletedForAll && !m._deletedForMe)).forEach(m=>{
+  const renderList=buildRenderList((S.messages[S.chat]||[]).filter(m=>!m._deletedForAll && !m._deletedForMe));
+  renderList.forEach((m,rlIdx)=>{
     if(m.t==="date"){const d=document.createElement("div");d.className="ddiv";d.innerHTML=`<span>${m.ts?getDateLabel(m.ts):escHtml(m.tx)}</span>`;c.appendChild(d);prevGroupKey=null;return;}
     if(m.t==="sys"){const s=document.createElement("div");s.className="sysmsg";s.textContent=m.tx;c.appendChild(s);prevGroupKey=null;return;}
     const isOut=(m.t==="out"||(m.t==="gift"&&m.out)||(m.t==="sk"&&m.out));
+    // Фотоальбом (m.groupId) — каждое фото своё отдельное сообщение (см.
+    // backend group_id), тут просто смотрим соседей по уже готовому списку,
+    // чтобы понять, первое/последнее ли это фото в группе — визуальную
+    // склейку делает CSS (.grp-img/.grp-first/.grp-last, см. styles), сам
+    // цикл рендера остаётся простым forEach, ничего не пропускаем/не мержим.
+    const grpPrev=renderList[rlIdx-1], grpNext=renderList[rlIdx+1];
+    const isGrpImg=!!m.groupId;
+    const grpFirst=isGrpImg && (!grpPrev || grpPrev.groupId!==m.groupId);
+    const grpLast=isGrpImg && (!grpNext || grpNext.groupId!==m.groupId);
     // Группировка подряд идущих сообщений одного автора, как в Telegram —
     // аватар/имя показываем только у первого сообщения в очереди. Своего
     // senderId на сообщении нет: для группы/канала сверяем по имени автора
@@ -5481,7 +5526,7 @@ function renderMsgs(){
     const groupsWithPrev = !isOut && groupKey!==null && groupKey===prevGroupKey;
     prevGroupKey = isOut ? null : groupKey;
     const row=document.createElement("div");
-    row.className="mrow "+(isOut?"out":"in")+(groupsWithPrev?" group-continue":"")+(S.selectedMsgs.includes(m.id)?" selected":"");
+    row.className="mrow "+(isOut?"out":"in")+(groupsWithPrev?" group-continue":"")+(isGrpImg?" grp-img":"")+(grpFirst?" grp-first":"")+(grpLast?" grp-last":"")+(S.selectedMsgs.includes(m.id)?" selected":"");
     row.dataset.msgId=m.id;
     row.dataset.id=m.id;
     // В режиме выделения клик по строке переключает выбор
@@ -6389,8 +6434,21 @@ function updateE2EButton(ch){
 
 async function sendMsg(){
   const inp=el("minput"); const txt=getInputText();
-  if(!txt && !pendingAttach) return;
+  if(!txt && !pendingAttach && !(pendingAttachGroup&&pendingAttachGroup.length)) return;
 
+  // ── Фотоальбом (несколько фото разом) — своя ветка, до pendingAttach ──
+  if(pendingAttachGroup && pendingAttachGroup.length){
+    // Та же граница, что и у обычных вложений ниже — служебные/системные
+    // чаты (Избранное, боты) фотоальбомы пока не поддерживают.
+    if(S.chat===77777||S.chat===FEEDBACK_CHAT_ID||S.chat===99999||S.chat===66666||S.chat===55555){
+      showToast("📎 Здесь нельзя отправить альбом из нескольких фото");
+      return;
+    }
+    setInputText(""); aResize(inp);
+    if(el("char-count"))el("char-count").textContent="";
+    sendImageGroup(txt);
+    return;
+  }
   // ── Есть прикреплённое фото/видео/файл — отправляем медиа + текст как подпись ──
   if(pendingAttach){
     // Официальные боты — свой путь отправки (см. ниже), а не общий
@@ -6824,6 +6882,9 @@ function pickAttach(e,kind){
   else if(kind==="gif") inp.accept="image/gif";
   else if(kind==="music") inp.accept="audio/*";
   else inp.accept="";
+  // Несколько фото разом — только у "Галереи" (фотоальбом, см. attachFile);
+  // у GIF/файла/музыки всегда был и остаётся один файл за раз.
+  inp.multiple = kind==="media";
   el("attach-menu").classList.remove("on");
   inp.click();
 }
@@ -7468,8 +7529,8 @@ function seekVideoCircle(e, wrapEl){
 
 
 async function attachFile(inp){
-  const f=inp.files[0];
-  if(!f)return;
+  const files=[...inp.files];
+  if(!files.length)return;
   inp.value=""; // сбрасываем, чтобы можно было выбрать тот же файл ещё раз
 
   if(S.chat===77777){
@@ -7477,6 +7538,21 @@ async function attachFile(inp){
     return;
   }
 
+  // 29 июля 2026: выбрали несколько файлов разом из "Галереи" — фотоальбом,
+  // как в Telegram (см. group_id на бэкенде). Берём в альбом только фото —
+  // видео туда пока не подмешиваем (отдельная задача на будущее). Если
+  // фото в выборе меньше двух — не плодим "альбом из одного", просто
+  // продолжаем обычным путём с первым файлом ниже.
+  if(files.length>1){
+    const imgs=files.filter(x=>x.type.startsWith("image/"));
+    if(imgs.length>1){
+      if(imgs.length<files.length) showToast("ℹ️ В альбом попадут только фото — остальное пропущено");
+      await attachImageGroup(imgs);
+      return;
+    }
+  }
+
+  const f=files[0];
   const isImg=f.type.startsWith("image/");
   const isVideo=f.type.startsWith("video/");
   const isAudio=f.type.startsWith("audio/");
@@ -7544,6 +7620,46 @@ function cancelPendingAttach(){
   renderAttachPreview();
 }
 
+// ── ФОТОАЛЬБОМ (несколько фото в одном сообщении, как в Telegram) ──────
+// pendingAttachGroup — массив {file, previewUrl, spoiler}, отдельно от
+// pendingAttach (который остаётся одиночным, как и был) — так один выбранный
+// файл продолжает идти уже проверенным старым путём без единого изменения.
+let pendingAttachGroup=null;
+async function attachImageGroup(files){
+  const items=await Promise.all(files.map(f=>new Promise(res=>{
+    const r=new FileReader();
+    r.onload=ev=>res({file:f, previewUrl:ev.target.result, spoiler:false});
+    r.readAsDataURL(f);
+  })));
+  pendingAttachGroup=items;
+  renderAttachPreviewGroup();
+}
+function renderAttachPreviewGroup(){
+  const wrap=el("attach-preview-group");
+  if(!pendingAttachGroup || !pendingAttachGroup.length){ wrap.classList.remove("on"); return; }
+  wrap.classList.add("on");
+  el("apg-strip").innerHTML=pendingAttachGroup.map((it,i)=>`<div class="apg-thumb"><img src="${it.previewUrl}"><div class="apg-remove" onclick="removeGroupAttachAt(${i})">✕</div></div>`).join("");
+  el("minput")?.focus();
+}
+function removeGroupAttachAt(i){
+  if(!pendingAttachGroup) return;
+  pendingAttachGroup.splice(i,1);
+  // Меньше двух фото — альбом теряет смысл, превращаем оставшееся в обычное
+  // одиночное вложение (переиспользуем уже рабочий путь pendingAttach).
+  if(pendingAttachGroup.length<2){
+    const rest=pendingAttachGroup;
+    pendingAttachGroup=null;
+    if(rest.length===1) { pendingAttach={file:rest[0].file, kind:"image", previewUrl:rest[0].previewUrl, spoiler:rest[0].spoiler}; renderAttachPreview(); }
+    renderAttachPreviewGroup();
+    return;
+  }
+  renderAttachPreviewGroup();
+}
+function cancelPendingAttachGroup(){
+  pendingAttachGroup=null;
+  renderAttachPreviewGroup();
+}
+
 // Загружает прикреплённый файл на бэкенд (Supabase Storage через /api/upload)
 // и отправляет одно сообщение: медиа + подпись (текст из поля ввода).
 // Сначала локальный превью с индикатором загрузки, потом — настоящая ссылка с сервера.
@@ -7574,6 +7690,45 @@ async function sendWithAttachment(caption){
   const curChat=S.chats.find(c=>c.id===chatId);
   const memberIds=getChatMemberIds(curChat);
   await retryAttachmentMsg(msg, chatId, ch, memberIds);
+}
+
+// Отправка фотоальбома (несколько фото разом, см. attachImageGroup) —
+// каждое фото технически своё отдельное сообщение с общим m.groupId
+// (реальный UUID, для колонки group_id на бэкенде — см. её описание в
+// messages.js), склеены в один пузырь визуально только на фронтенде (см.
+// .grp-img в renderMsgs/CSS). Подпись (текст поля ввода) вешаем только на
+// первое фото — отрисовка сама покажет её там, где она реально есть,
+// никакой отдельной логики "общей подписи под альбомом" не нужно.
+// Отправляем ПО ОЧЕРЕДИ (не Promise.all) — чтобы у собеседника фото
+// приходили строго в том порядке, в котором были в альбоме.
+async function sendImageGroup(caption){
+  const items=pendingAttachGroup;
+  pendingAttachGroup=null;
+  renderAttachPreviewGroup();
+
+  const chatId=S.chat;
+  const tm=now();
+  const ch=S.chats.find(c=>c.id===chatId);
+  const groupId=crypto.randomUUID();
+  if(!S.messages[chatId])S.messages[chatId]=[];
+
+  const msgs=items.map((it,i)=>{
+    const m={id:nextId(), t:"out", time:tm, read:false, uploading:true, tx:i===0?(caption||""):"", img:it.previewUrl, groupId};
+    if(it.spoiler) m.spoiler=true;
+    m._retryAtt={file:it.file, kind:"image", spoiler:it.spoiler};
+    m._retryCaption=i===0?(caption||""):"";
+    return m;
+  });
+  if(S.reply){ msgs[0].reply={fr:S.reply.fr,tx:S.reply.tx}; cancelReply(); }
+  S.messages[chatId].push(...msgs);
+  if(ch){ ch.prev=caption?("🖼 "+items.length+" фото · "+caption):("🖼 "+items.length+" фото"); ch.time=tm; ch.lastTs=Date.now(); ch.draft=""; }
+  renderMsgs(); renderChats(); saveState();
+
+  const curChat=S.chats.find(c=>c.id===chatId);
+  const memberIds=getChatMemberIds(curChat);
+  for(const m of msgs){
+    await retryAttachmentMsg(m, chatId, ch, memberIds);
+  }
 }
 
 // Изображение в Angie Feedback — реально загружается на сервер и доходит до
@@ -7780,10 +7935,59 @@ function closeCtxViaBackStack(){
 let lpTimer=null, lpId=null;
 function lpStart(e,id){
   lpId=id;
-  lpTimer=setTimeout(()=>{ showCtx(e,id); if(navigator.vibrate)navigator.vibrate(40); },450);
+  // 29 июля 2026: раньше долгое нажатие открывало меню действий — по
+  // прямой просьбе Александры (сравнила с Telegram) теперь оно СРАЗУ
+  // включает режим выбора нескольких сообщений (кружочки на всех
+  // сообщениях + панель "Ответить"/"Переслать" внизу), а короткий тап по
+  // "голой" поверхности сообщения открывает то же самое меню действий, что
+  // и раньше (см. делегированный обработчик кликов на #msgs ниже). Правый
+  // клик мышью на десктопе не тронут — oncontextmenu по-прежнему зовёт
+  // showCtx() напрямую.
+  lpTimer=setTimeout(()=>{
+    if(!S.selectMode) enterSelectMode();
+    toggleMsgSelect(id);
+    if(navigator.vibrate)navigator.vibrate(40);
+  },450);
 }
 function lpEnd(){ clearTimeout(lpTimer); }
 document.addEventListener("click",e=>{ closeCtxViaBackStack(); el("rxn-picker").classList.remove("on"); });
+
+// ── ЕДИНЫЙ КЛИК ПО СООБЩЕНИЮ (короткий тап) ─────────────────────────────
+// 29 июля 2026: два требования сошлись в одном месте. (1) Раз долгое
+// нажатие теперь сразу включает выбор (см. lpStart выше), короткий тап по
+// "голой" поверхности сообщения должен открывать меню действий. (2) В
+// режиме выбора тап по фото/видео/голосовому и т.п. должен ТОЛЬКО
+// переключать чекбокс, а не ЕЩЁ И открывать/играть его — это уже был
+// самостоятельный баг (нашли при подготовке фотоальбомов): встроенный
+// onclick картинки (открыть на весь экран) висит на самой картинке и
+// срабатывает раньше, чем всплытие доходит до row.onclick с переключением
+// выбора, — оба действия происходили разом.
+// Один делегированный обработчик на #msgs в ФАЗЕ ЗАХВАТА (capture) решает
+// оба случая: захват идёт "сверху вниз" РАНЬШЕ, чем встроенные onclick на
+// самой картинке и т.п. (те в фазе всплытия), поэтому можно погасить клик
+// целиком до того, как что-то внутри успеет сработать.
+el("msgs")?.addEventListener("click", function(e){
+  const bub=e.target.closest(".bub, .vbub, .skbub, .gift-bubble");
+  if(!bub) return; // клик мимо самого пузыря — им занимается row.onclick (режим выбора) как и раньше
+  const row=bub.closest(".mrow");
+  if(!row || !row.dataset.msgId) return;
+  const msgId=+row.dataset.msgId;
+  if(S.selectMode){
+    e.stopPropagation(); // не даём сработать фото/видео/голосовому и т.д. поверх выбора
+    toggleMsgSelect(msgId);
+    return;
+  }
+  // Не в режиме выбора — если клик пришёлся на что-то со своим собственным
+  // действием (фото/видео/голосовое/опрос/контакт/спойлер/файл/пересланное/
+  // реакция), не мешаем ему работать как раньше
+  if(e.target.closest("img.msg-img,.msg-video,.voice-msg,.video-circle-wrap,.poll-opt,.contact-item,.spoiler-overlay,.as-channel-tag,.msg-file,.gift-bubble,.lnkprev,.rxn")) return;
+  // Короткий тап по обычному тексту/пустой части сообщения — открываем то
+  // же меню действий, что раньше открывалось долгим нажатием. Гасим клик,
+  // иначе он же долетит до document и глобальный обработчик выше немедленно
+  // закроет только что открытое меню.
+  e.stopPropagation();
+  showCtx(e, msgId);
+}, true);
 function ctxReply(){ setReply(S.ctxId); }
 
 // ══════════════════════════════════════════════════
