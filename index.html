@@ -4529,13 +4529,17 @@ function renderChats(filter=""){
   }
   list.sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0) || (b.lastTs||0)-(a.lastTs||0));
 
-  // Строка "Архив" сверху списка — только если там реально что-то есть
+  // Строка "Архив" сверху списка — если там реально что-то есть, ИЛИ если её
+  // только что "открыли" потягиванием вниз (archiveRowRevealed, см.
+  // pullArchiveEnd) — в Telegram потягивание просто показывает строку папки
+  // "Архив", а входишь в сам архив уже отдельным тапом по ней, а не
+  // автоматически по факту утягивания до конца.
   const archivedChats=S.chats.filter(x=>x.archived && !x.blocked);
-  if(archivedChats.length>0 && !filter){
+  if((archivedChats.length>0 || archiveRowRevealed) && !filter){
     const ad=document.createElement("div");
     ad.className="ci";
     ad.onclick=()=>openArchive();
-    const preview=archivedChats.slice(0,3).map(x=>escHtml(x.nm)).join(", ");
+    const preview=archivedChats.length ? archivedChats.slice(0,3).map(x=>escHtml(x.nm)).join(", ") : "Пусто";
     ad.innerHTML=`<div class="chav" style="background:var(--bg3);color:var(--tx2)">🗄️</div>
     <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
       <div class="cnm">Архив</div>
@@ -8358,6 +8362,12 @@ function unarchiveChat(chatId){
 // (PULL_ARCHIVE_DEADZONE) вообще ничего не трогаем в DOM — обычный тап
 // проходит ровно так же, как до появления этого жеста.
 let pullArchiveStartY=null, pullArchiveActive=false, pullArchiveEngaged=false;
+// Пока false — строка "Архив" в списке показывается только если там реально
+// есть архивные чаты (см. renderChats()). Как только потягивание пройдёт
+// порог и человек отпустит — ставим true, строка появляется в списке ПОСТОЯННО
+// (даже если архив пуст), и входить в сам архив дальше нужно отдельным тапом
+// по ней — ровно как в Telegram, а не автопереходом по факту жеста.
+let archiveRowRevealed=false;
 const PULL_ARCHIVE_MAX=90, PULL_ARCHIVE_TRIGGER=64, PULL_ARCHIVE_DEADZONE=12;
 function pullArchiveStart(e){
   const list=el("clist");
@@ -8398,7 +8408,14 @@ function pullArchiveEnd(){
   const dist=(wasEngaged&&box)?(parseFloat(box.style.height)||0):0;
   resetPullArchiveVisual();
   pullArchiveStartY=null;
-  if(wasEngaged && dist>=PULL_ARCHIVE_TRIGGER) openArchive();
+  // ⚠️ Раньше здесь сразу открывался архив (openArchive()) по факту утягивания
+  // до порога — Александра явно попросила по-другому, как в Telegram: жест
+  // только показывает строку "Архив" в списке, входить в неё дальше нужно
+  // отдельным тапом по самой строке.
+  if(wasEngaged && dist>=PULL_ARCHIVE_TRIGGER && !archiveRowRevealed){
+    archiveRowRevealed=true;
+    renderChats();
+  }
 }
 // ⚠️ Раньше Архив открывался маленьким всплывающим окном (.movl/.modal) —
 // Александра сравнила с Telegram Android: там "Архив чатов" открывается
