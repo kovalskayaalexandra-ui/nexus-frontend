@@ -349,6 +349,15 @@ button,input,textarea,select{font-family:inherit}
 .perm-tgl::after{content:"";position:absolute;width:20px;height:20px;border-radius:50%;background:#fff;top:3px;left:3px;transition:.2s}
 .perm-tgl.on::after{left:21px}
 .select-bar.on{display:flex}
+/* 29 июля 2026: постоянная нижняя панель "Ответить"/"Переслать" в режиме
+   выбора — заменяет собой обычную строку ввода (.ibar), а не всплывает
+   поверх неё, как и .select-bar сверху заменяет собой .chdr по смыслу. */
+.select-actions-bar{display:none;background:var(--bg2);border-top:1px solid var(--brd);padding:6px 4px;align-items:center;flex-shrink:0}
+body.select-mode .select-actions-bar{display:flex}
+body.select-mode .ibar{display:none}
+.sab-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;font-size:11.5px;color:var(--acc2);cursor:pointer;border-radius:10px;transition:background .1s}
+.sab-btn:hover{background:var(--bg3)}
+.sab-btn.disabled{opacity:.35;pointer-events:none}
 .mrow.selected{background:rgba(108,99,255,.13)!important;border-radius:8px}
 body.select-mode .bub,body.select-mode .skbub,body.select-mode .vbub{cursor:pointer!important}
 .msel-check{display:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--tx3);margin-right:8px;flex-shrink:0;align-self:center;align-items:center;justify-content:center;font-size:13px;color:#fff;transition:.15s}
@@ -1561,6 +1570,26 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
           ontouchstart="sendPressStart(event)" ontouchend="sendPressEnd(event)" ontouchcancel="sendPressEnd(event)">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4 20-7z"/><path d="M22 2 11 13"/></svg>
         </button>
+      </div>
+
+      <!-- 29 июля 2026: постоянная панель "Ответить"/"Переслать" внизу в
+           режиме выбора нескольких сообщений, как в Telegram — раньше эти
+           же действия существовали только внутри контекстного меню
+           (selForwardAll/selCopyAll/selDeleteForMe/selDeleteAll), но после
+           того как долгое нажатие/короткий тап стали входом в выбор/меню
+           напрямую (см. правки того же дня), на мобильном ничто больше не
+           открывало это меню В РЕЖИМЕ выбора — Александра прислала скриншот
+           "меню переслать/удалить/ответить нет". Показывается вместо .ibar
+           (см. CSS body.select-mode), не поверх него. -->
+      <div class="select-actions-bar" id="select-actions-bar">
+        <div class="sab-btn" id="sab-reply-btn" onclick="selReplyOne()">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 6l-6 6 6 6"/><path d="M21 8v3a4 4 0 0 1-4 4H5"/></svg>
+          <span>Ответить</span>
+        </div>
+        <div class="sab-btn" onclick="selForwardAll()">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6"/><path d="M3 8v3a4 4 0 0 0 4 4h12"/></svg>
+          <span>Переслать</span>
+        </div>
       </div>
 
       <!-- ⚠️ 28 июля 2026: перенесено сюда, ПОСЛЕ .ibar (было раньше, между
@@ -6785,7 +6814,7 @@ function onInput(elm){
   const txt=getInputText();
   const len=txt.length;
   if(el("char-count"))el("char-count").textContent=len>0?len:"";
-  el("minput")?.classList.toggle("empty", isInputEmpty());
+  syncComposerEmptyClass();
   // save draft
   const ch=S.chats.find(c=>c.id===S.chat); if(ch)ch.draft=txt;
 }
@@ -7587,6 +7616,7 @@ async function attachFile(inp){
 
   pendingAttach={file:f, kind, previewUrl, spoiler:false};
   renderAttachPreview();
+  syncComposerEmptyClass();
 }
 
 function renderAttachPreview(){
@@ -7618,6 +7648,7 @@ function cancelPendingAttach(){
   }
   pendingAttach=null;
   renderAttachPreview();
+  syncComposerEmptyClass();
 }
 
 // ── ФОТОАЛЬБОМ (несколько фото в одном сообщении, как в Telegram) ──────
@@ -7633,6 +7664,7 @@ async function attachImageGroup(files){
   })));
   pendingAttachGroup=items;
   renderAttachPreviewGroup();
+  syncComposerEmptyClass();
 }
 function renderAttachPreviewGroup(){
   const wrap=el("attach-preview-group");
@@ -7651,13 +7683,16 @@ function removeGroupAttachAt(i){
     pendingAttachGroup=null;
     if(rest.length===1) { pendingAttach={file:rest[0].file, kind:"image", previewUrl:rest[0].previewUrl, spoiler:rest[0].spoiler}; renderAttachPreview(); }
     renderAttachPreviewGroup();
+    syncComposerEmptyClass();
     return;
   }
   renderAttachPreviewGroup();
+  syncComposerEmptyClass();
 }
 function cancelPendingAttachGroup(){
   pendingAttachGroup=null;
   renderAttachPreviewGroup();
+  syncComposerEmptyClass();
 }
 
 // Загружает прикреплённый файл на бэкенд (Supabase Storage через /api/upload)
@@ -7667,6 +7702,7 @@ async function sendWithAttachment(caption){
   const att=pendingAttach;
   pendingAttach=null;
   renderAttachPreview();
+  syncComposerEmptyClass();
 
   const chatId=S.chat;
   const tm=now();
@@ -7705,6 +7741,7 @@ async function sendImageGroup(caption){
   const items=pendingAttachGroup;
   pendingAttachGroup=null;
   renderAttachPreviewGroup();
+  syncComposerEmptyClass();
 
   const chatId=S.chat;
   const tm=now();
@@ -8084,6 +8121,17 @@ function toggleMsgSelect(id){
     const rid=parseInt(row.dataset.id);
     row.classList.toggle("selected", S.selectedMsgs.includes(rid));
   });
+  // "Ответить" в нижней панели имеет смысл только для ровно одного
+  // выбранного сообщения (как в Telegram — ответ ссылается на одно
+  // сообщение, а не на несколько разом).
+  el("sab-reply-btn")?.classList.toggle("disabled", S.selectedMsgs.length!==1);
+}
+// Кнопка "Ответить" в нижней панели режима выбора
+function selReplyOne(){
+  if(S.selectedMsgs.length!==1) return;
+  const id=S.selectedMsgs[0];
+  exitSelectMode();
+  setReply(id);
 }
 
 // Массовое удаление только у себя
@@ -8267,11 +8315,23 @@ function setInputText(txt){
   inp.innerHTML="";
   if(txt) inp.appendChild(document.createTextNode(txt));
   aResize(inp);
-  inp.classList.toggle("empty", isInputEmpty());
+  syncComposerEmptyClass();
 }
 function isInputEmpty(){
   const inp=el("minput"); if(!inp) return true;
   return inp.textContent.replace(/\u200B/g,"").trim()==="" && !inp.querySelector("img");
+}
+// \u26A0\uFE0F 29 \u0438\u044E\u043B\u044F 2026: \u043A\u043D\u043E\u043F\u043A\u0430 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0438 \u0441\u043A\u0440\u044B\u0432\u0430\u043B\u0430\u0441\u044C (\u0443\u0441\u0442\u0443\u043F\u0430\u044F \u043C\u0435\u0441\u0442\u043E \u043C\u0438\u043A\u0440\u043E\u0444\u043E\u043D\u0443),
+// \u0435\u0441\u043B\u0438 \u0422\u0415\u041A\u0421\u0422 \u043F\u0443\u0441\u0442 \u2014 \u0434\u0430\u0436\u0435 \u043A\u043E\u0433\u0434\u0430 \u0440\u0435\u0430\u043B\u044C\u043D\u043E \u0433\u043E\u0442\u043E\u0432\u043E \u043A \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0435 \u0444\u043E\u0442\u043E/\u0430\u043B\u044C\u0431\u043E\u043C \u0431\u0435\u0437
+// \u043F\u043E\u0434\u043F\u0438\u0441\u0438. \u0410\u043B\u0435\u043A\u0441\u0430\u043D\u0434\u0440\u0430 \u043F\u043E\u0439\u043C\u0430\u043B\u0430 \u043D\u0430 \u0440\u0435\u0430\u043B\u044C\u043D\u043E\u043C \u0442\u0435\u043B\u0435\u0444\u043E\u043D\u0435: \u0431\u0435\u0437 \u043D\u0430\u043F\u0435\u0447\u0430\u0442\u0430\u043D\u043D\u043E\u0433\u043E
+// \u0442\u0435\u043A\u0441\u0442\u0430 \u043A\u043D\u043E\u043F\u043A\u0430 "\u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C" \u043D\u0435 \u043F\u043E\u044F\u0432\u043B\u044F\u043B\u0430\u0441\u044C \u0432\u043E\u043E\u0431\u0449\u0435, \u0445\u043E\u0442\u044F \u0432\u043B\u043E\u0436\u0435\u043D\u0438\u0435 \u0443\u0436\u0435
+// \u043F\u0440\u0438\u043A\u0440\u0435\u043F\u043B\u0435\u043D\u043E. "\u041F\u0443\u0441\u0442\u043E" \u0434\u043B\u044F composer'\u0430 \u0442\u0435\u043F\u0435\u0440\u044C \u0437\u043D\u0430\u0447\u0438\u0442 "\u043D\u0435\u0442 \u043D\u0438 \u0442\u0435\u043A\u0441\u0442\u0430, \u043D\u0438
+// \u0432\u043B\u043E\u0436\u0435\u043D\u0438\u044F", \u0430 \u043D\u0435 \u0442\u043E\u043B\u044C\u043A\u043E "\u043D\u0435\u0442 \u0442\u0435\u043A\u0441\u0442\u0430".
+function isComposerEmpty(){
+  return isInputEmpty() && !pendingAttach && !(pendingAttachGroup && pendingAttachGroup.length);
+}
+function syncComposerEmptyClass(){
+  el("minput")?.classList.toggle("empty", isComposerEmpty());
 }
 
 // Показать/скрыть плашку форматирования при выделении текста
