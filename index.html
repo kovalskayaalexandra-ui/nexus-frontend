@@ -214,7 +214,9 @@ button,input,textarea,select{font-family:inherit}
 .unknown-bar.on{display:flex}
 .unknown-bar-btn{flex:1;border:none;border-radius:9px;padding:9px 8px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--acc);color:#fff}
 .unknown-bar-btn.rd{background:var(--bg3);color:var(--rd);border:1px solid var(--rd)}
-.mic-btn{width:35px;height:35px;background:var(--bg3);border:1px solid var(--brd);border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);flex-shrink:0}
+/* Круглая, как в Telegram — раньше было border-radius:10px (скруглённый
+   квадрат), визуально выбивалось из общего "пилюлеобразного" стиля строки ввода. */
+.mic-btn{width:38px;height:38px;background:var(--bg3);border:1px solid var(--brd);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--tx2);flex-shrink:0}
 .mic-btn:hover{background:var(--bg4);color:var(--acc2)}
 .mic-btn.recording{background:var(--rd);color:#fff;border-color:var(--rd);animation:micPulse 1.2s ease-in-out infinite}
 @keyframes micPulse{0%,100%{opacity:1}50%{opacity:.6}}
@@ -470,17 +472,26 @@ body.select-mode .msel-check{display:flex}
   background:linear-gradient(115deg,transparent 0%,rgba(255,255,255,.22) 45%,rgba(255,255,255,.22) 55%,transparent 100%);
   background-size:250% 100%;animation:spoilerShimmer 2.4s linear infinite}
 .spoiler-overlay{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;font-size:12px;font-weight:600;text-align:center;padding:0 14px;text-shadow:0 1px 4px rgba(0,0,0,.6)}
-.ibar{background:var(--bg2);border-top:1px solid var(--brd);padding:8px 11px;display:flex;align-items:flex-end;gap:6px;flex-shrink:0;position:relative}
+/* Тоньше и почти во всю ширину, как в Telegram (Александра сравнила
+   скриншотами 28 июля 2026) — было 8px 11px, визуально более узкая
+   и явно не доходящая до краёв полоса. */
+.ibar{background:var(--bg2);border-top:1px solid var(--brd);padding:6px 6px;display:flex;align-items:flex-end;gap:5px;flex-shrink:0;position:relative}
 /* Как в Telegram: эмодзи/поле/скрепка — один визуальный "длинный" контейнер
    (единая заливка/рамка .iwrap), а не три отдельные коробки рядом. .attb и
    .ibi теперь просто иконки ВНУТРИ .iwrap, без собственного фона/рамки. */
 .attb{cursor:pointer;color:var(--tx2);display:flex;align-items:center;flex-shrink:0;position:relative}
 .attb:hover{color:var(--acc2)}
-.iwrap{flex:1;background:var(--bg3);border:1px solid var(--brd);border-radius:14px;display:flex;align-items:flex-end;padding:9px 12px;transition:border-color .2s;gap:8px}
+.iwrap{flex:1;background:var(--bg3);border:1px solid var(--brd);border-radius:20px;display:flex;align-items:flex-end;padding:6px 12px;transition:border-color .2s;gap:8px}
 .iwrap:focus-within{border-color:var(--acc)}
 .ibi{cursor:pointer;color:var(--tx3);display:flex;align-items:center;flex-shrink:0}
 .ibi:hover{color:var(--cr)}
-.sndbtn{width:38px;height:38px;background:linear-gradient(135deg,var(--acc),var(--acc2));border:none;border-radius:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;transition:all .15s;box-shadow:0 4px 13px rgba(108,99,255,.4)}
+/* Как в Telegram: пока открыта клавиатура — значок "смайлик" (тап открывает
+   панель эмодзи); пока открыта панель эмодзи — значок меняется на "клавиатура"
+   (тап закрывает панель и возвращает обычную клавиатуру). См. toggleMP()/closeMPanel(). */
+.ibi-ic-kbd{display:none}
+.ibi.panel-open .ibi-ic-emoji{display:none}
+.ibi.panel-open .ibi-ic-kbd{display:flex}
+.sndbtn{width:38px;height:38px;background:linear-gradient(135deg,var(--acc),var(--acc2));border:none;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;transition:all .15s;box-shadow:0 4px 13px rgba(108,99,255,.4)}
 /* Как в Telegram: пока поле пустое — голосовое/кружочек, как только
    начали печатать — только кнопка отправки. #minput.empty уже считался
    в onInput(), просто раньше нигде не использовался. */
@@ -515,7 +526,11 @@ button:active,.nbtn:active,.fmt-btn:active,.call-btn:active{transform:scale(.96)
 .mptab{padding:8px 13px;font-size:11.5px;font-weight:700;color:var(--tx3);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s}
 .mptab.on{color:var(--acc2);border-bottom-color:var(--acc2)}
 .mptab:hover:not(.on){color:var(--tx2)}
-.mpc{padding:8px;height:190px;overflow-y:auto}
+/* Раньше фиксированные 190px — заметно меньше, чем место, которое реально
+   занимает клавиатура (Александра сравнила с Telegram: там панель эмодзи
+   размером с клавиатуру). min(), а не жёсткий vh — чтобы не разрасталась
+   до нелепых размеров на планшетах/десктопе. */
+.mpc{padding:8px;height:min(38vh,320px);overflow-y:auto}
 .egrid{display:grid;grid-template-columns:repeat(10,1fr);gap:2px}
 .epem{font-size:21px;padding:4px;text-align:center;cursor:pointer;border-radius:5px;line-height:1}
 .epem:hover{background:var(--bg4)}
@@ -1442,7 +1457,10 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
           <div class="fmt-btn" onclick="promptLink()"><span class="fmt-ic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 14.5l5-5"/><path d="M8 17l-2 2a3.5 3.5 0 0 1-5-5l3-3a3.5 3.5 0 0 1 5-.3M16 7l2-2a3.5 3.5 0 0 1 5 5l-3 3a3.5 3.5 0 0 1-5 .3"/></svg></span><span>Ссылка</span></div>
         </div>
         <div class="iwrap">
-          <div class="ibi" onclick="toggleMP('emoji')"><svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></div>
+          <div class="ibi" id="ibi-emoji-btn" onclick="toggleMP('emoji')">
+            <svg class="ibi-ic-emoji" width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg>
+            <svg class="ibi-ic-kbd" width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M9 13h6"/></svg>
+          </div>
           <div id="minput" class="minput-ce" contenteditable="true" data-placeholder="Сообщение" onkeydown="hKey(event)" oninput="onInput(this)" onpaste="onPasteInput(event)" onmouseup="onTextSelect()" onkeyup="onTextSelect()"></div>
           <div class="attb" id="attb-wrap" onclick="toggleAttachMenu(event)" title="Прикрепить файл">
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -7585,9 +7603,25 @@ async function sendLocalBotAttachment(caption){
 }
 
 // ── MEDIA PANEL ──────────────────────────────────────────────
-function toggleMP(mode){ const p=el("mpanel"); if(p.classList.contains("on")&&S.mpMode===mode){closeMPanel();return;} S.mpMode=mode;p.classList.add("on"); document.querySelectorAll(".mptab").forEach((t,i)=>t.classList.toggle("on",i===(mode==="emoji"?0:1))); renderMP(mode); }
+function toggleMP(mode){
+  const p=el("mpanel"); if(p.classList.contains("on")&&S.mpMode===mode){closeMPanelToKeyboard();return;}
+  S.mpMode=mode;p.classList.add("on"); document.querySelectorAll(".mptab").forEach((t,i)=>t.classList.toggle("on",i===(mode==="emoji"?0:1))); renderMP(mode);
+  // Как в Telegram — пока открыта панель эмодзи/стикеров, значок в строке
+  // ввода меняется со смайлика на клавиатуру (см. CSS .ibi.panel-open)
+  el("ibi-emoji-btn")?.classList.add("panel-open");
+}
 function mpSwitch(e,mode){ document.querySelectorAll(".mptab").forEach(t=>t.classList.remove("on")); e.classList.add("on"); S.mpMode=mode; renderMP(mode); }
-function closeMPanel(){ el("mpanel").classList.remove("on"); }
+function closeMPanel(){
+  el("mpanel").classList.remove("on");
+  el("ibi-emoji-btn")?.classList.remove("panel-open");
+}
+// Тап по значку "клавиатура" (когда открыта панель эмодзи) — закрывает панель
+// И возвращает фокус в поле ввода, чтобы тут же выскочила обычная клавиатура,
+// а не просто закрылась панель с полем без фокуса (как было бы через toggleMP).
+function closeMPanelToKeyboard(){
+  closeMPanel();
+  el("minput")?.focus();
+}
 function renderMP(mode){
   const c=el("mpc");
   if(mode==="emoji"){ renderEmojiPanel(); return; }
