@@ -352,10 +352,12 @@ button,input,textarea,select{font-family:inherit}
 /* 29 июля 2026: постоянная нижняя панель "Ответить"/"Переслать" в режиме
    выбора — заменяет собой обычную строку ввода (.ibar), а не всплывает
    поверх неё, как и .select-bar сверху заменяет собой .chdr по смыслу. */
-.select-actions-bar{display:none;background:var(--bg2);border-top:1px solid var(--brd);padding:6px 4px;align-items:center;flex-shrink:0}
+.select-actions-bar{display:none;background:var(--bg2);border-top:1px solid var(--brd);padding:4px;align-items:center;flex-shrink:0}
 body.select-mode .select-actions-bar{display:flex}
 body.select-mode .ibar{display:none}
-.sab-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;font-size:11.5px;color:var(--acc2);cursor:pointer;border-radius:10px;transition:background .1s}
+/* 29 июля 2026 (второй заход): Александра сравнила с Telegram — там текст
+   крупный, без иконок, попросила убрать иконки и увеличить шрифт. */
+.sab-btn{flex:1;display:flex;align-items:center;justify-content:center;padding:13px 4px;font-size:16px;font-weight:500;color:var(--acc2);cursor:pointer;border-radius:10px;transition:background .1s}
 .sab-btn:hover{background:var(--bg3)}
 .sab-btn.disabled{opacity:.35;pointer-events:none}
 .mrow.selected{background:rgba(108,99,255,.13)!important;border-radius:8px}
@@ -408,20 +410,27 @@ body.select-mode .msel-check{display:flex}
 .crystal-total-badge{cursor:pointer;background:linear-gradient(135deg,rgba(103,232,249,.18),rgba(108,99,255,.18));border-color:rgba(103,232,249,.4);color:var(--cr);font-weight:700;transition:transform .1s}
 .crystal-total-badge:hover{transform:scale(1.06)}
 
-/* 29 июля 2026: фотоальбом (несколько фото в одном сообщении, как в
-   Telegram) — каждое фото технически своё отдельное сообщение (общий
-   group_id, см. backend), тут просто визуально склеиваем подряд идущие
-   пузыри в один: гасим 3px-отступ между строками (.msgs{gap:3px}) и
-   выпрямляем стыкующиеся углы, оставляя "хвостик" только на самом
-   последнем фото группы, как у обычного пузыря. */
-.mrow.grp-img{margin-top:-3px}
-.mrow.grp-img .bub{border-radius:6px}
-.mrow.grp-img.grp-first .bub{border-top-left-radius:16px;border-top-right-radius:16px}
-.mrow.grp-img.grp-last .bub{border-bottom-left-radius:16px;border-bottom-right-radius:16px}
-.mrow.grp-img.grp-last.out .bub{border-bottom-right-radius:3px}
-.mrow.grp-img.grp-last.in .bub{border-bottom-left-radius:3px}
-.mrow.grp-img .msg-img-wrap{width:230px;height:230px}
-.mrow.grp-img .msg-img{width:100%;height:100%;object-fit:cover}
+/* 29 июля 2026 (второй заход): фотоальбом — Александра сравнила со
+   скриншотом Telegram, там фото стоят РЯДОМ (сетка), у нас были стопкой
+   одно под другим — заменено на настоящую CSS-сетку внутри ОДНОГО пузыря
+   (первое фото группы рисует всю сетку сразу, остальные фото группы сами
+   по себе больше не рендерятся — см. renderMsgs). Отрицательные отступы
+   слева/справа "вытягивают" сетку за края паддинга пузыря — раньше вокруг
+   маленького фиксированного квадрата 230×230 было видно фон пузыря
+   (тот самый "фиолетово-синий кант", который заметила Александра).
+   overflow:hidden на самой сетке (не на .bub) скругляет фото под общий
+   радиус, не трогая .bub целиком (там ещё caption/время ниже, с обычным
+   паддингом). */
+/* ⚠️ Без явной ширины сетка/ячейки сжимаются под НАТУРАЛЬНЫЙ размер самого
+   фото (grid 1fr всё равно уважает min-content дочерних элементов) — с
+   маленьким по факту фото сетка выходила крошечной. Фиксированная ширина,
+   как у одиночного фото (.msg-img-wrap{max-width:260px}), даёт
+   предсказуемый размер независимо от реального разрешения снимка. */
+.grp-img-grid{display:grid;gap:2px;overflow:hidden;border-radius:12px;margin:0 calc(-1 * var(--sp-3)) 0;width:260px;max-width:calc(74vw - 24px)}
+.grp-cell{position:relative;cursor:pointer;aspect-ratio:1;min-width:0}
+.grp-cell .msg-img-wrap{width:100%;height:100%;margin-bottom:0;border-radius:0;max-width:none}
+.grp-cell .msg-img{width:100%;height:100%;max-height:none;border-radius:0}
+.grp-cell-check{position:absolute;top:6px;right:6px;margin:0;background:rgba(0,0,0,.45)}
 
 /* Анимация кристалльного подарка — 5 секунд, парящие кристаллики + вспышка числа */
 .crystal-gift-fx{position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:20}
@@ -1469,7 +1478,9 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       <div class="select-bar" id="select-bar">
         <span style="cursor:pointer;font-size:18px;color:var(--tx2)" onclick="exitSelectMode()">✕</span>
         <span style="font-weight:600;font-size:13.5px"><span id="select-count">0</span> выбрано</span>
-        <span style="margin-left:auto;font-size:11.5px;color:var(--tx3)">ПКМ / долгое нажатие — действия</span>
+        <span style="margin-left:auto;cursor:pointer;color:var(--tx2);display:flex;align-items:center" onclick="openBulkDeleteModal()" title="Удалить">
+          <svg width="19" height="19" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg>
+        </span>
       </div>
 
       <div class="msgs" id="msgs"></div>
@@ -1582,14 +1593,8 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
            "меню переслать/удалить/ответить нет". Показывается вместо .ibar
            (см. CSS body.select-mode), не поверх него. -->
       <div class="select-actions-bar" id="select-actions-bar">
-        <div class="sab-btn" id="sab-reply-btn" onclick="selReplyOne()">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 6l-6 6 6 6"/><path d="M21 8v3a4 4 0 0 1-4 4H5"/></svg>
-          <span>Ответить</span>
-        </div>
-        <div class="sab-btn" onclick="selForwardAll()">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6"/><path d="M3 8v3a4 4 0 0 0 4 4h12"/></svg>
-          <span>Переслать</span>
-        </div>
+        <div class="sab-btn" id="sab-reply-btn" onclick="selReplyOne()">Ответить</div>
+        <div class="sab-btn" onclick="selForwardAll()">Переслать</div>
       </div>
 
       <!-- ⚠️ 28 июля 2026: перенесено сюда, ПОСЛЕ .ibar (было раньше, между
@@ -5531,14 +5536,21 @@ function renderMsgs(){
     if(m.t==="sys"){const s=document.createElement("div");s.className="sysmsg";s.textContent=m.tx;c.appendChild(s);prevGroupKey=null;return;}
     const isOut=(m.t==="out"||(m.t==="gift"&&m.out)||(m.t==="sk"&&m.out));
     // Фотоальбом (m.groupId) — каждое фото своё отдельное сообщение (см.
-    // backend group_id), тут просто смотрим соседей по уже готовому списку,
-    // чтобы понять, первое/последнее ли это фото в группе — визуальную
-    // склейку делает CSS (.grp-img/.grp-first/.grp-last, см. styles), сам
-    // цикл рендера остаётся простым forEach, ничего не пропускаем/не мержим.
+    // backend group_id). Рисует его ТОЛЬКО первое фото группы — целиком, в
+    // виде сетки (см. .grp-img-grid ниже); остальные фото группы сами по
+    // себе больше не рендерятся вообще (их фото уже попали в сетку) —
+    // раньше тут была стопка одинаковых пузырей одно под другим, Александра
+    // сравнила со скриншотом Telegram (фото рядом) и попросила сетку.
     const grpPrev=renderList[rlIdx-1], grpNext=renderList[rlIdx+1];
     const isGrpImg=!!m.groupId;
     const grpFirst=isGrpImg && (!grpPrev || grpPrev.groupId!==m.groupId);
-    const grpLast=isGrpImg && (!grpNext || grpNext.groupId!==m.groupId);
+    if(isGrpImg && !grpFirst) return;
+    let groupMembers=null;
+    if(isGrpImg){
+      groupMembers=[m];
+      let k=rlIdx+1;
+      while(k<renderList.length && renderList[k].groupId===m.groupId){ groupMembers.push(renderList[k]); k++; }
+    }
     // Группировка подряд идущих сообщений одного автора, как в Telegram —
     // аватар/имя показываем только у первого сообщения в очереди. Своего
     // senderId на сообщении нет: для группы/канала сверяем по имени автора
@@ -5554,8 +5566,9 @@ function renderMsgs(){
     }
     const groupsWithPrev = !isOut && groupKey!==null && groupKey===prevGroupKey;
     prevGroupKey = isOut ? null : groupKey;
+    const anySelected = isGrpImg ? groupMembers.some(gm=>S.selectedMsgs.includes(gm.id)) : S.selectedMsgs.includes(m.id);
     const row=document.createElement("div");
-    row.className="mrow "+(isOut?"out":"in")+(groupsWithPrev?" group-continue":"")+(isGrpImg?" grp-img":"")+(grpFirst?" grp-first":"")+(grpLast?" grp-last":"")+(S.selectedMsgs.includes(m.id)?" selected":"");
+    row.className="mrow "+(isOut?"out":"in")+(groupsWithPrev?" group-continue":"")+(isGrpImg?" grp-img":"")+(anySelected?" selected":"");
     row.dataset.msgId=m.id;
     row.dataset.id=m.id;
     // В режиме выделения клик по строке переключает выбор
@@ -5563,9 +5576,19 @@ function renderMsgs(){
       row.style.cursor="pointer";
       row.onclick=(ev)=>{ ev.stopPropagation(); toggleMsgSelect(m.id); };
     }
+    // Долгое нажатие/тап работают и рядом с сообщением, не только точно по
+    // пузырю — как в Telegram (Александра прислала скриншот-сравнение).
+    // "Запасной" обработчик на всю строку — msgTouchStart сам молчит, если
+    // палец реально попал в пузырь/ячейку сетки с их собственным вызовом
+    // (см. isRowFallback выше), поэтому конфликта id тут не возникает.
+    row.oncontextmenu=(e)=>showCtx(e,m.id);
+    row.ontouchstart=(e)=>msgTouchStart(e,m.id,row.querySelector(".bub,.vbub,.skbub,.gift-bubble"),true);
+    row.ontouchmove=(e)=>msgTouchMove(e);
+    row.ontouchend=(e)=>msgTouchEnd(e,m.id);
     let h="";
-    // Чекбокс для режима выделения
-    if(m.t!=="date"&&m.t!=="sys")h+=`<div class="msel-check">${S.selectedMsgs.includes(m.id)?"✓":""}</div>`;
+    // Чекбокс для режима выделения — для фотоальбома НЕ рисуем общий на всю
+    // строку, у каждого фото в сетке свой собственный (см. .grp-cell-check)
+    if(m.t!=="date"&&m.t!=="sys"&&!isGrpImg)h+=`<div class="msel-check">${S.selectedMsgs.includes(m.id)?"✓":""}</div>`;
     if(m.t!=="out" && !(m.t==="gift"&&m.out) && !(m.t==="sk"&&m.out))h+=`<div class="mav" style="background:${m.frAvatar?"none":colBg(m.col||0)};padding:0;overflow:hidden${groupsWithPrev?";visibility:hidden":""}">${m.frAvatar?`<img src="${m.frAvatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(m.fr?m.fr[0]:"?")}</div>`;
     if(m.t==="sk"){
       h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="msgTouchStart(event,${m.id},this)" ontouchend="msgTouchEnd(event,${m.id})" ontouchmove="msgTouchMove(event)">${isStickerImg(m.sk)?`<img src="${m.sk}" style="width:150px;height:150px;object-fit:contain">`:m.sk}</div>${m.t==="sk"&&(m.failed||m.out)?`<div class="mt" style="justify-content:center">${m.time||""}${m.out?ticksHTML(m):""}</div>`:""}`;
@@ -5604,9 +5627,24 @@ function renderMsgs(){
         bc+=`<div class="as-channel-tag" style="opacity:.8${clickable?";cursor:pointer":""}"${clickable?` onclick="event.stopPropagation();${clickJS}"`:""}>↪️ Переслано от <b style="margin-left:3px${clickable?";text-decoration:underline":""}">${escHtml(m.fwd.fromName)}</b></div>`;
       }
       if(m.reply)bc+=`<div class="rprev"><div class="rprevnm">${escHtml(m.reply.fr)}</div><div class="rprevtx">${escHtml(m.reply.tx)}</div></div>`;
-      if(m.img){
+      if(m.img && !isGrpImg){
         const isSp=m.spoiler && !m.spoilerRevealed;
         bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${m.img}" loading="lazy" ${m.uploading?"":(isSp?`onclick="revealSpoiler(${m.id})"`:`onclick="openImgViewer('${m.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
+      }
+      // Сетка альбома (side-by-side, как в Telegram) — вместо стопки
+      // одинаковых пузырей. 2 колонки хватает для основного случая (2 фото
+      // рядом, как показала Александра); для 3+ просто переносится на
+      // следующую строку той же сетки — не точная адаптивная коллаж-
+      // раскладка настоящего Telegram, но рядом и без мелкого обрезания.
+      if(isGrpImg){
+        const cols = groupMembers.length===1?1:2;
+        const noHeaderAbove = bc==="";
+        const cellsHTML=groupMembers.map(gm=>{
+          const isSp=gm.spoiler && !gm.spoilerRevealed;
+          const touchAttrs=gm.uploading?"":` oncontextmenu="showCtx(event,${gm.id})" ontouchstart="msgTouchStart(event,${gm.id},this)" ontouchend="msgTouchEnd(event,${gm.id})" ontouchmove="msgTouchMove(event)"`;
+          return `<div class="grp-cell" data-msg-id="${gm.id}"${touchAttrs}><div class="msg-img-wrap${gm.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${gm.img}" loading="lazy" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer('${gm.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${gm.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${gm.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${S.selectMode?`<div class="msel-check grp-cell-check">${S.selectedMsgs.includes(gm.id)?"✓":""}</div>`:""}</div></div>`;
+        }).join("");
+        bc+=`<div class="grp-img-grid" style="grid-template-columns:repeat(${cols},1fr)${noHeaderAbove?";margin-top:calc(-1 * var(--sp-2))":""}">${cellsHTML}</div>`;
       }
       if(m.video){
         const isSp=m.spoiler && !m.spoilerRevealed;
@@ -5692,7 +5730,14 @@ function renderMsgs(){
       if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${r.e} ${r.c}</div>`).join("")}</div>`;
       if(m.crystalTotal>0)bc+=`<div class="rxns"><div class="rxn crystal-total-badge" onclick="quickAddCrystal(${m.id})" title="Нажмите, чтобы подарить ещё 1 💎">💎 ${m.crystalTotal.toLocaleString()}</div></div>`;
       if(m.edited)bc+='';
-      h+=`<div class="bub${m.edited?" edited":""}${m.videoCircle?" vc-bub":""}" oncontextmenu="showCtx(event,${m.id})" ontouchstart="msgTouchStart(event,${m.id},this)" ontouchend="msgTouchEnd(event,${m.id})" ontouchmove="msgTouchMove(event)">${bc}</div>`;
+      // Фотоальбом: у каждого фото в сетке уже своя пара oncontextmenu/touch-
+      // атрибутов (см. .grp-cell выше, с ЕГО собственным id) — если повесить
+      // те же события ЕЩЁ РАЗ на весь .bub с id ПЕРВОГО фото, оба обработчика
+      // будут всплывать по одному и тому же touchstart и второй (от .bub)
+      // перезапишет lpTimer с чужим id, долгое нажатие на 2-е/3-е фото будет
+      // выделять не то сообщение.
+      const bubTouchAttrs = isGrpImg ? "" : `oncontextmenu="showCtx(event,${m.id})" ontouchstart="msgTouchStart(event,${m.id},this)" ontouchend="msgTouchEnd(event,${m.id})" ontouchmove="msgTouchMove(event)"`;
+      h+=`<div class="bub${m.edited?" edited":""}${m.videoCircle?" vc-bub":""}" ${bubTouchAttrs}>${bc}</div>`;
     }
     row.innerHTML=h; c.appendChild(row);
   });
@@ -8021,7 +8066,12 @@ el("msgs")?.addEventListener("click", function(e){
   if(!bub) return; // клик мимо самого пузыря — им занимается row.onclick (режим выбора) как и раньше
   const row=bub.closest(".mrow");
   if(!row || !row.dataset.msgId) return;
-  const msgId=+row.dataset.msgId;
+  // Фотоальбом: клик по КОНКРЕТНОМУ фото в сетке (.grp-cell, свой data-msg-id)
+  // должен относиться именно к нему, а не к первому фото группы (у него
+  // тоже есть data-msg-id — .mrow сама — но closest() найдёт более
+  // конкретный .grp-cell раньше, если клик пришёлся внутри сетки).
+  const cell=e.target.closest("[data-msg-id]");
+  const msgId=cell ? +cell.dataset.msgId : +row.dataset.msgId;
   if(S.selectMode){
     e.stopPropagation(); // не даём сработать фото/видео/голосовому и т.д. поверх выбора
     toggleMsgSelect(msgId);
@@ -8052,7 +8102,15 @@ function ctxReply(){ setReply(S.ctxId); }
 // "Ответить" в контекстном меню.
 const MSG_SWIPE_THRESHOLD_PX=56;
 let msgSwipeState=null;
-function msgTouchStart(e,id,bubEl){
+function msgTouchStart(e,id,bubEl,isRowFallback){
+  // 29 июля 2026: расширение зоны нажатия на всю строку сообщения (не
+  // только сам пузырь) — Александра сравнила с Telegram, там долгое
+  // нажатие/тап работают и рядом с сообщением, в пустом месте. Тот же
+  // обработчик теперь висит и на .mrow целиком (см. renderMsgs) как
+  // "запасной" — но если палец реально попал в САМ пузырь/ячейку сетки
+  // (у которых есть свой собственный, более точный вызов этой же функции),
+  // запасной вызов от строки молчит, чтобы не перезаписать lpTimer чужим id.
+  if(isRowFallback && e.target.closest(".bub,.vbub,.skbub,.grp-cell,.gift-bubble")) return;
   lpStart(e,id); // существующее долгое нажатие — без изменений, даже если ниже сработает защита
   // Голосовые/видео-кружки — уже рабочий touch-скраббинг (seekVideoCircle
   // и т.д.), событие бабблится вверх до .bub. Не даём свайпу-ответу
@@ -8560,7 +8618,29 @@ function openDelModal(){
     :"Можно удалить только у себя.";
   el("m-delete").classList.add("on");
 }
+// Значок корзины в верхней панели режима выбора (см. #select-bar) — та же
+// модалка "у меня / у всех", что и для одного сообщения, просто с текстом
+// про количество и проверкой прав по ВСЕМ выбранным, а не одному S.ctxId.
+function openBulkDeleteModal(){
+  const n=S.selectedMsgs.length;
+  if(!n) return;
+  const ms=S.messages[S.chat]||[];
+  const selected=S.selectedMsgs.map(id=>ms.find(x=>x.id===id)).filter(Boolean);
+  const allOwn=selected.every(m=>m.t==="out");
+  const ch=S.chats.find(c=>c.id===S.chat);
+  const isPersonal = !ch || ch.type==="personal";
+  const canDeleteForAll = allOwn || isPersonal || canI("deleteMsg");
+  el("del-forall-btn").style.display=canDeleteForAll?"flex":"none";
+  el("del-info").textContent=canDeleteForAll
+    ? `Удалить ${n} ${n===1?"сообщение":"сообщений"} только у себя или у всех участников чата.`
+    : "Можно удалить только у себя.";
+  el("m-delete").classList.add("on");
+}
 function delForMe(){
+  // Та же модалка используется и для массового удаления в режиме выбора
+  // (см. openBulkDeleteModal) — там уже готовая selDeleteForMe() умеет
+  // удалять сразу несколько по S.selectedMsgs.
+  if(S.selectMode){ closeM("m-delete"); selDeleteForMe(); return; }
   const ms=S.messages[S.chat]||[];
   const i=ms.findIndex(x=>x.id===S.ctxId);
   if(i!==-1){
@@ -8573,6 +8653,7 @@ function delForMe(){
   closeM("m-delete"); renderMsgs(); showToast("🗑️ Удалено у вас"); saveState();
 }
 function delForAll(){
+  if(S.selectMode){ closeM("m-delete"); selDeleteAll(); return; }
   const ms=S.messages[S.chat]||[];
   const i=ms.findIndex(x=>x.id===S.ctxId);
   if(i!==-1){
