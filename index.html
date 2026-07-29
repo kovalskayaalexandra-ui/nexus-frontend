@@ -8309,19 +8309,32 @@ function unarchiveChat(chatId){
 // добавить. Тянем, только если список проскроллен в самый верх (иначе это
 // обычный скролл), с "тугим" резиновым коэффициентом; иконка растёт и
 // подсвечивается акцентным цветом, когда пройден порог срабатывания.
-let pullArchiveStartY=null, pullArchiveActive=false;
-const PULL_ARCHIVE_MAX=90, PULL_ARCHIVE_TRIGGER=64;
+// ⚠️ 28 июля 2026, срочный фикс: изначальная версия реагировала на ЛЮБОЕ,
+// даже однопиксельное дрожание пальца при обычном тапе и сразу меняла
+// высоту #pull-archive — эта DOM-мутация во время touchmove сбивала браузеру
+// распознавание "это тап", синтетический click переставал приходить вообще,
+// и ни один чат не открывался нажатием. Теперь ниже небольшого порога
+// (PULL_ARCHIVE_DEADZONE) вообще ничего не трогаем в DOM — обычный тап
+// проходит ровно так же, как до появления этого жеста.
+let pullArchiveStartY=null, pullArchiveActive=false, pullArchiveEngaged=false;
+const PULL_ARCHIVE_MAX=90, PULL_ARCHIVE_TRIGGER=64, PULL_ARCHIVE_DEADZONE=12;
 function pullArchiveStart(e){
   const list=el("clist");
   if(!isMobileLayout() || !list || list.scrollTop>0 || (e.touches&&e.touches.length>1)){ pullArchiveStartY=null; pullArchiveActive=false; return; }
   pullArchiveStartY=e.touches[0].clientY;
   pullArchiveActive=true;
+  pullArchiveEngaged=false;
 }
 function pullArchiveMove(e){
   if(!pullArchiveActive || pullArchiveStartY==null) return;
   const dy=e.touches[0].clientY-pullArchiveStartY;
-  if(dy<=0) return; // тянут вверх/скроллят как обычно — не наше дело
-  const dist=Math.min(dy*0.5, PULL_ARCHIVE_MAX);
+  if(dy<=PULL_ARCHIVE_DEADZONE){
+    // Всё ещё может оказаться обычным тапом — ничего не трогаем в DOM
+    if(pullArchiveEngaged && dy<=0){ resetPullArchiveVisual(); pullArchiveEngaged=false; }
+    return;
+  }
+  pullArchiveEngaged=true;
+  const dist=Math.min((dy-PULL_ARCHIVE_DEADZONE)*0.5, PULL_ARCHIVE_MAX);
   const box=el("pull-archive"), icon=el("pull-archive-icon");
   if(box) box.style.height=dist+"px";
   if(icon){
@@ -8331,16 +8344,20 @@ function pullArchiveMove(e){
     icon.style.background=p>=1?"var(--acc)":"var(--bg3)";
   }
 }
+function resetPullArchiveVisual(){
+  const box=el("pull-archive"); if(box) box.style.height="0px";
+  const icon=el("pull-archive-icon");
+  if(icon){ icon.style.transform="scale(.5)"; icon.style.opacity=".4"; icon.style.background="var(--bg3)"; }
+}
 function pullArchiveEnd(){
   if(!pullArchiveActive){ pullArchiveStartY=null; return; }
   pullArchiveActive=false;
+  const wasEngaged=pullArchiveEngaged; pullArchiveEngaged=false;
   const box=el("pull-archive");
-  const dist=box?(parseFloat(box.style.height)||0):0;
-  if(box) box.style.height="0px";
-  const icon=el("pull-archive-icon");
-  if(icon){ icon.style.transform="scale(.5)"; icon.style.opacity=".4"; icon.style.background="var(--bg3)"; }
+  const dist=(wasEngaged&&box)?(parseFloat(box.style.height)||0):0;
+  resetPullArchiveVisual();
   pullArchiveStartY=null;
-  if(dist>=PULL_ARCHIVE_TRIGGER) openArchive();
+  if(wasEngaged && dist>=PULL_ARCHIVE_TRIGGER) openArchive();
 }
 function openArchive(){ renderArchiveList(); el("m-archive").classList.add("on"); }
 function renderArchiveList(){
