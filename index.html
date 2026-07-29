@@ -578,12 +578,23 @@ button:active,.nbtn:active,.fmt-btn:active,.call-btn:active{transform:scale(.96)
 .rp-action-btn.rd:hover{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.2)}
 
 /* ═══ CTX MENU ═══ */
-.ctx{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:11px;padding:5px;z-index:1000;min-width:180px;box-shadow:0 8px 32px rgba(0,0,0,.5);display:none}
-.ctx.on{display:block}
+.ctx{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:11px;padding:5px;z-index:1000;min-width:180px;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5);display:none}
+/* 29 июля 2026: раньше просто display:block — резко, без анимации, и
+   Александра заметила на телефоне, что меню появляется мгновенно "скачком".
+   @keyframes проигрывается даже при переходе display:none→block в одном и
+   том же тике (в отличие от transition, которому нужно стартовое
+   отрисованное состояние) — поэтому анимация работает без доп. трюков с
+   visibility. */
+@keyframes ctxIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+.ctx.on{display:block;animation:ctxIn .15s cubic-bezier(.25,.8,.35,1)}
 .ctxi{padding:7px 11px;border-radius:7px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px;transition:background .1s}
 .ctxi:hover{background:var(--bg4)}
 .ctxi.rd{color:var(--rd)}
 .ctxsep{height:1px;background:var(--brd);margin:3px 0}
+/* Шрифт/иконки пунктов меню на мобильном крупнее — Александра сравнила с
+   Telegram Android, у нас были заметно мельче и менее удобны для пальца. */
+body.mobile-mode .ctxi{font-size:15px;padding:10px 12px;gap:10px}
+body.mobile-mode .ctxi svg{width:17px;height:17px}
 .ctx-bulk-item{display:none}
 .ctx-media-item{display:none}
 .ctx.has-media .ctx-media-item{display:flex}
@@ -970,6 +981,16 @@ body.mobile-mode:has(.rp.mobile-open) .mobile-tabbar{display:none}
 .mobile-mode .mic-btn{width:42px;height:42px}
 .mobile-mode .sndbtn{width:44px;height:44px}
 .mobile-mode .ibi{padding:9px;margin:-9px 0}
+/* 29 июля 2026: Александра сравнила с Telegram на реальном телефоне —
+   иконки в строке ввода мельче телеграмовских, а сама строка (пилюля)
+   визуально не дотягивает до краёв экрана. Увеличиваем иконки и слегка
+   ужимаем внешние отступы/высоту пилюли только в мобильном режиме —
+   десктоп (правила выше) не трогаем. */
+.mobile-mode .ibar{padding:5px 2px}
+.mobile-mode .iwrap{padding:5px 12px}
+.mobile-mode .ibi-ic-emoji,.mobile-mode .ibi-ic-kbd{width:24px;height:24px}
+.mobile-mode .attb svg{width:23px;height:23px}
+.mobile-mode #mic-btn svg,.mobile-mode #vc-btn svg{width:23px;height:23px}
 
 /* ══ ЖЕСТЫ В СПИСКЕ ЧАТОВ (этап 10) ══
    Свайп — новый absolute-оверлей поверх строки (.ci-actions), не трогает
@@ -6678,7 +6699,18 @@ async function sendSticker(sk){
   await retrySimpleMsg(localMsg, chatId, ch, memberIds, {chatId, text:sk, type:"sticker"}, {text:sk, msgType:"sticker"});
 }
 
-function hKey(e){ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();} }
+function hKey(e){
+  if(e.key!=="Enter"||e.shiftKey) return;
+  // 29 июля 2026: на мобильном (Android-клавиатура) Enter отправлял
+  // сообщение сразу — Александра сравнила с Telegram, где Enter на телефоне
+  // просто переносит строку, а отправка идёт отдельной кнопкой (sndbtn,
+  // у неё нет физического Shift, чтобы им отличить перенос от отправки).
+  // На десктопе поведение остаётся прежним — Enter отправляет,
+  // Shift+Enter переносит строку.
+  if(isMobileLayout()) return;
+  e.preventDefault();
+  sendMsg();
+}
 function onInput(elm){
   aResize(elm);
   cleanupEmptyFormatSpans();
@@ -7673,6 +7705,7 @@ function showCtx(e,id){
   e.preventDefault();
   S.ctxId=id;
   const m=el("ctx");
+  const wasOpen=m.classList.contains("on");
   m.classList.toggle("has-selection", S.selectedMsgs.length>0);
   const msgObj=(S.messages[S.chat]||[]).find(x=>x.id===id);
   const hasMedia=!!(msgObj && (msgObj.img||msgObj.video||msgObj.videoCircle||msgObj.voice||msgObj.audio||msgObj.file));
@@ -7689,9 +7722,49 @@ function showCtx(e,id){
   // Координаты для мыши и для тача
   const x = e.clientX || (e.touches && e.touches[0]?.clientX) || (e.changedTouches && e.changedTouches[0]?.clientX) || window.innerWidth/2;
   const y = e.clientY || (e.touches && e.touches[0]?.clientY) || (e.changedTouches && e.changedTouches[0]?.clientY) || window.innerHeight/2;
-  m.style.left=Math.min(x,window.innerWidth-190)+"px";
-  m.style.top=Math.min(y,window.innerHeight-260)+"px";
+  // ⚠️ 29 июля 2026: раньше высота меню под расчёт клампа была захардкожена
+  // (260px), а реальная высота (зависит от того, сколько пунктов сейчас
+  // видно — has-media/has-selection добавляют лишние) часто оказывалась
+  // больше — меню обрезалось снизу экрана (нашла Александра на реальном
+  // телефоне, длинное сообщение внизу списка). Ставим off-screen, добавляем
+  // .on (это и запускает display:block + анимацию), меряем настоящие
+  // размеры и только потом позиционируем по месту — всё синхронно в одном
+  // тике, так что бракованного кадра "не в том месте" пользователь не видит.
+  m.style.left="-9999px"; m.style.top="-9999px";
   m.classList.add("on");
+  const mw=m.offsetWidth, mh=m.offsetHeight;
+  const pad=8;
+  let left=Math.min(x, window.innerWidth-mw-pad);
+  left=Math.max(pad,left);
+  let top, openedUp;
+  if(y+mh+pad>window.innerHeight){
+    // не помещается вниз от точки нажатия — открываем меню ВВЕРХ, а не
+    // обрезаем (тот самый баг со скриншота — сообщение внизу экрана)
+    top=y-mh; openedUp=true;
+  } else {
+    top=y; openedUp=false;
+  }
+  top=Math.min(top, window.innerHeight-mh-pad);
+  top=Math.max(pad, top);
+  m.style.left=left+"px";
+  m.style.top=top+"px";
+  m.style.transformOrigin = openedUp ? "bottom left" : "top left";
+  // Регистрируем в общем бэк-стеке (см. pushNavEntry выше) — аппаратная
+  // кнопка "назад" на Android должна сначала закрыть ЭТО меню, а не сразу
+  // выходить из чата (баг со скриншота: назад закрывал весь чат, оставляя
+  // меню открытым). Не пушим повторно, если меню уже было открыто и просто
+  // переоткрывается для другого сообщения — это один и тот же диалог с
+  // точки зрения пользователя, не два вложенных.
+  if(!wasOpen) pushNavEntry(closeCtx);
+}
+function closeCtx(){ el("ctx").classList.remove("on"); }
+// Единая точка закрытия меню КАК ПОЛЬЗОВАТЕЛЬСКОГО действия (тап мимо,
+// выбор пункта) — а не аппаратной кнопки "назад". Идёт через тот же
+// popNavEntry(), что и реальная кнопка "назад", чтобы запись в history
+// всегда гасла синхронно с самим меню — иначе следующее нажатие "назад" на
+// телефоне будет закрывать что-то другое (см. правило про бэк-стек).
+function closeCtxViaBackStack(){
+  if(el("ctx").classList.contains("on")) popNavEntry();
 }
 
 // Долгое нажатие на мобильных
@@ -7701,7 +7774,7 @@ function lpStart(e,id){
   lpTimer=setTimeout(()=>{ showCtx(e,id); if(navigator.vibrate)navigator.vibrate(40); },450);
 }
 function lpEnd(){ clearTimeout(lpTimer); }
-document.addEventListener("click",e=>{ el("ctx").classList.remove("on"); el("rxn-picker").classList.remove("on"); });
+document.addEventListener("click",e=>{ closeCtxViaBackStack(); el("rxn-picker").classList.remove("on"); });
 function ctxReply(){ setReply(S.ctxId); }
 
 // ══════════════════════════════════════════════════
@@ -7746,7 +7819,9 @@ function msgTouchEnd(e,id){
 
 // ── ВЫДЕЛЕНИЕ НЕСКОЛЬКИХ СООБЩЕНИЙ (как в Telegram) ──────────
 function ctxSelect(){
-  el("ctx").classList.remove("on");
+  // Закрытие меню — через общий клик-обработчик документа (см.
+  // closeCtxViaBackStack), не напрямую: иначе запись в бэк-стеке для этого
+  // меню осталась бы "висеть" и следующее нажатие "назад" закрыло бы не то.
   enterSelectMode();
   toggleMsgSelect(S.ctxId);
 }
@@ -7850,7 +7925,7 @@ function ctxCopy(){ const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId);if(
 async function ctxPin(){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
   // Проверка прав на закрепление в группах
-  if(!canI("pinMsg")){ showToast("🔒 Нет прав на закрепление"); el("ctx").classList.remove("on"); return; }
+  if(!canI("pinMsg")){ showToast("🔒 Нет прав на закрепление"); return; }
   if(!S.pinnedByChat[S.chat]) S.pinnedByChat[S.chat]=[];
   const alreadyPinned = S.pinnedByChat[S.chat].includes(m.id);
   // Системные/локально-ещё-не-подтверждённые сообщения — закрепляем только
@@ -8094,7 +8169,6 @@ function onPasteInput(e){
 }
 function ctxSaveToFav(){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
-  el("ctx").classList.remove("on");
   if(!S.messages[77777]) S.messages[77777]=[];
   // Сохраняем копию сообщения в Избранное
   S.messages[77777].push({id:nextId(),t:"out",tx:m.tx||"",sk:m.sk,time:now(),read:true,savedFrom:true});
@@ -8109,7 +8183,6 @@ function ctxSaveToFav(){
 // уходит на сервер, попадает в Dev Panel → 📮 Жалобы.
 function ctxReport(){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
-  el("ctx").classList.remove("on");
   if(isSystemChat(S.chat)){ showToast("🔒 Здесь нельзя пожаловаться"); return; }
   if(!m.dbId){ showToast("❌ Жалобы доступны только для сообщений, сохранённых на сервере"); return; }
   openReportModal("message", S.chat, m.dbId);
@@ -8157,7 +8230,10 @@ function ctxReact(e){
   if(e)e.stopPropagation();
   const ctx=el("ctx"); const rp=el("rxn-picker");
   rp.style.left=ctx.style.left; rp.style.top=(parseInt(ctx.style.top)-44)+"px";
-  ctx.classList.remove("on");
+  // ctxReact делает e.stopPropagation() выше — общий клик-обработчик
+  // документа для этого клика не сработает, поэтому закрываем меню сами,
+  // но через бэк-стек (см. closeCtxViaBackStack), а не напрямую классом.
+  closeCtxViaBackStack();
   rxnExpanded=false; rp.classList.remove("expanded");
   // Если админ настроил конкретный список разрешённых реакций — показываем
   // сразу ЕГО в быстром ряду (как в Telegram), а не просто урезанную
