@@ -4547,9 +4547,11 @@ function renderChats(filter=""){
       <div class="ci-act ci-act-del" title="Удалить">🗑️</div>
     </div>`;
     d.onclick=()=>{
-      if(suppressNextChatRowClick){ suppressNextChatRowClick=false; return; }
-      if(S.chatSelectMode){ toggleChatSelect(ch.id); return; }
-      if(d.classList.contains("swipe-open")){ d.classList.remove("swipe-open"); return; }
+      showToast("🔧 клик дошёл: "+ch.nm); // ВРЕМЕННАЯ диагностика — уберём сразу после того, как найдём причину
+      if(suppressNextChatRowClick){ showToast("🔧 …но съеден suppressNextChatRowClick"); suppressNextChatRowClick=false; return; }
+      if(S.chatSelectMode){ showToast("🔧 …но съеден chatSelectMode"); toggleChatSelect(ch.id); return; }
+      if(d.classList.contains("swipe-open")){ showToast("🔧 …но съеден swipe-open"); d.classList.remove("swipe-open"); return; }
+      showToast("🔧 зову openChat()");
       openChat(ch.id);
     };
     d.querySelector(".ci-act-pin").onclick=(e)=>{ e.stopPropagation(); d.classList.remove("swipe-open"); pinChat(ch.id); };
@@ -4703,6 +4705,7 @@ function globalSearch(v){
 
 // ── OPEN CHAT ──────────────────────────────────────────────────
 function openChat(id,opts){
+  showToast("🔧 openChat() начал выполняться, mobile="+isMobileLayout()); // ВРЕМЕННАЯ диагностика
   // save draft of previous chat
   const prev=S.chats.find(c=>c.id===S.chat);
   if(prev){ prev.draft=getInputText(); }
