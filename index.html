@@ -482,6 +482,13 @@ body.select-mode .msel-check{display:flex}
 .attb{cursor:pointer;color:var(--tx2);display:flex;align-items:center;flex-shrink:0;position:relative}
 .attb:hover{color:var(--acc2)}
 .iwrap{flex:1;background:var(--bg3);border:1px solid var(--brd);border-radius:20px;display:flex;align-items:flex-end;padding:6px 12px;transition:border-color .2s;gap:8px}
+/* Микрофон/видео-кружок/бот-меню теперь внутри .iwrap (см. разметку) — снимаем
+   их собственный фон/рамку/фиксированный размер, чтобы они смотрелись просто
+   иконками в общей "пилюле", как скрепка, а не отдельными плавающими кнопками.
+   :not(.recording) — во время записи голосового цветной фон-индикатор
+   (.mic-btn.recording, объявлен выше) должен остаться как есть. */
+.iwrap .mic-btn:not(.recording){background:none;border:none;width:auto;height:auto;padding:0;color:var(--tx2)}
+.iwrap .mic-btn:not(.recording):hover{background:none;color:var(--cr)}
 .iwrap:focus-within{border-color:var(--acc)}
 .ibi{cursor:pointer;color:var(--tx3);display:flex;align-items:center;flex-shrink:0}
 .ibi:hover{color:var(--cr)}
@@ -520,8 +527,12 @@ button{transition:transform .1s}
 button:active,.nbtn:active,.fmt-btn:active,.call-btn:active{transform:scale(.96)}
 
 /* ═══ MEDIA PANEL ═══ */
-.mpanel{position:absolute;bottom:57px;right:0;left:0;background:var(--bg2);border-top:1px solid var(--brd);z-index:50;display:none;box-shadow:0 -4px 20px rgba(0,0,0,.3)}
-.mpanel.on{display:block}
+/* ⚠️ Раньше position:absolute;bottom:57px — плавала ПОВЕРХ переписки, не
+   занимая настоящего места в потоке. Александра явно попросила, чтобы, как
+   в Telegram, панель по-настоящему выталкивала строку ввода вверх — теперь
+   обычный элемент внутри .cm (flex-column), .msgs (flex:1) сжимается сам. */
+.mpanel{background:var(--bg2);border-top:1px solid var(--brd);display:none;flex-shrink:0}
+.mpanel.on{display:flex;flex-direction:column}
 .mptabs{display:flex;border-bottom:1px solid var(--brd);padding:0 8px;gap:2px}
 .mptab{padding:8px 13px;font-size:11.5px;font-weight:700;color:var(--tx3);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s}
 .mptab.on{color:var(--acc2);border-bottom-color:var(--acc2)}
@@ -1407,14 +1418,6 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         Новые сообщения
       </div>
 
-      <div class="mpanel" id="mpanel">
-        <div class="mptabs">
-          <div class="mptab on" id="t-emtab" onclick="mpSwitch(this,'emoji')">😀 Эмодзи</div>
-          <div class="mptab" id="t-sttab" onclick="mpSwitch(this,'stickers')">🐱 Стикеры</div>
-        </div>
-        <div class="mpc" id="mpc"></div>
-      </div>
-
       <div class="rstrip" id="rstrip">
         <div class="rsb"><div class="rsnm" id="rsnm">—</div><div class="rstx" id="rstx"></div></div>
         <div class="rsx" onclick="cancelReply()">✕</div>
@@ -1473,18 +1476,23 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
               <div class="fmt-btn" id="attach-item-contact" onclick="openShareContact(event)"><span class="fmt-ic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg></span><span>Контакт</span></div>
             </div>
           </div>
+          <!-- ⚠️ 28 июля 2026: микрофон/видео-кружок/меню бота перенесены ВНУТРЬ
+               .iwrap, рядом со скрепкой — Александра явно попросила ("кнопка
+               микрофона должна быть в поле ввода как и скрепка"), сравнив с
+               Telegram, где это один и тот же визуальный контейнер целиком,
+               а не отдельная плавающая кнопка снаружи. -->
+          <button class="mic-btn" id="bot-menu-btn" onclick="openBotCommandMenu()" title="Команды бота" style="display:none">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
+          </button>
+          <button class="mic-btn" id="mic-btn" onclick="onMicBtnClick(event)" ontouchstart="micTouchStart(event)" ontouchmove="micTouchMove(event)" ontouchend="micTouchEnd(event)" title="Голосовое сообщение">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
+          </button>
+          <button class="mic-btn" id="vc-btn" onclick="onVcBtnClick(event)" ontouchstart="micTouchStart(event)" ontouchmove="micTouchMove(event)" ontouchend="micTouchEnd(event)" title="Видео-кружочек">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m10 9 5 3-5 3z"/></svg>
+          </button>
         </div>
         <input type="file" id="file-inp" style="display:none" onchange="attachFile(this)">
         <span class="char-count" id="char-count"></span>
-        <button class="mic-btn" id="bot-menu-btn" onclick="openBotCommandMenu()" title="Команды бота" style="display:none">
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
-        </button>
-        <button class="mic-btn" id="mic-btn" onclick="onMicBtnClick(event)" ontouchstart="micTouchStart(event)" ontouchmove="micTouchMove(event)" ontouchend="micTouchEnd(event)" title="Голосовое сообщение">
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
-        </button>
-        <button class="mic-btn" id="vc-btn" onclick="onVcBtnClick(event)" ontouchstart="micTouchStart(event)" ontouchmove="micTouchMove(event)" ontouchend="micTouchEnd(event)" title="Видео-кружочек">
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m10 9 5 3-5 3z"/></svg>
-        </button>
         <div class="format-bar" id="send-opts-menu" style="left:auto;right:0">
           <div class="fmt-btn" onclick="closeSendOptionsMenu();sendMsg();"><span class="fmt-ic">📤</span><span>Отправить сейчас</span></div>
           <div class="fmt-btn" id="send-opt-schedule" onclick="closeSendOptionsMenu();openScheduleTimePicker();"><span class="fmt-ic">🕒</span><span>Отправить по расписанию</span></div>
@@ -1494,6 +1502,20 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
           ontouchstart="sendPressStart(event)" ontouchend="sendPressEnd(event)" ontouchcancel="sendPressEnd(event)">
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4 20-7z"/><path d="M22 2 11 13"/></svg>
         </button>
+      </div>
+
+      <!-- ⚠️ 28 июля 2026: перенесено сюда, ПОСЛЕ .ibar (было раньше, между
+           .msgs и .rstrip, position:absolute поверх переписки) — Александра
+           явно попросила, чтобы панель эмодзи реально выталкивала строку
+           ввода вверх, как в Telegram, а не всплывала поверх сообщений.
+           Теперь .mpanel — обычный элемент потока (см. CSS), занимает
+           настоящее место внизу .cm, .msgs (flex:1) просто сжимается. -->
+      <div class="mpanel" id="mpanel">
+        <div class="mptabs">
+          <div class="mptab on" id="t-emtab" onclick="mpSwitch(this,'emoji')">😀 Эмодзи</div>
+          <div class="mptab" id="t-sttab" onclick="mpSwitch(this,'stickers')">🐱 Стикеры</div>
+        </div>
+        <div class="mpc" id="mpc"></div>
       </div>
     </div>
 
