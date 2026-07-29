@@ -1335,8 +1335,11 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       <!-- ⚠️ 28 июля 2026: touch-обработчики pull-to-archive временно сняты —
            после их появления перестал открываться любой чат тапом на мобильном,
            мёртвая зона не помогла до конца, отключаем совсем, пока не найдём
-           настоящую причину, чтобы не держать сломанным основной функционал. -->
-      <div class="clist" id="clist"></div>
+           настоящую причину, чтобы не держать сломанным основной функционал.
+           Ниже — только флаг "идёт касание", без единой мутации DOM в touchmove
+           (в отличие от pull-архива), нужен только чтобы не дёргать renderChats()
+           из фоновой досинхронизации ровно во время тапа (см. chatListTouchActive). -->
+      <div class="clist" id="clist" ontouchstart="chatListTouchActive=true" ontouchend="chatListTouchActive=false" ontouchcancel="chatListTouchActive=false"></div>
       <div class="clist" id="global-search-results"></div>
     </div>
 
@@ -2732,6 +2735,23 @@ let ws = null;
 let wsReconnectTimer = null;
 let wsConnected = false;
 let wsHasAuthedOnce = false; // отличаем первый вход (уже всё свежее) от переподключения
+// ⚠️ 28 июля 2026: досинхронизация при переподключении (см. ниже) дёргает
+// loadChatsFromDB(), которая заканчивается renderChats() — ПОЛНОЙ пересборкой
+// DOM всех строк списка. На нестабильной мобильной сети переподключения
+// могут идти часто; если пересборка совпадает по времени с тапом по строке
+// (между touchstart и синтетическим click), сам DOM-элемент утекает из-под
+// пальца и клик до чата не доходит — то же семейство бага, что было с
+// pull-to-archive, только триггер не жест, а сетевое событие. Троттлинг +
+// пропуск, пока явно идёт касание списка, снимают гонку.
+let chatListTouchActive=false;
+let lastReconnectResyncAt=0;
+function performReconnectResyncIfDue(){
+  if(Date.now()-lastReconnectResyncAt<15000) return;
+  if(chatListTouchActive){ setTimeout(performReconnectResyncIfDue, 1000); return; }
+  lastReconnectResyncAt=Date.now();
+  loadChatsFromDB();
+  if(S.chat) loadMessagesFromDB(S.chat);
+}
 
 // Как в Telegram — пока соединения нет (или оно восстанавливается), в шапке
 // вместо названия приложения показываем "Соединение...". Трогаем .logo/.alogo
@@ -2812,8 +2832,7 @@ function wsHandleMessage(msg){
       // самом первом входе — там и так всё только что загружено) обновляем
       // список чатов и историю открытого чата, как делает Telegram.
       if(wsHasAuthedOnce){
-        loadChatsFromDB();
-        if(S.chat) loadMessagesFromDB(S.chat);
+        performReconnectResyncIfDue();
       }
       wsHasAuthedOnce = true;
       break;
