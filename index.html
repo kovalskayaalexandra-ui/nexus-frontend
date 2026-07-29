@@ -1332,7 +1332,11 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       <div id="pull-archive" style="height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;transition:height .2s ease">
         <div id="pull-archive-icon" style="width:40px;height:40px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:18px;transform:scale(.5);opacity:.4;transition:transform .1s,opacity .1s,background .1s">🗄️</div>
       </div>
-      <div class="clist" id="clist" ontouchstart="pullArchiveStart(event)" ontouchmove="pullArchiveMove(event)" ontouchend="pullArchiveEnd()"></div>
+      <!-- ⚠️ 28 июля 2026: touch-обработчики pull-to-archive временно сняты —
+           после их появления перестал открываться любой чат тапом на мобильном,
+           мёртвая зона не помогла до конца, отключаем совсем, пока не найдём
+           настоящую причину, чтобы не держать сломанным основной функционал. -->
+      <div class="clist" id="clist"></div>
       <div class="clist" id="global-search-results"></div>
     </div>
 
