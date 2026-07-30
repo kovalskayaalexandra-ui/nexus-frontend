@@ -5639,16 +5639,39 @@ function buildRenderList(msgs){
 // Отслеживаем предыдущий отрисованный чат/счётчик сообщений — не сохраняется
 // между перезагрузками (обычные let-переменные), нужны только пока открыто приложение
 let _lastRenderedChat=null, _lastMsgCount={};
+// 30 июля 2026: "были ли у низа" раньше пересчитывался заново на КАЖДЫЙ
+// renderMsgs() по порогу в пикселях (scrollHeight-scrollTop-clientHeight).
+// Список пересоздаётся с нуля при любом изменении (прогресс загрузки фото,
+// каждый тап по чекбоксу выделения, второй рендер после подгрузки истории
+// с сервера) — а фото/альбомы меняют реальную высоту НЕПРЕДСКАЗУЕМО между
+// двумя такими рендерами (спиннер→картинка, рамка выделения, разные
+// пропорции). Из-за этого порог то и дело промахивался при частых повторных
+// рендерах: лента то "уезжала" вверх при загрузке/выделении, то при входе в
+// чат вообще останавливалась не на последнем сообщении (Александра поймала
+// оба симптома, ими же и раскрыла общую причину). Вместо пересчёта из
+// пикселей на каждый рендер — храним "иду ли за низом" как ПОСТОЯННОЕ
+// состояние (msgsFollowBottom), которое меняется только от НАСТОЯЩЕГО
+// скролла пользователя (см. handleMsgsScroll ниже) и не зависит от того,
+// сколько раз подряд и с какими промежуточными высотами перерисовался список.
+let msgsFollowBottom=true;
+let msgsProgrammaticScroll=false;
+function setMsgsScrollTop(v){
+  msgsProgrammaticScroll=true;
+  el("msgs").scrollTop=v;
+}
+function handleMsgsScroll(){
+  // Гасим ЭХО от наших же программных c.scrollTop=... (setMsgsScrollTop) —
+  // иначе оно тут же переписало бы msgsFollowBottom, будто это сам
+  // пользователь только что долистал/отскроллил.
+  if(msgsProgrammaticScroll){ msgsProgrammaticScroll=false; return; }
+  const c=el("msgs");
+  msgsFollowBottom=(c.scrollHeight-c.scrollTop-c.clientHeight)<150;
+}
 function renderMsgs(){
   const c=el("msgs");
   const switchedChat=_lastRenderedChat!==S.chat;
-  // Раньше лента при ЛЮБОМ изменении (новое сообщение, реакция, правка)
-  // принудительно прыгала вниз, даже если человек читает историю выше.
-  // Запоминаем, был ли пользователь и так уже внизу (или это вообще другой
-  // чат — тогда всегда идём вниз), и на сколько он был выше низа — чтобы
-  // после полной перерисовки списка (см. ниже) вернуть его на то же место,
-  // а не в самый верх.
-  const wasAtBottom = switchedChat || (c.scrollHeight-c.scrollTop-c.clientHeight<80);
+  if(switchedChat) msgsFollowBottom=true; // новый чат — всегда начинаем у низа
+  const wasAtBottom = msgsFollowBottom;
   const distanceFromBottom = c.scrollHeight-c.scrollTop;
   c.innerHTML="";
   const curCh=S.chats.find(x=>x.id===S.chat);
@@ -5890,25 +5913,21 @@ function renderMsgs(){
   });
   emojifyEl(c);
   if(wasAtBottom){
-    c.scrollTop=c.scrollHeight;
+    setMsgsScrollTop(c.scrollHeight);
     hideScrollDownBtn();
-    // 30 июля 2026: renderMsgs() каждый раз пересоздаёт ВСЕ строки заново
-    // (c.innerHTML="" выше) — значит и все <img> тоже новые DOM-элементы,
-    // без сохранённых от предыдущей отрисовки размеров. scrollHeight в
-    // строке выше посчитан ДО того, как эти картинки реально
-    // декодировались/встали на своё место — как только это происходит
-    // (даже для уже закэшированной в браузере картинки, у СВЕЖЕГО <img>
-    // всё равно будет свой load), лента реально становится выше, а scrollTop
-    // остаётся тем же числом пикселей — визуально список "уезжает" вверх от
-    // низа. Александра поймала это сразу в трёх местах (загрузка фото,
-    // выбор/снятие выбора сообщения) — везде причина одна: полная
-    // перерисовка списка. Держим прижатым к низу и после того, как каждая
-    // картинка в чате реально закончит декодироваться, а не только сразу
-    // после вставки в DOM.
+    // renderMsgs() каждый раз пересоздаёт ВСЕ строки заново (c.innerHTML=""
+    // выше) — значит и все <img> тоже новые DOM-элементы, без сохранённых от
+    // предыдущей отрисовки размеров. scrollHeight в строке выше посчитан ДО
+    // того, как эти картинки реально декодировались/встали на своё место —
+    // держим прижатым к низу и после того, как каждая ещё не готовая
+    // картинка в чате реально закончит декодироваться (проверяем ПОСТОЯННЫЙ
+    // msgsFollowBottom, а не пересчитываем расстояние заново — если
+    // пользователь и так "идёт за низом", а не отдельный шаткий порог,
+    // который и промахивался раньше).
     c.querySelectorAll("img").forEach(img=>{
       if(!img.complete){
         img.addEventListener("load",()=>{
-          if(c.scrollHeight-c.scrollTop-c.clientHeight<200) c.scrollTop=c.scrollHeight;
+          if(msgsFollowBottom) setMsgsScrollTop(c.scrollHeight);
         },{once:true});
       }
     });
@@ -5916,7 +5935,7 @@ function renderMsgs(){
     // Человек читал историю выше — остаёмся на том же месте (по расстоянию
     // от низа, не по scrollTop напрямую: список каждый раз перерисовывается
     // с нуля, старый scrollTop уже ничего не значит для новой высоты)
-    c.scrollTop=Math.max(0, c.scrollHeight-distanceFromBottom);
+    setMsgsScrollTop(Math.max(0, c.scrollHeight-distanceFromBottom));
     const curCount=(S.messages[S.chat]||[]).length;
     if(!switchedChat && _lastMsgCount[S.chat]!==undefined && curCount>_lastMsgCount[S.chat]) showScrollDownBtn();
   }
@@ -5926,12 +5945,13 @@ function renderMsgs(){
 }
 function showScrollDownBtn(){ const b=el("scroll-down-btn"); if(b) b.style.display="flex"; }
 function hideScrollDownBtn(){ const b=el("scroll-down-btn"); if(b) b.style.display="none"; }
-function scrollMsgsToBottom(){ const c=el("msgs"); if(c) c.scrollTop=c.scrollHeight; hideScrollDownBtn(); }
+function scrollMsgsToBottom(){ const c=el("msgs"); if(c){ msgsFollowBottom=true; setMsgsScrollTop(c.scrollHeight); } hideScrollDownBtn(); }
 // Если человек долистал вниз сам (не через кнопку) — прячем кнопку сама собой
 el("msgs")?.addEventListener("scroll", ()=>{
   const c=el("msgs");
   if(c && c.scrollHeight-c.scrollTop-c.clientHeight<80) hideScrollDownBtn();
 });
+el("msgs")?.addEventListener("scroll", handleMsgsScroll);
 
 // Засчитывает просмотр постов канала — один раз на сообщение за сессию,
 // чтобы не спамить сервер повторными вызовами при каждой перерисовке.
