@@ -8536,10 +8536,14 @@ function selDeleteForMe(){
 }
 
 // Массовое удаление у всех
+// 30 июля 2026: убран голый confirm() — он был ВТОРЫМ, избыточным
+// подтверждением поверх уже стилизованной модалки "у меня/у всех"
+// (openBulkDeleteModal → delForAll → сюда), которая сама по себе уже и есть
+// явное подтверждение (Александра поймала его на скриншоте — некрасивый
+// системный попап с доменом github.io).
 function selDeleteAll(){
   const n=S.selectedMsgs.length;
   if(!n) return;
-  if(!confirm(`Удалить ${n} ${n===1?"сообщение":"сообщений"} у всех участников чата? Это необратимо.`)) return;
   const ms=S.messages[S.chat]||[];
   const curChat=S.chats.find(c=>c.id===S.chat);
   const canAll=canModerateChat(curChat);
@@ -9280,33 +9284,76 @@ function renderArchiveList(){
     </div>`;
   }).join("") : `<div style="color:var(--tx3);font-size:12.5px;padding:20px;text-align:center">Архив пуст</div>`;
 }
+// ── СТИЛИЗОВАННЫЙ ДИАЛОГ ПОДТВЕРЖДЕНИЯ (замена голого confirm()) ──────────
+// opts: {chat (объект чата, для аватарки+имени в шапке), text, checkboxLabel
+// (необязательно — если задан, показываем чекбокс), confirmLabel, onConfirm(checked)}
+let _chatConfirmAction=null;
+function openChatConfirm(opts){
+  _chatConfirmAction=opts;
+  const ch=opts.chat;
+  const av=el("ccf-av");
+  av.style.background=ch?colBg(ch.col):"var(--bg4)";
+  av.innerHTML=ch?.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(ch?.ini||"?");
+  el("ccf-name").textContent=ch?.nm||"";
+  el("ccf-text").textContent=opts.text;
+  const cbRow=el("ccf-checkbox-row");
+  if(opts.checkboxLabel){
+    cbRow.style.display="flex";
+    el("ccf-checkbox-label").textContent=opts.checkboxLabel;
+    el("ccf-checkbox").checked=false;
+  } else cbRow.style.display="none";
+  el("ccf-confirm-btn").textContent=opts.confirmLabel||"Удалить";
+  el("m-chat-confirm").classList.add("on");
+}
+function chatConfirmDo(){
+  const checked=el("ccf-checkbox").checked;
+  const action=_chatConfirmAction;
+  closeM("m-chat-confirm");
+  _chatConfirmAction=null;
+  if(action) action.onConfirm(checked);
+}
+
 function clearHistory(){
   const ch=S.chats.find(c=>c.id===S.chat);
   const canAll=canModerateChat(ch);
-  if(!confirm(canAll ? "Очистить историю чата? Она удалится у всех участников." : "Очистить историю чата у себя? У остальных участников она останется.")) return;
-
-  if(!canAll){
-    // Рядовой участник группы/канала — чистим только у себя, локально
-    (S.messages[S.chat]||[]).forEach(m=>{ m._deletedForMe=true; });
+  // 30 июля 2026: раньше для личных чатов canModerateChat() всегда true (нет
+  // ролей в 1:1), поэтому "очистить только у себя" было мертвой веткой —
+  // очистка всегда стирала историю у ОБОИХ без выбора. Александра сравнила
+  // с Telegram: там есть чекбокс "тоже у собеседника" — по умолчанию не
+  // отмечен (безопасный вариант — только у себя), отмечаешь сам, если точно
+  // хочешь стереть и у другого участника. Для группы/канала чекбокс виден
+  // только модератору (canAll) — рядовой участник просто чистит у себя без вопросов.
+  const doClear=(wipeForAll)=>{
+    if(!wipeForAll){
+      (S.messages[S.chat]||[]).forEach(m=>{ m._deletedForMe=true; });
+      renderMsgs(); renderChats();
+      showToast("🗑️ История очищена у вас");
+      saveState();
+      if(typeof S.chat==="string" && S.chat.length>10){
+        apiDelete("/api/messages/chat/"+S.chat+"/clear-for-me").catch(e=>console.warn("clear history error:",e));
+      }
+      return;
+    }
+    S.messages[S.chat]=[];
     renderMsgs(); renderChats();
-    showToast("🗑️ История очищена у вас");
+    showToast("🗑️ История очищена");
     saveState();
     if(typeof S.chat==="string" && S.chat.length>10){
-      apiDelete("/api/messages/chat/"+S.chat+"/clear-for-me").catch(e=>console.warn("clear history error:",e));
+      apiDelete("/api/messages/chat/"+S.chat+"/clear").catch(e=>console.warn("clear history error:",e));
+      const curChat=S.chats.find(c=>c.id===S.chat);
+      const memberIds=getChatMemberIds(curChat);
+      wsSendReliable({type:"chat.clear", payload:{chatId:S.chat, memberIds}});
     }
-    return;
-  }
-
-  S.messages[S.chat]=[];
-  renderMsgs(); renderChats();
-  showToast("🗑️ История очищена");
-  saveState();
-  if(typeof S.chat==="string" && S.chat.length>10){
-    apiDelete("/api/messages/chat/"+S.chat+"/clear").catch(e=>console.warn("clear history error:",e));
-    const curChat=S.chats.find(c=>c.id===S.chat);
-    const memberIds=getChatMemberIds(curChat);
-    wsSendReliable({type:"chat.clear", payload:{chatId:S.chat, memberIds}});
-  }
+  };
+  if(!canAll){ doClear(false); return; }
+  const isPersonal=!ch || ch.type==="personal";
+  openChatConfirm({
+    chat: ch,
+    text: isPersonal ? "Очистить историю переписки?" : `Очистить историю в «${ch.nm}»?`,
+    checkboxLabel: isPersonal ? "Также у собеседника" : "Также у всех участников",
+    confirmLabel: "Очистить",
+    onConfirm: (wipeForAll)=>doClear(wipeForAll)
+  });
 }
 // Полное удаление чата — стирает переписку у ОБОИХ участников (не просто "у себя")
 function deleteChatCompletely(){
@@ -9317,39 +9364,57 @@ function deleteChatCompletely(){
 
   if(isGroupOrChannel && !canAll){
     // Рядовой участник — может только покинуть группу/канал, не удалить его у всех
-    if(!confirm("Покинуть «"+ch.nm+"»? Ты выйдешь из чата, но он останется у остальных участников.")) return;
-    const chatId=S.chat;
-    const isRealChat = typeof chatId==="string" && chatId.length>10;
-    S.chats = S.chats.filter(c => c.id !== chatId);
-    delete S.messages[chatId];
-    saveState();
-    openChat(77777);
-    renderChats();
-    showToast("Вы покинули «"+ch.nm+"»");
-    if(isRealChat){
-      apiDelete("/api/chats/"+chatId+"/leave").catch(e=>console.warn("leave chat error:",e));
-    }
+    openChatConfirm({
+      chat: ch,
+      text: `Покинуть «${ch.nm}»?`,
+      confirmLabel: "Покинуть",
+      onConfirm: ()=>{
+        const chatId=S.chat;
+        const isRealChat = typeof chatId==="string" && chatId.length>10;
+        S.chats = S.chats.filter(c => c.id !== chatId);
+        delete S.messages[chatId];
+        saveState();
+        openChat(77777);
+        renderChats();
+        showToast("Вы покинули «"+ch.nm+"»");
+        if(isRealChat){
+          apiDelete("/api/chats/"+chatId+"/leave").catch(e=>console.warn("leave chat error:",e));
+        }
+      }
+    });
     return;
   }
 
-  if(!confirm(isGroupOrChannel ? "Удалить «"+ch.nm+"» полностью? Чат исчезнет у ВСЕХ участников и не восстановится." : "Удалить чат с "+ch.nm+" полностью? Это сотрёт переписку у ОБОИХ участников и не отменяется.")) return;
+  // 30 июля 2026: у нас нет (пока) варианта "удалить только у себя, оставить
+  // у собеседника" для личных чатов — бэкенд стирает чат целиком одной
+  // командой (DELETE FROM chats), в отличие от очистки истории, где такой
+  // выбор уже реально существует (см. clearHistory выше). Поэтому чекбокса
+  // тут нет — текст явно предупреждает, что удаление затронет ОБОИХ/ВСЕХ.
+  openChatConfirm({
+    chat: ch,
+    text: isGroupOrChannel
+      ? `Удалить «${ch.nm}» полностью? Чат исчезнет у ВСЕХ участников и не восстановится.`
+      : `Удалить чат с ${ch.nm} полностью? Это сотрёт переписку у ОБОИХ участников и не отменяется.`,
+    confirmLabel: "Удалить",
+    onConfirm: ()=>{
+      const chatId=S.chat;
+      const isRealChat = typeof chatId==="string" && chatId.length>10;
+      const memberIds = getChatMemberIds(ch);
 
-  const chatId=S.chat;
-  const isRealChat = typeof chatId==="string" && chatId.length>10;
-  const memberIds = getChatMemberIds(ch);
+      S.chats = S.chats.filter(c => c.id !== chatId);
+      delete S.messages[chatId];
+      saveState();
 
-  S.chats = S.chats.filter(c => c.id !== chatId);
-  delete S.messages[chatId];
-  saveState();
+      openChat(77777); // безопасный переход, чтобы не остаться на удалённом чате
+      renderChats();
+      showToast("🗑️ Чат удалён");
 
-  openChat(77777); // безопасный переход, чтобы не остаться на удалённом чате
-  renderChats();
-  showToast("🗑️ Чат удалён");
-
-  if(isRealChat){
-    apiDelete("/api/chats/"+chatId).catch(e=>console.warn("delete chat error:",e));
-    wsSendReliable({type:"chat.delete", payload:{chatId, memberIds}});
-  }
+      if(isRealChat){
+        apiDelete("/api/chats/"+chatId).catch(e=>console.warn("delete chat error:",e));
+        wsSendReliable({type:"chat.delete", payload:{chatId, memberIds}});
+      }
+    }
+  });
 }
 // Правая панель чата — реальные стикеры и медиа именно из этого чата,
 // а не статичная заглушка
@@ -14998,6 +15063,30 @@ applyTheme(S.theme||"dark");
 </style>
 
 <!-- MODAL: DELETE MESSAGE -->
+<!-- 30 июля 2026: Александра сравнила с Telegram (скриншоты) — очистка
+     истории/удаление чата у нас шли через голый браузерный confirm(),
+     который прямо показывает домен github.io и выглядит "не профессионально".
+     Один общий стилизованный диалог вместо этого — см. openChatConfirm()/
+     chatConfirmDo() — с аватаркой+именем чата и, где уместно, чекбоксом
+     "тоже у собеседника/всех участников" (как в Telegram). -->
+<div class="movl" id="m-chat-confirm">
+  <div class="modal" style="max-width:340px">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:16px">
+      <div class="chav" id="ccf-av" style="width:60px;height:60px;font-size:22px"></div>
+      <div style="font-weight:700;font-size:15px;text-align:center" id="ccf-name"></div>
+    </div>
+    <div class="msub" id="ccf-text" style="text-align:center;line-height:1.4"></div>
+    <label id="ccf-checkbox-row" style="display:none;align-items:center;gap:9px;margin:4px 0 18px;cursor:pointer;font-size:13px;color:var(--tx2)">
+      <input type="checkbox" id="ccf-checkbox" style="width:17px;height:17px;flex-shrink:0;accent-color:var(--acc)">
+      <span id="ccf-checkbox-label"></span>
+    </label>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
+      <button class="xbtn rd" id="ccf-confirm-btn" style="justify-content:center" onclick="chatConfirmDo()">Удалить</button>
+      <button class="xbtn sec" style="justify-content:center" onclick="closeM('m-chat-confirm')">Отмена</button>
+    </div>
+  </div>
+</div>
+
 <div class="movl" id="m-delete">
   <div class="modal" style="max-width:340px">
     <div class="mtit">🗑️ Удалить сообщение</div>
