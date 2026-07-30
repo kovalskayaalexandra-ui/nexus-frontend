@@ -1135,6 +1135,15 @@ body.chat-select-mode .ci-select-check{display:flex}
 .chat-select-bar{display:none;background:var(--bg2);border-bottom:1px solid var(--brd);padding:9px 14px;
   align-items:center;gap:11px;font-size:13px;flex-shrink:0}
 .chat-select-bar.on{display:flex}
+/* 30 июля 2026: .chat-select-bar раньше ДОБАВЛЯЛАСЬ поверх .sb-toolbar (обе
+   видны разом), а не заменяла её — список чатов из-за этого сдвигался вниз
+   ровно в момент появления панели, то есть ПРЯМО во время ещё не отпущенного
+   долгого нажатия. Палец оставался на месте, а под ним оказывался уже другой
+   ряд/текст — из-за этого сдвига срабатывало нативное выделение текста
+   Android (Александра поймала на скриншоте и сама верно определила причину).
+   Прячем строку поиска на время выбора чатов — панель выбора встаёт в её
+   же место, список больше не сдвигается. */
+body.chat-select-mode .sb-toolbar{display:none}
 .csb-act{cursor:pointer;font-size:18px;padding:4px}
 
 /* ══ DEV PANEL → ТОЛЬКО ДЛЯ ДЕСКТОПА (этап 13) ══
@@ -1485,7 +1494,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <button class="new-chat-btn" id="fab-newchat" onclick="openNewChat()" title="Новый чат">+</button>
       </div>
       <div class="chat-select-bar" id="chat-select-bar">
-        <span style="cursor:pointer;font-size:18px;color:var(--tx2)" onclick="exitChatSelectMode()">✕</span>
+        <span style="cursor:pointer;font-size:18px;color:var(--tx2)" onclick="requestExitChatSelectMode()">✕</span>
         <span style="font-weight:600"><span id="chat-select-count">0</span> выбрано</span>
         <span style="margin-left:auto;display:flex;gap:14px">
           <span class="csb-act" title="Закрепить / открепить" onclick="chatSelectPin()">📌</span>
@@ -5237,6 +5246,12 @@ function enterChatSelectMode(id){
   S.chatSelectMode=true; S.selectedChats=[];
   document.body.classList.add("chat-select-mode");
   el("chat-select-bar")?.classList.add("on");
+  // 30 июля 2026: раньше вход в выбор чатов вообще не регистрировался в
+  // общем бэк-стеке (см. pushNavEntry ниже по файлу) — аппаратная кнопка
+  // "назад" на Android поэтому не находила НИЧЕГО в navStack и проваливалась
+  // мимо приложения целиком (реально закрывала/выкидывала из мессенджера),
+  // вместо того чтобы просто снять выделение чатов, как должна.
+  pushNavEntry(exitChatSelectMode);
   toggleChatSelect(id);
 }
 function exitChatSelectMode(){
@@ -5245,30 +5260,40 @@ function exitChatSelectMode(){
   el("chat-select-bar")?.classList.remove("on");
   renderChats();
 }
+// Обычные способы выйти из выбора чатов (крестик, снять последнее выделение,
+// массовое действие) теперь тоже идут через бэк-стек, а не зовут
+// exitChatSelectMode() напрямую — иначе в navStack осталась бы ЛИШНЯЯ,
+// никогда не снятая запись (та, что запушена в enterChatSelectMode выше), и
+// следующее нажатие "назад" закрывало бы уже что-то другое, не то, что
+// видит пользователь (тот же класс бага, что и у контекстного меню
+// сообщения, см. closeCtxViaBackStack).
+function requestExitChatSelectMode(){
+  if(S.chatSelectMode) popNavEntry();
+}
 function toggleChatSelect(id){
   const idx=S.selectedChats.indexOf(id);
   if(idx!==-1) S.selectedChats.splice(idx,1); else S.selectedChats.push(id);
   const cnt=el("chat-select-count"); if(cnt) cnt.textContent=S.selectedChats.length;
-  if(!S.selectedChats.length){ exitChatSelectMode(); return; }
+  if(!S.selectedChats.length){ requestExitChatSelectMode(); return; }
   renderChats();
 }
 function chatSelectPin(){
   const n=S.selectedChats.length;
   S.selectedChats.forEach(id=>pinChat(id,true));
   showToast(`📌 Изменено закреплений: ${n}`);
-  exitChatSelectMode();
+  requestExitChatSelectMode();
 }
 function chatSelectMute(){
   const n=S.selectedChats.length;
   S.selectedChats.forEach(id=>muteChat(id,true));
   showToast(`🔇 Изменено уведомлений: ${n}`);
-  exitChatSelectMode();
+  requestExitChatSelectMode();
 }
 function chatSelectArchive(){
   const n=S.selectedChats.length;
   S.selectedChats.forEach(id=>archiveChat(id,true));
   showToast(`🗄️ В архив: ${n}`);
-  exitChatSelectMode();
+  requestExitChatSelectMode();
 }
 // Массовое удаление — намеренно НЕ переиспользует deleteChatCompletely()
 // напрямую (она полагается на S.chat и показывает свой confirm() на каждый
@@ -5307,7 +5332,7 @@ function chatSelectDelete(){
   saveState();
   if(wasCurrentChatDeleted) openChat(77777);
   showToast(`🗑️ Удалено/покинуто чатов: ${targets.length}`);
-  exitChatSelectMode();
+  requestExitChatSelectMode();
 }
 
 // ── MESSAGES ──────────────────────────────────────────────────
