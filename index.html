@@ -5722,15 +5722,22 @@ function renderMsgs(){
     // В режиме выделения клик по строке переключает выбор
     if(S.selectMode){
       row.style.cursor="pointer";
-      row.onclick=(ev)=>{ ev.stopPropagation(); toggleMsgSelect(m.id); };
+      // Клик по пустому месту строки альбома выделяет весь альбом разом, как
+      // в Telegram (обычно гасится раньше делегированным capture-обработчиком
+      // на #msgs — см. его же комментарий про cell===row — но оставляем
+      // верным и здесь на случай, если тот когда-то перестанет звать stopPropagation).
+      row.onclick=(ev)=>{ ev.stopPropagation(); if(isGrpImg) toggleMsgSelectGroup(groupMembers.map(gm=>gm.id)); else toggleMsgSelect(m.id); };
     }
     // Долгое нажатие/тап работают и рядом с сообщением, не только точно по
     // пузырю — как в Telegram (Александра прислала скриншот-сравнение).
     // "Запасной" обработчик на всю строку — msgTouchStart сам молчит, если
     // палец реально попал в пузырь/ячейку сетки с их собственным вызовом
     // (см. isRowFallback выше), поэтому конфликта id тут не возникает.
+    // groupIds — для альбома, чтобы долгое нажатие на пустое место рядом с
+    // сеткой выделяло ВЕСЬ альбом, а не только первое фото группы (см.
+    // toggleMsgSelectGroup/lpStart).
     row.oncontextmenu=(e)=>showCtx(e,m.id);
-    row.ontouchstart=(e)=>msgTouchStart(e,m.id,row.querySelector(".bub,.vbub,.skbub,.gift-bubble"),true);
+    row.ontouchstart=(e)=>msgTouchStart(e,m.id,row.querySelector(".bub,.vbub,.skbub,.gift-bubble"),true,isGrpImg?groupMembers.map(gm=>gm.id):null);
     row.ontouchmove=(e)=>msgTouchMove(e);
     row.ontouchend=(e)=>msgTouchEnd(e,m.id);
     let h="";
@@ -5793,12 +5800,18 @@ function renderMsgs(){
         bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}" style="margin:${noHeaderAboveImg?"calc(-1 * var(--sp-2))":"0"} calc(-1 * var(--sp-3)) ${isPhotoOnlyMt?"calc(-1 * var(--sp-2))":"4px"}"><img class="msg-img" src="${m.img}" loading="lazy" ${m.uploading?"":(isSp?`onclick="revealSpoiler(${m.id})"`:`onclick="openImgViewer('${m.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
       }
       // Сетка альбома (side-by-side, как в Telegram) — вместо стопки
-      // одинаковых пузырей. 2 колонки хватает для основного случая (2 фото
-      // рядом, как показала Александра); для 3+ просто переносится на
-      // следующую строку той же сетки — не точная адаптивная коллаж-
-      // раскладка настоящего Telegram, но рядом и без мелкого обрезания.
+      // одинаковых пузырей. 30 июля 2026: раньше всегда 2 колонки для
+      // любого count>1 — для 6 фото это давало узкую высокую сетку 2×3,
+      // а не широкую 3×2, как в Telegram. Число колонок теперь зависит от
+      // количества фото (2→2, 3→3, 4→2×2, 5+→3, "6 фото" из этого же —
+      // ровно 3×2). Это по-прежнему НЕ точная адаптивная коллаж-раскладка
+      // настоящего Telegram (там колонки/размеры ячеек ещё и подстраиваются
+      // под реальные пропорции каждого фото) — та работа отдельная и более
+      // крупная (нужно хранить/учитывать исходные width/height), здесь —
+      // сетка того же общего вида, что и в Telegram для типичных count.
       if(isGrpImg){
-        const cols = groupMembers.length===1?1:2;
+        const cnt=groupMembers.length;
+        const cols = cnt===1?1 : cnt===2?2 : cnt===3?3 : cnt===4?2 : 3;
         const noHeaderAbove = bc==="";
         const cellsHTML=groupMembers.map(gm=>{
           const isSp=gm.spoiler && !gm.spoilerRevealed;
@@ -8277,7 +8290,14 @@ function closeCtxViaBackStack(){
 
 // Долгое нажатие на мобильных
 let lpTimer=null, lpId=null;
-function lpStart(e,id){
+// 30 июля 2026: долгое нажатие на ПУСТОЕ место рядом с фотоальбомом должно
+// выделять ВЕСЬ альбом разом, как в Telegram (там альбом — одно сообщение
+// с несколькими фото, выделяется целиком) — а не только первое фото группы,
+// как было раньше (запасной обработчик на .mrow всегда резолвился в id
+// первого сообщения группы). groupIds — необязательный список id всех фото
+// альбома, передаётся только из запасного обработчика строки (см.
+// renderMsgs/row.ontouchstart), когда сообщение — начало группы.
+function lpStart(e,id,groupIds){
   lpId=id;
   // 29 июля 2026: раньше долгое нажатие открывало меню действий — по
   // прямой просьбе Александры (сравнила с Telegram) теперь оно СРАЗУ
@@ -8289,7 +8309,8 @@ function lpStart(e,id){
   // showCtx() напрямую.
   lpTimer=setTimeout(()=>{
     if(!S.selectMode) enterSelectMode();
-    toggleMsgSelect(id);
+    if(groupIds && groupIds.length>1) toggleMsgSelectGroup(groupIds);
+    else toggleMsgSelect(id);
     if(navigator.vibrate)navigator.vibrate(40);
   },450);
 }
@@ -8350,6 +8371,15 @@ el("msgs")?.addEventListener("click", function(e){
   const msgId=cell ? +cell.dataset.msgId : +row.dataset.msgId;
   if(S.selectMode){
     e.stopPropagation(); // не даём сработать фото/видео/голосовому и т.д. поверх выбора
+    // 30 июля 2026: клик по ПУСТОМУ месту в строке альбома (cell===row, а не
+    // конкретный .grp-cell) должен выделять/снимать ВЕСЬ альбом разом, как в
+    // Telegram — иначе резолвится в id первого фото группы (row.dataset.msgId),
+    // выделяя только его. Клик по конкретному фото (cell — сам .grp-cell)
+    // работает как раньше — выделяет именно это фото.
+    if(cell===row && row.classList.contains("grp-img")){
+      const ids=[...row.querySelectorAll(".grp-cell[data-msg-id]")].map(gc=>+gc.dataset.msgId);
+      if(ids.length>1){ toggleMsgSelectGroup(ids); return; }
+    }
     toggleMsgSelect(msgId);
     return;
   }
@@ -8378,7 +8408,7 @@ function ctxReply(){ setReply(S.ctxId); }
 // "Ответить" в контекстном меню.
 const MSG_SWIPE_THRESHOLD_PX=56;
 let msgSwipeState=null;
-function msgTouchStart(e,id,bubEl,isRowFallback){
+function msgTouchStart(e,id,bubEl,isRowFallback,groupIds){
   // 29-30 июля 2026: расширение зоны нажатия на всю строку сообщения (не
   // только сам пузырь) — тот же обработчик висит и на .mrow целиком (см.
   // renderMsgs) как "запасной". Александра поймала на реальном телефоне:
@@ -8394,7 +8424,7 @@ function msgTouchStart(e,id,bubEl,isRowFallback){
   // а не проверка постфактум.
   if(isRowFallback && e.target.closest(".bub,.vbub,.skbub,.grp-cell,.gift-bubble")) return;
   if(!isRowFallback) e.stopPropagation();
-  lpStart(e,id); // существующее долгое нажатие — без изменений, даже если ниже сработает защита
+  lpStart(e,id,groupIds); // существующее долгое нажатие — groupIds передаётся только запасным обработчиком строки для альбома
   // Голосовые/видео-кружки — уже рабочий touch-скраббинг (seekVideoCircle
   // и т.д.), событие бабблится вверх до .bub. Не даём свайпу-ответу
   // вооружиться от движения пальца во время скраббинга — иначе отпускание
@@ -8508,6 +8538,24 @@ function toggleMsgSelect(id){
   // оставшиеся номера должны сдвинуться. Полный renderMsgs() дороже
   // точечного патча, но гарантированно верный — и переиспользует уже
   // готовую логику отрисовки чекбоксов/сеток вместо повторения её здесь.
+  renderMsgs();
+}
+// 30 июля 2026: долгое нажатие на пустое место рядом с альбомом (см.
+// lpStart) должно выделять/снимать ВЕСЬ альбом разом, как в Telegram —
+// одна и та же логика тумблера, что и toggleMsgSelect, только сразу для
+// списка id. Если выбраны ВСЕ фото группы — снимаем выбор со всех; иначе
+// добавляем недостающие (уже выбранные руками по отдельности — не трогаем).
+function toggleMsgSelectGroup(ids){
+  const allSelected=ids.every(id=>S.selectedMsgs.includes(id));
+  if(allSelected){
+    ids.forEach(id=>{ const idx=S.selectedMsgs.indexOf(id); if(idx!==-1) S.selectedMsgs.splice(idx,1); });
+  } else {
+    ids.forEach(id=>{ if(!S.selectedMsgs.includes(id)) S.selectedMsgs.push(id); });
+  }
+  const cnt=el("select-count");
+  if(cnt)cnt.textContent=S.selectedMsgs.length;
+  if(!S.selectedMsgs.length){ requestExitSelectMode(); return; }
+  el("sab-reply-btn")?.classList.toggle("disabled", S.selectedMsgs.length!==1);
   renderMsgs();
 }
 // Кнопка "Ответить" в нижней панели режима выбора
