@@ -438,8 +438,14 @@ body.select-mode .msel-check{display:flex}
    маленьким по факту фото сетка выходила крошечной. Фиксированная ширина,
    как у одиночного фото (.msg-img-wrap{max-width:260px}), даёт
    предсказуемый размер независимо от реального разрешения снимка. */
-.grp-img-grid{display:grid;gap:2px;overflow:hidden;border-radius:12px;margin:0 calc(-1 * var(--sp-3)) 0;width:260px;max-width:calc(74vw - 24px)}
+/* 30 июля 2026: Александра снова заметила "рамку" вокруг фото — это был
+   2px-зазор сетки, сквозь который просвечивал фон пузыря (цветная линия
+   между фото). Просила максимально убрать рамку в обычном виде, но она
+   ДОПУСТИМА как признак выбора — поэтому зазор в 0 (фото вплотную друг к
+   другу), а рамка появляется только у .grp-cell.selected. */
+.grp-img-grid{display:grid;gap:0;overflow:hidden;border-radius:12px;margin:0 calc(-1 * var(--sp-3)) 0;width:260px;max-width:calc(74vw - 24px)}
 .grp-cell{position:relative;cursor:pointer;aspect-ratio:1;min-width:0}
+.grp-cell.selected{outline:3px solid var(--acc);outline-offset:-3px;z-index:1}
 .grp-cell .msg-img-wrap{width:100%;height:100%;margin-bottom:0;border-radius:0;max-width:none}
 .grp-cell .msg-img{width:100%;height:100%;max-height:none;border-radius:0}
 .grp-cell-check{position:absolute;top:6px;right:6px;margin:0;background:rgba(0,0,0,.45)}
@@ -645,8 +651,11 @@ button:active,.nbtn:active,.fmt-btn:active,.call-btn:active{transform:scale(.96)
    том же тике (в отличие от transition, которому нужно стартовое
    отрисованное состояние) — поэтому анимация работает без доп. трюков с
    visibility. */
-@keyframes ctxIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
-.ctx.on{display:block;animation:ctxIn .15s cubic-bezier(.25,.8,.35,1)}
+/* 30 июля 2026: scale(.92→1) был слишком незаметным ("из меньшего в
+   большее" почти не читалось) — Александра сравнила с Telegram, там рост
+   меню от точки нажатия заметно крупнее. */
+@keyframes ctxIn{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:scale(1)}}
+.ctx.on{display:block;animation:ctxIn .18s cubic-bezier(.25,.8,.35,1)}
 .ctxi{padding:7px 11px;border-radius:7px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px;transition:background .1s}
 .ctxi:hover{background:var(--bg4)}
 .ctxi.rd{color:var(--rd)}
@@ -697,6 +706,10 @@ body.mobile-mode .ctxi svg{width:17px;height:17px}
 /* ═══ MODALS ═══ */
 .movl{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
 .movl.on{display:flex}
+/* 30 июля 2026: просмотрщик фото — раньше закрывался только тапом ровно по
+   тёмному фону (event.target===this), тап по самой картинке не закрывал
+   ничего — Александра явно попросила крестик и/или повторный тап. */
+.imgview-close{position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1}
 /* Закрытие модалки — то же плавное появление (fadeUp), проигранное в
    обратном порядке, вместо мгновенного исчезновения. closeM() добавляет
    класс closing, ждёт длительность анимации и только потом снимает on —
@@ -5600,7 +5613,7 @@ function renderMsgs(){
     let h="";
     // Чекбокс для режима выделения — для фотоальбома НЕ рисуем общий на всю
     // строку, у каждого фото в сетке свой собственный (см. .grp-cell-check)
-    if(m.t!=="date"&&m.t!=="sys"&&!isGrpImg)h+=`<div class="msel-check">${S.selectedMsgs.includes(m.id)?"✓":""}</div>`;
+    if(m.t!=="date"&&m.t!=="sys"&&!isGrpImg)h+=`<div class="msel-check">${selBadge(m.id)}</div>`;
     if(m.t!=="out" && !(m.t==="gift"&&m.out) && !(m.t==="sk"&&m.out))h+=`<div class="mav" style="background:${m.frAvatar?"none":colBg(m.col||0)};padding:0;overflow:hidden${groupsWithPrev?";visibility:hidden":""}">${m.frAvatar?`<img src="${m.frAvatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(m.fr?m.fr[0]:"?")}</div>`;
     if(m.t==="sk"){
       h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="msgTouchStart(event,${m.id},this)" ontouchend="msgTouchEnd(event,${m.id})" ontouchmove="msgTouchMove(event)">${isStickerImg(m.sk)?`<img src="${m.sk}" style="width:150px;height:150px;object-fit:contain">`:m.sk}</div>${m.t==="sk"&&(m.failed||m.out)?`<div class="mt" style="justify-content:center">${m.time||""}${m.out?ticksHTML(m):""}</div>`:""}`;
@@ -5654,7 +5667,7 @@ function renderMsgs(){
         const cellsHTML=groupMembers.map(gm=>{
           const isSp=gm.spoiler && !gm.spoilerRevealed;
           const touchAttrs=gm.uploading?"":` oncontextmenu="showCtx(event,${gm.id})" ontouchstart="msgTouchStart(event,${gm.id},this)" ontouchend="msgTouchEnd(event,${gm.id})" ontouchmove="msgTouchMove(event)"`;
-          return `<div class="grp-cell" data-msg-id="${gm.id}"${touchAttrs}><div class="msg-img-wrap${gm.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${gm.img}" loading="lazy" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer('${gm.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${gm.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${gm.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${S.selectMode?`<div class="msel-check grp-cell-check">${S.selectedMsgs.includes(gm.id)?"✓":""}</div>`:""}</div></div>`;
+          return `<div class="grp-cell${S.selectedMsgs.includes(gm.id)?" selected":""}" data-msg-id="${gm.id}"${touchAttrs}><div class="msg-img-wrap${gm.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${gm.img}" loading="lazy" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer('${gm.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${gm.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${gm.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${S.selectMode?`<div class="msel-check grp-cell-check">${selBadge(gm.id)}</div>`:""}</div></div>`;
         }).join("");
         bc+=`<div class="grp-img-grid" style="grid-template-columns:repeat(${cols},1fr)${noHeaderAbove?";margin-top:calc(-1 * var(--sp-2))":""}">${cellsHTML}</div>`;
       }
@@ -7123,9 +7136,50 @@ async function sendContactMsg(userId,nm,col,uname){
   await retrySimpleMsg(msg, chatId, curChat, memberIds, {chatId,text:"",contact}, {text:"",contact});
 }
 
+// 30 июля 2026: просмотрщик фото — раньше был "глухой" (одна картинка,
+// закрывался только тапом ровно по фону). Александра попросила: тап по
+// самой картинке закрывает, и пролистывание вправо/влево по остальным
+// фото этого чата (не только внутри одного альбома — по ВСЕМ фото чата,
+// в порядке переписки). Свайп справа налево (палец идёт влево) — вперёд
+// (к более новому фото), слева направо — назад.
+let imgViewerList=[], imgViewerIdx=-1;
+function buildImgViewerList(){
+  const msgs=S.messages[S.chat]||[];
+  imgViewerList=msgs.filter(m=>m.img && !m._deletedForAll && !m._deletedForMe && !(m.spoiler&&!m.spoilerRevealed)).map(m=>m.img);
+}
 function openImgViewer(url){
+  buildImgViewerList();
+  imgViewerIdx=imgViewerList.indexOf(url);
   el("imgview-img").src=url;
   el("m-imgview").classList.add("on");
+}
+function imgViewerNav(dir){
+  if(imgViewerList.length<2) return;
+  imgViewerIdx=(imgViewerIdx+dir+imgViewerList.length)%imgViewerList.length;
+  el("imgview-img").src=imgViewerList[imgViewerIdx];
+}
+let imgViewerTouch=null;
+function imgViewerTouchStart(e){
+  const t=e.touches[0];
+  imgViewerTouch={x0:t.clientX,y0:t.clientY,moved:false};
+}
+function imgViewerTouchMove(e){
+  if(!imgViewerTouch) return;
+  const t=e.touches[0];
+  if(Math.abs(t.clientX-imgViewerTouch.x0)>10 || Math.abs(t.clientY-imgViewerTouch.y0)>10) imgViewerTouch.moved=true;
+}
+function imgViewerTouchEnd(e){
+  if(!imgViewerTouch) return;
+  const t=e.changedTouches[0];
+  const dx=t.clientX-imgViewerTouch.x0, dy=t.clientY-imgViewerTouch.y0;
+  const state=imgViewerTouch; imgViewerTouch=null;
+  // Тап без заметного движения — закрыть (по самой картинке в том числе,
+  // не только по тёмному фону, как было раньше)
+  if(!state.moved){ closeM("m-imgview"); return; }
+  if(Math.abs(dx)>Math.abs(dy) && Math.abs(dx)>40){
+    if(dx<0) imgViewerNav(1); // свайп справа налево — вперёд
+    else imgViewerNav(-1); // свайп слева направо — назад
+  }
 }
 
 function revealSpoiler(msgId){
@@ -8059,6 +8113,24 @@ function lpStart(e,id){
 function lpEnd(){ clearTimeout(lpTimer); }
 document.addEventListener("click",e=>{ closeCtxViaBackStack(); el("rxn-picker").classList.remove("on"); });
 
+// 30 июля 2026: черновик (напечатанный, но не отправленный текст) писался
+// в S.chats[x].draft на каждую букву (см. onInput), но saveState() (запись
+// в localStorage) вызывался только когда реально переключались на другой
+// чат (см. openChat) или отправляли сообщение. Если ЗАКРЫТЬ ПРИЛОЖЕНИЕ
+// ЦЕЛИКОМ, не переключаясь сначала на другой чат — черновик уже сидел в S,
+// но ни разу не долетал до localStorage, терялся при следующем запуске
+// (Александра сравнила с Telegram — там черновик переживает полное
+// закрытие приложения). visibilitychange→hidden — самый надёжный кросс-
+// платформенный сигнал "уходим" (сворачивание, переключение задач, закрытие
+// вкладки/приложения), надёжнее beforeunload на мобильных браузерах.
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="hidden"){
+    const ch=S.chats.find(c=>c.id===S.chat);
+    if(ch) ch.draft=getInputText();
+    saveState();
+  }
+});
+
 // ── ЕДИНЫЙ КЛИК ПО СООБЩЕНИЮ (короткий тап) ─────────────────────────────
 // 29 июля 2026: два требования сошлись в одном месте. (1) Раз долгое
 // нажатие теперь сразу включает выбор (см. lpStart выше), короткий тап по
@@ -8115,14 +8187,21 @@ function ctxReply(){ setReply(S.ctxId); }
 const MSG_SWIPE_THRESHOLD_PX=56;
 let msgSwipeState=null;
 function msgTouchStart(e,id,bubEl,isRowFallback){
-  // 29 июля 2026: расширение зоны нажатия на всю строку сообщения (не
-  // только сам пузырь) — Александра сравнила с Telegram, там долгое
-  // нажатие/тап работают и рядом с сообщением, в пустом месте. Тот же
-  // обработчик теперь висит и на .mrow целиком (см. renderMsgs) как
-  // "запасной" — но если палец реально попал в САМ пузырь/ячейку сетки
-  // (у которых есть свой собственный, более точный вызов этой же функции),
-  // запасной вызов от строки молчит, чтобы не перезаписать lpTimer чужим id.
+  // 29-30 июля 2026: расширение зоны нажатия на всю строку сообщения (не
+  // только сам пузырь) — тот же обработчик висит и на .mrow целиком (см.
+  // renderMsgs) как "запасной". Александра поймала на реальном телефоне:
+  // при долгом нажатии на ОДНО фото альбома выделялись СРАЗУ ДВА — событие
+  // всплывало от конкретной ячейки (.grp-cell, свой id) до "запасного" на
+  // .mrow (id первого фото группы), и ОБА планировали свой независимый
+  // lpStart()-таймер (проверка по e.target здесь ниже не успевала/не
+  // срабатывала надёжно на реальном touch) — оба таймера через 450мс
+  // реально выстреливали, каждый со СВОИМ id, оба фото оказывались в
+  // S.selectedMsgs разом. Раньше просто проверяли target и "молчали" —
+  // теперь событие ГАСИМ целиком (stopPropagation) в самом источнике, чтобы
+  // оно физически не могло дойти до запасного обработчика — это гарантия,
+  // а не проверка постфактум.
   if(isRowFallback && e.target.closest(".bub,.vbub,.skbub,.grp-cell,.gift-bubble")) return;
+  if(!isRowFallback) e.stopPropagation();
   lpStart(e,id); // существующее долгое нажатие — без изменений, даже если ниже сработает защита
   // Голосовые/видео-кружки — уже рабочий touch-скраббинг (seekVideoCircle
   // и т.д.), событие бабблится вверх до .bub. Не даём свайпу-ответу
@@ -8175,6 +8254,14 @@ function exitSelectMode(){
   renderMsgs();
 }
 
+// 30 июля 2026: кружок выбора теперь показывает НОМЕР порядка выбора
+// (1, 2, 3…), как в Telegram, а не просто галочку — S.selectedMsgs это
+// обычный массив, порядок добавления (push) уже совпадает с порядком
+// выбора, лишнего состояния заводить не пришлось.
+function selBadge(id){
+  const idx=S.selectedMsgs.indexOf(id);
+  return idx===-1 ? "" : String(idx+1);
+}
 function toggleMsgSelect(id){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===id);
   if(!m||m.t==="date"||m.t==="sys")return;
@@ -8186,15 +8273,22 @@ function toggleMsgSelect(id){
   if(cnt)cnt.textContent=S.selectedMsgs.length;
   // Если ничего не выбрано — выходим
   if(!S.selectedMsgs.length){ exitSelectMode(); return; }
-  // Обновляем визуал выделения
-  document.querySelectorAll(".mrow").forEach(row=>{
-    const rid=parseInt(row.dataset.id);
-    row.classList.toggle("selected", S.selectedMsgs.includes(rid));
-  });
   // "Ответить" в нижней панели имеет смысл только для ровно одного
   // выбранного сообщения (как в Telegram — ответ ссылается на одно
   // сообщение, а не на несколько разом).
   el("sab-reply-btn")?.classList.toggle("disabled", S.selectedMsgs.length!==1);
+  // ⚠️ 30 июля 2026: раньше тут вручную переключали класс .selected по
+  // строкам (document.querySelectorAll(".mrow").forEach...) — не трогая
+  // САМ номер/галочку внутри кружка. Из-за этого у любого сообщения,
+  // выбранного НЕ первым (после того как enterSelectMode() уже отрисовал
+  // список пустым), кружок красился (через CSS), но глазок/номер внутри
+  // оставался пустым — контент кружка задаётся только строкой в renderMsgs,
+  // точечный DOM-патч его не обновлял. Для номеров выбора (1,2,3…, см.
+  // selBadge) это тем более критично — при снятии выбора с середины
+  // оставшиеся номера должны сдвинуться. Полный renderMsgs() дороже
+  // точечного патча, но гарантированно верный — и переиспользует уже
+  // готовую логику отрисовки чекбоксов/сеток вместо повторения её здесь.
+  renderMsgs();
 }
 // Кнопка "Ответить" в нижней панели режима выбора
 function selReplyOne(){
@@ -14872,7 +14966,11 @@ applyTheme(S.theme||"dark");
 </div>
 
 <!-- MODAL: IMAGE VIEWER -->
-<div class="movl" id="m-imgview" onclick="if(event.target===this)closeM('m-imgview')">
+<div class="movl" id="m-imgview" onclick="if(event.target===this)closeM('m-imgview')"
+  ontouchstart="imgViewerTouchStart(event)" ontouchmove="imgViewerTouchMove(event)" ontouchend="imgViewerTouchEnd(event)">
+  <div class="imgview-close" onclick="closeM('m-imgview')">
+    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </div>
   <img id="imgview-img" src="" style="max-width:92vw;max-height:92vh;border-radius:10px;object-fit:contain">
 </div>
 
