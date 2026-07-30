@@ -490,7 +490,10 @@ body.select-mode .msel-check{display:flex}
    заливается акцентным цветом только у выбранного — тот же приём, что уже
    есть у .mrow.selected .msel-check для обычных сообщений. */
 .grp-cell-check{position:absolute;top:6px;left:6px;margin:0;border-color:rgba(255,255,255,.85);box-shadow:0 1px 3px rgba(0,0,0,.35)}
-.grp-cell.selected .grp-cell-check{background:var(--acc);border-color:var(--acc)}
+/* 30 июля 2026: Александра уточнила — даже у ВЫБРАННОГО фото фона за
+   номером быть не должно (в Telegram кружок остаётся без заливки в любом
+   состоянии) — меняем только цвет обводки на акцентный, без background. */
+.grp-cell.selected .grp-cell-check{border-color:var(--acc)}
 
 /* Анимация кристалльного подарка — 5 секунд, парящие кристаллики + вспышка числа */
 .crystal-gift-fx{position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:20}
@@ -1555,7 +1558,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       </div>
 
       <div class="select-bar" id="select-bar">
-        <span style="cursor:pointer;font-size:18px;color:var(--tx2)" onclick="exitSelectMode()">✕</span>
+        <span style="cursor:pointer;font-size:18px;color:var(--tx2)" onclick="requestExitSelectMode()">✕</span>
         <span style="font-weight:600;font-size:13.5px"><span id="select-count">0</span> выбрано</span>
         <span style="margin-left:auto;cursor:pointer;color:var(--tx2);display:flex;align-items:center" onclick="openBulkDeleteModal()" title="Удалить">
           <svg width="19" height="19" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg>
@@ -5777,7 +5780,16 @@ function renderMsgs(){
         const cellsHTML=groupMembers.map(gm=>{
           const isSp=gm.spoiler && !gm.spoilerRevealed;
           const touchAttrs=gm.uploading?"":` oncontextmenu="showCtx(event,${gm.id})" ontouchstart="msgTouchStart(event,${gm.id},this)" ontouchend="msgTouchEnd(event,${gm.id})" ontouchmove="msgTouchMove(event)"`;
-          return `<div class="grp-cell${S.selectedMsgs.includes(gm.id)?" selected":""}" data-msg-id="${gm.id}"${touchAttrs}><div class="msg-img-wrap${gm.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${gm.img}" loading="lazy" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer('${gm.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${gm.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${gm.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${S.selectMode?`<div class="msel-check grp-cell-check">${selBadge(gm.id)}</div>`:""}</div></div>`;
+          // 30 июля 2026: Александра прислала скриншот — одно фото (высокий
+          // скриншот телефона) рядом с двумя из того же альбома, вторые
+          // заметно "не той высоты". Фиксированный aspect-ratio:4/5 в CSS
+          // (см. .grp-cell) был лишь приблизительной заменой квадрата,
+          // а не настоящей пропорцией конкретного фото — для скриншотов
+          // телефона (гораздо выше 4:5) разница всё равно бросалась в глаза.
+          // Вместо хранения width/height на бэкенде (отдельная миграция)
+          // берём РЕАЛЬНУЮ пропорцию прямо у самого <img> в момент загрузки
+          // — работает для старых и новых фото одинаково, без изменений в БД.
+          return `<div class="grp-cell${S.selectedMsgs.includes(gm.id)?" selected":""}" data-msg-id="${gm.id}"${touchAttrs}><div class="msg-img-wrap${gm.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${gm.img}" loading="lazy" onload="if(this.naturalWidth)this.closest('.grp-cell').style.aspectRatio=this.naturalWidth+'/'+this.naturalHeight" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer('${gm.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${gm.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${gm.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${S.selectMode?`<div class="msel-check grp-cell-check">${selBadge(gm.id)}</div>`:""}</div></div>`;
         }).join("");
         bc+=`<div class="grp-img-grid" style="grid-template-columns:repeat(${cols},1fr)${noHeaderAbove?";margin-top:calc(-1 * var(--sp-2))":""}${isPhotoOnlyMt?";margin-bottom:calc(-1 * var(--sp-2))":""}">${cellsHTML}</div>`;
       }
@@ -8372,7 +8384,35 @@ function enterSelectMode(){
   S.selectedMsgs=[];
   document.body.classList.add("select-mode");
   el("select-bar")?.classList.add("on");
+  // 30 июля 2026: раньше выбор сообщений не был зарегистрирован в общем
+  // бэк-стеке вообще — аппаратная "назад" на Android поэтому выходила сразу
+  // из чата, а не снимала выделение. Александра явно попросила: "назад"
+  // должно снимать по ОДНОМУ выделению за раз (2 выбрано → назад → 1
+  // выбрано → назад → выходим), а не гасить весь выбор одним нажатием —
+  // см. backFromSelectMode() ниже.
+  pushNavEntry(backFromSelectMode);
   renderMsgs();
+}
+function backFromSelectMode(){
+  if(S.selectedMsgs.length>0){
+    S.selectedMsgs.pop(); // снимаем ПОСЛЕДНЕЕ выбранное — по одному за нажатие "назад"
+    const cnt=el("select-count"); if(cnt)cnt.textContent=S.selectedMsgs.length;
+    renderMsgs();
+    if(S.selectedMsgs.length>0){
+      pushNavEntry(backFromSelectMode); // остались выбранные — следующий "назад" снимет ещё одно
+      return;
+    }
+  }
+  exitSelectMode();
+}
+// Обычные способы выйти из выбора сообщений (крестик, завершённое массовое
+// действие) должны полностью выходить сразу, а не по одному, как "назад" —
+// чистим список ДО того, как сработает backFromSelectMode() через бэк-стек
+// (popNavEntry), тогда он сам увидит пустой список и выйдет целиком, а не
+// снимет только одно выделение. Так же не остаётся лишней записи в navStack.
+function requestExitSelectMode(){
+  S.selectedMsgs=[];
+  if(S.selectMode) popNavEntry(); else exitSelectMode();
 }
 
 function exitSelectMode(){
@@ -8401,7 +8441,7 @@ function toggleMsgSelect(id){
   const cnt=el("select-count");
   if(cnt)cnt.textContent=S.selectedMsgs.length;
   // Если ничего не выбрано — выходим
-  if(!S.selectedMsgs.length){ exitSelectMode(); return; }
+  if(!S.selectedMsgs.length){ requestExitSelectMode(); return; }
   // "Ответить" в нижней панели имеет смысл только для ровно одного
   // выбранного сообщения (как в Telegram — ответ ссылается на одно
   // сообщение, а не на несколько разом).
@@ -8423,7 +8463,7 @@ function toggleMsgSelect(id){
 function selReplyOne(){
   if(S.selectedMsgs.length!==1) return;
   const id=S.selectedMsgs[0];
-  exitSelectMode();
+  requestExitSelectMode();
   setReply(id);
 }
 
@@ -8441,7 +8481,7 @@ function selDeleteForMe(){
     }
   });
   showToast(`🗑️ Удалено у вас: ${n}`);
-  exitSelectMode(); saveState();
+  requestExitSelectMode(); saveState();
 }
 
 // Массовое удаление у всех
@@ -8464,7 +8504,7 @@ function selDeleteAll(){
     }
   });
   showToast(blocked ? `🗑️ Удалено: ${n-blocked}, пропущено чужих: ${blocked}` : `🗑️ Удалено: ${n}`);
-  exitSelectMode(); saveState();
+  requestExitSelectMode(); saveState();
 }
 
 // Массовое копирование
@@ -8473,13 +8513,13 @@ function selCopyAll(){
   const texts=S.selectedMsgs.map(id=>{ const m=ms.find(x=>x.id===id); return m?(m.tx||""):""; }).filter(Boolean);
   navigator.clipboard.writeText(texts.join("\n")).catch(()=>{});
   showToast(`📋 Скопировано: ${texts.length}`);
-  exitSelectMode();
+  requestExitSelectMode();
 }
 
 // Массовая пересылка
 function selForwardAll(){
   S.fwdMultiple=[...S.selectedMsgs];
-  exitSelectMode();
+  requestExitSelectMode();
   openForward();
 }
 function ctxEdit(){ const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m||m.t!=="out"){showToast("❌ Только свои сообщения");return;} startEdit(S.ctxId); }
