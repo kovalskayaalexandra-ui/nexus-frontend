@@ -366,7 +366,7 @@ body.select-mode .bub,body.select-mode .skbub,body.select-mode .vbub{cursor:poin
 body.select-mode .msel-check{display:flex}
 .mrow.selected .msel-check{background:var(--acc);border-color:var(--acc)}
 .pintxt{color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
-.msgs{flex:1;overflow-y:auto;padding:14px 16px 6px;display:flex;flex-direction:column;gap:3px;background:var(--msgs-bg,transparent)}
+.msgs{flex:1;overflow-y:auto;padding:14px 16px 6px;display:flex;flex-direction:column;gap:8px;background:var(--msgs-bg,transparent)}
 /* Раньше лента всегда прыгала вниз при любом изменении, даже читая историю
    выше — теперь прокрутка вниз только если и так был внизу (см. renderMsgs),
    иначе показываем эту всплывающую кнопку вместо принудительной прокрутки */
@@ -394,7 +394,12 @@ body.select-mode .msel-check{display:flex}
 /* Группировка подряд идущих сообщений одного автора — .mav у продолжения
    прячется через visibility (не display), чтобы сохранить его ширину для
    выравнивания пузырей, как в Telegram */
-.mrow.group-continue{margin-top:-2px}
+/* 30 июля 2026: базовый gap между сообщениями увеличен (3px→8px, см. .msgs
+   выше) — Александра сравнила с Telegram, там между разными сообщениями
+   явный отступ. Между соседними сообщениями ОДНОГО автора подряд (group-
+   continue) он по-прежнему должен оставаться маленьким — компенсируем
+   отрицательным отступом, подросшим вместе с базовым gap. */
+.mrow.group-continue{margin-top:-5px}
 @keyframes mi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 .mrow.out>.bub,.mrow.out>.gift-bubble,.mrow.out>.skbub,.mrow.out>.vbub{margin-left:auto}
 .mav{width:27px;height:27px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
@@ -461,12 +466,25 @@ body.select-mode .msel-check{display:flex}
    настоящем Telegram — отдельная более крупная доработка (нужно сохранять
    исходные пропорции фото при загрузке).*/
 .grp-cell{position:relative;cursor:pointer;aspect-ratio:4/5;min-width:0}
-.grp-cell.selected{outline:3px solid var(--acc);outline-offset:-3px;z-index:1}
-.grp-cell .msg-img-wrap{width:100%;height:100%;margin-bottom:0;border-radius:0;max-width:none}
+/* 30 июля 2026: рамка выделения и анимация — как в Telegram, Александра
+   явно попросила: при выборе КОНКРЕТНОГО фото в альбоме само фото чуть
+   уменьшается (transform:scale), и ровно вокруг НЕГО (не всей ячейки сетки)
+   появляется акцентная рамка — обе анимированы одной transition. Рамку и
+   scale вешаем на .msg-img-wrap (само фото), а не на .grp-cell (ячейка
+   сетки не меняет размер, остаётся на своём месте в grid) — так рамка
+   "обнимает" именно уменьшившееся фото, а не неизменную ячейку.*/
+.grp-cell.selected{z-index:1}
+.grp-cell .msg-img-wrap{width:100%;height:100%;margin-bottom:0;border-radius:0;max-width:none;transition:transform .15s ease,outline-color .15s ease;outline:3px solid transparent;outline-offset:-2px}
+.grp-cell.selected .msg-img-wrap{outline-color:var(--acc);transform:scale(.94)}
 .grp-cell .msg-img{width:100%;height:100%;max-height:none;border-radius:0}
 /* Кружок выделения — слева, как у обычных сообщений (.msel-check), раньше
-   стоял справа и на реальном телефоне читался как "его вообще нет". */
-.grp-cell-check{position:absolute;top:6px;left:6px;margin:0;background:rgba(0,0,0,.45)}
+   стоял справа и на реальном телефоне читался как "его вообще нет". Раньше
+   ещё была тёмная заливка (rgba(0,0,0,.45)) ВСЕГДА — Александра сравнила с
+   Telegram: там кружок прозрачный (без заливки), пока фото не выбрано, и
+   заливается акцентным цветом только у выбранного — тот же приём, что уже
+   есть у .mrow.selected .msel-check для обычных сообщений. */
+.grp-cell-check{position:absolute;top:6px;left:6px;margin:0;border-color:rgba(255,255,255,.85);box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.grp-cell.selected .grp-cell-check{background:var(--acc);border-color:var(--acc)}
 
 /* Анимация кристалльного подарка — 5 секунд, парящие кристаллики + вспышка числа */
 .crystal-gift-fx{position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:20}
@@ -734,7 +752,10 @@ body.mobile-mode .ctxi svg{width:17px;height:17px}
    see closeM() ниже. */
 @keyframes fadeDown{from{opacity:1;transform:none}to{opacity:0;transform:translateY(14px)}}
 .movl .modal.closing{animation:fadeDown .18s ease-in forwards}
-.msg-img-wrap{position:relative;margin-bottom:4px;border-radius:12px;overflow:hidden;max-width:260px}
+/* 30 июля 2026: тонкая едва заметная рамка у фото — Александра сравнила с
+   Telegram: там у фото ВСЕГДА есть маленькая тонкая рамка (не только при
+   выделении) — отдельно от акцентной рамки выбора (.grp-cell.selected). */
+.msg-img-wrap{position:relative;margin-bottom:4px;border-radius:12px;overflow:hidden;max-width:260px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .msg-img{display:block;width:100%;max-height:320px;object-fit:cover;border-radius:12px;cursor:pointer}
 .msg-img-wrap.uploading .msg-img{filter:brightness(.5)}
 .msg-img-spin{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
@@ -8086,9 +8107,13 @@ function showCtx(e,id){
   // isMobileLayout()===false) ничего не меняется.
   if(e.type==="contextmenu" && isMobileLayout()){ e.preventDefault(); return; }
   e.preventDefault();
-  S.ctxId=id;
   const m=el("ctx");
   const wasOpen=m.classList.contains("on");
+  // 30 июля 2026: повторный тап по ТОМУ ЖЕ сообщению, пока его меню уже
+  // открыто — должен закрывать меню, как в Telegram (тап-тумблер), а не
+  // просто переоткрывать его на том же месте.
+  if(wasOpen && S.ctxId===id){ closeCtxViaBackStack(); return; }
+  S.ctxId=id;
   m.classList.toggle("has-selection", S.selectedMsgs.length>0);
   const msgObj=(S.messages[S.chat]||[]).find(x=>x.id===id);
   const hasMedia=!!(msgObj && (msgObj.img||msgObj.video||msgObj.videoCircle||msgObj.voice||msgObj.audio||msgObj.file));
