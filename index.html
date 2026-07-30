@@ -5892,6 +5892,26 @@ function renderMsgs(){
   if(wasAtBottom){
     c.scrollTop=c.scrollHeight;
     hideScrollDownBtn();
+    // 30 июля 2026: renderMsgs() каждый раз пересоздаёт ВСЕ строки заново
+    // (c.innerHTML="" выше) — значит и все <img> тоже новые DOM-элементы,
+    // без сохранённых от предыдущей отрисовки размеров. scrollHeight в
+    // строке выше посчитан ДО того, как эти картинки реально
+    // декодировались/встали на своё место — как только это происходит
+    // (даже для уже закэшированной в браузере картинки, у СВЕЖЕГО <img>
+    // всё равно будет свой load), лента реально становится выше, а scrollTop
+    // остаётся тем же числом пикселей — визуально список "уезжает" вверх от
+    // низа. Александра поймала это сразу в трёх местах (загрузка фото,
+    // выбор/снятие выбора сообщения) — везде причина одна: полная
+    // перерисовка списка. Держим прижатым к низу и после того, как каждая
+    // картинка в чате реально закончит декодироваться, а не только сразу
+    // после вставки в DOM.
+    c.querySelectorAll("img").forEach(img=>{
+      if(!img.complete){
+        img.addEventListener("load",()=>{
+          if(c.scrollHeight-c.scrollTop-c.clientHeight<200) c.scrollTop=c.scrollHeight;
+        },{once:true});
+      }
+    });
   } else {
     // Человек читал историю выше — остаёмся на том же месте (по расстоянию
     // от низа, не по scrollTop напрямую: список каждый раз перерисовывается
@@ -7274,6 +7294,17 @@ function openImgViewer(url){
   imgViewerIdx=imgViewerList.indexOf(url);
   el("imgview-img").src=url;
   el("m-imgview").classList.add("on");
+  // 30 июля 2026: просмотрщик фото не был зарегистрирован в общем бэк-стеке
+  // вообще — аппаратная "назад" на Android поэтому не находила его в
+  // navStack и закрывала то, что было ПОД ним (сам чат, назад на список), а
+  // сама картинка так и оставалась висеть открытой поверх уже другого экрана
+  // (Александра поймала это на реальном телефоне). Теперь как у любого
+  // другого модального окна в этом файле — свой closeFn в общем стеке.
+  pushNavEntry(closeImgViewer);
+}
+function closeImgViewer(){ closeM("m-imgview"); }
+function closeImgViewerViaBackStack(){
+  if(el("m-imgview").classList.contains("on")) popNavEntry();
 }
 function imgViewerNav(dir){
   if(imgViewerList.length<2) return;
@@ -7303,7 +7334,7 @@ function imgViewerTouchEnd(e){
   e.preventDefault();
   // Тап без заметного движения — закрыть (по самой картинке в том числе,
   // не только по тёмному фону, как было раньше)
-  if(!state.moved){ closeM("m-imgview"); return; }
+  if(!state.moved){ closeImgViewerViaBackStack(); return; }
   if(Math.abs(dx)>Math.abs(dy) && Math.abs(dx)>40){
     if(dx<0) imgViewerNav(1); // свайп справа налево — вперёд
     else imgViewerNav(-1); // свайп слева направо — назад
@@ -15151,9 +15182,9 @@ applyTheme(S.theme||"dark");
 </div>
 
 <!-- MODAL: IMAGE VIEWER -->
-<div class="movl" id="m-imgview" onclick="if(event.target===this)closeM('m-imgview')"
+<div class="movl" id="m-imgview" onclick="if(event.target===this)closeImgViewerViaBackStack()"
   ontouchstart="imgViewerTouchStart(event)" ontouchmove="imgViewerTouchMove(event)" ontouchend="imgViewerTouchEnd(event)">
-  <div class="imgview-close" onclick="closeM('m-imgview')">
+  <div class="imgview-close" onclick="closeImgViewerViaBackStack()">
     <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
   </div>
   <img id="imgview-img" src="" style="max-width:92vw;max-height:92vh;border-radius:10px;object-fit:contain">
