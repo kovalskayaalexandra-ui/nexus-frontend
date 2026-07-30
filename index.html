@@ -406,6 +406,12 @@ body.select-mode .msel-check{display:flex}
 .mrow.out .bub{background:var(--out);border-bottom-right-radius:3px}
 .bub.edited::after{content:" (ред.)";font-size:10px;color:rgba(255,255,255,.4)}
 .mt{font-size:var(--fs-1);color:rgba(255,255,255,.35);margin-top:3px;display:flex;align-items:center;gap:3px}
+/* 30 июля 2026: время+галочки над фото/альбомом без подписи — как в
+   Telegram, полупрозрачная плашка поверх правого нижнего угла фото, а не
+   отдельная строка на фоне пузыря под ним (та самая "рамка возле галочек",
+   на которую указала Александра — цвет пузыря был не багом, а тем самым
+   местом, где сидел .mt; Telegram просто кладёт его НА фото, а не под ним).*/
+.mt-photo-overlay{position:absolute;right:8px;bottom:8px;margin:0;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:10px;color:rgba(255,255,255,.85);z-index:2}
 .mtick-failed{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--rd);color:#fff;font-size:10px;font-weight:800;cursor:pointer;flex-shrink:0}
 .failed-msg-menu{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:500;overflow:hidden;min-width:170px}
 .bot-cmd-menu{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:500;overflow:hidden;max-width:280px;max-height:280px;overflow-y:auto}
@@ -5663,6 +5669,12 @@ function renderMsgs(){
       h+=`<div class="vbub" oncontextmenu="showCtx(event,${m.id})"><div class="pbtn" onclick="tPlay(this)"><svg width="11" height="11" fill="white" viewBox="0 0 24 24"><path d="m5 3 14 9-14 9V3z"/></svg></div><div class="wf">${bars}</div><div class="vd">${m.dur||"0:00"}</div></div>`;
     }else{
       let bc="";
+      // 30 июля 2026: фото/альбом БЕЗ подписи — время+галочки накладываем
+      // прямо на фото полупрозрачной плашкой, как в Telegram, а не оставляем
+      // отдельной строкой на фоне пузыря под фото (см. .mt-photo-overlay
+      // ниже и соответствующее гашение нижнего отступа у .msg-img-wrap/
+      // .grp-img-grid) — именно этот фон и читался как "рамка возле галочек".
+      const isPhotoOnlyMt = (m.img||isGrpImg) && !m.tx;
       // Имя над сообщением — в ГРУППЕ это реальный автор, в КАНАЛЕ это сам
       // канал (не конкретный админ, который нажал "отправить" — как у
       // "Топор+" в референсе: имя канала текстом над каждым постом).
@@ -5694,7 +5706,7 @@ function renderMsgs(){
         // приёмом, см. чуть ниже). Гасим слева/справа всегда, сверху — если
         // над фото в этом пузыре ничего нет (имя/пересылка/ответ).
         const noHeaderAboveImg=bc==="";
-        bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}" style="margin:${noHeaderAboveImg?"calc(-1 * var(--sp-2))":"0"} calc(-1 * var(--sp-3)) 4px"><img class="msg-img" src="${m.img}" loading="lazy" ${m.uploading?"":(isSp?`onclick="revealSpoiler(${m.id})"`:`onclick="openImgViewer('${m.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
+        bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}" style="margin:${noHeaderAboveImg?"calc(-1 * var(--sp-2))":"0"} calc(-1 * var(--sp-3)) ${isPhotoOnlyMt?"calc(-1 * var(--sp-2))":"4px"}"><img class="msg-img" src="${m.img}" loading="lazy" ${m.uploading?"":(isSp?`onclick="revealSpoiler(${m.id})"`:`onclick="openImgViewer('${m.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
       }
       // Сетка альбома (side-by-side, как в Telegram) — вместо стопки
       // одинаковых пузырей. 2 колонки хватает для основного случая (2 фото
@@ -5709,7 +5721,7 @@ function renderMsgs(){
           const touchAttrs=gm.uploading?"":` oncontextmenu="showCtx(event,${gm.id})" ontouchstart="msgTouchStart(event,${gm.id},this)" ontouchend="msgTouchEnd(event,${gm.id})" ontouchmove="msgTouchMove(event)"`;
           return `<div class="grp-cell${S.selectedMsgs.includes(gm.id)?" selected":""}" data-msg-id="${gm.id}"${touchAttrs}><div class="msg-img-wrap${gm.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${gm.img}" loading="lazy" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer('${gm.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${gm.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${gm.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${S.selectMode?`<div class="msel-check grp-cell-check">${selBadge(gm.id)}</div>`:""}</div></div>`;
         }).join("");
-        bc+=`<div class="grp-img-grid" style="grid-template-columns:repeat(${cols},1fr)${noHeaderAbove?";margin-top:calc(-1 * var(--sp-2))":""}">${cellsHTML}</div>`;
+        bc+=`<div class="grp-img-grid" style="grid-template-columns:repeat(${cols},1fr)${noHeaderAbove?";margin-top:calc(-1 * var(--sp-2))":""}${isPhotoOnlyMt?";margin-bottom:calc(-1 * var(--sp-2))":""}">${cellsHTML}</div>`;
       }
       if(m.video){
         const isSp=m.spoiler && !m.spoilerRevealed;
@@ -5791,7 +5803,7 @@ function renderMsgs(){
       // всегда сам канал (см. sender-name-tag выше) — подпись это ДОПОЛНЕНИЕ
       // внизу рядом со временем, как в реальном Telegram, а не замена.
       const signatureHTML = (curCh?.type==="channels" && curCh?.signMessages && m.authorName && !m.asChannel) ? `${escHtml(m.authorName)}, ` : "";
-      bc+=`<div class="mt">${signatureHTML}${m.time||""}${viewsHTML}${fwdCountHTML}${m.t==="out"?ticksHTML(m):""}</div>`;
+      bc+=`<div class="mt${isPhotoOnlyMt?" mt-photo-overlay":""}">${signatureHTML}${m.time||""}${viewsHTML}${fwdCountHTML}${m.t==="out"?ticksHTML(m):""}</div>`;
       if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${r.e} ${r.c}</div>`).join("")}</div>`;
       if(m.crystalTotal>0)bc+=`<div class="rxns"><div class="rxn crystal-total-badge" onclick="quickAddCrystal(${m.id})" title="Нажмите, чтобы подарить ещё 1 💎">💎 ${m.crystalTotal.toLocaleString()}</div></div>`;
       if(m.edited)bc+='';
@@ -8192,9 +8204,18 @@ document.addEventListener("visibilitychange",()=>{
 // самой картинке и т.п. (те в фазе всплытия), поэтому можно погасить клик
 // целиком до того, как что-то внутри успеет сработать.
 el("msgs")?.addEventListener("click", function(e){
+  // 30 июля 2026: клик МИМО пузыря (пустое место рядом с сообщением) на
+  // самом деле не обрабатывался НИКЕМ вне режима выбора — расчёт был на
+  // row.onclick, а он назначается ТОЛЬКО когда S.selectMode уже true (см.
+  // renderMsgs). Из-за этого короткий тап рядом с сообщением не открывал
+  // меню вообще никогда — единственное, что реально на него реагировало,
+  // это "запасной" touch-таймер на .mrow (см. msgTouchStart/lpStart), то
+  // есть срабатывало только долгое нажатие → выделение, ровно то, на что
+  // пожаловалась Александра ("не открывает, но выделяет"). Пустое место в
+  // строке сообщения теперь ведёт себя так же, как сам пузырь.
+  if(e.target.closest(".mav,.msel-check")) return; // аватар и чекбокс — своя роль, не трогаем
   const bub=e.target.closest(".bub, .vbub, .skbub, .gift-bubble");
-  if(!bub) return; // клик мимо самого пузыря — им занимается row.onclick (режим выбора) как и раньше
-  const row=bub.closest(".mrow");
+  const row=(bub||e.target).closest(".mrow");
   if(!row || !row.dataset.msgId) return;
   // Фотоальбом: клик по КОНКРЕТНОМУ фото в сетке (.grp-cell, свой data-msg-id)
   // должен относиться именно к нему, а не к первому фото группы (у него
@@ -8210,7 +8231,7 @@ el("msgs")?.addEventListener("click", function(e){
   // Не в режиме выбора — если клик пришёлся на что-то со своим собственным
   // действием (фото/видео/голосовое/опрос/контакт/спойлер/файл/пересланное/
   // реакция), не мешаем ему работать как раньше
-  if(e.target.closest("img.msg-img,.msg-video,.voice-msg,.video-circle-wrap,.poll-opt,.contact-item,.spoiler-overlay,.as-channel-tag,.msg-file,.gift-bubble,.lnkprev,.rxn")) return;
+  if(bub && e.target.closest("img.msg-img,.msg-video,.voice-msg,.video-circle-wrap,.poll-opt,.contact-item,.spoiler-overlay,.as-channel-tag,.msg-file,.gift-bubble,.lnkprev,.rxn")) return;
   // Короткий тап по обычному тексту/пустой части сообщения — открываем то
   // же меню действий, что раньше открывалось долгим нажатием. Гасим клик,
   // иначе он же долетит до document и глобальный обработчик выше немедленно
