@@ -377,18 +377,30 @@ body.select-mode .msel-check{display:flex}
 .scroll-down-btn:hover{background:var(--bg4);border-color:var(--acc)}
 .ddiv{text-align:center;margin:8px 0}
 .ddiv span{background:var(--bg3);border:1px solid var(--brd);padding:3px 11px;border-radius:999px;font-size:var(--fs-2);color:var(--tx3)}
-.mrow{display:flex;align-items:flex-end;gap:6px;max-width:74%;animation:mi .2s ease-out}
+/* 30 июля 2026: раньше .mrow был шириной ровно под содержимое (max-width:74%
+   как ПОТОЛОК, но по факту строка сжималась под пузырь) и позиционировался
+   внутри .msgs через margin-left/right:auto на САМОЙ строке — у короткого
+   сообщения пустого места внутри строки просто не было физически, нажимать
+   было решительно негде (Александра проверила на реальном телефоне — жест
+   рядом с сообщением не срабатывал). Теперь строка на всю ширину чата, а
+   выравнивание и 74%-потолок переехали на сам пузырь (.bub и т.п.) —
+   пустое место внутри строки теперь реально существует и ловится тем же
+   ontouchstart/oncontextmenu, что и раньше висел только на пузыре (см.
+   renderMsgs). Заодно ушёл flex-direction:row-reverse у исходящих — именно
+   он уводил кружок выбора вправо (в Telegram кружок всегда слева, вне
+   зависимости от направления сообщения) — без реверса чекбокс/аватар/пузырь
+   всегда идут в одном и том же порядке слева направо. */
+.mrow{display:flex;align-items:flex-end;gap:6px;width:100%;animation:mi .2s ease-out}
 /* Группировка подряд идущих сообщений одного автора — .mav у продолжения
    прячется через visibility (не display), чтобы сохранить его ширину для
    выравнивания пузырей, как в Telegram */
 .mrow.group-continue{margin-top:-2px}
 @keyframes mi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
-.mrow.out{margin-left:auto;flex-direction:row-reverse}
-.mrow.in{margin-right:auto}
+.mrow.out>.bub,.mrow.out>.gift-bubble,.mrow.out>.skbub,.mrow.out>.vbub{margin-left:auto}
 .mav{width:27px;height:27px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
   font-weight:700;font-size:10px;color:#fff;overflow:hidden}
 .mav img{width:100%;height:100%;object-fit:cover}
-.bub{padding:var(--sp-2) var(--sp-3);border-radius:16px;max-width:100%;word-break:break-word;font-size:var(--fs-4);line-height:1.5;position:relative;cursor:context-menu;transition:transform .15s ease}
+.bub{padding:var(--sp-2) var(--sp-3);border-radius:16px;max-width:74%;word-break:break-word;font-size:var(--fs-4);line-height:1.5;position:relative;cursor:context-menu;transition:transform .15s ease}
 .bub.reply-armed{transform:translateX(14px)}
 .mrow.in .bub{background:var(--in);border-bottom-left-radius:3px}
 .mrow.out .bub{background:var(--out);border-bottom-right-radius:3px}
