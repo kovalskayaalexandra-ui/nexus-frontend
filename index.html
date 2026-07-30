@@ -258,7 +258,7 @@ button,input,textarea,select{font-family:inherit}
 .vc-play-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;background:rgba(0,0,0,.25);text-shadow:0 2px 6px rgba(0,0,0,.5);border-radius:50%;pointer-events:none}
 .vc-play-overlay.hidden{display:none}
 .vc-dur-badge{position:absolute;bottom:10px;right:14px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:2px 7px;border-radius:20px;pointer-events:none}
-.ci{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-radius:8px;margin:1px 5px;transition:background .15s;position:relative}
+.ci{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-radius:8px;margin:1px 5px;transition:background .15s;position:relative;user-select:none;-webkit-touch-callout:none}
 .ci:hover{background:var(--bg3)}
 .ci.on{background:var(--bg4)}
 .ci.on::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;background:var(--acc2);border-radius:0 3px 3px 0}
@@ -390,7 +390,13 @@ body.select-mode .msel-check{display:flex}
    он уводил кружок выбора вправо (в Telegram кружок всегда слева, вне
    зависимости от направления сообщения) — без реверса чекбокс/аватар/пузырь
    всегда идут в одном и том же порядке слева направо. */
-.mrow{display:flex;align-items:flex-end;gap:6px;width:100%;animation:mi .2s ease-out}
+/* 30 июля 2026: долгое нажатие на чат/сообщение попутно включало ЕЩЁ и
+   нативное выделение текста Android (синие маркеры + системная плашка
+   "Копировать/Поделиться") поверх нашего собственного JS-выбора — user-
+   select нигде не был выключен на строках списка/сообщения. Копирование
+   текста сообщения у нас и так есть своей кнопкой в меню (ctxCopy()), как в
+   Telegram, — нативное выделение тут не нужно и только мешает жесту. */
+.mrow{display:flex;align-items:flex-end;gap:6px;width:100%;animation:mi .2s ease-out;user-select:none;-webkit-touch-callout:none}
 /* Группировка подряд идущих сообщений одного автора — .mav у продолжения
    прячется через visibility (не display), чтобы сохранить его ширину для
    выравнивания пузырей, как в Telegram */
@@ -5024,7 +5030,13 @@ function openChat(id,opts){
   // список чатов, а не сразу переписка (см. loginOK() и восстановление сессии).
   if(isMobileLayout() && !(opts&&opts.skipMobileSlide)){
     const layoutEl=document.querySelector(".layout");
-    if(layoutEl){ layoutEl.classList.add("chat-open"); pushNavEntry(closeMobileChat); }
+    if(layoutEl){
+      layoutEl.classList.add("chat-open");
+      // 30 июля 2026: чат, открытый ИЗ Архива (opts.returnToArchive), должен
+      // при "назад" вернуть в список Архива, а не сразу на главный список —
+      // см. closeMobileChatToArchive() и openArchivedChat() ниже.
+      pushNavEntry(opts&&opts.returnToArchive ? closeMobileChatToArchive : closeMobileChat);
+    }
   }
 }
 // Кнопка "← Назад" в шапке чата на мобильном — возвращает к списку чатов, не
@@ -5048,6 +5060,15 @@ function closeMobileChat(){
     renderChats();
   }
 }
+// 30 июля 2026: закрыватель чата, открытого ИЗ Архива (см. openArchivedChat)
+// — делает то же самое, что closeMobileChat(), и следом возвращает видимость
+// самому экрану Архива (его запись в navStack не трогали при открытии чата,
+// так что следующий "назад" уже из списка Архива корректно закроет именно
+// его, а не выйдет сразу на главный список).
+function closeMobileChatToArchive(){
+  closeMobileChat();
+  el("screen-archive").classList.add("on");
+}
 
 // ══════════════════════════════════════════════════
 //  БЭК-СТЕК (этап 5 дорожной карты)
@@ -5070,18 +5091,9 @@ function pushNavEntry(closeFn){
 function popNavEntry(){
   if(navStack.length>0) history.back();
 }
-// 30 июля 2026: тап по чату в Архиве — см. openArchivedChat() ниже. Флаг
-// нужен, чтобы открыть чат ПОСЛЕ того, как реально придёт popstate от
-// закрытия Архива, а не одновременно с ним (иначе гонка двух push'ей в один
-// navStack/history — см. комментарий у openArchivedChat).
-let archiveChatToOpen=null;
 window.addEventListener("popstate",()=>{
   const closeFn=navStack.pop();
   if(closeFn) closeFn();
-  if(archiveChatToOpen!==null){
-    const id=archiveChatToOpen; archiveChatToOpen=null;
-    openChat(id);
-  }
 });
 
 // ══════════════════════════════════════════════════
@@ -9121,21 +9133,21 @@ function pullArchiveEnd(){
 // Настройки/Контакты, с тем же .clist и теми же .ci-строками.
 function openArchive(){ renderArchiveList(); el("screen-archive").classList.add("on"); pushNavEntry(()=>closeScreen("screen-archive")); }
 function closeArchive(){ popNavEntry(); }
-// ⚠️ Раньше тут стояло closeArchive();openChat(id) прямо в onclick — в
-// Telegram архивный чат открывается как обычный (можно читать/писать), у нас
-// же тап не открывал ничего. Причина: closeArchive() уходит через
-// history.back() (АСИНХРОННО — popstate придёт позже), а openChat() на
-// мобильном тут же, СИНХРОННО, в этом же клике сам пушит свою запись в тот
-// же navStack. К моменту, когда отложенный popstate наконец срабатывает, он
-// снимает уже не архивную запись, а свежую от openChat — реальный чат
-// закрывается почти сразу же, а сам экран Архива так и остаётся висеть
-// поверх (эту скрытую гонку не давало заметить то, что "Вернуть" вообще не
-// трогает navStack/history и поэтому всегда работал). Чиним, не открывая
-// чат сразу, а откладывая это на момент, когда popstate от закрытия Архива
-// реально придёт (см. archiveChatToOpen в обработчике popstate выше).
+// ⚠️ Первая версия фикса (closeArchive();openChat(id) сразу в onclick, потом
+// отложенный openChat через archiveChatToOpen) открывала чат, но по-настоящему
+// закрывала экран Архива — его запись в navStack терялась целиком. Из-за
+// этого "назад" из архивного чата вёл сразу на главный список чатов, а не в
+// список Архива, как в Telegram (там "назад" — по одному уровню за раз: чат
+// → список Архива → главный список). Правильно: НЕ трогать navStack-запись
+// самого Архива вообще (не звать closeArchive()/popNavEntry() тут) — только
+// спрятать экран визуально (он всё равно ниже чата по z-index не спрячется
+// сам, .screen{z-index:400} перекрывает .layout) и открыть чат со своим
+// ОТДЕЛЬНЫМ closeFn (closeMobileChatToArchive), который при "назад" закрывает
+// чат И возвращает видимость экрана Архива — а его собственная запись в
+// navStack остаётся нетронутой на следующий "назад".
 function openArchivedChat(id){
-  archiveChatToOpen=id;
-  closeArchive();
+  el("screen-archive").classList.remove("on");
+  openChat(id,{returnToArchive:true});
 }
 function renderArchiveList(){
   const list=S.chats.filter(c=>c.archived && !c.blocked);
