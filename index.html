@@ -444,11 +444,23 @@ body.select-mode .msel-check{display:flex}
    ДОПУСТИМА как признак выбора — поэтому зазор в 0 (фото вплотную друг к
    другу), а рамка появляется только у .grp-cell.selected. */
 .grp-img-grid{display:grid;gap:0;overflow:hidden;border-radius:12px;margin:0 calc(-1 * var(--sp-3)) 0;width:260px;max-width:calc(74vw - 24px)}
-.grp-cell{position:relative;cursor:pointer;aspect-ratio:1;min-width:0}
+/* 30 июля 2026: было aspect-ratio:1 — при 2 колонках это сжимало каждое
+   фото в квадрат ~130×130, заметно мельче и "не такого размера", как
+   одиночное фото рядом (то растянуто под свою реальную пропорцию, вплоть до
+   max-height:320px при ширине до 260px, то есть примерно 4:5). Без хранения
+   реальных width/height каждого фото (Telegram считает раскладку по ним)
+   точное совпадение недостижимо — берём тот же примерный портретный
+   коэффициент 4:5, что даёт заметно более крупные, менее "квадратные" ячейки,
+   ближе по ощущению к одиночному фото. Точная поштучная раскладка как в
+   настоящем Telegram — отдельная более крупная доработка (нужно сохранять
+   исходные пропорции фото при загрузке).*/
+.grp-cell{position:relative;cursor:pointer;aspect-ratio:4/5;min-width:0}
 .grp-cell.selected{outline:3px solid var(--acc);outline-offset:-3px;z-index:1}
 .grp-cell .msg-img-wrap{width:100%;height:100%;margin-bottom:0;border-radius:0;max-width:none}
 .grp-cell .msg-img{width:100%;height:100%;max-height:none;border-radius:0}
-.grp-cell-check{position:absolute;top:6px;right:6px;margin:0;background:rgba(0,0,0,.45)}
+/* Кружок выделения — слева, как у обычных сообщений (.msel-check), раньше
+   стоял справа и на реальном телефоне читался как "его вообще нет". */
+.grp-cell-check{position:absolute;top:6px;left:6px;margin:0;background:rgba(0,0,0,.45)}
 
 /* Анимация кристалльного подарка — 5 секунд, парящие кристаллики + вспышка числа */
 .crystal-gift-fx{position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:20}
@@ -5031,9 +5043,18 @@ function pushNavEntry(closeFn){
 function popNavEntry(){
   if(navStack.length>0) history.back();
 }
+// 30 июля 2026: тап по чату в Архиве — см. openArchivedChat() ниже. Флаг
+// нужен, чтобы открыть чат ПОСЛЕ того, как реально придёт popstate от
+// закрытия Архива, а не одновременно с ним (иначе гонка двух push'ей в один
+// navStack/history — см. комментарий у openArchivedChat).
+let archiveChatToOpen=null;
 window.addEventListener("popstate",()=>{
   const closeFn=navStack.pop();
   if(closeFn) closeFn();
+  if(archiveChatToOpen!==null){
+    const id=archiveChatToOpen; archiveChatToOpen=null;
+    openChat(id);
+  }
 });
 
 // ══════════════════════════════════════════════════
@@ -5666,7 +5687,14 @@ function renderMsgs(){
       if(m.reply)bc+=`<div class="rprev"><div class="rprevnm">${escHtml(m.reply.fr)}</div><div class="rprevtx">${escHtml(m.reply.tx)}</div></div>`;
       if(m.img && !isGrpImg){
         const isSp=m.spoiler && !m.spoilerRevealed;
-        bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${m.img}" loading="lazy" ${m.uploading?"":(isSp?`onclick="revealSpoiler(${m.id})"`:`onclick="openImgViewer('${m.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
+        // 30 июля 2026: .msg-img-wrap сидел внутри паддинга .bub со всех 4
+        // сторон без единого отрицательного отступа — фон пузыря просвечивал
+        // сплошной рамкой вокруг фото ВСЕГДА, а не только при выделении (у
+        // сетки альбома .grp-img-grid этот паддинг уже гасится тем же
+        // приёмом, см. чуть ниже). Гасим слева/справа всегда, сверху — если
+        // над фото в этом пузыре ничего нет (имя/пересылка/ответ).
+        const noHeaderAboveImg=bc==="";
+        bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}" style="margin:${noHeaderAboveImg?"calc(-1 * var(--sp-2))":"0"} calc(-1 * var(--sp-3)) 4px"><img class="msg-img" src="${m.img}" loading="lazy" ${m.uploading?"":(isSp?`onclick="revealSpoiler(${m.id})"`:`onclick="openImgViewer('${m.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
       }
       // Сетка альбома (side-by-side, как в Telegram) — вместо стопки
       // одинаковых пузырей. 2 колонки хватает для основного случая (2 фото
@@ -7185,6 +7213,12 @@ function imgViewerTouchEnd(e){
   const t=e.changedTouches[0];
   const dx=t.clientX-imgViewerTouch.x0, dy=t.clientY-imgViewerTouch.y0;
   const state=imgViewerTouch; imgViewerTouch=null;
+  // Гасим синтетический mouse/click, который браузер эмулирует из тача:
+  // без этого крестик закрытия срабатывал (просмотрщик прятался), а затем
+  // "призрачный" click от того же тапа долетал уже до шапки чата под ним
+  // (крестик стоит в том же углу экрана, что и имя/аватар собеседника) —
+  // открывался профиль одновременно с закрытием фото.
+  e.preventDefault();
   // Тап без заметного движения — закрыть (по самой картинке в том числе,
   // не только по тёмному фону, как было раньше)
   if(!state.moved){ closeM("m-imgview"); return; }
@@ -9041,12 +9075,28 @@ function pullArchiveEnd(){
 // Настройки/Контакты, с тем же .clist и теми же .ci-строками.
 function openArchive(){ renderArchiveList(); el("screen-archive").classList.add("on"); pushNavEntry(()=>closeScreen("screen-archive")); }
 function closeArchive(){ popNavEntry(); }
+// ⚠️ Раньше тут стояло closeArchive();openChat(id) прямо в onclick — в
+// Telegram архивный чат открывается как обычный (можно читать/писать), у нас
+// же тап не открывал ничего. Причина: closeArchive() уходит через
+// history.back() (АСИНХРОННО — popstate придёт позже), а openChat() на
+// мобильном тут же, СИНХРОННО, в этом же клике сам пушит свою запись в тот
+// же navStack. К моменту, когда отложенный popstate наконец срабатывает, он
+// снимает уже не архивную запись, а свежую от openChat — реальный чат
+// закрывается почти сразу же, а сам экран Архива так и остаётся висеть
+// поверх (эту скрытую гонку не давало заметить то, что "Вернуть" вообще не
+// трогает navStack/history и поэтому всегда работал). Чиним, не открывая
+// чат сразу, а откладывая это на момент, когда popstate от закрытия Архива
+// реально придёт (см. archiveChatToOpen в обработчике popstate выше).
+function openArchivedChat(id){
+  archiveChatToOpen=id;
+  closeArchive();
+}
 function renderArchiveList(){
   const list=S.chats.filter(c=>c.archived && !c.blocked);
   const box=el("archive-list"); if(!box)return;
   box.innerHTML = list.length ? list.map(ch=>{
     const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:(ch.ini||"?");
-    return `<div class="ci" onclick="closeArchive();openChat(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})">
+    return `<div class="ci" onclick="openArchivedChat(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})">
       <div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>
       <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
         <div class="cnm">${ch.nm}</div>
