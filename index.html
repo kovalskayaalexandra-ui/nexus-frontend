@@ -4686,7 +4686,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-07-31 #8 (delayed re-assert)";
+const BUILD_TAG = "2026-07-31 #9 (chat-open grace window)";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -4987,6 +4987,7 @@ function openChat(id,opts){
   if(prev){ prev.draft=getInputText(); }
 
   S.chat=id; const ch=S.chats.find(x=>x.id===id); if(!ch)return;
+  _chatOpenedAt=performance.now(); // см. комментарий у _chatOpenedAt — двойной рендер (кэш → loadMessagesFromDB) не должен уезжать в середину
   // Загружаем сообщения из БД если чат реальный
   if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); markChatAsRead(id); refreshChatPeerInfo(ch); }
   ch.unread=0; renderChats();
@@ -5667,6 +5668,23 @@ function buildRenderList(msgs){
 // Отслеживаем предыдущий отрисованный чат/счётчик сообщений — не сохраняется
 // между перезагрузками (обычные let-переменные), нужны только пока открыто приложение
 let _lastRenderedChat=null, _lastMsgCount={};
+// 31 июля 2026, раунд 9: настоящая причина "открывается на середине,
+// потом падает вниз" — openChat() рисует список СИНХРОННО из кэша (этот
+// первый рендер корректно встаёт вниз, switchedChat принудительно ставит
+// msgsFollowBottom=true), а следом (уже ПОСЛЕ сетевого ответа,
+// loadMessagesFromDB) список рисуется ЕЩЁ РАЗ — и у этого второго рендера
+// switchedChat уже false, он полагается ИСКЛЮЧИТЕЛЬНО на текущее значение
+// msgsFollowBottom. Если за время сетевого запроса (сотни мс) флаг успел
+// сбиться тем самым необъяснённым механизмом, который мы гоняем с раунда
+// 6 — второй рендер уезжает в "середину" по устаревшему distanceFromBottom,
+// и только отдельная 600мс-страховка ПЕРВОГО рендера потом "роняет" его
+// обратно вниз — отсюда видимые два шага. _chatOpenedAt — метка времени
+// открытия чата (см. openChat()); пока не прошло 2 секунды после открытия,
+// ЛЮБОЙ рендер (в т.ч. второй, из loadMessagesFromDB) считается "у низа"
+// принудительно, независимо от того, что успело случиться с msgsFollowBottom
+// за это время — тот же трюк, что и 600мс-страховка, только защищает
+// САМ момент открытия чата целиком, а не один конкретный рендер.
+let _chatOpenedAt=0;
 // 30 июля 2026: "были ли у низа" раньше пересчитывался заново на КАЖДЫЙ
 // renderMsgs() по порогу в пикселях (scrollHeight-scrollTop-clientHeight).
 // Список пересоздаётся с нуля при любом изменении (прогресс загрузки фото,
@@ -5782,7 +5800,8 @@ function renderMsgs(){
   const c=el("msgs");
   const switchedChat=_lastRenderedChat!==S.chat;
   if(switchedChat) msgsFollowBottom=true; // новый чат — всегда начинаем у низа
-  const wasAtBottom = msgsFollowBottom;
+  const justOpenedChat = (performance.now()-_chatOpenedAt) < 2000;
+  const wasAtBottom = msgsFollowBottom || justOpenedChat;
   const distanceFromBottom = c.scrollHeight-c.scrollTop;
   c.innerHTML="";
   const curCh=S.chats.find(x=>x.id===S.chat);
