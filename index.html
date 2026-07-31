@@ -1757,6 +1757,19 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       <button class="xbtn sec" onclick="openEditProfile()">✏️ Изменить</button>
     </div>
 
+    <!-- 31 июля 2026: ВРЕМЕННЫЙ раздел (Александра явно попросила добавить,
+         пока идёт охота за багом со скачущей лентой при выделении/загрузке
+         фото) — чтобы можно было сразу увидеть, подтянул ли телефон/GitHub
+         Pages действительно самую свежую версию кода, а не старую
+         закэшированную. Убрать вместе с самим фиксом бага, когда он
+         подтвердится на реальном устройстве. -->
+    <div class="settings-section">
+      <div class="settings-section-title">🔧 Отладка (временно)</div>
+      <div class="settings-row">
+        <div class="settings-row-left"><div><div class="settings-row-label">Версия сборки</div><div class="settings-row-sub" id="build-tag-disp"></div></div></div>
+      </div>
+    </div>
+
     <div class="settings-section">
       <div class="settings-section-title">Аккаунт</div>
       <div class="settings-row" onclick="openEditProfile()">
@@ -4668,6 +4681,12 @@ function closeStore(){ popNavEntry(); }
 // а openAdmin() ещё раз проверяет на случай прямого вызова из консоли.
 // Настоящая защита всё равно на сервере (services/permissions.js) — это
 // только чтобы не показывать нерабочую кнопку тем, кому доступ закрыт.
+// 31 июля 2026: ВРЕМЕННЫЙ маркер сборки (см. "🔧 Отладка" в Настройках) —
+// чтобы сразу видеть, подтянул ли телефон реально свежий пуш, а не старую
+// закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
+// охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
+// баг подтверждённо пофикшен.
+const BUILD_TAG = "2026-07-31 #7 (resize re-pin)";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -4689,6 +4708,7 @@ function openSettings(){
   if(el("settings-bio"))el("settings-bio").textContent=u.bio||"";
   if(el("settings-phone"))el("settings-phone").textContent=u.phone||S.phone||"";
   if(el("settings-ph-disp"))el("settings-ph-disp").textContent=u.phone||S.phone||"";
+  if(el("build-tag-disp"))el("build-tag-disp").textContent=BUILD_TAG;
   if(el("blocked-count")){
     const realBlockedCount=(S.blocked||[]).filter(id=>S.chats.find(c=>String(c.id)===String(id))).length;
     el("blocked-count").textContent=realBlockedCount+" пользователей";
