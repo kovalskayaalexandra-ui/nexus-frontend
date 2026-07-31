@@ -5713,19 +5713,29 @@ function handleMsgsScroll(){
     const dist=c.scrollHeight-c.scrollTop-c.clientHeight;
     if(!wasProgrammatic) msgsFollowBottom=dist<150;
     showToast(`⏳ settled wasProg=${wasProgrammatic} dist=${Math.round(dist)} followBottom=${msgsFollowBottom}`);
-  }, 200);
+  }, 500);
 }
-// 31 июля 2026: ВРЕМЕННАЯ диагностика, раунд 2 — проверяем альтернативную
-// гипотезу: может, дело вообще не в scroll-событиях, а в том, что сам
-// контейнер #msgs меняет реальный размер (clientHeight) в моменты, когда мы
-// этого не ждём (например, мобильный браузер прячет/показывает адресную
-// строку при скролле — это отдельное "resize", не "scroll" событие, наш
-// текущий фикс его вообще не видит).
+// 31 июля 2026: диагностика раунда 2 нашла прямую улику (не гипотезу) —
+// скриншот показал ДВА чистых рендера ровно у низа, сразу следом сработал
+// ResizeObserver ниже (панель "Ответить/Переслать" при входе в выделение
+// меняет высоту #msgs), а СРАЗУ ЖЕ за ним — настоящее (не наше) scroll-
+// событие, утащившее прокрутку почти на 760px вверх без единого нашего
+// вызова setMsgsScrollTop(). Правило 12 (settle-debounce) окно 200мс тоже
+// увеличено до 500мс на случай, если реальный каскад долетает дольше, чем
+// казалось по прошлому раунду данных.
+// Раз именно resize коррелирует с уводом скролла — явно переприжимаем к
+// низу СРАЗУ при любом изменении размера контейнера, если мы и так должны
+// быть у низа (msgsFollowBottom), не дожидаясь следующего renderMsgs() —
+// setMsgsScrollTop() сам пометит это как своё же программное действие, так
+// что debounce выше не спутает это с настоящим скроллом пользователя.
 if(window.ResizeObserver){
   let _msgsLastH=null;
   new ResizeObserver((entries)=>{
     const h=entries[0].contentRect.height;
-    if(_msgsLastH!==null && Math.abs(h-_msgsLastH)>1) showToast(`📐 msgs resize ${Math.round(_msgsLastH)}→${Math.round(h)}`);
+    if(_msgsLastH!==null && Math.abs(h-_msgsLastH)>1){
+      showToast(`📐 msgs resize ${Math.round(_msgsLastH)}→${Math.round(h)}`);
+      if(msgsFollowBottom){ const c=el("msgs"); setMsgsScrollTop(c.scrollHeight); }
+    }
     _msgsLastH=h;
   }).observe(el("msgs"));
 }
