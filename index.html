@@ -5694,6 +5694,25 @@ function handleMsgsScroll(){
   const c=el("msgs");
   msgsFollowBottom=(c.scrollHeight-c.scrollTop-c.clientHeight)<150;
 }
+// 31 июля 2026: раньше это выражение (naturalWidth+'/'+naturalHeight) стояло
+// прямо в HTML-атрибуте onload без какой-либо проверки соотношения — если
+// браузер вдруг отдаёт аномальные natural-размеры для конкретного фото
+// (наблюдался "гигантский фиолетовый квадрат" на весь экран после загрузки
+// альбома из 7 фото — судя по всему, экстремальное соотношение сторон,
+// растянувшее ячейку сетки на сотни тысяч px), aspect-ratio ячейки уходил
+// в пропорцию, физически невозможную ни для одного реального фото/скриншота.
+// Клампим к разумному диапазону панорама/портрет; за пределами — не трогаем
+// aspect-ratio вообще, остаётся безопасный CSS-дефолт (.grp-cell{aspect-
+// ratio:4/5}). showToast — ВРЕМЕННАЯ диагностика, снять вместе с настоящим
+// фиксом, когда точная причина аномальных чисел найдётся по её показаниям.
+function applyGrpCellAspect(img){
+  const w=img.naturalWidth, h=img.naturalHeight;
+  if(!w || !h) return;
+  const r=w/h;
+  if(r<0.3 || r>3){ showToast(`⚠️ аномальное фото в альбоме: ${w}×${h}`); return; }
+  const cell=img.closest(".grp-cell");
+  if(cell) cell.style.aspectRatio=w+"/"+h;
+}
 function renderMsgs(){
   const c=el("msgs");
   const switchedChat=_lastRenderedChat!==S.chat;
@@ -5852,7 +5871,7 @@ function renderMsgs(){
           // Вместо хранения width/height на бэкенде (отдельная миграция)
           // берём РЕАЛЬНУЮ пропорцию прямо у самого <img> в момент загрузки
           // — работает для старых и новых фото одинаково, без изменений в БД.
-          return `<div class="grp-cell${S.selectedMsgs.includes(gm.id)?" selected":""}" data-msg-id="${gm.id}"${touchAttrs}><div class="msg-img-wrap${gm.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${gm.img}" loading="lazy" onload="if(this.naturalWidth)this.closest('.grp-cell').style.aspectRatio=this.naturalWidth+'/'+this.naturalHeight" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer('${gm.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${gm.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${gm.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${S.selectMode?`<div class="msel-check grp-cell-check">${selBadge(gm.id)}</div>`:""}</div></div>`;
+          return `<div class="grp-cell${S.selectedMsgs.includes(gm.id)?" selected":""}" data-msg-id="${gm.id}"${touchAttrs}><div class="msg-img-wrap${gm.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${gm.img}" loading="lazy" onload="applyGrpCellAspect(this)" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer('${gm.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${gm.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${gm.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${S.selectMode?`<div class="msel-check grp-cell-check">${selBadge(gm.id)}</div>`:""}</div></div>`;
         }).join("");
         bc+=`<div class="grp-img-grid" style="grid-template-columns:repeat(${cols},1fr)${noHeaderAbove?";margin-top:calc(-1 * var(--sp-2))":""}${isPhotoOnlyMt?";margin-bottom:calc(-1 * var(--sp-2))":""}">${cellsHTML}</div>`;
       }
@@ -5987,6 +6006,15 @@ function renderMsgs(){
       img.addEventListener("load",()=>{
         const grown=c.scrollHeight-heightCheckpoint;
         heightCheckpoint=c.scrollHeight;
+        // 31 июля 2026: временная защита — Александра поймала "гигантский
+        // фиолетовый квадрат" после загрузки альбома из 7 фото (см.
+        // applyGrpCellAspect ниже, скорее всего та же причина: одна картинка
+        // даёт аномальные natural-размеры). Если рост высоты от ОДНОЙ
+        // картинки неправдоподобно большой (реальное фото в этой вёрстке
+        // физически не может вырасти на тысячи px) — это не настоящий
+        // контент, а сбой рендера; не усиливаем его резким скроллом,
+        // сообщаем тостом вместо тихого исполнения.
+        if(Math.abs(grown)>2000){ showToast(`⚠️ аномальный скачок высоты: ${grown}px`); return; }
         if(msgsFollowBottom) setMsgsScrollTop(c.scrollHeight);
         else if(grown>0) setMsgsScrollTop(c.scrollTop+grown);
       },{once:true});
