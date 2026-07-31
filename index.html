@@ -5695,13 +5695,39 @@ function setMsgsScrollTop(v){
   if(c.scrollTop!==before) msgsProgrammaticScrollActive=true;
 }
 function handleMsgsScroll(){
+  // 31 июля 2026: ВРЕМЕННАЯ диагностика, раунд 2 (см. правило 13) — debounce
+  // из предыдущего коммита (14d1a68) не убрал скачок. Значит либо каскад
+  // scroll-событий на самом деле растянут ДОЛЬШЕ, чем 200мс окно (и debounce
+  // срабатывает раньше времени, посреди каскада), либо дело вообще не в
+  // scroll-событиях, а в чём-то ещё (например, resize контейнера #msgs —
+  // см. ResizeObserver ниже). Тост на КАЖДОЕ сырое scroll-событие (не только
+  // на итог после debounce) покажет, короче или длиннее окно 200мс на самом
+  // деле нужно.
+  const c0=el("msgs");
+  showToast(`🔄 raw dist=${Math.round(c0.scrollHeight-c0.scrollTop-c0.clientHeight)} prog=${msgsProgrammaticScrollActive}`);
   clearTimeout(msgsScrollSettleTimer);
   msgsScrollSettleTimer=setTimeout(()=>{
-    if(msgsProgrammaticScrollActive){ msgsProgrammaticScrollActive=false; return; }
+    const wasProgrammatic=msgsProgrammaticScrollActive;
+    if(msgsProgrammaticScrollActive){ msgsProgrammaticScrollActive=false; }
     const c=el("msgs");
     const dist=c.scrollHeight-c.scrollTop-c.clientHeight;
-    msgsFollowBottom=dist<150;
+    if(!wasProgrammatic) msgsFollowBottom=dist<150;
+    showToast(`⏳ settled wasProg=${wasProgrammatic} dist=${Math.round(dist)} followBottom=${msgsFollowBottom}`);
   }, 200);
+}
+// 31 июля 2026: ВРЕМЕННАЯ диагностика, раунд 2 — проверяем альтернативную
+// гипотезу: может, дело вообще не в scroll-событиях, а в том, что сам
+// контейнер #msgs меняет реальный размер (clientHeight) в моменты, когда мы
+// этого не ждём (например, мобильный браузер прячет/показывает адресную
+// строку при скролле — это отдельное "resize", не "scroll" событие, наш
+// текущий фикс его вообще не видит).
+if(window.ResizeObserver){
+  let _msgsLastH=null;
+  new ResizeObserver((entries)=>{
+    const h=entries[0].contentRect.height;
+    if(_msgsLastH!==null && Math.abs(h-_msgsLastH)>1) showToast(`📐 msgs resize ${Math.round(_msgsLastH)}→${Math.round(h)}`);
+    _msgsLastH=h;
+  }).observe(el("msgs"));
 }
 // 31 июля 2026: раньше это выражение (naturalWidth+'/'+naturalHeight) стояло
 // прямо в HTML-атрибуте onload без какой-либо проверки соотношения — если
@@ -5991,6 +6017,10 @@ function renderMsgs(){
     const curCount=(S.messages[S.chat]||[]).length;
     if(!switchedChat && _lastMsgCount[S.chat]!==undefined && curCount>_lastMsgCount[S.chat]) showScrollDownBtn();
   }
+  // 31 июля 2026: ВРЕМЕННАЯ диагностика, раунд 2 (см. правило 13) — вместе с
+  // тостами в handleMsgsScroll/ResizeObserver, чтобы сопоставить момент
+  // рендера с тем, что происходит со scrollTop/размером сразу после.
+  showToast(`📏 bottom=${wasAtBottom} sT=${Math.round(c.scrollTop)} sH=${c.scrollHeight} cH=${c.clientHeight}`);
   // 31 июля 2026: renderMsgs() каждый раз пересоздаёт ВСЕ строки заново
   // (c.innerHTML="" выше) — значит и все <img> тоже новые DOM-элементы, без
   // сохранённых от предыдущей отрисовки размеров, даже если та же самая
