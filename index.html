@@ -5692,7 +5692,16 @@ function handleMsgsScroll(){
   // пользователь только что долистал/отскроллил.
   if(msgsProgrammaticScrollPending>0){ msgsProgrammaticScrollPending--; return; }
   const c=el("msgs");
-  msgsFollowBottom=(c.scrollHeight-c.scrollTop-c.clientHeight)<150;
+  const dist=c.scrollHeight-c.scrollTop-c.clientHeight;
+  msgsFollowBottom=dist<150;
+  // 31 июля 2026: ВРЕМЕННАЯ диагностика (см. правило 13) — предыдущие два
+  // фикса скролла (28fe3ad, d079c1f) не помогли, Александра подтвердила
+  // тот же самый скачок на обычных (не альбомных) пересланных фото. Это
+  // единственное место, где НАСТОЯЩИЙ (не от setMsgsScrollTop) скролл меняет
+  // msgsFollowBottom — если он срабатывает там, где не должен (например,
+  // прямо во время выделения, хотя пользователь пальцем не двигал), тост
+  // это покажет. Убрать вместе с настоящим фиксом.
+  showToast(`🔄 real scroll dist=${Math.round(dist)} → followBottom=${msgsFollowBottom}`);
 }
 // 31 июля 2026: раньше это выражение (naturalWidth+'/'+naturalHeight) стояло
 // прямо в HTML-атрибуте onload без какой-либо проверки соотношения — если
@@ -5982,6 +5991,12 @@ function renderMsgs(){
     const curCount=(S.messages[S.chat]||[]).length;
     if(!switchedChat && _lastMsgCount[S.chat]!==undefined && curCount>_lastMsgCount[S.chat]) showScrollDownBtn();
   }
+  // 31 июля 2026: ВРЕМЕННАЯ диагностика (см. правило 13) — предыдущие два
+  // фикса скролла не помогли на обычных (не альбомных) фото. Один тост на
+  // каждый renderMsgs(): какую ветку взяли и что получилось в итоге —
+  // сравнить с реальным визуальным скачком на скриншоте. Убрать вместе с
+  // настоящим фиксом.
+  showToast(`📏 bottom=${wasAtBottom} dist=${Math.round(distanceFromBottom)} sT=${Math.round(c.scrollTop)} sH=${c.scrollHeight} cH=${c.clientHeight}`);
   // 31 июля 2026: renderMsgs() каждый раз пересоздаёт ВСЕ строки заново
   // (c.innerHTML="" выше) — значит и все <img> тоже новые DOM-элементы, без
   // сохранённых от предыдущей отрисовки размеров, даже если та же самая
