@@ -4686,7 +4686,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-07-31 #11 (keyboard-close guard)";
+const BUILD_TAG = "2026-07-31 #12 (smooth correction, no flicker)";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -5783,17 +5783,67 @@ if(window.ResizeObserver){
 // механизмом) — сравнивает напрямую scrollHeight/scrollTop/clientHeight и
 // поправляет, если разница заметна. chatId — чтобы не прижимать чужой, уже
 // другой открытый чат, если пользователь успел переключиться.
+// 31 июля 2026, раунд 12: Александра поймала ДВЕ новые проблемы с раундом 11.
+// 1) Клавиатура на её телефоне закрывается не одним скачком, а НЕСКОЛЬКИМИ
+//    шагами подряд (обычная анимация закрытия IME на Android) — каждый шаг
+//    сам по себе двигал scrollTop, и наша защита каждый раз резко "дёргала"
+//    его обратно — то самое "моргание"/"дёргается", которое она явно
+//    попросила убрать ("плавной анимацией", "как в Telegram ничего не
+//    дёргается"). Решение — а) не реагировать на visualViewport СРАЗУ на
+//    каждый промежуточный шаг, а ждать, пока изменения размера реально
+//    прекратятся (debounce), и б) когда коррекция всё же нужна — не
+//    мгновенный snap, а короткая плавная анимация (см. smoothScrollCorrect).
+// 2) "На старых сообщениях... скачет наверх" — вся защита (guard) раньше
+//    существовала ТОЛЬКО для ветки "у низа" (wasAtBottom). Ветка "читаю
+//    историю выше" (не у низа) вообще не имела НИКАКОЙ подстраховки — тот
+//    же увод scrollTop там просто ничем не компенсировался. Добавлена
+//    parallельная defenceScheduleDistanceGuard для этого случая.
+// FLIP-приём (First-Last-Invert-Play): вместо того чтобы просто прыгнуть на
+// правильный scrollTop (виден как рывок), мгновенно переставляем НАСТОЯЩИЙ
+// scrollTop (без анимации самого скролла — значит без каскада scroll-
+// событий, которые мы гонялись укротить в прошлых раундах), но ЗРИТЕЛЬНО
+// компенсируем это временным CSS-transform на ту же дельту, а затем плавно
+// анимируем transform обратно к нулю — глазу видна одна гладкая анимация,
+// а не скачок.
+function smoothScrollCorrect(c, target){
+  const before=c.scrollTop;
+  setMsgsScrollTop(target);
+  const delta=before-c.scrollTop;
+  if(Math.abs(delta)<2) return;
+  c.style.transition="none";
+  c.style.transform=`translateY(${delta}px)`;
+  void c.offsetHeight; // форсируем reflow — иначе браузер схлопнёт "transform:none→translateY" в один кадр без начального состояния, и анимации не будет видно
+  requestAnimationFrame(()=>{
+    c.style.transition="transform .22s ease-out";
+    c.style.transform="translateY(0)";
+  });
+  clearTimeout(c._flipCleanupTimer);
+  c._flipCleanupTimer=setTimeout(()=>{ c.style.transition=""; c.style.transform=""; }, 260);
+}
 function scheduleBottomGuard(chatId, c){
-  [80,180,320,500,750,1100,1500].forEach(delay=>{
+  [150,400,900].forEach(delay=>{
     setTimeout(()=>{
       if(S.chat!==chatId || !c.isConnected) return;
       const dist=c.scrollHeight-c.scrollTop-c.clientHeight;
-      if(dist>=40){ setMsgsScrollTop(c.scrollHeight); msgsFollowBottom=true; }
+      if(dist>=40){ smoothScrollCorrect(c, c.scrollHeight); msgsFollowBottom=true; }
     }, delay);
   });
 }
-// 31 июля 2026, раунд 11: по итогам параллельного расследования (4 агента,
-// им отдана вся диагностика раундов 1-10) — самая правдоподобная оставшаяся
+// Та же защита для ветки "читаю историю выше, не у низа" — раньше её не
+// было ВООБЩЕ, отсюда "на старых сообщениях всё равно скачет наверх".
+// Держит НЕ абсолютный низ, а ту же дистанцию до низа, что была задумана
+// при рендере — не мешает, если человек тем временем реально стал у низа
+// (msgsFollowBottom) или сам сознательно долистал ещё выше.
+function scheduleDistanceGuard(chatId, c, intendedScrollTop){
+  [150,400,900].forEach(delay=>{
+    setTimeout(()=>{
+      if(S.chat!==chatId || !c.isConnected || msgsFollowBottom) return;
+      if(Math.abs(c.scrollTop-intendedScrollTop)>=40) smoothScrollCorrect(c, intendedScrollTop);
+    }, delay);
+  });
+}
+// 31 июля 2026, раунд 11→12: по итогам параллельного расследования (4
+// агента, им отдана вся диагностика раундов 1-10) — самая правдоподобная
 // причина: НИГДЕ в файле не было ни одной привязки к системной клавиатуре
 // вообще (ни .blur(), ни visualViewport). Тап по чату/сообщению — это тап
 // по обычному <div>, не по полю ввода; если #minput в этот момент был в
@@ -5805,25 +5855,26 @@ function scheduleBottomGuard(chatId, c){
 // clamp'ится браузером в диапазон [0, scrollHeight-clientHeight] — рост
 // clientHeight (клавиатура закрылась, места стало больше) вынуждает
 // браузер СРАЗУ подрезать scrollTop вниз (прочь от низа), если он до этого
-// стоял точно в старом максимуме — ровно тот "необъяснимый" сдвиг, который
-// мы гонялись поймать 10 раундов подряд, и ровно в нужном направлении
-// (уменьшение, не рост).
+// стоял точно в старом максимуме.
 // visualViewport — специально придуманный браузером сигнал именно на смену
-// геометрии клавиатуры, точнее и раньше, чем обычный window resize или наш
-// ResizeObserver на #msgs (тот видит только следствие, когда оно уже
-// докатилось до layout). В файле раньше не использовался вообще.
+// геометрии клавиатуры. Раунд 12: debounce (150мс тишины) — не реагируем
+// на КАЖДЫЙ промежуточный шаг анимации закрытия клавиатуры по отдельности
+// (это и давало моргание), а только когда шаги реально прекратились.
+let _vvResizeTimer=null;
 if(window.visualViewport){
   window.visualViewport.addEventListener("resize", ()=>{
-    if(msgsFollowBottom) scheduleBottomGuard(S.chat, el("msgs"));
+    clearTimeout(_vvResizeTimer);
+    _vvResizeTimer=setTimeout(()=>{
+      if(msgsFollowBottom) scheduleBottomGuard(S.chat, el("msgs"));
+    }, 150);
   });
 }
-// focusout на поле ввода — вторая часть той же меры: scheduleBottomGuard
-// раньше запускался только из renderMsgs() (то есть только когда список и
-// так только что перерисовался). Вход в режим выделения существующего чата
-// НЕ переключает чат (_forceBottomRendersLeft тут не помогает), но тап по
+// focusout на поле ввода — вторая часть той же меры: guard раньше
+// запускался только из renderMsgs() (то есть только когда список и так
+// только что перерисовался). Вход в режим выделения существующего чата НЕ
+// переключает чат (_forceBottomRendersLeft тут не помогает), но тап по
 // сообщению вполне может быть тем самым тапом, что снял фокус с поля ввода
-// и запустил закрытие клавиатуры — досье этому конкретному случаю раньше
-// был некому. Перевешиваем ту же защиту сюда напрямую.
+// и запустил закрытие клавиатуры.
 el("minput")?.addEventListener("focusout", ()=>{
   if(msgsFollowBottom) scheduleBottomGuard(S.chat, el("msgs"));
 });
@@ -6126,9 +6177,15 @@ function renderMsgs(){
     // Человек читал историю выше — остаёмся на том же месте (по расстоянию
     // от низа, не по scrollTop напрямую: список каждый раз перерисовывается
     // с нуля, старый scrollTop уже ничего не значит для новой высоты)
-    setMsgsScrollTop(Math.max(0, c.scrollHeight-distanceFromBottom));
+    const intendedScrollTop=Math.max(0, c.scrollHeight-distanceFromBottom);
+    setMsgsScrollTop(intendedScrollTop);
     const curCount=(S.messages[S.chat]||[]).length;
     if(!switchedChat && _lastMsgCount[S.chat]!==undefined && curCount>_lastMsgCount[S.chat]) showScrollDownBtn();
+    // 31 июля 2026, раунд 12: раньше у этой ветки не было НИКАКОЙ защиты от
+    // того же увода scrollTop (клавиатура и т.п.) — только у ветки "у низа".
+    // Александра поймала именно это: "на старых сообщениях... скачет
+    // наверх". См. scheduleDistanceGuard.
+    scheduleDistanceGuard(S.chat, c, intendedScrollTop);
   }
   // 31 июля 2026: ВРЕМЕННАЯ диагностика, раунд 2 (см. правило 13) — вместе с
   // тостами в handleMsgsScroll/ResizeObserver, чтобы сопоставить момент
