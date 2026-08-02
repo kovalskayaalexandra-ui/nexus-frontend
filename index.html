@@ -4686,7 +4686,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-07-31 #9 (chat-open grace window)";
+const BUILD_TAG = "2026-07-31 #10 (no full re-render on select)";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -4987,7 +4987,6 @@ function openChat(id,opts){
   if(prev){ prev.draft=getInputText(); }
 
   S.chat=id; const ch=S.chats.find(x=>x.id===id); if(!ch)return;
-  _chatOpenedAt=performance.now(); // см. комментарий у _chatOpenedAt — двойной рендер (кэш → loadMessagesFromDB) не должен уезжать в середину
   // Загружаем сообщения из БД если чат реальный
   if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); markChatAsRead(id); refreshChatPeerInfo(ch); }
   ch.unread=0; renderChats();
@@ -5668,23 +5667,22 @@ function buildRenderList(msgs){
 // Отслеживаем предыдущий отрисованный чат/счётчик сообщений — не сохраняется
 // между перезагрузками (обычные let-переменные), нужны только пока открыто приложение
 let _lastRenderedChat=null, _lastMsgCount={};
-// 31 июля 2026, раунд 9: настоящая причина "открывается на середине,
+// 31 июля 2026, раунд 9→10: настоящая причина "открывается на середине,
 // потом падает вниз" — openChat() рисует список СИНХРОННО из кэша (этот
 // первый рендер корректно встаёт вниз, switchedChat принудительно ставит
 // msgsFollowBottom=true), а следом (уже ПОСЛЕ сетевого ответа,
 // loadMessagesFromDB) список рисуется ЕЩЁ РАЗ — и у этого второго рендера
 // switchedChat уже false, он полагается ИСКЛЮЧИТЕЛЬНО на текущее значение
-// msgsFollowBottom. Если за время сетевого запроса (сотни мс) флаг успел
-// сбиться тем самым необъяснённым механизмом, который мы гоняем с раунда
-// 6 — второй рендер уезжает в "середину" по устаревшему distanceFromBottom,
-// и только отдельная 600мс-страховка ПЕРВОГО рендера потом "роняет" его
-// обратно вниз — отсюда видимые два шага. _chatOpenedAt — метка времени
-// открытия чата (см. openChat()); пока не прошло 2 секунды после открытия,
-// ЛЮБОЙ рендер (в т.ч. второй, из loadMessagesFromDB) считается "у низа"
-// принудительно, независимо от того, что успело случиться с msgsFollowBottom
-// за это время — тот же трюк, что и 600мс-страховка, только защищает
-// САМ момент открытия чата целиком, а не один конкретный рендер.
-let _chatOpenedAt=0;
+// msgsFollowBottom. Если за время сетевого запроса флаг успел сбиться тем
+// самым необъяснённым механизмом, который мы гоняем с раунда 6 — второй
+// рендер уезжает в "середину" по устаревшему distanceFromBottom.
+// Раунд 9 защищал это ВРЕМЕННЫМ окном (2 секунды после открытия) — но
+// Александра на VPN (виден значок VPN на скриншотах), сетевой ответ может
+// прийти позже 2 секунд, и окно закрывалось раньше, чем приходил второй
+// рендер. Раунд 10: считаем не время, а РЕНДЕРЫ — принудительно "у низа"
+// не N миллисекунд, а следующие N рендеров ЭТОГО чата после открытия,
+// сколько бы реально ни занял сетевой запрос.
+let _forceBottomRendersLeft=0;
 // 30 июля 2026: "были ли у низа" раньше пересчитывался заново на КАЖДЫЙ
 // renderMsgs() по порогу в пикселях (scrollHeight-scrollTop-clientHeight).
 // Список пересоздаётся с нуля при любом изменении (прогресс загрузки фото,
@@ -5777,6 +5775,23 @@ if(window.ResizeObserver){
     _msgsLastH=h;
   }).observe(el("msgs"));
 }
+// 31 июля 2026, раунд 10: замена одноразовой 600мс-страховки (раунд 8) —
+// та ловила увод скролла, но с заметной глазом задержкой ("дёрнуло, потом
+// упало вниз"). Вместо одного выстрела — несколько проверок РЕАЛЬНОГО
+// расстояния до низа с нарастающим интервалом. Не полагается на
+// msgsFollowBottom (тот сам может быть уже сбит тем же необъяснённым
+// механизмом) — сравнивает напрямую scrollHeight/scrollTop/clientHeight и
+// поправляет, если разница заметна. chatId — чтобы не прижимать чужой, уже
+// другой открытый чат, если пользователь успел переключиться.
+function scheduleBottomGuard(chatId, c){
+  [80,180,320,500,750,1100,1500].forEach(delay=>{
+    setTimeout(()=>{
+      if(S.chat!==chatId || !c.isConnected) return;
+      const dist=c.scrollHeight-c.scrollTop-c.clientHeight;
+      if(dist>=40){ setMsgsScrollTop(c.scrollHeight); msgsFollowBottom=true; }
+    }, delay);
+  });
+}
 // 31 июля 2026: раньше это выражение (naturalWidth+'/'+naturalHeight) стояло
 // прямо в HTML-атрибуте onload без какой-либо проверки соотношения — если
 // браузер вдруг отдаёт аномальные natural-размеры для конкретного фото
@@ -5799,9 +5814,10 @@ function applyGrpCellAspect(img){
 function renderMsgs(){
   const c=el("msgs");
   const switchedChat=_lastRenderedChat!==S.chat;
-  if(switchedChat) msgsFollowBottom=true; // новый чат — всегда начинаем у низа
-  const justOpenedChat = (performance.now()-_chatOpenedAt) < 2000;
-  const wasAtBottom = msgsFollowBottom || justOpenedChat;
+  if(switchedChat){ msgsFollowBottom=true; _forceBottomRendersLeft=2; } // новый чат — всегда начинаем у низа; +1 про запас на второй рендер из loadMessagesFromDB, сколько бы он ни занял по времени
+  const forcedBottom = _forceBottomRendersLeft>0;
+  if(forcedBottom) _forceBottomRendersLeft--;
+  const wasAtBottom = msgsFollowBottom || forcedBottom;
   const distanceFromBottom = c.scrollHeight-c.scrollTop;
   c.innerHTML="";
   const curCh=S.chats.find(x=>x.id===S.chat);
@@ -6058,25 +6074,19 @@ function renderMsgs(){
   if(wasAtBottom){
     setMsgsScrollTop(c.scrollHeight);
     hideScrollDownBtn();
-    // 31 июля 2026, раунд 8: ни debounce (14d1a68), ни немедленный re-pin по
-    // ResizeObserver (6da0dce) не помогли — числа в тостах у Александры
-    // повторились ТОЧЬ-В-ТОЧЬ (571→537, dist=759), значит таинственный увод
-    // scrollTop случается С ЗАДЕРЖКОЙ БОЛЬШЕ, чем наше окно ожидания (500мс)
-    // — к моменту, когда он происходит, мы уже решили, что всё "улеглось", и
-    // debounce больше не трогает msgsFollowBottom. Гнаться за точным
-    // моментом дальше бессмысленно (уже 3 разных попытки поймать именно
-    // ЕГО). Вместо этого — грубая, но надёжная страховка: если сразу после
-    // рендера мы были у низа, просто ЕЩЁ РАЗ, с запасом по времени,
-    // принудительно возвращаем прокрутку туда и переустанавливаем
-    // msgsFollowBottom=true — независимо от того, что успело случиться в
-    // промежутке. chatAtSchedule — проверка, что пользователь тем временем
-    // не открыл другой чат (иначе прижимать было бы уже не к месту).
-    const chatAtSchedule=S.chat;
-    setTimeout(()=>{
-      if(S.chat!==chatAtSchedule || !c.isConnected) return;
-      setMsgsScrollTop(c.scrollHeight);
-      msgsFollowBottom=true;
-    }, 600);
+    // 31 июля 2026, раунд 8→10: три подряд попытки поймать/подавить именно
+    // МОМЕНТ таинственного увода scrollTop (счётчик событий, settle-debounce,
+    // мгновенный re-pin по ResizeObserver) не сработали — числа у Александры
+    // повторялись один в один, значит сам увод случается с НЕИЗВЕСТНОЙ и
+    // непостоянной задержкой (по разным раундам — то до 500мс, то дольше).
+    // Раунд 8 поставил ОДНУ страховку через 600мс — она таки "роняла" ленту
+    // обратно вниз, но с заметной задержкой, видимой глазом как "дёрнуло,
+    // потом упало". Раунд 10: вместо одной попытки — несколько проверок с
+    // нарастающим интервалом, каждая проверяет РЕАЛЬНОЕ расстояние до низа
+    // (не полагаясь на msgsFollowBottom — тот сам может быть уже сбит тем же
+    // механизмом) и поправляет, если нужно. Что бы ни случилось и когда —
+    // ловим заметно быстрее, чем один выстрел на 600мс.
+    scheduleBottomGuard(S.chat, c);
   } else {
     // Человек читал историю выше — остаёмся на том же месте (по расстоянию
     // от низа, не по scrollTop напрямую: список каждый раз перерисовывается
@@ -8653,8 +8663,8 @@ function backFromSelectMode(){
   if(S.selectedMsgs.length>0){
     S.selectedMsgs.pop(); // снимаем ПОСЛЕДНЕЕ выбранное — по одному за нажатие "назад"
     const cnt=el("select-count"); if(cnt)cnt.textContent=S.selectedMsgs.length;
-    renderMsgs();
     if(S.selectedMsgs.length>0){
+      patchSelectionUI(); // остаёмся в режиме выбора — точечный патч, не полный renderMsgs()
       pushNavEntry(backFromSelectMode); // остались выбранные — следующий "назад" снимет ещё одно
       return;
     }
@@ -8687,6 +8697,40 @@ function selBadge(id){
   const idx=S.selectedMsgs.indexOf(id);
   return idx===-1 ? "" : String(idx+1);
 }
+// 31 июля 2026, раунд 10: toggleMsgSelect/toggleMsgSelectGroup звали ПОЛНЫЙ
+// renderMsgs() на КАЖДЫЙ тап по чекбоксу — то есть пересоздавали ВЕСЬ DOM
+// списка (включая КАЖДУЮ картинку) только чтобы перекрасить один кружок и
+// подвинуть номера в остальных. Именно это постоянное пересоздание картинок
+// (не сам механизм слежения за скроллом) было настоящим источником "скачет
+// при выделении", который не удавалось поймать 9 раундов подряд — как в
+// Telegram, переключение выделения не должно трогать вообще ничего, кроме
+// самого кружка. Точечный патч по уже существующим DOM-узлам: ни один
+// элемент не создаётся заново, высота списка не меняется ни на пиксель,
+// скроллу буквально нечего "чинить". enterSelectMode()/exitSelectMode()
+// по-прежнему зовут полный renderMsgs() — это настоящая структурная смена
+// (появляются/исчезают сами чекбоксы, нижняя панель), тут точечный патч не
+// годится и не нужен (происходит один раз за сессию выбора, не на каждый тап).
+function patchSelectionUI(){
+  document.querySelectorAll("#msgs .mrow[data-msg-id]").forEach(row=>{
+    if(row.classList.contains("grp-img")){
+      let any=false;
+      row.querySelectorAll(".grp-cell[data-msg-id]").forEach(cell=>{
+        const id=+cell.dataset.msgId;
+        const sel=S.selectedMsgs.includes(id);
+        if(sel) any=true;
+        cell.classList.toggle("selected", sel);
+        const badge=cell.querySelector(".msel-check");
+        if(badge) badge.innerHTML=selBadge(id);
+      });
+      row.classList.toggle("selected", any);
+    } else {
+      const id=+row.dataset.msgId;
+      row.classList.toggle("selected", S.selectedMsgs.includes(id));
+      const badge=row.querySelector(".msel-check");
+      if(badge) badge.innerHTML=selBadge(id);
+    }
+  });
+}
 function toggleMsgSelect(id){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===id);
   if(!m||m.t==="date"||m.t==="sys")return;
@@ -8702,18 +8746,13 @@ function toggleMsgSelect(id){
   // выбранного сообщения (как в Telegram — ответ ссылается на одно
   // сообщение, а не на несколько разом).
   el("sab-reply-btn")?.classList.toggle("disabled", S.selectedMsgs.length!==1);
-  // ⚠️ 30 июля 2026: раньше тут вручную переключали класс .selected по
-  // строкам (document.querySelectorAll(".mrow").forEach...) — не трогая
-  // САМ номер/галочку внутри кружка. Из-за этого у любого сообщения,
-  // выбранного НЕ первым (после того как enterSelectMode() уже отрисовал
-  // список пустым), кружок красился (через CSS), но глазок/номер внутри
-  // оставался пустым — контент кружка задаётся только строкой в renderMsgs,
-  // точечный DOM-патч его не обновлял. Для номеров выбора (1,2,3…, см.
-  // selBadge) это тем более критично — при снятии выбора с середины
-  // оставшиеся номера должны сдвинуться. Полный renderMsgs() дороже
-  // точечного патча, но гарантированно верный — и переиспользует уже
-  // готовую логику отрисовки чекбоксов/сеток вместо повторения её здесь.
-  renderMsgs();
+  // 31 июля 2026: раньше здесь звался полный renderMsgs() (см. patchSelectionUI
+  // выше — там же объяснение, почему это и было источником "скачет при
+  // выделении"). patchSelectionUI() обновляет и класс .selected, и сам
+  // номер/галочку внутри кружка (тот самый номер порядка выбора, см.
+  // selBadge) у ВСЕХ строк разом — включая те, что сдвинулись при снятии
+  // выбора из середины — без пересоздания одного-единственного DOM-узла.
+  patchSelectionUI();
 }
 // 30 июля 2026: долгое нажатие на пустое место рядом с альбомом (см.
 // lpStart) должно выделять/снимать ВЕСЬ альбом разом, как в Telegram —
@@ -8731,7 +8770,7 @@ function toggleMsgSelectGroup(ids){
   if(cnt)cnt.textContent=S.selectedMsgs.length;
   if(!S.selectedMsgs.length){ requestExitSelectMode(); return; }
   el("sab-reply-btn")?.classList.toggle("disabled", S.selectedMsgs.length!==1);
-  renderMsgs();
+  patchSelectionUI(); // см. комментарий у patchSelectionUI — точечный патч вместо полного renderMsgs()
 }
 // Кнопка "Ответить" в нижней панели режима выбора
 function selReplyOne(){
