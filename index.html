@@ -4686,7 +4686,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-07-31 #12 (smooth correction, no flicker)";
+const BUILD_TAG = "2026-07-31 #13 (fix desktop select-via-menu bug)";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -8730,14 +8730,27 @@ function msgTouchEnd(e,id){
 
 // ── ВЫДЕЛЕНИЕ НЕСКОЛЬКИХ СООБЩЕНИЙ (как в Telegram) ──────────
 function ctxSelect(){
-  // Закрытие меню — через общий клик-обработчик документа (см.
-  // closeCtxViaBackStack), не напрямую: иначе запись в бэк-стеке для этого
-  // меню осталась бы "висеть" и следующее нажатие "назад" закрыло бы не то.
-  enterSelectMode();
+  // 31 июля 2026, раунд 13: найден реальный баг на десктопе (Александра —
+  // "выделение перестало работать") — раньше здесь закрытие меню шло через
+  // общий document-обработчик клика (closeCtxViaBackStack), а НЕ напрямую.
+  // Тот вызывает popNavEntry()→history.back(), который асинхронный —
+  // popstate приходит ПОЗЖЕ. К этому моменту enterSelectMode() ниже уже
+  // успевал добавить СВОЮ запись (backFromSelectMode) НА ВЕРШИНУ бэк-стека
+  // поверх записи самого меню — popstate снимал и вызывал ИМЕННО ЕЁ вместо
+  // закрытия меню, что тут же отменяло только что сделанный выбор (человек
+  // жмёт "Выделить" — а он тут же гаснет). На мобильном это не проявлялось,
+  // там долгое нажатие входит в выбор напрямую (lpStart), без контекстного
+  // меню вообще. Закрываем меню НАПРЯМУЮ (без похода через бэк-стек) —
+  // тогда и closeCtxViaBackStack() увидит меню уже закрытым и промолчит.
+  // enterSelectMode(true) — заменяет запись меню в стеке на запись режима
+  // выбора вместо того чтобы добавлять поверх ещё одну (иначе "назад"
+  // потребовалось бы нажать лишний раз на уже закрытое меню).
+  closeCtx();
+  enterSelectMode(true);
   toggleMsgSelect(S.ctxId);
 }
 
-function enterSelectMode(){
+function enterSelectMode(replaceTopNavEntry){
   S.selectMode=true;
   S.selectedMsgs=[];
   document.body.classList.add("select-mode");
@@ -8747,8 +8760,11 @@ function enterSelectMode(){
   // из чата, а не снимала выделение. Александра явно попросила: "назад"
   // должно снимать по ОДНОМУ выделению за раз (2 выбрано → назад → 1
   // выбрано → назад → выходим), а не гасить весь выбор одним нажатием —
-  // см. backFromSelectMode() ниже.
-  pushNavEntry(backFromSelectMode);
+  // см. backFromSelectMode() ниже. replaceTopNavEntry — см. ctxSelect():
+  // вход в выбор ИЗ контекстного меню замещает его запись, а не добавляет
+  // новую поверх (переход из одной модалки сразу в другую, а не "вложенно").
+  if(replaceTopNavEntry && navStack.length>0) navStack[navStack.length-1]=backFromSelectMode;
+  else pushNavEntry(backFromSelectMode);
   renderMsgs();
 }
 function backFromSelectMode(){
