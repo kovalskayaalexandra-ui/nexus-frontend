@@ -4686,7 +4686,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-07-31 #10 (no full re-render on select)";
+const BUILD_TAG = "2026-07-31 #11 (keyboard-close guard)";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -5792,6 +5792,41 @@ function scheduleBottomGuard(chatId, c){
     }, delay);
   });
 }
+// 31 июля 2026, раунд 11: по итогам параллельного расследования (4 агента,
+// им отдана вся диагностика раундов 1-10) — самая правдоподобная оставшаяся
+// причина: НИГДЕ в файле не было ни одной привязки к системной клавиатуре
+// вообще (ни .blur(), ни visualViewport). Тап по чату/сообщению — это тап
+// по обычному <div>, не по полю ввода; если #minput в этот момент был в
+// фокусе с открытой клавиатурой, браузер САМ (без единой строчки нашего
+// кода) снимает с него фокус при тапе мимо — клавиатура закрывается с
+// задержкой, зависящей от Android/WebView, и это меняет РЕАЛЬНУЮ высоту
+// #msgs (html,body{height:100%} → .layout → .msgs{flex:1}) уже ПОСЛЕ того,
+// как рендер и вся текущая защита успели отработать. Раз scrollTop
+// clamp'ится браузером в диапазон [0, scrollHeight-clientHeight] — рост
+// clientHeight (клавиатура закрылась, места стало больше) вынуждает
+// браузер СРАЗУ подрезать scrollTop вниз (прочь от низа), если он до этого
+// стоял точно в старом максимуме — ровно тот "необъяснимый" сдвиг, который
+// мы гонялись поймать 10 раундов подряд, и ровно в нужном направлении
+// (уменьшение, не рост).
+// visualViewport — специально придуманный браузером сигнал именно на смену
+// геометрии клавиатуры, точнее и раньше, чем обычный window resize или наш
+// ResizeObserver на #msgs (тот видит только следствие, когда оно уже
+// докатилось до layout). В файле раньше не использовался вообще.
+if(window.visualViewport){
+  window.visualViewport.addEventListener("resize", ()=>{
+    if(msgsFollowBottom) scheduleBottomGuard(S.chat, el("msgs"));
+  });
+}
+// focusout на поле ввода — вторая часть той же меры: scheduleBottomGuard
+// раньше запускался только из renderMsgs() (то есть только когда список и
+// так только что перерисовался). Вход в режим выделения существующего чата
+// НЕ переключает чат (_forceBottomRendersLeft тут не помогает), но тап по
+// сообщению вполне может быть тем самым тапом, что снял фокус с поля ввода
+// и запустил закрытие клавиатуры — досье этому конкретному случаю раньше
+// был некому. Перевешиваем ту же защиту сюда напрямую.
+el("minput")?.addEventListener("focusout", ()=>{
+  if(msgsFollowBottom) scheduleBottomGuard(S.chat, el("msgs"));
+});
 // 31 июля 2026: раньше это выражение (naturalWidth+'/'+naturalHeight) стояло
 // прямо в HTML-атрибуте onload без какой-либо проверки соотношения — если
 // браузер вдруг отдаёт аномальные natural-размеры для конкретного фото
@@ -13221,7 +13256,7 @@ function renderSupportQuick(){
     `<div onclick="sendSupportQuery('${q}')" style="background:var(--bg3);border:1px solid rgba(108,99,255,.3);border-radius:20px;padding:6px 13px;font-size:12px;cursor:pointer;color:var(--acc2);transition:all .15s" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">${q}</div>`
   ).join("");
   msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
+  setMsgsScrollTop(msgs.scrollHeight); // 31 июля 2026: было прямое присвоение в обход setMsgsScrollTop() — resulting scroll-событие ошибочно читалось бы как настоящий скролл пользователя (см. агентскую находку в раунде 10)
 }
 
 function renderVerifyQuick(){
@@ -13233,7 +13268,7 @@ function renderVerifyQuick(){
   div.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px;";
   div.innerHTML = `<div onclick="openVerification()" style="background:var(--bg3);border:1px solid rgba(56,189,248,.3);border-radius:20px;padding:6px 13px;font-size:12px;cursor:pointer;color:var(--acc3);transition:all .15s" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">📝 Подать заявку</div>`;
   msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
+  setMsgsScrollTop(msgs.scrollHeight); // см. комментарий у renderSupportQuick
 }
 
 function sendSupportQuery(text){
