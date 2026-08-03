@@ -3009,7 +3009,18 @@ function performReconnectResyncIfDue(){
   if(chatListTouchActive){ setTimeout(performReconnectResyncIfDue, 1000); return; }
   lastReconnectResyncAt=Date.now();
   loadChatsFromDB();
-  if(S.chat) loadMessagesFromDB(S.chat);
+  // 31 июля 2026, раунд 15: та же защита, что у двойного рендера при
+  // ОТКРЫТИИ чата (раунд 10, _forceBottomRendersLeft) — только тут рендер
+  // уже ОТКРЫТОГО чата, вызванный фоновой пересинхронизацией при
+  // переподключении WS (у Александры VPN — переподключения нередки,
+  // виден значок VPN на её скриншотах). switchedChat в renderMsgs() тут
+  // не сработает (чат тот же самый) — раньше этот рендер был вообще без
+  // подстраховки на случай, если msgsFollowBottom к этому моменту уже
+  // как-то сбился чем-то посторонним.
+  if(S.chat){
+    if(msgsFollowBottom) _forceBottomRendersLeft=Math.max(_forceBottomRendersLeft,1);
+    loadMessagesFromDB(S.chat);
+  }
   // 30 июля 2026: сторис публиковались с ПК и доходили до другого
   // пользователя на мобильном только после ПОЛНОГО перезапуска приложения.
   // Причина — "story.new"→"story.received" это ЧИСТО живой WS-эффемерный
@@ -4519,6 +4530,15 @@ async function loadMessagesFromDB(chatId){
     // правильное "выключено" обратно на "включено" при каждом открытии
     // чата, независимо от того, что оба реально выключили шифрование.
     // for..of + await сохраняет реальный порядок применения по времени.
+    // 31 июля 2026, раунд 15: раньше renderMsgs() внизу звался БЕЗУСЛОВНО,
+    // даже если ВСЕ сообщения из ответа сервера уже были загружены раньше
+    // (обычное дело при простой пересинхронизации после переподключения WS
+    // — см. performReconnectResyncIfDue — ничего нового не пришло, но
+    // список ВСЁ РАВНО полностью пересоздавался). Именно это, скорее всего,
+    // и было источником рывков "на ровном месте", ничем не объяснимых —
+    // Александра справедливо заметила, что в Telegram такого нет. Теперь
+    // пересобираем список, только если реально что-то изменилось.
+    let changedAnything=false;
     for(const dbMsg of data.messages){
       // Не дублируем уже загруженные
       if(S.messages[chatId].find(m => m.dbId === dbMsg.id)) continue;
@@ -4543,6 +4563,7 @@ async function loadMessagesFromDB(chatId){
       if(dbMsg.type==="e2e_disabled"){
         const ch2=S.chats.find(c=>c.id===chatId);
         if(ch2){ ch2.e2eActive=false; ch2.e2ePending=false; }
+        changedAnything=true;
         continue;
       }
       // ⚠️ В канале — всегда сам канал (не автор поста), в группе — реальный автор.
@@ -4642,8 +4663,9 @@ async function loadMessagesFromDB(chatId){
         }
       }
       S.messages[chatId].push(m);
+      changedAnything=true;
     }
-    saveState(); renderMsgs();
+    if(changedAnything){ saveState(); renderMsgs(); }
     if(S.chat===chatId) updateE2EButton(ch);
   } catch(e){ console.warn("loadMessagesFromDB error:", e); }
 }
@@ -4691,7 +4713,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-07-31 #14 (re-enable native scroll anchoring)";
+const BUILD_TAG = "2026-07-31 #15 (skip no-op resync render + desktop click fix)";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -8665,6 +8687,16 @@ el("msgs")?.addEventListener("click", function(e){
     toggleMsgSelect(msgId);
     return;
   }
+  // 31 июля 2026, раунд 15: реальный баг на десктопе (Александра — "меню
+  // появляется по левой кнопке мыши, а должно только по правой") — эта
+  // ветка ("короткий тап открывает меню") была задумана ТОЛЬКО для
+  // мобильного (там нет правой кнопки мыши в принципе), но проверки на
+  // isMobileLayout() тут не было вообще — обычный левый клик на десктопе
+  // тоже стабильно открывал то же меню, что и должно быть только у
+  // oncontextmenu (настоящий правый клик). На десктопе левый клик по
+  // сообщению вне режима выбора теперь просто ничего не делает — как и
+  // ожидается, там для меню есть правая кнопка.
+  if(!isMobileLayout()) return;
   // Не в режиме выбора — если клик пришёлся на что-то со своим собственным
   // действием (фото/видео/голосовое/опрос/контакт/спойлер/файл/пересланное/
   // реакция), не мешаем ему работать как раньше
