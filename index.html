@@ -5013,6 +5013,22 @@ function openChat(id,opts){
   const prev=S.chats.find(c=>c.id===S.chat);
   if(prev){ prev.draft=getInputText(); }
 
+  // 3 авг 2026: выбор сообщений (S.selectMode/S.selectedMsgs) был глобальным
+  // и никогда не сбрасывался при переходе в другой чат — выделение, сделанное
+  // в одном чате, оставалось видимым после переключения. Сбрасываем состояние
+  // ЗДЕСЬ напрямую, а не через requestExitSelectMode()/popNavEntry() — тот
+  // дёргает асинхронный history.back(), который гонялся бы с pushNavEntry()
+  // этой же openChat() чуть ниже (см. баг с ctxSelect() в round 13,
+  // nexus-navstack-and-rerender-lessons). Оставшаяся в navStack запись
+  // backFromSelectMode безвредна: увидев пустой S.selectedMsgs, она просто
+  // ещё раз выйдет из уже выключенного режима выбора (no-op).
+  if(S.selectMode && S.chat!==id){
+    S.selectMode=false;
+    S.selectedMsgs=[];
+    document.body.classList.remove("select-mode");
+    el("select-bar")?.classList.remove("on");
+  }
+
   S.chat=id; const ch=S.chats.find(x=>x.id===id); if(!ch)return;
   // Загружаем сообщения из БД если чат реальный
   if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); markChatAsRead(id); refreshChatPeerInfo(ch); }
