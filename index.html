@@ -3021,6 +3021,20 @@ function performReconnectResyncIfDue(){
     if(msgsFollowBottom) _forceBottomRendersLeft=Math.max(_forceBottomRendersLeft,1);
     loadMessagesFromDB(S.chat);
   }
+  // 3 авг 2026, шаг 3 архитектурного аудита: раньше при переподключении
+  // пересинхронизировался ТОЛЬКО текущий открытый чат — сообщение,
+  // доставленное в другой чат, пока WS был разорван (нередко на VPN),
+  // появлялось только после ручного захода в этот чат или полного
+  // перезапуска приложения. Догружаем и остальные недавние чаты в фоне —
+  // loadMessagesFromDB() сама не трогает экран чужого чата (рендерит
+  // список сообщений только если он совпадает с открытым, см. её же код),
+  // так что форс-рендер вниз (_forceBottomRendersLeft) тут не нужен, это не
+  // видимый экран. S.chats уже отсортирован по last_message_at DESC
+  // (loadChatsFromDB), поэтому просто берём верхушку — ограничено 20, чтобы
+  // не устраивать залп из полусотни запросов разом при каждом
+  // переподключении на нестабильной сети.
+  const RESYNC_OTHER_CHATS_LIMIT=20;
+  S.chats.slice(0,RESYNC_OTHER_CHATS_LIMIT).forEach(c=>{ if(c.id!==S.chat) loadMessagesFromDB(c.id); });
   // 30 июля 2026: сторис публиковались с ПК и доходили до другого
   // пользователя на мобильном только после ПОЛНОГО перезапуска приложения.
   // Причина — "story.new"→"story.received" это ЧИСТО живой WS-эффемерный
@@ -4665,7 +4679,16 @@ async function loadMessagesFromDB(chatId){
       S.messages[chatId].push(m);
       changedAnything=true;
     }
-    if(changedAnything){ saveState(); renderMsgs(); }
+    // 3 авг 2026: раньше renderMsgs() тут звался безусловно — было безопасно,
+    // пока функция вызывалась ТОЛЬКО для открытого чата. Теперь, когда
+    // performReconnectResyncIfDue() догружает и фоновые чаты (шаг 3
+    // архитектурного аудита), новое сообщение в чужом фоновом чате иначе
+    // дёргало бы перерисовку СЕЙЧАС открытого чата без всякой причины — тот
+    // же класс анти-паттерна, что уже чинили в раунде 15 (см.
+    // nexus_navstack_and_rerender_lessons). saveState() по-прежнему
+    // безусловный — он просто сохраняет S.messages в localStorage, не трогает
+    // экран, и нужен независимо от того, какой чат открыт сейчас.
+    if(changedAnything){ saveState(); if(S.chat===chatId) renderMsgs(); }
     if(S.chat===chatId) updateE2EButton(ch);
   } catch(e){ console.warn("loadMessagesFromDB error:", e); }
 }
