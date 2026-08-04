@@ -2908,6 +2908,16 @@ function getDateLabel(ts){
 }
 let _idSeq = Date.now();
 function nextId(){ return ++_idSeq; }
+// 3 авг 2026, шаг 2 архитектурного аудита: ключ идемпотентности отправки —
+// генерируется ОДИН раз при создании оптимистичного сообщения (не на каждую
+// попытку) и переиспользуется во всех автоматических (attemptWithAutoRetry)
+// и ручных (retryFailedMsg) ретраях того же msg — так сервер узнаёт повтор
+// и не создаёт вторую запись (см. ON CONFLICT в messages.js). nextId() тут
+// не подходит — это просто локальный счётчик, не защищённый от совпадений
+// между разными вкладками/устройствами.
+function genClientMsgId(){
+  return (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36)+Math.random().toString(36).slice(2)));
+}
 function colBg(i){ return COLS[i%COLS.length]; }
 // Для CSS-свойства color (текст) градиент из COLS не подходит — браузер
 // его молча игнорирует. Тот же порядок/индекс, но сплошной цвет.
@@ -5602,8 +5612,13 @@ async function attemptWithAutoRetry(m, doAttempt){
 async function retrySimpleMsg(m, chatId, ch, memberIds, postBody, wsExtra){
   renderMsgs(); saveState();
   if(!(typeof chatId==="string" && chatId.length>10)) return;
+  // 3 авг 2026: переиспользуем тот же clientMsgId, что уже был сгенерирован
+  // при первой (неудачной) попытке — см. genClientMsgId(). Если у сообщения
+  // его почему-то ещё нет (созданное до этого фикса), генерируем один раз
+  // здесь же и запоминаем на m, а не на каждый повторный вызов заново.
+  if(!m.clientMsgId) m.clientMsgId=genClientMsgId();
   await attemptWithAutoRetry(m, async ()=>{
-    const d=await apiPost("/api/messages", postBody, true);
+    const d=await apiPost("/api/messages", {...postBody, clientMsgId:m.clientMsgId}, true);
     if(!d || !d.success) return false;
     const dbId=d?.message?.id||null;
     if(dbId){ m.dbId=dbId; saveState(); }
@@ -5620,6 +5635,7 @@ async function retrySimpleMsg(m, chatId, ch, memberIds, postBody, wsExtra){
 async function retryAttachmentMsg(m, chatId, ch, memberIds){
   const att=m._retryAtt, caption=m._retryCaption;
   m.uploading=true; m.failed=false;
+  if(!m.clientMsgId) m.clientMsgId=genClientMsgId();
   renderMsgs(); saveState();
   await attemptWithAutoRetry(m, async ()=>{
     const fd=new FormData();
@@ -5642,7 +5658,7 @@ async function retryAttachmentMsg(m, chatId, ch, memberIds){
     // одиночных вложений m.groupId всегда undefined, apiPost/wsSend просто
     // не понесут это поле вообще, ничего не меняется для существующих
     // одиночных фото/видео/аудио/файлов/голосовых/видео-кружочков.
-    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,groupId:m.groupId||undefined},true);
+    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,groupId:m.groupId||undefined,clientMsgId:m.clientMsgId},true);
     if(!d || !d.success) return false;
     const dbId=d?.message?.id||null;
     if(dbId){ m.dbId=dbId; saveState(); }
@@ -7176,7 +7192,7 @@ async function sendMsg(){
     cancelEdit(); setInputText(""); aResize(inp); renderMsgs(); saveState(); return;
   }
 
-  const msg={id:nextId(),t:"out",tx:txt,time:tm,ts:Date.now(),read:false};
+  const msg={id:nextId(),clientMsgId:genClientMsgId(),t:"out",tx:txt,time:tm,ts:Date.now(),read:false};
   // Если пишем от имени канала — помечаем
   if(S.sendAsChannel && canSendAsChannelHere()){
     const chan=S.chats.find(c=>c.id===S.sendAsChannel);
@@ -7223,7 +7239,7 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds, msgType){
   let blockedFromRecipientId=null;
   if(typeof chatId === "string" && chatId.length > 10){
     const ok=await attemptWithAutoRetry(msg, async ()=>{
-      const d=await apiPost("/api/messages", {chatId, text: txt, type: msgType, asChannel: msg.asChannel||null}, true);
+      const d=await apiPost("/api/messages", {chatId, text: txt, type: msgType, asChannel: msg.asChannel||null, clientMsgId: msg.clientMsgId}, true);
       if(!d || !d.success) return false;
       dbId=d?.message?.id||null;
       blockedFromRecipientId=d?.blockedFromRecipientId||null;
@@ -7283,7 +7299,7 @@ async function confirmScheduleSend(){
   closeM("m-schedule");
   setInputText(""); aResize(el("minput"));
   if(el("char-count"))el("char-count").textContent="";
-  const d=await apiPost("/api/messages", {chatId, text:txt, type:"text", scheduledAt: when.toISOString()}, true);
+  const d=await apiPost("/api/messages", {chatId, text:txt, type:"text", scheduledAt: when.toISOString(), clientMsgId: genClientMsgId()}, true);
   if(!d || !d.success){
     showToast("❌ "+(d&&d.error||"Не удалось запланировать"));
     setInputText(txt); aResize(el("minput")); // возвращаем текст, чтобы не потерялся
@@ -7311,7 +7327,7 @@ async function scheduleAttachmentSend(when){
     const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
     const upData=await res.json().catch(()=>({}));
     if(!res.ok||!upData.success) throw new Error(upData.error||"Не удалось загрузить файл");
-    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:upData.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,scheduledAt:when.toISOString()},true);
+    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:upData.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,scheduledAt:when.toISOString(),clientMsgId:genClientMsgId()},true);
     if(!d || !d.success){
       showToast("❌ "+(d&&d.error||"Не удалось запланировать"));
       pendingAttach=att; renderAttachPreview(); setInputText(caption); aResize(el("minput"));
@@ -11467,6 +11483,8 @@ async function sendForwardedMsg(localMsg, m, toId, toCh, hideAuthor, srcChatId){
   }
   const body=buildForwardPostBody(m, hideAuthor);
   body.chatId=toId;
+  if(!localMsg.clientMsgId) localMsg.clientMsgId=genClientMsgId();
+  body.clientMsgId=localMsg.clientMsgId;
   try{
     const d=await apiPost("/api/messages", body, true);
     if(!d || !d.success){ localMsg.failed=true; if(S.chat===toId) renderMsgs(); saveState(); return; }
