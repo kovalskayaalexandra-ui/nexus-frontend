@@ -1240,7 +1240,16 @@ body.chat-select-mode .sb-toolbar{display:none}
 .gift-rarity.legendary{background:linear-gradient(135deg,rgba(251,191,36,.3),rgba(251,191,36,.12));color:var(--am)}
 /* Бейдж "осталось мало" для лимитированных */
 .gift-scarce{position:absolute;top:8px;left:8px;font-size:8px;font-weight:700;padding:2px 6px;border-radius:6px;background:rgba(248,113,113,.2);color:#f87171;z-index:2}
-.gift-bubble{background:linear-gradient(135deg,rgba(108,99,255,.15),rgba(56,189,248,.1));border:1px solid rgba(108,99,255,.3);border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:10px;max-width:220px;cursor:pointer;animation:giftPop .45s cubic-bezier(.34,1.56,.64,1)}
+.gift-bubble{background:linear-gradient(135deg,rgba(108,99,255,.15),rgba(56,189,248,.1));border:1px solid rgba(108,99,255,.3);border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:10px;max-width:220px;cursor:pointer}
+/* 7 сен 2026: анимация появления СНЯТА с базового класса .gift-bubble.
+   Раньше она висела прямо здесь, а renderMsgs() пересобирает ленту целиком
+   (c.innerHTML="") на каждое WS-событие, реакцию, догрузку истории и т.п. —
+   то есть "анимация получения" переигрывалась заново десятки раз за сессию.
+   Теперь класс .is-new вешается ТОЛЬКО на подарок, который этот клиент ещё
+   ни разу не показывал (флаг m.giftSeen на самом сообщении), а .is-replay —
+   по тапу пользователя. Правка чисто CSS+разметка, renderMsgs и скролл-гарды
+   не тронуты. transform/opacity не влияют на layout, высота строки та же. */
+.gift-bubble.is-new,.gift-bubble.is-replay{animation:giftPop .45s cubic-bezier(.34,1.56,.64,1)}
 @keyframes giftPop{0%{transform:scale(.7);opacity:0}100%{transform:scale(1);opacity:1}}
 .gift-bubble.r-rare{border-color:rgba(167,139,250,.5);box-shadow:0 4px 18px rgba(167,139,250,.2)}
 .gift-bubble.r-epic{border-color:rgba(52,211,153,.5);box-shadow:0 4px 18px rgba(52,211,153,.22)}
@@ -3270,6 +3279,7 @@ function wsHandleMessage(msg){
       } else if(gift){
         newMsg.t = "gift";
         newMsg.out = false;
+        newMsg.giftId = gift.id||null;
         newMsg.icon = gift.icon;
         newMsg.imageUrl = gift.imageUrl||null;
         newMsg.name = gift.name;
@@ -4670,6 +4680,7 @@ async function loadMessagesFromDB(chatId){
       if(dbMsg.gift){
         m.t="gift";
         m.out=isMe;
+        m.giftId=dbMsg.gift.id||null;
         m.icon=dbMsg.gift.icon;
         m.imageUrl=dbMsg.gift.imageUrl||null;
         m.name=dbMsg.gift.name;
@@ -5575,12 +5586,20 @@ function retryFailedMsg(msgId){
   const chatId=S.chat;
 
   if(m._retryAtt){ retryAttachmentMsg(m, chatId, ch, memberIds); return; }
-  if(m.t==="sk"){ retrySimpleMsg(m, chatId, ch, memberIds, {text:m.sk, type:"sticker"}, {text:m.sk, msgType:"sticker"}); return; }
-  if(m.poll){ retrySimpleMsg(m, chatId, ch, memberIds, {text:"", poll:m.poll}, {text:"", poll:m.poll}); return; }
-  if(m.contact){ retrySimpleMsg(m, chatId, ch, memberIds, {text:"", contact:m.contact}, {text:"", contact:m.contact}); return; }
+  // 7 сен 2026: во все четыре тела запроса добавлен chatId. Без него сервер
+  // отвечал 400 "chatId обязателен" (routes/messages.js), то есть кнопка
+  // "Отправить повторно" НИ РАЗУ не срабатывала ни для стикера, ни для опроса,
+  // ни для контакта, ни для подарка — сообщение молча оставалось неотправленным,
+  // а у подарка при этом уже были списаны Crystals. Сравните с рабочими путями
+  // отправки (sendGift, sendPoll и т.д.), где chatId всегда передавался.
+  if(m.t==="sk"){ retrySimpleMsg(m, chatId, ch, memberIds, {chatId, text:m.sk, type:"sticker"}, {text:m.sk, msgType:"sticker"}); return; }
+  if(m.poll){ retrySimpleMsg(m, chatId, ch, memberIds, {chatId, text:"", poll:m.poll}, {text:"", poll:m.poll}); return; }
+  if(m.contact){ retrySimpleMsg(m, chatId, ch, memberIds, {chatId, text:"", contact:m.contact}, {text:"", contact:m.contact}); return; }
   if(m.t==="gift"){
-    const giftData={icon:m.icon,imageUrl:m.imageUrl||null,name:m.name,rarity:m.rarity,to:m.to,msg:m.msg||""};
-    retrySimpleMsg(m, chatId, ch, memberIds, {text:"", gift:giftData}, {text:"", gift:giftData});
+    // id подарка из каталога хранится на сообщении отдельным полем giftId,
+    // потому что m.id — это id самого сообщения, а не позиции каталога.
+    const giftData={id:m.giftId||null,icon:m.icon,imageUrl:m.imageUrl||null,name:m.name,rarity:m.rarity,to:m.to,msg:m.msg||""};
+    retrySimpleMsg(m, chatId, ch, memberIds, {chatId, text:"", gift:giftData}, {text:"", gift:giftData});
     return;
   }
   renderMsgs(); saveState();
@@ -6063,7 +6082,12 @@ function renderMsgs(){
       h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="msgTouchStart(event,${m.id},this)" ontouchend="msgTouchEnd(event,${m.id})" ontouchmove="msgTouchMove(event)">${isStickerImg(m.sk)?`<img src="${m.sk}" style="width:150px;height:150px;object-fit:contain">`:m.sk}</div>${m.t==="sk"&&(m.failed||m.out)?`<div class="mt" style="justify-content:center">${m.time||""}${m.out?ticksHTML(m):""}</div>`:""}`;
     }else if(m.t==="gift"){
       const rc={common:"var(--tx2)",rare:"var(--acc2)",epic:"var(--gr)",legendary:"var(--am)"};
-      h+=`<div class="gift-bubble r-${m.rarity||"common"}" onclick="showToast('🎁 '+'${escHtml(m.name||"").replace(/'/g,"\\'")}')">`
+      // Анимация появления — один раз на подарок, а не на каждый рендер ленты.
+      // m.giftSeen живёт на самом сообщении и переживает перезагрузку вместе с S,
+      // поэтому уже показанный подарок при следующем открытии чата не "выпрыгивает".
+      const giftIsNew = !m.giftSeen;
+      if(giftIsNew) m.giftSeen = true;
+      h+=`<div class="gift-bubble r-${m.rarity||"common"}${giftIsNew?" is-new":""}" onclick="replayGiftAnim(this)">`
         +`<div class="gift-bub-ico">${giftVisual(m)}</div>`
         +`<div><div class="gift-bub-nm">🎁 ${escHtml(m.name||"")}</div>`
         +`<div class="gift-bub-sub" style="color:${rc[m.rarity]||"var(--tx2)"}">→ ${escHtml(m.to||"")}</div>`
@@ -13731,6 +13755,35 @@ function searchEmoji(q){
 // ══════════════════════════════════════════════════
 let giftRecipient = null;
 let selectedGiftId = null;
+// ── Защита от двойного списания Crystals (7 сен 2026) ─────────────────────
+// giftBuyOpId — ключ ОДНОГО намерения купить. Он живёт от открытия карточки
+// подарка до успешной покупки, поэтому повторное нажатие после «нет связи»
+// уходит на сервер с тем же ключом, и сервер отдаёт прежний ответ вместо
+// второго списания. giftBuyBusy отсекает более грубый случай — двойной тап,
+// когда первый запрос ещё в полёте.
+let giftBuyOpId = null;
+let giftBuyBusy = false;
+
+// Единая точка покупки для sendGift и buyGiftToInventory.
+// Возвращает {ok, data, error}. Ключ сбрасывается ТОЛЬКО после успеха: пока
+// покупка не удалась, все повторы должны идти с одним и тем же ключом.
+async function buyGiftOnce(g){
+  if(giftBuyBusy) return {ok:false, error:"Покупка уже выполняется"};
+  if(!giftBuyOpId) giftBuyOpId = genClientMsgId();
+  giftBuyBusy = true;
+  try{
+    const data = await apiPost("/api/gifts/"+g.id+"/buy", {opId: giftBuyOpId}, true);
+    if(!data || !data.success) return {ok:false, error:(data && data.error) || "Не удалось купить подарок"};
+    giftBuyOpId = null;
+    return {ok:true, data};
+  }catch(e){
+    // Ответ потерян — но покупка на сервере могла пройти. Ключ НЕ сбрасываем:
+    // следующая попытка уйдёт с ним же и вернёт результат первой.
+    return {ok:false, error:"Нет связи с сервером", lost:true};
+  }finally{
+    giftBuyBusy = false;
+  }
+}
 
 function openGifts(recipientName){
   giftRecipient = recipientName || S.chats.find(c=>c.id===S.chat)?.nm || "Получатель";
@@ -13774,6 +13827,7 @@ function filterGifts(rarity, btn){
 function openGiftModal(id){
   const g = S.gifts_catalog.find(x=>x.id===id); if(!g) return;
   selectedGiftId = id;
+  giftBuyOpId = genClientMsgId();   // новое намерение купить — новый ключ
   el("mgift-ico").innerHTML = giftVisual(g);
   el("mgift-nm").textContent = g.name;
   el("mgift-rarity").textContent = {common:"⚪ Обычный",rare:"💜 Редкий",epic:"💚 Эпический",legendary:"⭐ Легендарный"}[g.rarity];
@@ -13793,25 +13847,45 @@ async function sendGift(targetChatId){
 
   // Раньше списание и владение были полностью локальными — сервер вообще
   // не знал о покупке, теоретически можно было слать подарки бесплатно
-  let buyData;
-  try{
-    buyData=await apiPost("/api/gifts/"+g.id+"/buy", {}, true);
-    if(!buyData || !buyData.success){ showToast("❌ "+(buyData&&buyData.error||"Не удалось купить подарок")); return; }
-  }catch(e){ showToast("❌ Нет связи с сервером"); return; }
+  const buy = await buyGiftOnce(g);
+  if(!buy.ok){ showToast("❌ "+buy.error); return; }
+  const buyData = buy.data;
   // Сразу используем купленный экземпляр — не оставляем его в коллекции,
-  // раз дарим прямо сейчас
-  try{ await apiPost("/api/gifts/"+g.id+"/use-from-inventory", {}, true); }catch(e){ /* не критично для отправки сообщения */ }
+  // раз дарим прямо сейчас.
+  // 7 сен 2026: результат перестал игнорироваться. Раньше тут стояло
+  // catch(e){ /* не критично */ } и ответ вообще не читался: если списание
+  // не проходило, экземпляр молча оставался в коллекции, и локальный счётчик
+  // расходился с сервером. Отправку при неудаче НЕ отменяем — подарок уже
+  // оплачен и получатель должен его получить, — но перечитываем коллекцию
+  // с сервера и говорим об этом честно.
+  let giftUsed=false;
+  try{
+    const useData=await apiPost("/api/gifts/"+g.id+"/use-from-inventory", {}, true);
+    giftUsed = !!(useData && useData.success);
+  }catch(e){ giftUsed=false; }
 
   S.bal = buyData.newBalance; g.sold = buyData.sold ?? ((g.sold||0)+1);
   // send as message in chat
   if(!S.messages[chatId]) S.messages[chatId]=[];
   const msg_ = el("mgift-msg")?.value||"";
-  const giftData={icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,to:ch.nm,msg:msg_};
-  const localMsg={id:nextId(),t:"gift",out:true,...giftData,time:now()};
+  // id из каталога нужен серверу, чтобы связать полученный подарок с позицией
+  // каталога (user_received_gifts.gift_id). Раньше фронт его не слал вообще,
+  // поэтому gift_id в базе у всех записей был NULL.
+  const giftData={id:g.id,icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,to:ch.nm,msg:msg_};
+  // ВАЖНО: id:nextId() стоит ПОСЛЕ ...giftData. Иначе id подарка из каталога
+  // затёр бы id самого сообщения, по которому работают выделение, ответы и ctx-меню.
+  const localMsg={...giftData,giftId:g.id,id:nextId(),t:"gift",out:true,time:now()};
   S.messages[chatId].push(localMsg);
   ch.prev="🎁 Подарок: "+g.name; ch.time=now(); ch.lastTs=Date.now();
   updBal(); closeM("m-gift"); if(S.chat===chatId) renderMsgs(); renderChats(); renderMyGifts(); saveState();
   showToast("🎁 Подарок «"+g.name+"» отправлен пользователю "+ch.nm+"!");
+  if(!giftUsed){
+    // Списать не удалось: экземпляр остался в коллекции. Синхронизируем её
+    // с сервером, чтобы счётчик не врал, и сообщаем — молчать нельзя,
+    // иначе пользователь увидит лишний подарок и не поймёт откуда.
+    loadGiftInventory();
+    showToast("⚠️ Экземпляр остался в коллекции — списать не удалось");
+  }
 
   // Реально сохраняем на сервере и доставляем собеседнику — раньше подарок оставался
   // только в браузере отправителя и никогда не долетал до получателя
@@ -13825,11 +13899,15 @@ async function buyGiftToInventory(){
   const g = S.gifts_catalog.find(x=>x.id===selectedGiftId); if(!g) return;
   if(S.bal < g.price){ showToast("❌ Недостаточно CR"); return; }
   try{
-    const data=await apiPost("/api/gifts/"+g.id+"/buy", {}, true);
-    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось купить")); return; }
+    const buy = await buyGiftOnce(g);
+    if(!buy.ok){ showToast("❌ "+buy.error); return; }
+    const data = buy.data;
     S.bal=data.newBalance; g.sold=data.sold ?? ((g.sold||0)+1);
     if(!S.gift_inventory) S.gift_inventory={};
-    S.gift_inventory[g.id] = (S.gift_inventory[g.id]||0) + 1;
+    // На повторном запросе сервер отдаёт прежний ответ и НЕ списывает второй
+    // раз, поэтому локальный счётчик тоже не должен расти дважды.
+    if(data.repeated){ loadGiftInventory(); }
+    else S.gift_inventory[g.id] = (S.gift_inventory[g.id]||0) + 1;
     updBal(); closeM("m-gift"); renderGiftInventory(); saveState();
     showToast("💼 «"+g.name+"» добавлен в вашу коллекцию");
   }catch(e){ showToast("❌ Нет связи с сервером"); }
@@ -13855,8 +13933,9 @@ async function giftFromInventory(giftId, targetChatId){
   if(S.gift_inventory[giftId]<=0) delete S.gift_inventory[giftId];
 
   if(!S.messages[chatId]) S.messages[chatId]=[];
-  const giftData={icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,to:ch.nm,msg:""};
-  const localMsg={id:nextId(),t:"gift",out:true,...giftData,time:now()};
+  // см. комментарий в sendGift: id — из каталога, id:nextId() строго после спреда
+  const giftData={id:g.id,icon:g.icon,imageUrl:g.imageUrl||null,name:g.name,rarity:g.rarity,to:ch.nm,msg:""};
+  const localMsg={...giftData,giftId:g.id,id:nextId(),t:"gift",out:true,time:now()};
   S.messages[chatId].push(localMsg);
   ch.prev="🎁 Подарок: "+g.name; ch.time=now(); ch.lastTs=Date.now();
   if(S.chat===chatId) renderMsgs();
@@ -13954,6 +14033,9 @@ function giftVipToBirthdayPerson(){
 }
 
 let myReceivedGifts=[];
+// Сгруппированные плитки витрины «Мои подарки». Плитка ссылается сюда по индексу,
+// см. renderMyGifts/openMyGiftDetail.
+let myGiftGroups=[];
 // То же самое, но для подарков в карточке профиля СОБЕСЕДНИКА (не своих)
 let uiProfileGifts=[];
 let mpProfileGifts=[]; // та же роль, что uiProfileGifts, но для карточки участника группы (openMemberProfile)
@@ -13972,14 +14054,23 @@ async function renderMyGifts(){
 
   if(!gifts.length){ showcase.innerHTML='<div class="pgift-empty">🎁 У вас пока нет подарков<br><span style="font-size:11px">Подарки от друзей появятся здесь</span></div>'; return; }
 
-  // Группируем по id подарка из каталога (считаем количество)
+  // Группируем по id подарка из каталога (считаем количество).
+  // Фолбэк на имя обязателен: у всех записей, созданных до 7 сен 2026,
+  // gift_id в базе NULL, потому что фронт не передавал id при отправке.
   const grouped={};
   gifts.forEach(g=>{
-    const key=g.gift_id||g.name;
-    if(!grouped[key]) grouped[key]={id:g.gift_id, icon:g.icon, imageUrl:g.image_url, name:g.name, rarity:g.rarity, from:g.from_name||"Аноним", count:0};
+    const key=String(g.gift_id||g.name);
+    if(!grouped[key]) grouped[key]={key, id:g.gift_id, icon:g.icon, imageUrl:g.image_url, name:g.name, rarity:g.rarity, from:g.from_name||"Аноним", count:0};
     grouped[key].count++;
   });
   const arr=Object.values(grouped);
+  // Плитка открывается по НОМЕРУ группы, а не по gift_id. Раньше в разметку
+  // подставлялся g.id, то есть буквально openMyGiftDetail(null), и фильтр
+  // x.gift_id===null совпадал со ВСЕМИ подарками — карточка всегда показывала
+  // самый свежий подарок, какую плитку ни нажми. Индекс чинит это и для уже
+  // накопленных записей с NULL, чего одна лишь передача id не даёт.
+  arr.forEach((g,i)=>{ g.idx=i; });
+  myGiftGroups=arr;
   // Сортируем по редкости: легендарные → эпические → редкие → обычные
   const order={legendary:0,epic:1,rare:2,common:3};
   arr.sort((a,b)=>(order[a.rarity]||9)-(order[b.rarity]||9));
@@ -13991,12 +14082,12 @@ async function renderMyGifts(){
   let html="";
   if(special.length){
     html+=`<div class="pgift-section"><div class="pgift-section-tit" style="color:var(--am)">✨ Особые подарки</div><div class="pgift-grid">`;
-    html+=special.map(g=>`<div class="pgift ${g.rarity}" title="${g.name} от ${g.from}" onclick="openMyGiftDetail(${g.id})">${giftVisual(g)}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
+    html+=special.map(g=>`<div class="pgift ${g.rarity}" title="${g.name} от ${g.from}" onclick="openMyGiftDetail(${g.idx})">${giftVisual(g)}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
     html+=`</div></div>`;
   }
   if(common.length){
     html+=`<div class="pgift-section"><div class="pgift-section-tit" style="color:var(--tx3)">🎁 Обычные</div><div class="pgift-grid">`;
-    html+=common.map(g=>`<div class="pgift ${g.rarity}" title="${g.name} от ${g.from}" onclick="openMyGiftDetail(${g.id})">${giftVisual(g)}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
+    html+=common.map(g=>`<div class="pgift ${g.rarity}" title="${g.name} от ${g.from}" onclick="openMyGiftDetail(${g.idx})">${giftVisual(g)}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
     html+=`</div></div>`;
   }
   showcase.style.flexWrap="";
@@ -14021,9 +14112,14 @@ function showGiftDetailModal(gift){
   el("m-gift-detail").classList.add("on");
 }
 
-function openMyGiftDetail(giftId){
-  const items=myReceivedGifts.filter(x=>x.gift_id===giftId);
-  if(!items.length)return;
+// Принимает НОМЕР группы из renderMyGifts (не gift_id — он у старых записей NULL).
+function openMyGiftDetail(idx){
+  const grp=myGiftGroups[idx];
+  if(!grp) return;
+  // Сопоставляем по тому же ключу, по которому группировали, поэтому карточка
+  // показывает экземпляр именно нажатой плитки, а не первый попавшийся.
+  const items=myReceivedGifts.filter(x=>String(x.gift_id||x.name)===grp.key);
+  if(!items.length) return;
   const g=items[0]; // самый свежий — myReceivedGifts отсортирован по дате с сервера
   showGiftDetailModal({icon:g.icon, imageUrl:g.image_url, name:g.name, rarity:g.rarity, fromName:g.from_name, createdAt:g.created_at, message:g.message});
 }
@@ -14910,6 +15006,18 @@ function renderAdminGifts(){
 function giftVisual(g){
   if(g && g.imageUrl) return `<img src="${g.imageUrl}" style="width:100%;height:100%;object-fit:contain;display:block">`;
   return (g && g.icon) || "🎁";
+}
+
+// Повторно проиграть анимацию подарка по тапу. Перезапуск CSS-анимации
+// требует снять класс, форсировать пересчёт стиля и навесить заново —
+// иначе браузер считает, что ничего не изменилось, и анимация не стартует.
+// offsetWidth здесь только ЧИТАЕТСЯ; giftPop анимирует transform/opacity,
+// на layout и на высоту строки не влияет, поэтому ленту это не двигает.
+function replayGiftAnim(elm){
+  if(!elm) return;
+  elm.classList.remove("is-new","is-replay");
+  void elm.offsetWidth;
+  elm.classList.add("is-replay");
 }
 
 function renderAdminGiftsTable(){
