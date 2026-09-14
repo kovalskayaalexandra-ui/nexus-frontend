@@ -13801,7 +13801,7 @@ function renderGiftsCatalog(rarity){
   // Сортируем: легендарные первыми (как в Telegram — лимитированные сверху)
   const order={legendary:0,epic:1,rare:2,common:3};
   let list = rarity==="all" ? [...S.gifts_catalog] : S.gifts_catalog.filter(g=>g.rarity===rarity);
-  list.sort((a,b)=>(order[a.rarity]||9)-(order[b.rarity]||9));
+  list.sort((a,b)=>(order[a.rarity]??9)-(order[b.rarity]??9));
   const rarityNames={common:"Обычный",rare:"Редкий",epic:"Эпический",legendary:"Лег."};
   el("gifts-catalog").innerHTML = list.map(g=>{
     const left = g.limit ? g.limit-g.sold : null;
@@ -14039,6 +14039,11 @@ let myGiftGroups=[];
 // То же самое, но для подарков в карточке профиля СОБЕСЕДНИКА (не своих)
 let uiProfileGifts=[];
 let mpProfileGifts=[]; // та же роль, что uiProfileGifts, но для карточки участника группы (openMemberProfile)
+// Ключ группы витрины — имя подарка плюс редкость. Не gift_id: у записей до
+// 11 сен 2026 он NULL, у новых заполнен, и один подарок из каталога раздваивался
+// на две плитки. Редкость в ключе — чтобы два разных подарка с одинаковым именем
+// (сервер уникальность имени не проверяет) не слились в одну плитку.
+function myGiftKey(g){ return String(g.name||g.gift_id)+"|"+(g.rarity||""); }
 
 async function renderMyGifts(){
   const showcase = el("my-gifts-showcase"); if(!showcase) return;
@@ -14054,12 +14059,12 @@ async function renderMyGifts(){
 
   if(!gifts.length){ showcase.innerHTML='<div class="pgift-empty">🎁 У вас пока нет подарков<br><span style="font-size:11px">Подарки от друзей появятся здесь</span></div>'; return; }
 
-  // Группируем по id подарка из каталога (считаем количество).
-  // Фолбэк на имя обязателен: у всех записей, созданных до 7 сен 2026,
-  // gift_id в базе NULL, потому что фронт не передавал id при отправке.
-  const grouped={};
+  // Группируем по имени и редкости подарка (считаем количество), см. myGiftKey.
+  // Без прототипа: имя приходит от клиента-отправителя, и "__proto__" иначе
+  // попало бы в Object.prototype вместо своей группы.
+  const grouped=Object.create(null);
   gifts.forEach(g=>{
-    const key=String(g.gift_id||g.name);
+    const key=myGiftKey(g);
     if(!grouped[key]) grouped[key]={key, id:g.gift_id, icon:g.icon, imageUrl:g.image_url, name:g.name, rarity:g.rarity, from:g.from_name||"Аноним", count:0};
     grouped[key].count++;
   });
@@ -14069,11 +14074,14 @@ async function renderMyGifts(){
   // x.gift_id===null совпадал со ВСЕМИ подарками — карточка всегда показывала
   // самый свежий подарок, какую плитку ни нажми. Индекс чинит это и для уже
   // накопленных записей с NULL, чего одна лишь передача id не даёт.
+  // Сортируем по редкости: легендарные → эпические → редкие → обычные
+  // (?? а не ||: иначе legendary:0 превращался в 9 и легендарные шли последними)
+  const order={legendary:0,epic:1,rare:2,common:3};
+  arr.sort((a,b)=>(order[a.rarity]??9)-(order[b.rarity]??9));
+  // Номер проставляем ПОСЛЕ сортировки: myGiftGroups — тот же массив,
+  // и плитка должна указывать на свою позицию в уже отсортированном виде.
   arr.forEach((g,i)=>{ g.idx=i; });
   myGiftGroups=arr;
-  // Сортируем по редкости: легендарные → эпические → редкие → обычные
-  const order={legendary:0,epic:1,rare:2,common:3};
-  arr.sort((a,b)=>(order[a.rarity]||9)-(order[b.rarity]||9));
 
   // Разделяем на "особые" (rare+) и обычные
   const special=arr.filter(g=>g.rarity==="legendary"||g.rarity==="epic"||g.rarity==="rare");
@@ -14118,7 +14126,7 @@ function openMyGiftDetail(idx){
   if(!grp) return;
   // Сопоставляем по тому же ключу, по которому группировали, поэтому карточка
   // показывает экземпляр именно нажатой плитки, а не первый попавшийся.
-  const items=myReceivedGifts.filter(x=>String(x.gift_id||x.name)===grp.key);
+  const items=myReceivedGifts.filter(x=>myGiftKey(x)===grp.key);
   if(!items.length) return;
   const g=items[0]; // самый свежий — myReceivedGifts отсортирован по дате с сервера
   showGiftDetailModal({icon:g.icon, imageUrl:g.image_url, name:g.name, rarity:g.rarity, fromName:g.from_name, createdAt:g.created_at, message:g.message});
