@@ -5832,16 +5832,9 @@ function setMsgsScrollTop(v){
   if(c.scrollTop!==before) msgsProgrammaticScrollActive=true;
 }
 function handleMsgsScroll(){
-  // 31 июля 2026: ВРЕМЕННАЯ диагностика, раунд 2 (см. правило 13) — debounce
-  // из предыдущего коммита (14d1a68) не убрал скачок. Значит либо каскад
-  // scroll-событий на самом деле растянут ДОЛЬШЕ, чем 200мс окно (и debounce
-  // срабатывает раньше времени, посреди каскада), либо дело вообще не в
-  // scroll-событиях, а в чём-то ещё (например, resize контейнера #msgs —
-  // см. ResizeObserver ниже). Тост на КАЖДОЕ сырое scroll-событие (не только
-  // на итог после debounce) покажет, короче или длиннее окно 200мс на самом
-  // деле нужно.
-  const c0=el("msgs");
-  showToast(`🔄 raw dist=${Math.round(c0.scrollHeight-c0.scrollTop-c0.clientHeight)} prog=${msgsProgrammaticScrollActive}`);
+  // 14 сен 2026: сняты диагностические тосты «🔄 raw dist» и «⏳ settled»
+  // (раунды 31 июля — 3 августа, баг скачущей ленты на паузе до натива).
+  // Все пользователи видели их при каждой прокрутке. Логика debounce не менялась.
   clearTimeout(msgsScrollSettleTimer);
   msgsScrollSettleTimer=setTimeout(()=>{
     const wasProgrammatic=msgsProgrammaticScrollActive;
@@ -5849,7 +5842,6 @@ function handleMsgsScroll(){
     const c=el("msgs");
     const dist=c.scrollHeight-c.scrollTop-c.clientHeight;
     if(!wasProgrammatic) msgsFollowBottom=dist<150;
-    showToast(`⏳ settled wasProg=${wasProgrammatic} dist=${Math.round(dist)} followBottom=${msgsFollowBottom}`);
   }, 500);
 }
 // 31 июля 2026: диагностика раунда 2 нашла прямую улику (не гипотезу) —
@@ -5870,7 +5862,6 @@ if(window.ResizeObserver){
   new ResizeObserver((entries)=>{
     const h=entries[0].contentRect.height;
     if(_msgsLastH!==null && Math.abs(h-_msgsLastH)>1){
-      showToast(`📐 msgs resize ${Math.round(_msgsLastH)}→${Math.round(h)}`);
       if(msgsFollowBottom){ const c=el("msgs"); setMsgsScrollTop(c.scrollHeight); }
     }
     _msgsLastH=h;
@@ -5988,13 +5979,13 @@ el("minput")?.addEventListener("focusout", ()=>{
 // в пропорцию, физически невозможную ни для одного реального фото/скриншота.
 // Клампим к разумному диапазону панорама/портрет; за пределами — не трогаем
 // aspect-ratio вообще, остаётся безопасный CSS-дефолт (.grp-cell{aspect-
-// ratio:4/5}). showToast — ВРЕМЕННАЯ диагностика, снять вместе с настоящим
-// фиксом, когда точная причина аномальных чисел найдётся по её показаниям.
+// ratio:4/5}). 14 сен 2026: диагностический тост «⚠️ аномальное фото» снят
+// (ни разу не срабатывал), сама защита — выход без правки aspect-ratio — осталась.
 function applyGrpCellAspect(img){
   const w=img.naturalWidth, h=img.naturalHeight;
   if(!w || !h) return;
   const r=w/h;
-  if(r<0.3 || r>3){ showToast(`⚠️ аномальное фото в альбоме: ${w}×${h}`); return; }
+  if(r<0.3 || r>3) return;
   const cell=img.closest(".grp-cell");
   if(cell) cell.style.aspectRatio=w+"/"+h;
 }
@@ -6293,10 +6284,8 @@ function renderMsgs(){
     // наверх". См. scheduleDistanceGuard.
     scheduleDistanceGuard(S.chat, c, intendedScrollTop);
   }
-  // 31 июля 2026: ВРЕМЕННАЯ диагностика, раунд 2 (см. правило 13) — вместе с
-  // тостами в handleMsgsScroll/ResizeObserver, чтобы сопоставить момент
-  // рендера с тем, что происходит со scrollTop/размером сразу после.
-  showToast(`📏 bottom=${wasAtBottom} sT=${Math.round(c.scrollTop)} sH=${c.scrollHeight} cH=${c.clientHeight}`);
+  // 14 сен 2026: снят диагностический тост «📏 bottom=… sT=… sH=… cH=…»,
+  // который показывался в конце КАЖДОГО renderMsgs() (раунды 31 июля — 3 августа).
   // 31 июля 2026: renderMsgs() каждый раз пересоздаёт ВСЕ строки заново
   // (c.innerHTML="" выше) — значит и все <img> тоже новые DOM-элементы, без
   // сохранённых от предыдущей отрисовки размеров, даже если та же самая
@@ -6328,8 +6317,9 @@ function renderMsgs(){
         // картинки неправдоподобно большой (реальное фото в этой вёрстке
         // физически не может вырасти на тысячи px) — это не настоящий
         // контент, а сбой рендера; не усиливаем его резким скроллом,
-        // сообщаем тостом вместо тихого исполнения.
-        if(Math.abs(grown)>2000){ showToast(`⚠️ аномальный скачок высоты: ${grown}px`); return; }
+        // пропускаем молча (14 сен 2026 диагностический тост здесь снят,
+        // сама защита осталась).
+        if(Math.abs(grown)>2000) return;
         if(msgsFollowBottom) setMsgsScrollTop(c.scrollHeight);
         else if(grown>0) setMsgsScrollTop(c.scrollTop+grown);
       },{once:true});
