@@ -388,6 +388,9 @@ body.select-mode .msel-check{display:flex}
   border-radius:999px;padding:8px 16px;font-size:12.5px;font-weight:600;color:var(--tx);
   cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.35);animation:fadeUp .2s ease-out}
 .scroll-down-btn:hover{background:var(--bg4);border-color:var(--acc)}
+.sdb-cnt{background:var(--acc);color:#fff;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;line-height:16px}
+/* 14 сен 2026: разделитель над первым непрочитанным сообщением, как в Telegram */
+.unread-divider{align-self:stretch;margin:2px -16px;padding:5px 0;text-align:center;font-size:12.5px;font-weight:600;color:var(--tx2);background:var(--bg3)}
 .ddiv{text-align:center;margin:8px 0}
 .ddiv span{background:var(--bg3);border:1px solid var(--brd);padding:3px 11px;border-radius:999px;font-size:var(--fs-2);color:var(--tx3)}
 /* 30 июля 2026: раньше .mrow был шириной ровно под содержимое (max-width:74%
@@ -779,6 +782,11 @@ body.mobile-mode .ctxi svg{width:17px;height:17px}
    выделении) — отдельно от акцентной рамки выбора (.grp-cell.selected). */
 .msg-img-wrap{position:relative;margin-bottom:4px;border-radius:12px;overflow:hidden;max-width:260px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .msg-img{display:block;width:100%;max-height:320px;object-fit:cover;border-radius:12px;cursor:pointer}
+/* 15 сен 2026: фото, чей размер уже известен (m.imgW/imgH, запоминается при
+   загрузке), занимает своё место ещё до загрузки — лента не прыгает. Только
+   там, где браузер понимает contain-intrinsic-size: без него contain:size
+   схлопнул бы фото до полоски (Safari 15.4-16). */
+@supports (contain-intrinsic-size:1px 1px){.msg-img.dims{contain:size;contain-intrinsic-size:var(--iw) var(--ih);min-height:0}}
 .msg-img-wrap.uploading .msg-img{filter:brightness(.5)}
 .msg-img-spin{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
 .msg-img-spin svg{animation:nxSpin .8s linear infinite}
@@ -1588,9 +1596,9 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       </div>
 
       <div class="msgs" id="msgs"></div>
-      <div class="scroll-down-btn" id="scroll-down-btn" onclick="scrollMsgsToBottom()" style="display:none">
+      <div class="scroll-down-btn" id="scroll-down-btn" onclick="msgsDownBtnClick()" style="display:none">
         <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
-        Новые сообщения
+        Новые сообщения <span class="sdb-cnt" id="scroll-down-cnt" style="display:none"></span>
       </div>
 
       <div class="rstrip" id="rstrip">
@@ -3037,7 +3045,7 @@ function performReconnectResyncIfDue(){
   // подстраховки на случай, если msgsFollowBottom к этому моменту уже
   // как-то сбился чем-то посторонним.
   if(S.chat){
-    if(msgsFollowBottom) _forceBottomRendersLeft=Math.max(_forceBottomRendersLeft,1);
+    if(msgsFollowBottom){ _forceBottomRendersLeft=Math.max(_forceBottomRendersLeft,1); _forceBottomSetAt=performance.now(); }
     loadMessagesFromDB(S.chat);
   }
   // 3 авг 2026, шаг 3 архитектурного аудита: раньше при переподключении
@@ -3291,6 +3299,7 @@ function wsHandleMessage(msg){
         if(!S.my_gifts) S.my_gifts=[];
         S.my_gifts.push({id:nextId(),msgId:id,icon:gift.icon,imageUrl:gift.imageUrl||null,name:gift.name,rarity:gift.rarity,from:ch?.nm||"Пользователь",to:"Вы",date:now()});
       }
+      if(!msgIsOut(newMsg)) newMsg._nv=1;   // итерация 11: ещё не показано человеку
       S.messages[chatId].push(newMsg);
       const prevTx = msgType==="sticker" ? "🐱 Стикер"+(isStickerImg(text)?"":" "+text) : mediaUrl ? (mediaType==="image" ? "📷 Фото" : mediaType==="video" ? "🎥 Видео" : mediaType==="videoCircle" ? "⭕ Видео-кружочек" : mediaType==="voice" ? "🎤 Голосовое" : mediaType==="audio" ? "🎵 "+(fileName||"Аудио") : "📎 "+(fileName||"Файл"))
         : poll ? "📊 "+poll.question
@@ -3298,7 +3307,10 @@ function wsHandleMessage(msg){
         : gift ? "🎁 Подарок: "+gift.name
         : text;
       if(ch){ ch.prev = prevTx; ch.time=now();ch.lastTs=Date.now(); if(S.chat !== chatId) ch.unread = (ch.unread||0)+1; }
-      if(S.chat === chatId) { renderMsgs(); markChatAsRead(chatId); }
+      // 20 сен 2026: пока чат закрыт полноэкранным экраном, серверу «прочитано»
+      // не отправляем — иначе счётчик обнулялся на сообщении, которого она не
+      // видела (находка GPT).
+      if(S.chat === chatId) renderMsgs();   // «прочитано» отправит msgsAdvanceSeen, когда строка правда окажется на экране
       renderChats(); saveState();
       if(!ch?.muted && S.chat !== chatId) { showNotif(ch, prevTx); notifyRealMessage(ch, prevTx); }
       break;
@@ -3327,6 +3339,7 @@ function wsHandleMessage(msg){
         else if(mediaType==="videoCircle") newMsg.videoCircle={ url:mediaUrl, duration:0 };
         else newMsg.file={ name:fileName||"Файл", url:mediaUrl };
       }
+      if(!msgIsOut(newMsg)) newMsg._nv=1;   // итерация 11: ещё не показано человеку
       S.messages[chatId].push(newMsg);
       const prevTx = mediaUrl ? (mediaType==="image"?"📷 Фото":mediaType==="video"?"🎥 Видео":mediaType==="videoCircle"?"⭕ Видео-кружочек":mediaType==="voice"?"🎤 Голосовое":mediaType==="audio"?"🎵 "+(fileName||"Аудио"):"📎 "+(fileName||"Файл")) : text;
       const ch2=S.chats.find(c=>c.id===chatId);
@@ -4546,9 +4559,39 @@ async function markChatAsRead(chatId){
 
 async function loadMessagesFromDB(chatId){
   if(!chatId || chatId === 99999 || chatId === 88888 || chatId === 77777 || chatId === FEEDBACK_CHAT_ID) return;
+  if(S.chat===chatId){ _awaitingDb=chatId; _awaitingDbAt=performance.now(); armSettleTimer(chatId); }   // 15 сен 2026: пока ждём — «новые влезают в экран» не решаем
+  // Итерация 13: опору для пометки «не показано» снимаем ДО запроса. Раньше
+  // она считалась по ответу, то есть уже с учётом живых сообщений, прилетевших
+  // пока запрос был в пути: одно такое сообщение делало всё пропущенное окно
+  // «старым», пометок оно не получало, и ночная пачка уходила выше разделителя
+  // (двенадцатый круг, races F1).
+  // nvHad — была ли у этого чата история в памяти ДО запроса (ради чего правка
+  // и делалась: окно чата, который на телефоне ни разу не открывали, — это
+  // первая загрузка истории, а не «пришло мимо глаз»).
+  // nvOldest — время самой старой известной строки: всё, что старше, — добивка
+  // истории. Опираться на ПОСЛЕДНЮЮ строку, как делала итерация 12, нельзя:
+  // одно живое сообщение делало всю пропущенную ночную пачку «старой», и она
+  // оставалась без пометок (двенадцатый круг, races F1).
+  const nvHad=(S.messages[chatId]||[]).length;
+  // Итерация 16: берём первое ИЗВЕСТНОЕ время, а не время первой строки: у
+  // своих вложений, альбомов, опросов, контактов и стикеров времени нет вовсе,
+  // и одна такая строка в начале отключала защиту от добивки истории
+  // (четырнадцатый круг: rules R14-8, races F9).
+  let nvOldest=null;
+  if(nvHad){ nvOldest=0; for(const m of S.messages[chatId]) if(Number.isFinite(m.ts)){ nvOldest=m.ts; break; } }
   try {
     const data = await apiGet("/api/messages/"+chatId);
-    if(!data.messages || !data.messages.length) return;
+    if(!data.messages || !data.messages.length){
+      if(_awaitingDb===chatId) _awaitingDb=null;
+      if(_openLoadChat===chatId) _openLoadChat=null;   // иначе следующая фоновая пересинхронизация запишет своё в «новые к открытию»
+      // Итерация 16: сервер ответил пустым — решаем по тому, что есть в памяти,
+      // а не выбрасываем решение целиком (раньше ни разделителя, ни числа, и всё
+      // молча прочитано — четырнадцатый круг, races F6).
+      const emptyJump = S.chat===chatId && _awaitingDb!==chatId && afterChatDbLoad(chatId, new Set(), 0);
+      if(S.chat===chatId){ _forceBottomRendersLeft=0; const mc=el("msgs"); if(mc){ if(emptyJump) renderMsgs(); msgsUnreadSettle(mc); } }
+      if(_pendingUnread && _pendingUnread.chat===chatId) _pendingUnread=null;
+      return;
+    }
     if(!S.messages[chatId]) S.messages[chatId] = [];
     const ch = S.chats.find(c => c.id === chatId);
     const chIsChannel = ch?.type === "channels";
@@ -4573,6 +4616,13 @@ async function loadMessagesFromDB(chatId){
     // Александра справедливо заметила, что в Telegram такого нет. Теперь
     // пересобираем список, только если реально что-то изменилось.
     let changedAnything=false;
+    const addedKeys=new Set();   // 15 сен 2026: какие сообщения добавил этот ответ (см. afterChatDbLoad)
+    // Итерация 12: пометку «не показано» ставим, только если история этого чата
+    // в памяти уже была и строка не старше последней известной. Окно фоновой
+    // пересинхронизации у чата, который на этом телефоне ни разу не открывали, —
+    // это первая загрузка истории, а не «пришло мимо глаз»: пометив её целиком,
+    // мы открывали такой чат на две тысячи пикселей выше с числом во всю
+    // историю (одиннадцатый круг, races F4). Сама опора снята до запроса, выше.
     for(const dbMsg of data.messages){
       // Не дублируем уже загруженные
       if(S.messages[chatId].find(m => m.dbId === dbMsg.id)) continue;
@@ -4697,7 +4747,17 @@ async function loadMessagesFromDB(chatId){
           }
         }
       }
+      // Итерация 11: входящее принесла фоновая загрузка в ЗАКРЫТЫЙ чат — оно
+      // попало в память мимо глаз. Пометка снимается в msgsAdvanceSeen, когда
+      // строка побывала на экране. Ответ на открытие чата не помечаем: там что
+      // новое, решает серверный счётчик и множество added.
+      if(!msgIsOut(m) && S.chat!==chatId) m._nv=(nvHad && (!Number.isFinite(m.ts) || m.ts>=nvOldest)) ? 1 : 2;
       S.messages[chatId].push(m);
+      addedKeys.add(msgKeyOf(m));
+      // 16 сен 2026 (итерация 9): то, что принёс первый ответ сервера на
+      // открытие чата, отправлено до открытия — это тоже «новое к открытию»
+      // (осторожность с фото без размера, граница «увидено», «у низа»).
+      if(_openLoadChat===chatId && _unreadDivider && _unreadDivider.chat===chatId && _unreadDivider.ids) _unreadDivider.ids.add(String(m.id));
       changedAnything=true;
     }
     // 3 авг 2026: раньше renderMsgs() тут звался безусловно — было безопасно,
@@ -4709,9 +4769,54 @@ async function loadMessagesFromDB(chatId){
     // nexus_navstack_and_rerender_lessons). saveState() по-прежнему
     // безусловный — он просто сохраняет S.messages в localStorage, не трогает
     // экран, и нужен независимо от того, какой чат открыт сейчас.
+    // 15 сен 2026: сервер прислал новые для только что открытого чата —
+    // переходим к первому непрочитанному (afterChatDbLoad). Не прислал ничего
+    // нового — запасной «принудительный низ» больше некому тратить, гасим его,
+    // иначе он достался бы первой случайной перерисовке потом.
+    if(_awaitingDb===chatId) _awaitingDb=null;
+    // Итерация 11: ответ сервера дописывался в конец без сортировки. Когда
+    // локальная история короче серверного окна (чат ни разу не открывали на
+    // этом телефоне, но одно сообщение по WS уже пришло), вчерашние строки
+    // вставали ПОСЛЕ сегодняшних: разделитель «Непрочитанные сообщения» падал
+    // посреди вчерашних, а настоящие новые оставались за верхом экрана и молча
+    // становились прочитанными (десятый круг, journeys J10-2). Сортируем, только
+    // когда порядок действительно нарушен.
+    // Итерация 12: у своих вложений, альбомов, опросов, контактов и подарков
+    // времени в ts нет вовсе. Такая строка держится за соседа сверху, а не
+    // отменяет сортировку целиком, как раньше (одиннадцатый круг, races F2).
+    if(changedAnything){
+      const arr=S.messages[chatId];
+      // Запасной ключ для строки без времени — время соседа сверху; для строк
+      // В НАЧАЛЕ массива соседа сверху нет, поэтому берём первое известное
+      // время вперёд: иначе они получали ключ 0 и прибивались к самому верху
+      // истории (двенадцатый круг, races F6).
+      const key=new Array(arr.length); let need=false;
+      let prev=0; for(const m of arr) if(Number.isFinite(m.ts)){ prev=m.ts; break; }
+      for(let i=0;i<arr.length;i++){
+        const t=Number.isFinite(arr[i].ts) ? arr[i].ts : prev;
+        key[i]=t; if(i>0 && t<key[i-1]) need=true; prev=t;
+      }
+      if(need){
+        const idx=new Map(); arr.forEach((m,i)=>idx.set(m,i));
+        arr.sort((a,b)=>{ const x=idx.get(a), y=idx.get(b); return (key[x]-key[y])||(x-y); });
+      }
+    }
+    const unreadJump = S.chat===chatId && afterChatDbLoad(chatId, addedKeys, (data.messages||[]).filter(r=>r && r.created_at).length);
+    if(_openLoadChat===chatId) _openLoadChat=null;
     if(changedAnything){ saveState(); if(S.chat===chatId) renderMsgs(); }
-    if(S.chat===chatId) updateE2EButton(ch);
-  } catch(e){ console.warn("loadMessagesFromDB error:", e); }
+    else if(unreadJump) renderMsgs();
+    else if(S.chat===chatId) _forceBottomRendersLeft=0;
+    if(S.chat===chatId){ updateE2EButton(ch); const mc=el("msgs"); if(mc) msgsUnreadSettle(mc); }
+  } catch(e){
+    console.warn("loadMessagesFromDB error:", e);
+    if(_awaitingDb===chatId){ _awaitingDb=null; const mc=S.chat===chatId && el("msgs"); if(mc) msgsUnreadSettle(mc); }
+    if(_openLoadChat===chatId) _openLoadChat=null;
+    // Итерация 16: запрос упал — решение по памяти, а не «новых нет вовсе».
+    if(S.chat===chatId && _awaitingDb!==chatId && _pendingUnread && _pendingUnread.chat===chatId){
+      if(afterChatDbLoad(chatId, new Set(), 0)) renderMsgs();
+    }
+    if(_pendingUnread && _pendingUnread.chat===chatId) _pendingUnread=null;
+  }
 }
 
 function updateUserUI(){
@@ -5056,6 +5161,8 @@ function openChat(id,opts){
   // save draft of previous chat
   const prev=S.chats.find(c=>c.id===S.chat);
   if(prev){ prev.draft=getInputText(); }
+  // 14 сен 2026: запоминаем, где человек оставил предыдущий чат (см. saveChatPos)
+  if(S.chat && S.chat!==id) saveChatPos(S.chat);
 
   // 3 авг 2026: выбор сообщений (S.selectMode/S.selectedMsgs) был глобальным
   // и никогда не сбрасывался при переходе в другой чат — выделение, сделанное
@@ -5074,6 +5181,9 @@ function openChat(id,opts){
   }
 
   S.chat=id; const ch=S.chats.find(x=>x.id===id); if(!ch)return;
+  // Счётчик непрочитанных до обнуления — запасной путь для разделителя
+  // «Непрочитанные сообщения», если место в этом чате ещё не запоминали.
+  _openUnread={chat:id, n:ch.unread||0};
   // Загружаем сообщения из БД если чат реальный
   if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); markChatAsRead(id); refreshChatPeerInfo(ch); }
   ch.unread=0; renderChats();
@@ -5148,6 +5258,10 @@ function openChat(id,opts){
   // Правая панель — реальные стикеры и медиа именно из этого чата
   renderRightPanelMedia(ch);
 
+  // 15 сен 2026: на телефоне при запуске последний чат рисуется за списком
+  // невидимо. Когда человек его действительно открывает, место и разделитель
+  // считаются заново: новые могли прийти, пока он смотрел на список.
+  if(isMobileLayout() && !(opts&&opts.skipMobileSlide) && !document.querySelector(".layout")?.classList.contains("chat-open")) _lastRenderedChat=null;
   renderMsgs(); cancelReply(); cancelEdit(); closeMPanel();
   S.chat=id; saveState();
 
@@ -5173,6 +5287,7 @@ function openChat(id,opts){
 // из popstate (см. бэк-стек ниже), кнопка в разметке зовёт popNavEntry().
 function closeMobileChat(){
   const layoutEl=document.querySelector(".layout");
+  const wasShown=!!(layoutEl && layoutEl.classList.contains("chat-open"));
   if(layoutEl) layoutEl.classList.remove("chat-open");
   // ⚠️ На мобильном (в отличие от десктопа с двумя колонками, где S.chat
   // обязан оставаться указывать на видимый чат) вернулись к списку — сам
@@ -5182,6 +5297,11 @@ function closeMobileChat(){
   // (б) новое сообщение в этом чате не увеличивало счётчик непрочитанных,
   // потому что код считал чат всё ещё открытым и сразу помечал прочитанным.
   if(isMobileLayout()){
+    // 14 сен 2026: запоминаем место и помечаем ленту «не показана» — при
+    // следующем входе в этот же чат сработает восстановление места и
+    // разделитель непрочитанных (раньше лента просто держала старый DOM).
+    if(wasShown) saveChatPos(S.chat, true);
+    _lastRenderedChat=null;
     S.chat=null;
     saveState();
     renderChats();
@@ -5825,24 +5945,860 @@ let msgsFollowBottom=true;
 // важен только итог, а не каждый промежуточный кадр).
 let msgsProgrammaticScrollActive=false;
 let msgsScrollSettleTimer=null;
+// 15 сен 2026: когда в последний раз двигали ленту сами — если человек
+// прокручивал уже после этого, итог прокрутки его, а не наш (см. handleMsgsScroll).
+let _lastProgScrollAt=-1e9;
+// 15 сен 2026: плавная прокрутка браузера, которая сейчас в пути, и где она
+// кончится ({chat,to,until}); _posGen — поколение решения «где держать ленту»:
+// страховки, заведённые прошлой отрисовкой, не спорят с решением новой.
+let _smoothScroll=null, _posGen=0;
+// Куда мы в последний раз поставили ленту: scroll-событие, пришедшее ровно
+// туда (с опозданием — долгая задача, возврат из фона), тоже наше.
+let _lastSetTop=-1, _lastSetAt=-1e9;   // куда и когда мы в последний раз поставили ленту
 function setMsgsScrollTop(v){
   const c=el("msgs");
   const before=c.scrollTop;
   c.scrollTop=v;
-  if(c.scrollTop!==before) msgsProgrammaticScrollActive=true;
+  _smoothScroll=null;   // любое присвоение scrollTop останавливает плавную прокрутку браузера
+  _lastSetTop=c.scrollTop; _lastSetAt=performance.now();
+  if(c.scrollTop!==before){ msgsProgrammaticScrollActive=true; _lastProgScrollAt=performance.now(); }
+}
+// ── 14 сен 2026: память места в чате + защита от «утаскивания вниз» ─────────
+// Как в Telegram: (1) ушли из чата в середине истории — открываем на том же
+// сообщении и на том же месте экрана, даже если пришли новые; (2) ушли внизу,
+// а потом пришли новые — открываем на первом новом с разделителем
+// «Непрочитанные сообщения»; (3) ушли внизу, новых нет — внизу, как раньше;
+// (4) всё это переживает полное закрытие приложения (S.chatPos → saveState).
+// Место храним не как scrollTop в пикселях (после загрузки фото и новых
+// сообщений эта цифра означает уже другое место), а как «какое сообщение
+// было первым видимым и на сколько пикселей его верх отстоял от верха ленты».
+// Тот же якорь держит читаемое место при пересборке ленты (раньше держали
+// расстояние от низа, и каждое новое входящее сдвигало читаемое вверх на
+// свою высоту) и при догрузке фото.
+let _msgsLiveAnchor=null;    // {chat,key,off,at} — где человек читает прямо сейчас (at — когда снят)
+let _unreadDivider=null;     // {chat,key,ids} — перед каким сообщением разделитель; ids — id сообщений, новых к открытию (от него до конца списка в тот момент)
+let _openUnread=null;        // {chat,n} — счётчик непрочитанных в момент открытия
+let _pendingUnread=null;     // решение про непрочитанные, отложенное до ответа сервера (afterChatDbLoad)
+let _pendingUnreadJump=null; // {chat,key} — перейти к первому непрочитанному в ближайшей перерисовке
+let _renderTail=null;        // {chat,key} — последнее сообщение, которое было в ленте при прошлой отрисовке
+let _awaitingDb=null;        // id открытого чата, пока его сообщения грузятся с сервера
+let _openLoadChat=null;      // id чата, для которого ещё не пришёл ПЕРВЫЙ ответ сервера после открытия
+let _awaitingDbAt=-1e9;      // когда начали ждать ответ (ожидание не бесконечное — см. msgsUnreadSettle)
+let _unreadTarget=null;      // якорь «разделитель наверху», пока новые под ним ещё не знают своей высоты
+let _lastComposeAt=-1e9;     // когда человек в последний раз поставил курсор в поле ввода
+let _lastGeomChangeAt=-1e9;  // когда в последний раз менялись размеры ленты, фото или окна (не человек)
+let _lastRenderAt=-1e9;      // когда лента в последний раз пересобиралась
+// «Взведено» действием человека: следующая не наша прокрутка ленты — его.
+// Сильное окно (палец, колесо, клавиши) — без оговорок; слабое (мышь, поиск по
+// странице, Tab, хвост его же сеанса) — только если размеры ленты, фото и окна
+// не менялись последние 500 мс. Само действие сеанс не открывает: клик, фокус
+// или жест у края, который ленту не сдвинул, прокруткой не считаются.
+// _barHeld — левая кнопка зажата на самой полосе прокрутки: это сильное окно.
+let _userArmUntil=-1e9, _weakArmUntil=-1e9, _mouseHeld=false, _barHeld=false;
+// {chat,key} — человек видел всё до этого сообщения включительно; key:null —
+// в этом чате он ещё не видел ни одного сообщения из списка (первое новое —
+// самое первое в списке: канал с 50+ непрочитанными, чат от незнакомца).
+let _seenUpTo=null;
+// Время последнего движения пальца; -1e9 — жеста ещё не было.
+// _lastUserMoveAt — когда человек в последний раз сам сдвинул ленту (сеанс
+// «человек листает» открылся или продолжился, переход поиском). 15 сен 2026
+// (итерация 7): отмену переезда к непрочитанным и страховок решает только
+// он. Раньше — любое касание, колесо или клавиша, даже если лента не сдвинулась
+// (жест у края): переезд отменялся, новые записывались увиденными.
+let _msgsTouchActive=false, _lastTouchMoveAt=-1e9, _lastUserMoveAt=-1e9;
+let _lastUserMoveH=0;        // высота ленты при последнем её сдвиге человеком
+// Прокрутка человеком — от распознанного жеста (палец, колесо, клавиши,
+// полоса) до того, как лента успокоится (500 мс без scroll-событий), включая
+// инерцию после отпускания пальца, паузы и встречные сдвиги посреди неё.
+let _userScrollActive=false, _forceBottomSetAt=0;
+function msgKeyOf(m){ return String(m.dbId||m.id); }
+// Та же формула «исходящее», что и при отрисовке строки в renderMsgs.
+function msgIsOut(m){ return m.t==="out"||(m.t==="gift"&&m.out)||(m.t==="sk"&&m.out); }
+// Сообщение узнаём и по серверному, и по местному номеру: только что
+// отправленное сначала живёт с местным id, а dbId получает позже — ключ,
+// запомненный до этого, должен находить его и потом.
+function msgHasKey(m,key){ return String(m.dbId)===key || String(m.id)===key; }
+function findMsgByKey(chatId,key){ return (S.messages[chatId]||[]).find(m=>msgHasKey(m,key))||null; }
+// 15 сен 2026 (итерация 8): разделитель ставится вместе со списком «новые к
+// открытию» — от первого нового до последнего сообщения в этот момент. Всё,
+// что придёт позже, человек увидит вживую: к нему осторожность с
+// недогруженными фото (граница «увидено», «у низа») не относится.
+function setUnreadDivider(chatId, key){
+  const list=msgsVisibleList(chatId), i=list.findIndex(m=>msgHasKey(m,key));
+  // at — когда разделитель появился: по нему потолок ожидания срабатывает даже
+  // там, где цель удержания не взводилась вовсе (итерация 11, regress RV10-RG-5).
+  _unreadDivider={chat:chatId, key, ids:new Set(i<0 ? [] : list.slice(i).map(m=>String(m.id))), at:performance.now()};
+  armSettleTimer(chatId);
+}
+// Строка — новое к открытию сообщение, чьё фото или видео ещё не знает размера.
+function rowUnreadPending(r){
+  return !!_unreadDivider && _unreadDivider.chat===S.chat && !!_unreadDivider.ids && _unreadDivider.ids.has(r.dataset.msgId) && rowMediaPending(r);
+}
+// Где в списке граница «увидено»: -2 — границы для этого чата нет, -1 — ничего
+// не видел (или её сообщение удалили и перед ним ничего нет). Сообщение границы
+// удалили — граница встаёт на ближайшее видимое перед ним (раньше она уходила
+// назад, и число на кнопке и следующий разделитель накрывали прочитанное).
+function msgsSeenIdx(list, chatId){
+  if(!_seenUpTo || _seenUpTo.chat!==chatId) return -2;
+  if(_seenUpTo.key===null) return -1;
+  const i=list.findIndex(m=>msgHasKey(m,_seenUpTo.key)); if(i>=0) return i;
+  const all=S.messages[chatId]||[], ai=all.findIndex(m=>msgHasKey(m,_seenUpTo.key));
+  if(ai<0) return -2;
+  for(let k=ai-1;k>=0;k--){ const j=list.indexOf(all[k]); if(j>=0) return j; }
+  return -1;
+}
+// 16 сен 2026 (итерация 9): правило «своё последнее сообщение — ответ, всё до
+// него прочитано» снято. Оно молча помечало непрочитанное прочитанным: своё с
+// другого устройства сервер дописывает в конец списка без сортировки, а
+// «своими» оказывались и отложенное сообщение, опубликованное сервером, и
+// местная строка «🎁 Вы подарили…». Цена отката: прочитанное на другом
+// устройстве может снова получить разделитель (сервер не хранит, кто прочитал).
+// Один и тот же отбор сообщений везде: без удалённых, дат и системных строк.
+function msgsVisibleList(chatId){ return (S.messages[chatId]||[]).filter(m=>!m._deletedForAll && !m._deletedForMe && m.t!=="date" && m.t!=="sys"); }
+function msgsRowFor(c,msgId){ return c.querySelector(`.mrow[data-msg-id="${msgId}"]`); }
+function msgsGeomAtBottom(c){ return c.scrollHeight-c.scrollTop-c.clientHeight<40; }
+// Положение строки относительно видимого верха ленты — без её собственного
+// transform: анимация появления строк (.mrow{animation:mi}) в первых кадрах
+// сдвигает строку на 5px вниз, и без поправки каждая перерисовка уводила бы
+// якорь на эти 5px.
+function rowTopInView(c,r){
+  let y=r.getBoundingClientRect().top-c.getBoundingClientRect().top-c.clientTop;
+  const tf=getComputedStyle(r).transform;
+  if(tf && tf!=="none"){ try{ y-=new DOMMatrixReadOnly(tf).m42; }catch(e){} }
+  return y;
+}
+// «Человек сам листает» — от настоящего жеста (палец сдвинулся по вертикали
+// сильнее, чем вбок — иначе это свайп-ответ; колесо мыши; клавиши прокрутки;
+// полоса прокрутки) до того, как лента успокоится, включая инерцию после
+// отпускания пальца. Программные присвоения scrollTop и сдвиги от самого
+// браузера этих событий не порождают. Пока сигнал включён, никакие страховки
+// не тянут ленту ни вниз, ни к якорю. Палец, который стоит без движения
+// дольше секунды, прокруткой не считается — отметка не залипнет, даже если
+// touchend потерялся.
+function userScrollingNow(){
+  return _userScrollActive || (_msgsTouchActive && performance.now()-_lastTouchMoveAt<1000);
+}
+// Якорь — первая строка, целиком начинающаяся на экране (у срезанной сверху
+// строки браузер сам спускается к видимому потомку, и два механизма спорили
+// бы). Частично видимая — только если целиком начинающейся нет (длинное
+// сообщение во весь экран). shift — на сколько пикселей ниже окажется экран,
+// когда доедет плавная прокрутка, которая ещё в пути.
+// Строки выше экрана пропускаем двоичным поиском (строки ленты идут сверху
+// вниз по порядку): проход подряд по длинной истории стоил десятки
+// миллисекунд на каждую остановку прокрутки.
+function captureMsgsAnchor(c, shift=0){
+  if(!c || !S.chat || !c.clientHeight) return null;
+  const kids=c.children, ctop=c.getBoundingClientRect().top+shift;
+  let lo=0, hi=kids.length;
+  while(lo<hi){ const mid=(lo+hi)>>1; if(kids[mid].getBoundingClientRect().bottom<ctop-8) lo=mid+1; else hi=mid; }
+  const list=S.messages[S.chat]||[];
+  let partial=null;
+  for(let i=lo;i<kids.length;i++){
+    const r=kids[i]; if(!r.classList.contains("mrow") || !r.dataset.msgId) continue;
+    const t=rowTopInView(c,r)-shift;
+    if(t+r.offsetHeight<=1) continue;                       // целиком выше экрана
+    if(t>c.clientHeight) break;                             // дальше только ниже экрана
+    const rid=r.dataset.msgId; const m=list.find(x=>String(x.id)===rid); if(!m) continue;
+    const a={chat:S.chat, key:msgKeyOf(m), off:Math.round(t), at:performance.now()};
+    if(t>=-1) return a;
+    if(!partial) partial=a;
+  }
+  return partial;
+}
+// Плавная прокрутка ещё в пути? Кончилась (доехала, её оборвали, сменился
+// чат, вышло время) — забываем её.
+function msgsSmoothActive(c){
+  const sm=_smoothScroll; if(!sm) return false;
+  const now=performance.now();
+  if(Math.abs(c.scrollTop-sm.to)<2){ _smoothScroll=null; _lastProgScrollAt=now; _lastSetTop=sm.to; _lastSetAt=now; return false; }
+  if(sm.chat!==S.chat || now>sm.until){ _smoothScroll=null; _lastProgScrollAt=Math.max(_lastProgScrollAt, sm.until); return false; }
+  return true;
+}
+// Где окажется лента, когда доедет плавная прокрутка (или где она сейчас).
+// Все решения «у низа ли», «что читает человек» принимаются по этой точке:
+// промежуточное положение посреди прокрутки — не место чтения.
+function msgsFinalTop(c){ return msgsSmoothActive(c) ? _smoothScroll.to : c.scrollTop; }
+function msgsCurrentAnchor(c){ return captureMsgsAnchor(c, msgsFinalTop(c)-c.scrollTop); }
+// Сдвинуть ленту к точке to. Если плавная прокрутка в пути — меняем её цель
+// (присвоение scrollTop оборвало бы её на полпути, лента встала бы не там);
+// иначе ставим сразу, а от minSmooth px — плавно.
+function msgsMoveTo(c, to, minMove, minSmooth){
+  if(msgsSmoothActive(c)){ if(Math.abs(to-_smoothScroll.to)>=1) smoothScrollCorrect(c,to); return; }
+  const d=Math.abs(to-c.scrollTop);
+  if(minSmooth && d>=minSmooth) smoothScrollCorrect(c,to);
+  else if(d>=minMove) setMsgsScrollTop(to);
+}
+// Ставит сообщение якоря на его прежнее место экрана. false — если такого
+// сообщения на экране нет.
+function applyMsgsAnchor(c,a){
+  if(!c || !a || a.chat!==S.chat) return false;
+  const m=findMsgByKey(a.chat,a.key); if(!m) return false;
+  const r=msgsRowFor(c,m.id); if(!r) return false;
+  msgsMoveTo(c, c.scrollTop+rowTopInView(c,r)-a.off, 1);
+  return true;
+}
+// Запомнить, где человек оставил чат. Вызывается при переходе в другой чат,
+// при возврате к списку на телефоне, при сворачивании приложения и после
+// каждой остановки прокрутки.
+// last — последнее сообщение, которое человек видел внизу. Пока он читает
+// историю выше, last не сдвигаем: пришедшие за это время сообщения он не
+// видел, и при следующем открытии они должны считаться новыми.
+// shown — лента точно на экране (вызов из закрывателя, который сам только что
+// её спрятал). На телефоне при запуске последний открытый чат рисуется за
+// списком невидимо: его положение — не место чтения, и новые в нём никто не
+// видел (15 сен 2026: раньше такое «сохранение» записывало их прочитанными).
+// 20 сен 2026 (находка GPT): лента перед глазами — это не только «страница
+// видима» и «на телефоне чат не за списком». Поверх чата открывается
+// полноэкранный экран (.screen: настройки, профиль, магазин, архив, контакты,
+// Dev Panel…), и он закрывает переписку целиком. Раньше сообщение, пришедшее
+// в это время, тут же объявлялось увиденным: пометка «не показано» снималась,
+// серверу уходило «прочитано», и при возврате не было ни разделителя, ни числа.
+function msgsFeedVisible(){
+  if(document.visibilityState==="hidden") return false;
+  if(isMobileLayout() && !document.querySelector(".layout")?.classList.contains("chat-open")) return false;
+  return !msgsFeedCovered();
+}
+// 20 сен 2026 (четырнадцатый круг): перечислять классы оверлеев бесполезно —
+// поверх ленты лежат и полноэкранные .screen (настройки, профиль, магазин), и
+// панель «Профиль чата» на телефоне, и просмотрщик фото, и экран звонка, и
+// любой будущий. Спрашиваем у браузера, кто на самом деле в середине ленты:
+// если не она сама — человек переписку не видит.
+function msgsFeedCovered(){
+  const c=el("msgs"); if(!c) return true;
+  const r=c.getBoundingClientRect();
+  if(r.width<2 || r.height<2) return true;
+  const x=Math.round(r.left+r.width/2), y=Math.round(r.top+r.height/2);
+  if(x<0 || y<0 || x>innerWidth || y>innerHeight) return true;
+  const t=document.elementFromPoint(x,y);
+  return !(t && (t===c || c.contains(t)));
+}
+function saveChatPos(chatId, shown){
+  const c=el("msgs");
+  if(!chatId || !c || _lastRenderedChat!==chatId || !c.clientHeight) return;
+  if(!shown && !msgsFeedVisible()) return;
+  const list=msgsVisibleList(chatId); if(!list.length) return;
+  if(!S.chatPos) S.chatPos={};
+  // 15 сен 2026: «увидено» — граница _seenUpTo (см. msgsAdvanceSeen), а не
+  // «последнее сообщение в момент ухода». Пока держим разделитель наверху
+  // (новые под ним ещё не знают высоты или ждём сервер), граница не
+  // сдвигается — на следующем открытии разделитель будет там же.
+  // Итерация 8: новые влезли в экран и уже окончательные (фото знают размер) —
+  // человек их видел, даже если ответ сервера ещё не пришёл.
+  const holding=!msgsFollowBottom && !!_unreadTarget && _unreadTarget.chat===chatId
+    && (unreadPhotosPending(c) || c.scrollHeight-msgsFinalTop(c)-c.clientHeight>=40);
+  // shown: лента была на экране до этого вызова (закрыватель уже спрятал её,
+  // страница уже скрыта) — то, что было на экране, человек видел (итерация 7:
+  // раньше «назад» на телефоне и сворачивание не двигали границу, и прочитанное
+  // после разблокировки при следующем входе снова оказывалось под разделителем).
+  if(!holding) msgsAdvanceSeen(c, shown);
+  const si=msgsSeenIdx(list, chatId);
+  const none=si===-1;   // ещё ничего не видел
+  // Итерация 17: границы «увидено» ещё нет — значит человек в этом чате ничего
+  // не видел, и записывать «прочитано всё до последнего» нельзя: уход из чата
+  // до ответа сервера хоронил всё непрочитанное навсегда (пятнадцатый круг,
+  // races F1).
+  const fr=si>=0 ? msgKeyOf(list[si]) : null;
+  const atBottom=c.scrollHeight-msgsFinalTop(c)-c.clientHeight<150;
+  if(holding && none){
+    // Держим разделитель над самым первым сообщением: при следующем входе —
+    // то же место, разделитель там же, все новые — новые.
+    const ni=list.findIndex(m=>msgHasKey(m,_unreadTarget.key));
+    S.chatPos[chatId]={bottom:false, key:_unreadTarget.key, off:_unreadTarget.off, ni, last:null, t:Date.now()};
+  }
+  // «У низа» — тот же порог, что у ленты (150 px): кто ушёл «почти внизу»,
+  // тот при возврате получает правило 2, а не место в истории.
+  else if(holding || atBottom) S.chatPos[chatId]={bottom:true, seen:fr, last:fr, t:Date.now()};   // seen=null — «ничего ещё не видел»
+  else {
+    const a=msgsCurrentAnchor(c); if(!a) return;
+    const ni=list.findIndex(m=>msgHasKey(m,a.key));
+    S.chatPos[chatId]={bottom:false, key:a.key, off:a.off, ni, last:none ? null : fr, t:Date.now()};
+  }
+  const ids=Object.keys(S.chatPos);   // не копим бесконечно: 200 последних чатов
+  if(ids.length>200) ids.sort((x,y)=>S.chatPos[x].t-S.chatPos[y].t).slice(0,ids.length-200).forEach(k=>delete S.chatPos[k]);
+}
+// Как открыть чат: {mode:"anchor"|"unread"|"bottom", key, off, divKey}.
+// Решение «где первое непрочитанное», которое по памяти телефона принять
+// нельзя (новые пришли, пока приложение было закрыто, и их здесь ещё нет),
+// откладывается до ответа сервера — см. afterChatDbLoad.
+function planChatRestore(chatId){
+  // Итерация 16: с какого момента пометка «не показано» ставится у всего, что
+  // приходит мимо экрана. Строка новее этого момента и без пометки — значит
+  // человек её видел; строка старше — телефон про неё ничего не знает.
+  if(S.nvSince==null) S.nvSince=Date.now();
+  _downJumped=null;   // новый чат — первое нажатие снова к первому непрочитанному
+  const list=msgsVisibleList(chatId);
+  const unreadN=(_openUnread && _openUnread.chat===chatId) ? _openUnread.n : 0;
+  let pos=S.chatPos && S.chatPos[chatId];
+  const now=performance.now();
+  // Последнее сообщение к моменту открытия: всё, что после него появится не
+  // из ответа сервера, пришло уже на глазах у человека и новым не считается.
+  const lastAtOpen=list.length ? msgKeyOf(list[list.length-1]) : null;
+  _pendingUnread=null; _pendingUnreadJump=null; _openLoadChat=chatId;
+  // Сообщение границы удалили «для всех», пока чат был закрыт, — берём
+  // ближайшее видимое перед ним (итерация 9: раньше место считалось потерянным,
+  // и новые оставались без разделителя и числа).
+  if(pos && pos.bottom && pos.seen!=null && !list.some(m=>msgHasKey(m,pos.seen))){
+    _seenUpTo={chat:chatId, key:pos.seen};
+    const si=msgsSeenIdx(list, chatId);
+    if(si>=0) pos={...pos, seen:msgKeyOf(list[si])};
+  }
+  if(!list.length || !pos || (pos.bottom && !list.some(m=>msgHasKey(m,pos.seen)))){
+    // Места нет (первое открытие после обновления, новый собеседник) или
+    // «последнее виденное» удалено: ориентир — серверный счётчик непрочитанных
+    // (n-е входящее с конца), и решаем по списку ПОСЛЕ ответа сервера: в
+    // памяти могут быть ещё не все новые.
+    // Итерация 10: ответ сервера ждём и при нулевом счётчике: в группах и
+    // каналах сервер обнуляет его первым прочитавшим (общий read_at), и без
+    // этого правило 2 на первом открытии не работало вовсе.
+    // firstTs — время самой старой строки, которая была в памяти к открытию:
+    // всё, что ответ сервера принесёт старше неё, — добивка истории, а не новое
+    // (двенадцатый круг, races F2).
+    _pendingUnread={chat:chatId, seen:null, n:unreadN, lastAtOpen, openedAt:now,
+      firstTs:(()=>{ for(const m of list) if(Number.isFinite(m.ts)) return m.ts; return null; })()};
+    _seenUpTo=(unreadN>0 || !lastAtOpen) ? null : {chat:chatId, key:lastAtOpen};
+    return {mode:"bottom"};
+  }
+  if(!pos.bottom){
+    _seenUpTo=pos.last===null ? {chat:chatId, key:null}
+      : (pos.last && list.some(m=>msgHasKey(m,pos.last))) ? {chat:chatId, key:pos.last} : null;
+    // Сообщение границы удалили «для всех», пока чат был закрыт, — берём
+    // ближайшее видимое перед ним (итерация 10: раньше так умела только ветка
+    // «ушёл у низа», а в правиле 1 новые оставались без разделителя и числа).
+    if(!_seenUpTo && pos.last!=null){
+      _seenUpTo={chat:chatId, key:pos.last};
+      const si=msgsSeenIdx(list, chatId);
+      _seenUpTo=si>=0 ? {chat:chatId, key:msgKeyOf(list[si])} : null;
+    }
+    let key=pos.key, off=pos.off;
+    if(!list.some(m=>msgHasKey(m,key))){
+      // Якорное сообщение удалили или ему сменили номер — встаём на соседа
+      // по прежней позиции в списке, а не в самое начало истории.
+      const alt=(typeof pos.ni==="number" && pos.ni>=0) ? list[Math.min(pos.ni,list.length-1)] : null;
+      if(!alt) return {mode:"bottom"};
+      key=msgKeyOf(alt); off=Math.max(0,off);
+    }
+    // Пришли новые после того, что человек видел, — разделитель перед первым
+    // из них (ниже места чтения), как в Telegram; место чтения не меняется.
+    const fu=!_seenUpTo ? null : _seenUpTo.key===null ? (list.find(m=>!msgIsOut(m))||null) : firstUnreadIn(list, _seenUpTo.key, 0, null);
+    // Новых в памяти нет — они могут прийти с сервера (приложение было закрыто):
+    // тогда разделитель поставит ответ сервера, место чтения не трогаем.
+    if(!fu && _seenUpTo && _seenUpTo.key!==null) _pendingUnread={chat:chatId, seen:_seenUpTo.key, n:0, lastAtOpen, openedAt:now, anchor:true};
+    return {mode:"anchor", key, off, divKey:fu ? msgKeyOf(fu) : null};
+  }
+  _seenUpTo={chat:chatId, key:pos.seen};
+  // Всё до сохранённой границы человек уже видел (итерация 11).
+  { const si=msgsSeenIdx(list, chatId); for(let i=0;i<=si;i++) if(list[i]._nv) delete list[i]._nv; }
+  const first=firstUnreadIn(list, pos.seen, 0, null);
+  if(first) return {mode:"unread", key:msgKeyOf(first)};
+  // Новых в памяти нет — но они могут прийти с сервера (приложение было
+  // закрыто, пока их присылали).
+  _pendingUnread={chat:chatId, seen:pos.seen, n:0, lastAtOpen, openedAt:now};
+  return {mode:"bottom"};
+}
+// Первое непрочитанное в списке: первое входящее после seen («последнее
+// виденное на этом устройстве»); если seen нет — n-е входящее с конца (n —
+// серверный счётчик непрочитанных). allowed(i) — какие сообщения вообще
+// могут быть новыми.
+// Серверный счётчик как ограничение «не раньше» не используется: у чата,
+// открытого при запуске, он всегда 0 (обнулён при открытии, WS его не
+// растит), в группах сервер обнуляет его первым прочитавшим (общий read_at,
+// F16). Поэтому прочитанное на другом устройстве ещё может получить разделитель.
+function firstUnreadIn(list, seenKey, n, allowed){
+  const inc=[]; list.forEach((m,i)=>{ if(!msgIsOut(m) && (!allowed || allowed(i))) inc.push(i); });
+  if(!inc.length) return null;
+  if(seenKey!=null){
+    const si=list.findIndex(m=>msgHasKey(m,seenKey));
+    if(si>=0){ const a=inc.find(i=>i>si); return a===undefined ? null : list[a]; }
+  }
+  if(!(n>0)) return null;
+  return list[inc[Math.max(0,inc.length-n)]];
+}
+// Ответ сервера на только что открытый чат: если среди пришедших есть новые
+// входящие — в ближайшей перерисовке переходим к первому из них (правило 2).
+// Ничего не делаем, если человек уже начал листать сам.
+function afterChatDbLoad(chatId, added, srvWindow){
+  const p=_pendingUnread; if(!p || p.chat!==chatId || S.chat!==chatId) return false;
+  _pendingUnread=null;
+  // Кандидаты — то, что было в памяти к открытию, и то, что принёс этот
+  // ответ; пришедшее вживую после открытия человек уже видел.
+  const list=msgsVisibleList(chatId);
+  const li=p.lastAtOpen ? list.findIndex(m=>msgHasKey(m,p.lastAtOpen)) : -1;
+  let first=firstUnreadIn(list, p.seen, p.n, i=>i<=li || !!(added && added.has(msgKeyOf(list[i]))));
+  // Итерация 10: когда места нет и ориентир — серверный счётчик, он бывает
+  // больше, чем окно сервера (последние 50), и меньше правды (в группе его
+  // обнуляет первый прочитавший). Тогда разделитель ставим по тому, чего
+  // человек не видел.
+  // Итерация 11: «не видел» — это пометка _nv, а не «не было в памяти».
+  // Итерация 10 считала новым только принесённое этим ответом, и непрочитанное,
+  // которое телефон уже получил по WS в закрытый чат или фоновой
+  // пересинхронизацией, оказывалось ВЫШЕ разделителя и молча помечалось
+  // прочитанным (десятый круг, races F1). Ниже первого непоказанного разделитель
+  // не опускаем, выше уже показанного не поднимаем.
+  if(p.seen==null){
+    // Первое, чего человек точно не видел: помеченное _nv или принесённое этим
+    // ответом. Выше него разделитель поднимаем всегда (это доказано), ниже —
+    // только если счётчик заведомо больше окна, которое отдал сервер: иначе он
+    // точнее нас (десятый круг, races F1 и rules R10-1/R10-2).
+    let cn=-1, ca=-1;
+    for(let i=0;i<list.length;i++){
+      if(msgIsOut(list[i])) continue;
+      if(cn<0 && list[i]._nv===1) cn=i;
+      // Не «после последнего на момент открытия» (сортировка ответа может
+      // поставить принесённые строки и перед ним), но и не добивка истории:
+      // строку СТАРШЕ всего, что на телефоне уже было, новой не считаем —
+      // иначе канал, который читают с компьютера, открывался на три экрана
+      // выше с числом во всю загруженную историю (двенадцатый круг, races F2).
+      if(ca<0 && added && added.has(msgKeyOf(list[i]))
+         && !(p.firstTs!=null && Number.isFinite(list[i].ts) && list[i].ts<p.firstTs)) ca=i;
+      if(cn>=0 && ca>=0) break;
+    }
+    const cand = cn>=0 ? (ca>=0 ? Math.min(cn,ca) : cn) : ca;
+    const fi = first ? list.indexOf(first) : -1;
+    // Счётчик ничего не дал (в группе и канале его обнуляет первый прочитавший —
+    // это норма, а не сбой). Тогда сначала доказанное «человек не видел»
+    // (пометка), и только если его нет — догадка «этого не было в памяти».
+    // Минимум из них брать нельзя: догадка выигрывала у доказательства
+    // (двенадцатый круг, races F2).
+    // Её собственное сообщение — отметка «я тут была»: всё входящее ПОСЛЕ него
+    // с этого телефона не открывалось, всё до него она тогда прочитала.
+    // «Не ниже её последнего ответа» — правило для того единственного случая,
+    // где нулевой счётчик ничего не значит: в группе и канале его обнуляет
+    // первый прочитавший (аудит F16). В личной переписке счётчик считает только
+    // её собственные прочтения, и ноль там — правда.
+    // Итерация 16: и применяется оно только к строкам СТАРШЕ этой сборки — про
+    // них телефон и правда ничего не знает. Строка новее сборки и без пометки
+    // означает, что человек её видел, и поднимать над ней разделитель нельзя:
+    // так лента открывалась на три экрана выше поверх прочитанного
+    // (четырнадцатый круг: rules R14-2/R14-3, closure N1, races F1/F2).
+    const unknown=m=>!(Number.isFinite(m.ts) && S.nvSince!=null && m.ts>=S.nvSince);
+    let flo=-1, floAll=-1, lastOut=-1;
+    for(let i=list.length-1;i>=0;i--) if(msgIsOut(list[i])){ lastOut=i; break; }
+    if(lastOut>=0) for(let i=lastOut+1;i<list.length;i++) if(!msgIsOut(list[i])){ floAll=i; break; }
+    if(lastOut>=0) for(let i=lastOut+1;i<list.length;i++) if(!msgIsOut(list[i]) && unknown(list[i])){ flo=i; break; }
+    if(!first){
+      // Счётчик молчит: сначала доказанное «не видел», потом «не было в памяти»,
+      // и только потом пол. Минимум из доказательства и догадки брать нельзя.
+      let pick = cn>=0 ? cn : ca;
+      if(flo>=0 && (pick<0 || flo<pick)) pick=flo;
+      if(pick>=0) first=list[pick];
+    }
+    // Счётчик уводит разделитель ВЫШЕ её собственного ответа, хотя пометки
+    // говорят, что непрочитанное начинается не раньше него: два независимых
+    // признака против одного заведомо ненадёжного (не прошёл POST /read).
+    else if(cn>=0 && floAll>=0 && fi<floAll && floAll<=cn) first=list[floAll];
+    // Пометка «не видел» есть НЕ у всего непрочитанного: её нет ни у того, что
+    // лежало в памяти до обновления, ни у того, что приносит сам ответ на
+    // открытие. Поэтому она может только ПОДНЯТЬ разделитель выше — ниже, к
+    // себе, опускать нельзя: одного живого сообщения хватало, чтобы всё
+    // остальное непрочитанное оказалось выше разделителя и молча стало
+    // прочитанным (одиннадцатый круг, races F1).
+    else if(cn>=0 && fi>cn) first=list[cn];
+    // Опустить разделитель можно только там, где счётчик заведомо врёт: он
+    // больше окна, которое отдал сервер (последние 50), и потому указывает в
+    // уже прочитанную историю.
+    // Итерация 13: «больше или равно». Счётчик, равный всему окну, тоже
+    // указывает не ближе самой старой строки окна, то есть в историю, о
+    // которой сервер в этом ответе ничего не сказал.
+    else if(cand>=0 && fi<cand && srvWindow>0 && p.n>=srvWindow) first=list[cand];
+    if(first){
+      const fx=list.indexOf(first), to=cand>=0 ? cand : list.length;
+      let lie = fx>=0 && fx<to;
+      for(let i=fx;i<to && lie;i++){ const m=list[i]; if(msgIsOut(m)) continue; if(unknown(m) || m._nv) lie=false; }
+      if(lie) first = cand>=0 ? list[cand] : null;
+    }
+  }
+  if(!first) return false;
+  // Правило 1 (ушли посреди истории): новые с сервера получают разделитель
+  // ниже места чтения, лента никуда не едет.
+  if(p.anchor){
+    // Итерация 13: если разделитель уже нарисован, но ответ принёс строки,
+    // которые сортировка поставила ВЫШЕ него, — переносим его к ним, иначе
+    // новые остаются над разделителем (двенадцатый круг, races F5).
+    const dvIdx=(_unreadDivider && _unreadDivider.chat===chatId) ? list.findIndex(m=>msgHasKey(m,_unreadDivider.key)) : -1;
+    if(dvIdx<0 || dvIdx>list.indexOf(first)) setUnreadDivider(chatId, msgKeyOf(first));
+    return false;
+  }
+  const fx=list.indexOf(first);
+  // Всё до первого нового — увидено; если первое новое — самое первое в
+  // списке, не увидено ничего (key:null — кнопка «вниз» считает все новые).
+  _seenUpTo={chat:chatId, key:fx>0 ? msgKeyOf(list[fx-1]) : null};
+  // Человек уже листает (сам сдвинул ленту) или поставил курсор в поле — ленту
+  // не уводим, но разделитель рисуем на месте: новые видно, если прокрутить вверх.
+  // Итерация 8: палец, который двигается у края, но ленту не сдвинул, — не
+  // решение человека (раньше ответ сервера посреди такого жеста рисовался внизу,
+  // и 25 новых проскакивали увиденными).
+  if(_lastUserMoveAt>p.openedAt || _lastComposeAt>p.openedAt || _userScrollActive){
+    setUnreadDivider(chatId, msgKeyOf(first));
+    return false;
+  }
+  _pendingUnreadJump={chat:chatId, key:msgKeyOf(first)};
+  return true;
+}
+// Страховка того же рода, что scheduleBottomGuard, но держит не низ, а якорь.
+function scheduleAnchorGuard(chatId, c, a, since, gen){
+  if(!a) return;
+  [150,400,900].forEach(delay=>{
+    setTimeout(()=>{
+      if((gen!==undefined && gen!==_posGen) || S.chat!==chatId || !c.isConnected || msgsFollowBottom) return;
+      if(userScrollingNow() || _lastUserMoveAt>since) return;
+      const m=findMsgByKey(a.chat,a.key); const r=m && msgsRowFor(c,m.id); if(!r) return;
+      msgsMoveTo(c, c.scrollTop+rowTopInView(c,r)-a.off, 3, 40);
+    }, delay);
+  });
+}
+// Размеры фото запоминаем на самом сообщении (переживает перезапуск вместе с
+// S.messages) и при следующей отрисовке задаём пропорцию заранее — место под
+// фото зарезервировано до загрузки, лента не дёргается. Только у самих фото
+// (img.msg-img): аватарка и эмодзи в той же строке — не их размеры.
+function rememberImgDims(img, byId){
+  if(!img.classList.contains("msg-img") || !img.naturalWidth || !img.naturalHeight) return;
+  const holder=img.closest(".grp-cell") || img.closest(".mrow"); if(!holder) return;
+  const m=byId.get(holder.dataset.msgId);
+  if(m && (m.imgW!==img.naturalWidth || m.imgH!==img.naturalHeight)){ m.imgW=img.naturalWidth; m.imgH=img.naturalHeight; }
+}
+// 15 сен 2026: фото и видео меняют высоту, когда браузер узнаёт их размер,
+// а это бывает раньше события load. ResizeObserver срабатывает после раскладки
+// и до отрисовки кадра: низ или место чтения поправляются раньше, чем глаз
+// увидит сдвиг (раньше поправляли страховки через 150-900 мс — видимым рывком
+// или доездом). Обработчик load в renderMsgs остаётся для размеров фото и
+// разделителя непрочитанных.
+// Итерация 8: размер фото запоминаем, как только браузер его узнал (по
+// заголовку файла, задолго до конца загрузки большого оригинала), — фото,
+// ушедшее с экрана недогруженным, в следующий раз уже с зарезервированным местом.
+let _msgByIdAt=null;   // {chat, map} — карта «id строки → сообщение» с последней отрисовки
+const _mediaRO=window.ResizeObserver ? new ResizeObserver(entries=>{
+  _lastGeomChangeAt=performance.now();
+  const byId=(_msgByIdAt && _msgByIdAt.chat===S.chat) ? _msgByIdAt.map : null;
+  if(byId) for(const e of entries){ const t=e.target; if(t.tagName==="IMG" && t.naturalWidth) rememberImgDims(t, byId); }
+  const c=el("msgs"); if(!c || !S.chat || _lastRenderedChat!==S.chat || userScrollingNow()) return;
+  msgsHoldPlace(c);
+}) : null;
+// Удержать то, что сейчас решено: низ или место чтения (цель «разделитель
+// наверху» — тоже место чтения). Якорь, снятый до последнего сдвига ленты
+// человеком, уже не про то, что он читает. Кнопку «вниз» пересчитываем: фото,
+// догрузившись, могли вытолкнуть новые за нижний край.
+// recount=false — не пересчитывать кнопку (догрузилась аватарка или эмодзи:
+// их размер задан заранее, а пересчёт проходит весь список).
+function msgsHoldPlace(c, recount=true){
+  // Лента стоит в самом низу, а держать низ перестали только из-за фото без
+  // размера — как только размер известен, снова держим низ (итерация 9).
+  if(!msgsFollowBottom && !userScrollingNow() && c.scrollHeight-msgsFinalTop(c)-c.clientHeight<8 && msgsNearBottom(c, msgsFinalTop(c))) msgsFollowBottom=true;
+  if(msgsFollowBottom) msgsMoveTo(c, c.scrollHeight, 1);
+  else if(_msgsLiveAnchor && _msgsLiveAnchor.chat===S.chat && _msgsLiveAnchor.at>=_lastUserMoveAt){ applyMsgsAnchor(c, _msgsLiveAnchor); msgsUnreadSettle(c); }
+  if(recount && !msgsFollowBottom) msgsUpdateDownBtn(c, !!_unreadTarget && _unreadTarget.chat===S.chat);
+}
+// Есть ли под разделителем непрочитанных одиночные фото, которые ещё не
+// загрузились и чей размер заранее неизвестен (у ячеек альбома место
+// зарезервировано всегда), или видео, ещё не знающие своего размера.
+const _cssCIS=!!(window.CSS && CSS.supports && CSS.supports("contain-intrinsic-size","1px 1px"));
+// Итерация 8: размер фото известен, как только браузер прочёл заголовок
+// (naturalWidth), — высота строки уже окончательная, хотя сам файл ещё грузится.
+function imgSizePending(img){ return !img.complete && !img.naturalWidth && !img.closest(".grp-cell") && !(_cssCIS && img.classList.contains("dims")); }
+// Видео: ждём, пока нет метаданных — и сразу после вставки (NETWORK_NO_SOURCE,
+// источник ещё не выбран; итерация 8: раньше такое видео считалось готовым, и
+// удержание разделителя слетало). Видео без preload (iOS, экономия трафика)
+// метаданные не грузит вовсе (NETWORK_IDLE) — такое не ждём, иначе граница и
+// удержание встали бы навсегда.
+function videoSizePending(v){ return v.readyState<1 && !v.error && v.networkState!==1; }
+// В строке есть фото или видео, чья высота ещё не окончательная.
+function rowMediaPending(r){
+  for(const img of r.querySelectorAll("img.msg-img")) if(imgSizePending(img)) return true;
+  for(const v of r.querySelectorAll("video.msg-video")) if(videoSizePending(v)) return true;
+  return false;
+}
+// «У низа» для решения «держать низ» после прокрутки человеком (top — где лента
+// стоит или куда едет): ближе 150 px. Но пока ниже верха экрана есть новые к
+// открытию сообщения (под разделителем), чьи фото или видео ещё не знают
+// размера, — не у низа, даже в самом низу: пустые фото делают ленту короче, и
+// человек, дочитавший до них, после их догрузки улетал бы в самый низ мимо
+// них (итерации 7-8). Фото, пришедшее на глазах у низа, этого не меняет —
+// лента за ним следует, как обычно.
+function msgsNearBottom(c, top){
+  const d=c.scrollHeight-top-c.clientHeight;
+  if(d>=150) return false;
+  if(!_unreadDivider || _unreadDivider.chat!==S.chat || !_unreadDivider.ids || !_unreadDivider.ids.size) return true;
+  const kids=c.children, ctop=c.getBoundingClientRect().top+(top-c.scrollTop);
+  for(let i=kids.length-1;i>=0;i--){
+    const r=kids[i]; if(r.getBoundingClientRect().bottom<=ctop) break;
+    if(r.classList.contains("mrow") && rowUnreadPending(r)) return false;
+  }
+  return true;
+}
+// Итерация 9: только то, что уже на экране или на экран ниже: фото с
+// loading="lazy" далеко внизу браузер не грузит вовсе, и удержание разделителя
+// не кончалось бы никогда.
+function unreadPhotosPending(c){
+  const lim=c.getBoundingClientRect().bottom+c.clientHeight;
+  // Итерация 12: только «новые к открытию», как и в rowUnreadPending — фото,
+  // пришедшее вживую уже на глазах, ожиданием не считается (одиннадцатый круг,
+  // races F6).
+  const ids=(_unreadDivider && _unreadDivider.chat===S.chat) ? _unreadDivider.ids : null;
+  const near=el=>{ const r=el.closest(".mrow")||el; return (!ids || ids.has(r.dataset && r.dataset.msgId)) && r.getBoundingClientRect().top<lim; };
+  for(const img of c.querySelectorAll(".unread-divider ~ .mrow img.msg-img")) if(imgSizePending(img) && near(img)) return true;
+  for(const v of c.querySelectorAll(".unread-divider ~ .mrow video.msg-video")) if(videoSizePending(v) && near(v)) return true;
+  const enc=(S.messages[S.chat]||[]).filter(m=>m.e2e && m.tx==="🔐 …");   // ещё не расшифрованы
+  if(enc.length){ const ids=new Set(enc.map(m=>String(m.id))); for(const r of c.querySelectorAll(".unread-divider ~ .mrow[data-msg-id]")) if(ids.has(r.dataset.msgId) && near(r)) return true; }
+  return false;
+}
+// Осталось ли под разделителем непоказанное: строка из «новых к открытию»,
+// чей верх ниже нижнего края экрана (итерация 11).
+function unreadBelowFold(c){
+  const ids=(_unreadDivider && _unreadDivider.chat===S.chat) ? _unreadDivider.ids : null;
+  if(!ids || !ids.size) return false;
+  const cbot=c.getBoundingClientRect().top+(msgsFinalTop(c)-c.scrollTop)+c.clientHeight;
+  const kids=c.children;
+  for(let i=kids.length-1;i>=0;i--){
+    const r=kids[i];
+    if(!r.classList.contains("mrow") || !r.dataset.msgId || !ids.has(r.dataset.msgId)) continue;
+    return r.getBoundingClientRect().top>=cbot-1;
+  }
+  return false;
+}
+// Новые под разделителем влезли в экран целиком и окончательно (ответ
+// сервера пришёл, фото и видео знают размер), а лента у низа — дальше держим
+// низ, как обычно.
+// Итерация 8: новые не влезли, но всё окончательно (сервер ответил, фото знают
+// размер, лента доехала) — цель «разделитель наверху» больше не нужна: место
+// держится обычным якорем, а что на экране — увидено (раньше до первого касания
+// граница стояла, и «открыла, прочитала первый экран, назад» каждый раз давало
+// тот же разделитель и то же число).
+// Итерация 10: ожидание ответа сервера и ожидание размеров — не бесконечные.
+// Запрос без ответа (сеть пропала), фото, которое так и не пришло, или
+// нерасшифрованное E2E-сообщение иначе держали бы разделитель навсегда: каждый
+// следующий вход показывал бы тот же разделитель и то же число.
+const MSGS_WAIT_MAX=15000;
+function msgsUnreadSettle(c){
+  const waiting=_awaitingDb===S.chat && performance.now()-_awaitingDbAt<MSGS_WAIT_MAX;
+  if(!_unreadDivider || _unreadDivider.chat!==S.chat || msgsFollowBottom || waiting || userScrollingNow()) return;
+  // Итерация 11: срок считаем от первого взведения цели (см. renderMsgs: своё
+  // время у цели теперь сохраняется) — иначе в живом чате, где перерисовки идут
+  // одна за другой, потолок не наступал бы никогда.
+  const expired=!!((_unreadTarget && _unreadTarget.chat===S.chat && performance.now()-_unreadTarget.at>MSGS_WAIT_MAX)
+    || (_unreadDivider.at && performance.now()-_unreadDivider.at>MSGS_WAIT_MAX));
+  const pending=unreadPhotosPending(c);
+  if(pending && !expired) return;
+  // Итерация 11: по истечении потолка цель отпускаем, но «новые влезли и
+  // увидены» не утверждаем: фото под разделителем так и не знают размера, а это
+  // утверждение прижимало ленту к низу, после чего одно живое входящее хоронило
+  // правило 2 (десятый круг, races F2). Место дальше держит обычный якорь,
+  // число на кнопке считается.
+  if(c.scrollHeight-msgsFinalTop(c)-c.clientHeight>=40 || pending || _awaitingDb===S.chat){
+    if(_unreadTarget && _unreadTarget.chat===S.chat && !msgsSmoothActive(c)){
+      _unreadTarget=null;
+      msgsUpdateDownBtn(c);   // граница сдвинется только по строкам, которые правда показаны
+    }
+    return;
+  }
+  msgsFollowBottom=true; _msgsLiveAnchor=null; _unreadTarget=null;
+  msgsAdvanceSeen(c);   // новые влезли и видны целиком
+}
+// Итерация 11: потолок MSGS_WAIT_MAX — условие внутри msgsUnreadSettle, а звали
+// её только события (ответ сервера, успокоение прокрутки, догрузка фото,
+// перерисовка). Когда не происходит ничего — а это ровно те случаи, ради
+// которых потолок и введён: запрос без ответа, фото, которое не придёт,
+// нерасшифрованное E2E, — не случалось и вызова, и разделитель с числом
+// повторялись при каждом входе навсегда (десятый круг, journeys J10-3).
+let _settleTimer=null;
+function armSettleTimer(chatId){
+  if(_settleTimer) clearTimeout(_settleTimer);
+  _settleTimer=setTimeout(()=>{
+    _settleTimer=null;
+    const c=el("msgs");
+    if(c && S.chat===chatId && _lastRenderedChat===chatId) msgsUnreadSettle(c);
+  }, MSGS_WAIT_MAX+100);
+}
+// Граница «человек видел всё до этого сообщения включительно» (_seenUpTo) —
+// как в Telegram: прочитано всё до последнего сообщения, которое было на
+// экране (кнопка «вниз» или ответ сервера, пришедший, пока человек внизу,
+// тоже «читают» всё до низа). Граница только растёт. Не двигается, пока
+// держим разделитель наверху (новые под ним ещё не показаны толком) и пока
+// страница скрыта или лента на телефоне за списком — тогда никто ничего не видит.
+// shown — лента была на экране до вызова (см. saveChatPos), хотя страница уже
+// скрыта или чат на телефоне уже за списком.
+// Строка, где фото или видео ещё не знает размера (высота 0), не «увидена»,
+// и граница не заходит дальше неё: догрузившись, фото вытолкнет следующие за
+// край (итерация 7: раньше столбик пустых фото-постов целиком «влезал» в
+// экран и записывался увиденным).
+// 20 сен 2026 (пятнадцатый круг): «прочитано» серверу — один вход на всё
+// приложение. Не шлём, пока переписки не видно (её закрывает экран, просмотрщик
+// фото, звонок или список чатов), не шлём в служебные чаты и не шлём одно и то
+// же дважды: раньше на каждое живое сообщение уходило по два запроса
+// (journeys J16-5, regress RG-3), а после закрытия экрана не уходило ни одного
+// и бейдж возвращался на прочитанный чат (journeys J16-1, closure m1).
+let _readSentKey=null;
+function msgsReportRead(chatId){
+  if(!chatId || chatId===99999 || chatId===88888 || chatId===77777 || chatId===FEEDBACK_CHAT_ID) return;
+  if(document.visibilityState==="hidden" || msgsFeedCovered()) return;
+  const list=msgsVisibleList(chatId);
+  const key=chatId+"|"+(list.length ? msgKeyOf(list[list.length-1]) : "");
+  if(_readSentKey===key) return;
+  _readSentKey=key;
+  markChatAsRead(chatId);
+}
+// Переписка снова перед глазами (закрыли экран, вернулись из просмотрщика,
+// развернули приложение) — досчитываем увиденное и сообщаем серверу.
+function msgsFeedShownAgain(){
+  const c=el("msgs");
+  if(!c || !S.chat || _lastRenderedChat!==S.chat || msgsFeedCovered()) return;
+  msgsAdvanceSeen(c);
+  msgsUpdateDownBtn(c);
+}
+function msgsAdvanceSeen(c, shown){
+  const chat=S.chat; if(!chat || _lastRenderedChat!==chat || !c.clientHeight) return;
+  // Итерация 16: переписку закрывает другой экран — она её не видит, и никакой
+  // shown этого не меняет. Раньше «свернул телефон из-под настроек» стирало
+  // ровно те пометки, которые итерация 15 только что сберегла (четырнадцатый
+  // круг: rules R14-1, regress RG-2, closure N3, races F3).
+  if(msgsFeedCovered()) return;
+  // Решение о разделителе ещё не принято (ждём первый ответ сервера) — граница
+  // стоит: иначе уход из чата в эти секунды объявлял прочитанным всё, что
+  // лежит в памяти (пятнадцатый круг, races F1). Потолок тот же, что у
+  // удержания разделителя.
+  if(_pendingUnread && _pendingUnread.chat===chat && performance.now()-_pendingUnread.openedAt<MSGS_WAIT_MAX) return;
+  if(!shown && !msgsFeedVisible()) return;
+  const list=msgsVisibleList(chat); if(!list.length) return;
+  const shift=msgsFinalTop(c)-c.scrollTop;
+  const kids=c.children, ctop=c.getBoundingClientRect().top+shift, cbot=ctop+c.clientHeight;
+  let lo=0, hi=kids.length;
+  while(lo<hi){ const mid=(lo+hi)>>1; if(kids[mid].getBoundingClientRect().top<cbot-1) lo=mid+1; else hi=mid; }
+  let a=0, b=lo;   // первая строка, заходящая на экран сверху
+  while(a<b){ const mid=(a+b)>>1; if(kids[mid].getBoundingClientRect().bottom<=ctop) a=mid+1; else b=mid; }
+  let end=lo-1;
+  for(let i=a;i<=end;i++){ const r=kids[i]; if(r.classList.contains("mrow") && rowUnreadPending(r)){ end=i-1; break; } }
+  let lastVis=null;
+  for(let i=end;i>=0;i--){ const r=kids[i]; if(r.classList.contains("mrow") && r.dataset.msgId){ lastVis=r; break; } }
+  if(!lastVis) return;
+  const lid=lastVis.dataset.msgId; let vi=list.findIndex(m=>String(m.id)===lid); if(vi<0) return;
+  const g=list[vi].groupId; if(g) while(vi+1<list.length && list[vi+1].groupId===g) vi++;   // альбом виден целиком
+  const prevIdx=msgsSeenIdx(list, chat);
+  if(prevIdx>=vi) return;
+  // Всё до новой границы человек видел — снимаем пометку «не показано»
+  // (итерация 11: по ней afterChatDbLoad решает, что считать новым).
+  // Итерация 17: только строки, которые правда побывали на экране в этот раз
+  // (от первой видимой до последней). Раньше граница, прыгнувшая к низу из-за
+  // живого сообщения, снимала пометки со всего чата разом (пятнадцатый круг,
+  // races F2).
+  {
+    const firstVisId=(()=>{ for(let i=a;i<=end;i++){ const r=kids[i]; if(r.classList.contains("mrow") && r.dataset.msgId) return r.dataset.msgId; } return null; })();
+    let from=firstVisId==null ? vi : list.findIndex(m=>String(m.id)===firstVisId);
+    if(from<0) from=vi;
+    for(let i=from;i<=vi;i++) if(list[i]._nv) delete list[i]._nv;
+  }
+  _seenUpTo={chat, key:msgKeyOf(list[vi])};
+  // Итерация 16: граница дошла до последней строки на видимой ленте — значит
+  // чат дочитан, и серверу пора об этом сказать. Иначе после закрытия экрана
+  // «прочитано» не уходило никогда и бейдж возвращался (четырнадцатый круг:
+  // journeys J15-1, races F5, regress RG-5).
+  if(vi===list.length-1) msgsReportRead(chat);
+}
+// Число на кнопке «вниз» — сколько входящих ниже того, что человек видел.
+// У самого низа кнопки нет.
+function msgsUpdateDownBtn(c, holding){
+  if(!holding) msgsAdvanceSeen(c);
+  if(c.scrollHeight-msgsFinalTop(c)-c.clientHeight<80){ hideScrollDownBtn(); return; }
+  const list=msgsVisibleList(S.chat);
+  let n=0;
+  let fi=msgsSeenIdx(list, S.chat);
+  // Пока держим разделитель наверху, граница «увидено» стоит, но на кнопке
+  // число того, что ниже экрана: иначе оно завышено на целый экран и само
+  // уменьшается через полсекунды (итерация 10).
+  if(holding){
+    const shift=msgsFinalTop(c)-c.scrollTop, cbot=c.getBoundingClientRect().top+shift+c.clientHeight;
+    const kids=c.children;
+    for(let i=kids.length-1;i>=0;i--){
+      const r=kids[i];
+      if(!r.classList.contains("mrow") || !r.dataset.msgId || r.getBoundingClientRect().top>=cbot-1) continue;
+      let vi=list.findIndex(m=>String(m.id)===r.dataset.msgId);
+      // Альбом рисуется одной строкой с номером первого фото — остальные его
+      // ячейки тоже на экране (итерация 11: иначе число завышено на размер
+      // альбома минус один).
+      const g=vi>=0 && list[vi].groupId; if(g) while(vi+1<list.length && list[vi+1].groupId===g) vi++;
+      if(vi>fi) fi=vi;
+      break;
+    }
+  }
+  if(fi>=-1) n=list.slice(fi+1).filter(m=>!msgIsOut(m)).length;
+  if(n>0) showScrollDownBtn(n); else hideScrollDownBtn();
 }
 function handleMsgsScroll(){
   // 14 сен 2026: сняты диагностические тосты «🔄 raw dist» и «⏳ settled»
   // (раунды 31 июля — 3 августа, баг скачущей ленты на паузе до натива).
-  // Все пользователи видели их при каждой прокрутке. Логика debounce не менялась.
-  clearTimeout(msgsScrollSettleTimer);
-  msgsScrollSettleTimer=setTimeout(()=>{
-    const wasProgrammatic=msgsProgrammaticScrollActive;
-    if(msgsProgrammaticScrollActive){ msgsProgrammaticScrollActive=false; }
-    const c=el("msgs");
-    const dist=c.scrollHeight-c.scrollTop-c.clientHeight;
-    if(!wasProgrammatic) msgsFollowBottom=dist<150;
-  }, 500);
+  // Все пользователи видели их при каждой прокрутке.
+  // 15 сен 2026: пока листает человек (и пока лента летит по инерции после
+  // его жеста), отметку «у низа» обновляем сразу, а не через полсекунды
+  // тишины: раньше весь бросок вверх она говорила «у низа», и догрузившееся
+  // фото или новое входящее бросали ленту вниз посреди броска.
+  const c=el("msgs");
+  // Прокрутка без жеста, который мы видим, — тоже человек, но только в двух
+  // окнах: после поиска по странице (30 с) и сразу после его же сеанса
+  // прокрутки (1 с: инерция, пережившая паузу главного потока). И только если
+  // она не наша (присвоение, плавная прокрутка, событие пришло ровно туда, куда
+  // мы поставили) и не от изменения размеров. Любую «не нашу» прокрутку
+  // человеку не засчитываем: необъяснённый увод раундов 1-15 бывал и позже
+  // 500 мс после изменения размеров — он записался бы как место чтения.
+  // 15 сен 2026 (итерация 6): действие человека только «взводит» окно, а сеанс
+  // открывает первый настоящий сдвиг ленты в этом окне — клик, фокус или жест
+  // у края, который ленту не сдвинул, прокруткой не считаются и ни «у низа»,
+  // ни цель «разделитель наверху» не сбивают.
+  // Итерация 7: полоса прокрутки под зажатой кнопкой — сильное окно (раньше
+  // слабое: в оживлённом чате каждая пересборка закрывала его, и лента под
+  // ползунком возвращалась вниз). Окно 150 мс после нашего присвоения
+  // scrollTop считается «своим» только без сильного окна: иначе короткий
+  // бросок или щелчок колеса сразу после входящего пропадали целиком.
+  if(!_userScrollActive){
+    const now=performance.now();
+    const strong=_msgsTouchActive || now<_userArmUntil || _barHeld;
+    const own=msgsSmoothActive(c) || (Math.abs(c.scrollTop-_lastSetTop)<1 && now-_lastSetAt<500) || (!strong && now-_lastProgScrollAt<150);
+    const weak=(_mouseHeld || now<_weakArmUntil) && now-_lastGeomChangeAt>500;
+    if(!own && (strong || weak)){ _userScrollActive=true; _smoothScroll=null; _unreadTarget=null; }   // человек выбрал сам — удержание разделителя кончилось
+  }
+  if(_userScrollActive){
+    _lastUserMoveAt=performance.now(); _lastUserMoveH=c.scrollHeight;
+    msgsFollowBottom=msgsNearBottom(c, c.scrollTop);
+    // Граница «увидено» идёт за прокруткой на каждом шаге: к концу броска первое
+    // новое уже выше экрана, и проверка только в конце приняла бы его за пропуск.
+    msgsAdvanceSeen(c);
+  }
+  armMsgsSettle();
+}
+function armMsgsSettle(){ clearTimeout(msgsScrollSettleTimer); msgsScrollSettleTimer=setTimeout(msgsScrollSettled, 500); }
+// Лента успокоилась: 500 мс без scroll-событий (и без касаний).
+// 15 сен 2026: место чтения обновляем, только если листал человек. Сдвиги,
+// которых он не делал (догрузка фото, клавиатура, необъяснённый увод раундов
+// 1-15), место чтения больше не переписывают — его возвращают страховки и
+// обработчик догрузки фото. Раньше любой «не наш» сдвиг считался решением
+// человека, и после такого увода лента оставалась там, куда её унесло.
+function msgsScrollSettled(){
+  msgsProgrammaticScrollActive=false;
+  if(!_userScrollActive){
+    // Доехала наша плавная прокрутка к разделителю — может быть, цель уже не нужна.
+    if(_unreadTarget && _unreadTarget.chat===S.chat){ const c0=el("msgs"); if(c0) msgsUnreadSettle(c0); }
+    return;
+  }
+  const c=el("msgs");
+  const holdOn=(_msgsTouchActive && performance.now()-_lastTouchMoveAt<1000) || _mouseHeld;
+  // Итерация 7: фото или видео выросли уже после последнего сдвига ленты
+  // человеком, а он тогда был у низа (пока шёл сеанс, _mediaRO и load
+  // молчали), — низ остаётся его решением: прижимаем, а не пересчитываем
+  // «у низа» по выросшей высоте.
+  const grew=msgsFollowBottom && c.scrollHeight>_lastUserMoveH+1;
+  if(grew && !holdOn) msgsMoveTo(c, c.scrollHeight, 1);
+  if(!grew) msgsFollowBottom=msgsNearBottom(c, c.scrollTop);
+  // Запоминаем, где человек читает: этим якорем держится место при догрузке
+  // фото и пересборке ленты, и он же сохраняется как место чата на случай
+  // закрытия приложения.
+  _msgsLiveAnchor=msgsFollowBottom ? null : captureMsgsAnchor(c);
+  // Ушёл от низа — запасной «принудительный низ» больше не нужен.
+  if(!msgsFollowBottom) _forceBottomRendersLeft=0;
+  _unreadTarget=null;   // человек сам выбрал, где читать
+  saveChatPos(S.chat);
+  msgsUpdateDownBtn(c);
+  // Жест кончился, если палец не на ленте и мышь не зажата; иначе проверим позже.
+  if(holdOn) armMsgsSettle();
+  else {
+    _userScrollActive=false; _posGen++;   // страховки отрисовок, сделанных посреди жеста, больше не действуют
+    _weakArmUntil=Math.max(_weakArmUntil, performance.now()+1000);   // хвост инерции после паузы потока
+  }
 }
 // 31 июля 2026: диагностика раунда 2 нашла прямую улику (не гипотезу) —
 // скриншот показал ДВА чистых рендера ровно у низа, сразу следом сработал
@@ -5858,13 +6814,27 @@ function handleMsgsScroll(){
 // setMsgsScrollTop() сам пометит это как своё же программное действие, так
 // что debounce выше не спутает это с настоящим скроллом пользователя.
 if(window.ResizeObserver){
-  let _msgsLastH=null;
-  new ResizeObserver((entries)=>{
-    const h=entries[0].contentRect.height;
-    if(_msgsLastH!==null && Math.abs(h-_msgsLastH)>1){
-      if(msgsFollowBottom){ const c=el("msgs"); setMsgsScrollTop(c.scrollHeight); }
+  let _msgsLastCH=null, _msgsLastCW=null;
+  new ResizeObserver(()=>{
+    const c=el("msgs"), ch=c.clientHeight, cw=c.clientWidth;
+    if(_msgsLastCW!==null && Math.abs(cw-_msgsLastCW)>1) _lastGeomChangeAt=performance.now();   // ширина: строки переносятся, браузер поправляет прокрутку
+    if(_msgsLastCH!==null && Math.abs(ch-_msgsLastCH)>1){
+      _lastGeomChangeAt=performance.now();
+      // 15 сен 2026: молчим, только пока палец реально двигает ленту (раньше —
+      // весь хвост жеста, и клавиатура, открытая сразу после прокрутки к низу,
+      // закрывала последние сообщения). Отметка «у низа» в сеансе прокрутки
+      // обновляется на каждом scroll-событии, так что её здесь достаточно.
+      // «Была у низа до изменения размера» по геометрии НЕ выводим: при смене
+      // чата scrollTop уже нового чата, а высота — прежнего (другие панели), и
+      // такая формула снимала удержание разделителя непрочитанных.
+      const fingerMoving=_msgsTouchActive && performance.now()-_lastTouchMoveAt<1000;
+      if(fingerMoving){}
+      else if(!msgsFollowBottom && _unreadTarget && _unreadTarget.chat===S.chat){
+        // Держим разделитель наверху: ставим цель заново.
+        applyMsgsAnchor(c, _unreadTarget); msgsUnreadSettle(c); msgsUpdateDownBtn(c, !msgsFollowBottom);
+      } else if(msgsFollowBottom) setMsgsScrollTop(c.scrollHeight);
     }
-    _msgsLastH=h;
+    _msgsLastCH=ch; _msgsLastCW=cw;
   }).observe(el("msgs"));
 }
 // 31 июля 2026, раунд 10: замена одноразовой 600мс-страховки (раунд 8) —
@@ -5897,26 +6867,39 @@ if(window.ResizeObserver){
 // компенсируем это временным CSS-transform на ту же дельту, а затем плавно
 // анимируем transform обратно к нулю — глазу видна одна гладкая анимация,
 // а не скачок.
+// 15 сен 2026: у этого приёма был перепутан знак: transform сдвигал ленту в ту
+// же сторону, что и новый scrollTop, а не компенсировал его. Замер на стенде:
+// поправка на 300px — строка на экране прыгает на 600px и потом отъезжает на
+// 300px назад. Так дёргалась каждая страховка «вниз» с 31 июля. Сдвиг всего
+// контейнера к тому же открывал пустую полосу у края ленты (в теме с обоями
+// ещё и сдвигал рисунок). Теперь — встроенная плавная прокрутка браузера:
+// содержимое едет внутри ленты, без полос. Счёт scroll-событий этому больше
+// не мешает: «человек листает» определяется по касаниям, колесу и клавишам,
+// а не по scroll-событиям (userScrollingNow). scrollTop меняется не сразу —
+// кто после вызова что-то меряет, считает по конечной точке (возвращается).
 function smoothScrollCorrect(c, target){
-  const before=c.scrollTop;
-  setMsgsScrollTop(target);
-  const delta=before-c.scrollTop;
-  if(Math.abs(delta)<2) return;
-  c.style.transition="none";
-  c.style.transform=`translateY(${delta}px)`;
-  void c.offsetHeight; // форсируем reflow — иначе браузер схлопнёт "transform:none→translateY" в один кадр без начального состояния, и анимации не будет видно
-  requestAnimationFrame(()=>{
-    c.style.transition="transform .22s ease-out";
-    c.style.transform="translateY(0)";
-  });
-  clearTimeout(c._flipCleanupTimer);
-  c._flipCleanupTimer=setTimeout(()=>{ c.style.transition=""; c.style.transform=""; }, 260);
+  const to=Math.max(0, Math.min(c.scrollHeight-c.clientHeight, Math.round(target)));
+  if(Math.abs(to-c.scrollTop)<2){ setMsgsScrollTop(to); return to; }
+  msgsProgrammaticScrollActive=true; _lastProgScrollAt=performance.now();
+  _smoothScroll={chat:S.chat, to, until:performance.now()+1500};
+  c.scrollTo({top:to, behavior:"smooth"});
+  return to;
 }
-function scheduleBottomGuard(chatId, c){
+// gen — поколение отрисовки, заведшей страховку (_posGen). 15 сен 2026: если
+// более поздняя отрисовка уже решила, где держать ленту (место в истории,
+// переход к непрочитанным), эта страховка устарела — раньше она через 400 и
+// 900 мс утаскивала ленту вниз поверх такого решения. Страховки клавиатуры
+// (visualViewport, focusout) заводятся без поколения и работают как раньше.
+function scheduleBottomGuard(chatId, c, since, gen){
+  const t0=since||performance.now();
   [150,400,900].forEach(delay=>{
     setTimeout(()=>{
       if(S.chat!==chatId || !c.isConnected) return;
-      const dist=c.scrollHeight-c.scrollTop-c.clientHeight;
+      if(gen!==undefined && gen!==_posGen) return;
+      // 14 сен 2026: человек начал листать сам после этого рендера — не тянем
+      // его обратно вниз (раньше тянули: «открыл чат, листаю вверх — утаскивает»).
+      if(userScrollingNow() || _lastUserMoveAt>t0) return;
+      const dist=c.scrollHeight-msgsFinalTop(c)-c.clientHeight;
       if(dist>=40){ smoothScrollCorrect(c, c.scrollHeight); msgsFollowBottom=true; }
     }, delay);
   });
@@ -5926,11 +6909,13 @@ function scheduleBottomGuard(chatId, c){
 // Держит НЕ абсолютный низ, а ту же дистанцию до низа, что была задумана
 // при рендере — не мешает, если человек тем временем реально стал у низа
 // (msgsFollowBottom) или сам сознательно долистал ещё выше.
-function scheduleDistanceGuard(chatId, c, intendedScrollTop){
+function scheduleDistanceGuard(chatId, c, intendedScrollTop, gen){
   [150,400,900].forEach(delay=>{
     setTimeout(()=>{
       if(S.chat!==chatId || !c.isConnected || msgsFollowBottom) return;
-      if(Math.abs(c.scrollTop-intendedScrollTop)>=40) smoothScrollCorrect(c, intendedScrollTop);
+      if(gen!==undefined && gen!==_posGen) return;
+      if(userScrollingNow()) return; // 14 сен 2026: человек листает сам — не мешаем
+      if(Math.abs(msgsFinalTop(c)-intendedScrollTop)>=40) smoothScrollCorrect(c, intendedScrollTop);
     }, delay);
   });
 }
@@ -5955,9 +6940,10 @@ function scheduleDistanceGuard(chatId, c, intendedScrollTop){
 let _vvResizeTimer=null;
 if(window.visualViewport){
   window.visualViewport.addEventListener("resize", ()=>{
+    _lastGeomChangeAt=performance.now();
     clearTimeout(_vvResizeTimer);
     _vvResizeTimer=setTimeout(()=>{
-      if(msgsFollowBottom) scheduleBottomGuard(S.chat, el("msgs"));
+      if(msgsFollowBottom) scheduleBottomGuard(S.chat, el("msgs"), undefined, _posGen);
     }, 150);
   });
 }
@@ -5968,7 +6954,7 @@ if(window.visualViewport){
 // сообщению вполне может быть тем самым тапом, что снял фокус с поля ввода
 // и запустил закрытие клавиатуры.
 el("minput")?.addEventListener("focusout", ()=>{
-  if(msgsFollowBottom) scheduleBottomGuard(S.chat, el("msgs"));
+  if(msgsFollowBottom) scheduleBottomGuard(S.chat, el("msgs"), undefined, _posGen);
 });
 // 31 июля 2026: раньше это выражение (naturalWidth+'/'+naturalHeight) стояло
 // прямо в HTML-атрибуте onload без какой-либо проверки соотношения — если
@@ -5992,17 +6978,91 @@ function applyGrpCellAspect(img){
 function renderMsgs(){
   const c=el("msgs");
   const switchedChat=_lastRenderedChat!==S.chat;
-  if(switchedChat){ msgsFollowBottom=true; _forceBottomRendersLeft=2; } // новый чат — всегда начинаем у низа; +1 про запас на второй рендер из loadMessagesFromDB, сколько бы он ни занял по времени
+  // 14 сен 2026: при открытии чата решаем, где его показать (planChatRestore):
+  // на запомненном сообщении, на первом непрочитанном или внизу. Раньше —
+  // всегда внизу («новый чат — всегда начинаем у низа»).
+  let restore=null;
+  if(switchedChat){
+    setMsgsScrollTop(c.scrollTop);   // плавная прокрутка прошлого чата не должна докатиться по новому
+    _unreadDivider=null; _msgsLiveAnchor=null; _unreadTarget=null;
+    // Жест в прошлом чате — не жест в этом (15 сен 2026: раньше он ещё до 1,2 с
+    // глушил в новом чате страховки, прижатие фото и переход к непрочитанным).
+    _userScrollActive=false; _msgsTouchActive=false; _lastUserMoveAt=-1e9;
+    _userArmUntil=_weakArmUntil=-1e9; _mouseHeld=_barHeld=false;   // бросок из прошлого чата — не жест в этом
+    restore=planChatRestore(S.chat);
+    if(restore.mode==="unread") setUnreadDivider(S.chat, restore.key);
+    else if(restore.mode==="anchor" && restore.divKey) setUnreadDivider(S.chat, restore.divKey);
+    if(restore.mode==="bottom"){ msgsFollowBottom=true; _forceBottomRendersLeft=2; _forceBottomSetAt=performance.now(); } // +1 про запас на второй рендер из loadMessagesFromDB, сколько бы он ни занял по времени
+    else { msgsFollowBottom=false; _forceBottomRendersLeft=0; }
+  } else if(_pendingUnreadJump && _pendingUnreadJump.chat===S.chat && !_userScrollActive){
+    // 15 сен 2026: ответ сервера принёс новые, пришедшие, пока приложение было
+    // закрыто (см. afterChatDbLoad), — плавно едем к первому из них. Палец у
+    // края, который ленту не сдвинул, переезду не мешает (итерация 8).
+    restore={mode:"unread", key:_pendingUnreadJump.key, slide:true};
+    setUnreadDivider(S.chat, restore.key);
+    msgsFollowBottom=false; _forceBottomRendersLeft=0;
+  }
+  _pendingUnreadJump=null;
+  // 14 сен 2026: запасной «принудительный низ» (второй из двух) раньше жил,
+  // пока его кто-нибудь не израсходует. loadMessagesFromDB перерисовывает ленту
+  // только если сервер прислал новое — обычно не присылает, и запас доставался
+  // ПЕРВОЙ перерисовке потом (входящее, реакция, выделение), бросая вниз
+  // человека, который уже давно листал историю. Теперь запас сгорает, если
+  // человек сам прокрутил ленту или ушёл от низа, и если сервер ответил без
+  // новых сообщений (loadMessagesFromDB).
+  if(_forceBottomRendersLeft>0 && _lastUserMoveAt>_forceBottomSetAt) _forceBottomRendersLeft=0;
   const forcedBottom = _forceBottomRendersLeft>0;
   if(forcedBottom) _forceBottomRendersLeft--;
-  const wasAtBottom = msgsFollowBottom || forcedBottom;
-  const distanceFromBottom = c.scrollHeight-c.scrollTop;
+  // 15 сен 2026: своё только что отправленное (ещё без номера с сервера)
+  // уводит ленту вниз, как в Telegram, даже если человек стоял в истории или
+  // на разделителе непрочитанных: теперь чат часто открывается не внизу, и
+  // ответ иначе уходил за нижний край.
+  const visList=msgsVisibleList(S.chat);
+  const prevTailIdx=(!switchedChat && _renderTail && _renderTail.chat===S.chat) ? visList.findIndex(m=>msgHasKey(m,_renderTail.key)) : -1;
+  const ownSent=prevTailIdx>=0 && visList.slice(prevTailIdx+1).some(m=>msgIsOut(m) && !m.dbId && !m.serverId);
+  // 16 сен 2026 (итерация 9): пришло новое вживую, а лента стоит в самом низу —
+  // следуем за ним, даже если выше на экране новое к открытию фото ещё не знает
+  // размера (иначе пришедшее оставалось под краем экрана, и его не было видно).
+  const liveTail=prevTailIdx>=0 && !switchedChat && visList.slice(prevTailIdx+1).some(m=>!msgIsOut(m) && !(_unreadDivider && _unreadDivider.chat===S.chat && _unreadDivider.ids && _unreadDivider.ids.has(String(m.id))));
+  if(ownSent && _pendingUnread && _pendingUnread.chat===S.chat) _pendingUnread=null;   // человек отвечает — к непрочитанным не уводим
+  // Пока палец двигает ленту, отметка msgsFollowBottom ещё не обновилась
+  // (debounce 500 мс) — в это время верим реальному положению, иначе рендер
+  // посреди прокрутки вверх бросал человека обратно вниз.
+  const wasAtBottom = (restore && restore.mode!=="bottom") ? false
+    // 16 сен 2026 (итерация 10): «у низа» для живого входящего считаем по точке,
+    // куда лента едет (иначе входящее в первые миллисекунды перехода к старому
+    // сообщению возвращало человека вниз).
+    // Итерация 11: следование отключает не сам факт удержания, а настоящая
+    // причина не верить геометрии — фото или видео под разделителем без
+    // размера, ещё не пришедший ответ сервера или непоказанные новые под
+    // нижним краем. Причина проверяется и после того, как цель отпустил потолок
+    // ожидания (иначе живое входящее в эту щель уносило ленту в низ и хоронило
+    // правило 2 — десятый круг, races F2). Отпала причина — лента за живым
+    // следует, как в проде (journeys J10-1).
+    // Итерация 13: по истечении потолка ожидание перестаёт быть причиной —
+    // иначе фото, которое не придёт никогда, выключало следование за живыми
+    // сообщениями до конца сеанса (двенадцатый круг, races F7).
+    : (forcedBottom || ownSent || (liveTail && !(_unreadDivider && _unreadDivider.chat===S.chat && ((!(_unreadDivider.at && performance.now()-_unreadDivider.at>MSGS_WAIT_MAX) && (unreadPhotosPending(c) || _awaitingDb===S.chat)) || unreadBelowFold(c))) && c.scrollHeight-msgsFinalTop(c)-c.clientHeight<40 && !userScrollingNow()) || (_userScrollActive ? msgsGeomAtBottom(c) : msgsFollowBottom));
+  const distanceFromBottom = c.scrollHeight-msgsFinalTop(c);
+  // Читаю историю — запоминаем, какое сообщение сейчас первое на экране, и
+  // после пересборки ставим его ровно туда же. Если плавная прокрутка ещё в
+  // пути — берём место, куда она едет (15 сен 2026: иначе перерисовка посреди
+  // переезда к непрочитанным останавливала ленту на полпути).
+  const useTarget=!switchedChat && !wasAtBottom && !!_unreadTarget && _unreadTarget.chat===S.chat && !_userScrollActive;
+  const anchorBefore = (!switchedChat && !wasAtBottom) ? (useTarget ? _unreadTarget : msgsCurrentAnchor(c)) : null;
   c.innerHTML="";
   const curCh=S.chats.find(x=>x.id===S.chat);
   renderUnknownBar(curCh);
   renderRightPanelMedia(curCh);
   let prevGroupKey=null;
   const renderList=buildRenderList((S.messages[S.chat]||[]).filter(m=>!m._deletedForAll && !m._deletedForMe));
+  // 14 сен 2026: разделитель «Непрочитанные сообщения» (см. planChatRestore)
+  // держится, пока чат открыт, и пропадает при следующем входе в чат.
+  const divKey=(_unreadDivider && _unreadDivider.chat===S.chat) ? _unreadDivider.key : null;
+  let divIdx=divKey ? renderList.findIndex(x=>x.t!=="date" && x.t!=="sys" && msgHasKey(x,divKey)) : -1;
+  // Альбом рисует его первое фото — разделитель встаёт перед всем альбомом.
+  while(divIdx>0 && renderList[divIdx].groupId && renderList[divIdx-1].groupId===renderList[divIdx].groupId) divIdx--;
+  let divPlaced=false;
   renderList.forEach((m,rlIdx)=>{
     if(m.t==="date"){const d=document.createElement("div");d.className="ddiv";d.innerHTML=`<span>${m.ts?getDateLabel(m.ts):escHtml(m.tx)}</span>`;c.appendChild(d);prevGroupKey=null;return;}
     if(m.t==="sys"){const s=document.createElement("div");s.className="sysmsg";s.textContent=m.tx;c.appendChild(s);prevGroupKey=null;return;}
@@ -6030,6 +7090,12 @@ function renderMsgs(){
     // всегда один и тот же автор (сам канал). Разделитель даты и системное
     // сообщение (обработаны выше, prevGroupKey=null) всегда рвут группу,
     // как и смена направления (входящее/исходящее).
+    // Разделитель непрочитанных рвёт очередь одного автора, как дата: первое
+    // новое показывается с именем и аватаром.
+    if(divIdx>=0 && !divPlaced && rlIdx>=divIdx){
+      const dv=document.createElement("div"); dv.className="unread-divider"; dv.textContent="Непрочитанные сообщения";
+      c.appendChild(dv); divPlaced=true; prevGroupKey=null;
+    }
     let groupKey=null;
     if(!isOut){
       groupKey = curCh?.type==="channels" ? "channel"
@@ -6126,7 +7192,7 @@ function renderMsgs(){
         // приёмом, см. чуть ниже). Гасим слева/справа всегда, сверху — если
         // над фото в этом пузыре ничего нет (имя/пересылка/ответ).
         const noHeaderAboveImg=bc==="";
-        bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}" style="margin:${noHeaderAboveImg?"calc(-1 * var(--sp-2))":"0"} calc(-1 * var(--sp-3)) ${isPhotoOnlyMt?"calc(-1 * var(--sp-2))":"4px"}"><img class="msg-img" src="${m.img}" loading="lazy" ${m.uploading?"":(isSp?`onclick="revealSpoiler(${m.id})"`:`onclick="openImgViewer('${m.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
+        bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}" style="margin:${noHeaderAboveImg?"calc(-1 * var(--sp-2))":"0"} calc(-1 * var(--sp-3)) ${isPhotoOnlyMt?"calc(-1 * var(--sp-2))":"4px"}"><img class="msg-img${m.imgW>0&&m.imgH>0?" dims":""}" src="${m.img}" loading="lazy"${m.imgW>0&&m.imgH>0?` style="aspect-ratio:${m.imgW|0}/${m.imgH|0};--iw:${m.imgW|0}px;--ih:${m.imgH|0}px"`:""} ${m.uploading?"":(isSp?`onclick="revealSpoiler(${m.id})"`:`onclick="openImgViewer('${m.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
       }
       // Сетка альбома (side-by-side, как в Telegram) — вместо стопки
       // одинаковых пузырей. 30 июля 2026: раньше всегда 2 колонки для
@@ -6154,7 +7220,8 @@ function renderMsgs(){
           // Вместо хранения width/height на бэкенде (отдельная миграция)
           // берём РЕАЛЬНУЮ пропорцию прямо у самого <img> в момент загрузки
           // — работает для старых и новых фото одинаково, без изменений в БД.
-          return `<div class="grp-cell${S.selectedMsgs.includes(gm.id)?" selected":""}" data-msg-id="${gm.id}"${touchAttrs}><div class="msg-img-wrap${gm.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${gm.img}" loading="lazy" onload="applyGrpCellAspect(this)" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer('${gm.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${gm.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${gm.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${S.selectMode?`<div class="msel-check grp-cell-check">${selBadge(gm.id)}</div>`:""}</div></div>`;
+          const cellAr=(gm.imgW&&gm.imgH&&gm.imgW/gm.imgH>=0.3&&gm.imgW/gm.imgH<=3)?` style="aspect-ratio:${gm.imgW}/${gm.imgH}"`:"";
+          return `<div class="grp-cell${S.selectedMsgs.includes(gm.id)?" selected":""}" data-msg-id="${gm.id}"${cellAr}${touchAttrs}><div class="msg-img-wrap${gm.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${gm.img}" loading="lazy" onload="applyGrpCellAspect(this)" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer('${gm.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${gm.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${gm.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${S.selectMode?`<div class="msel-check grp-cell-check">${selBadge(gm.id)}</div>`:""}</div></div>`;
         }).join("");
         bc+=`<div class="grp-img-grid" style="grid-template-columns:repeat(${cols},1fr)${noHeaderAbove?";margin-top:calc(-1 * var(--sp-2))":""}${isPhotoOnlyMt?";margin-bottom:calc(-1 * var(--sp-2))":""}">${cellsHTML}</div>`;
       }
@@ -6254,9 +7321,68 @@ function renderMsgs(){
     row.innerHTML=h; c.appendChild(row);
   });
   emojifyEl(c);
-  if(wasAtBottom){
+  const renderAt=performance.now();
+  _lastGeomChangeAt=_lastRenderAt=renderAt;   // пересборка: сдвиги от неё — не человек
+  const posGen=++_posGen;   // страховки прошлых отрисовок больше не действуют
+  if(restore && restore.mode==="anchor"){
+    // 14 сен 2026, правило 1: вернулись в чат, из которого ушли посреди
+    // истории, — то же сообщение на то же место экрана.
+    const ok=applyMsgsAnchor(c,{chat:S.chat, key:restore.key, off:restore.off});
+    if(ok && !msgsGeomAtBottom(c)){
+      msgsFollowBottom=false;
+      _msgsLiveAnchor=captureMsgsAnchor(c);
+      msgsUpdateDownBtn(c);
+      scheduleAnchorGuard(S.chat, c, _msgsLiveAnchor, renderAt, posGen);
+    } else {
+      msgsFollowBottom=true; _msgsLiveAnchor=null;
+      setMsgsScrollTop(c.scrollHeight); hideScrollDownBtn();
+      scheduleBottomGuard(S.chat, c, renderAt, posGen);
+    }
+  } else if(restore && restore.mode==="unread"){
+    // Правило 2: ушли внизу, пока нас не было, пришли новые — первое новое
+    // под разделителем в верхней части экрана. Если новых мало и лента и так
+    // упирается в низ — просто остаёмся внизу, разделитель виден над ними.
+    // Если новые принёс ответ сервера, когда чат уже на экране (restore.slide),
+    // сначала оставляем видимое на месте, потом плавно едем к разделителю.
+    // Плавно — только если до этого на экране что-то было: чат без истории на
+    // этом устройстве иначе пролетал бы от самого старого сообщения до разделителя.
+    const dv=c.querySelector(".unread-divider");
+    const slide=!!(restore.slide && anchorBefore);
+    if(slide) applyMsgsAnchor(c, anchorBefore);
+    const want=dv ? c.scrollTop+rowTopInView(c,dv)-8 : c.scrollHeight;
+    let to;
+    if(slide) to=smoothScrollCorrect(c, want); else { setMsgsScrollTop(want); to=c.scrollTop; }
+    // Новые только кажутся влезающими в экран, пока одиночные фото и видео под
+    // разделителем не знают своего размера (высота 0 / 150 px) или пока с
+    // сервера могут прийти ещё новые. Тогда цель — первое новое под
+    // разделителем наверху: догрузка подводит к ней ленту, а у низа лента
+    // окажется, только если новые правда влезли (см. msgsUnreadSettle).
+    const holdDivider=!!dv && (unreadPhotosPending(c) || _awaitingDb===S.chat);
+    if(c.scrollHeight-to-c.clientHeight<40 && !holdDivider){
+      msgsFollowBottom=true; _msgsLiveAnchor=null; hideScrollDownBtn();
+      scheduleBottomGuard(S.chat, c, renderAt, posGen);
+    } else {
+      msgsFollowBottom=false;
+      // Якорь — там, где лента окажется в конце плавной прокрутки; пока фото
+      // не догрузились — первая строка под разделителем в положении «разделитель наверху».
+      const fr=dv && dv.nextElementSibling;
+      const fm=holdDivider && fr && fr.classList.contains("mrow") && (S.messages[S.chat]||[]).find(m=>String(m.id)===fr.dataset.msgId);
+      _msgsLiveAnchor=fm ? {chat:S.chat, key:msgKeyOf(fm), off:Math.round(8+rowTopInView(c,fr)-rowTopInView(c,dv)), at:performance.now()} : msgsCurrentAnchor(c);
+      // Цель — отдельный объект со своим временем: когда удержание взвели
+      // впервые. У _msgsLiveAnchor отметка обновляется каждой перерисовкой (по
+      // ней он спорит с движением пальца), и потолок ожидания по ней не
+      // наступал бы в живом чате никогда (итерация 11).
+      const prevAt=(_unreadTarget && _unreadTarget.chat===S.chat) ? _unreadTarget.at : null;
+      _unreadTarget=fm ? {..._msgsLiveAnchor, at:(prevAt!=null ? prevAt : _msgsLiveAnchor.at)} : null;
+      if(_unreadTarget && prevAt==null) armSettleTimer(S.chat);
+      msgsUpdateDownBtn(c, !!_unreadTarget);
+      scheduleAnchorGuard(S.chat, c, _msgsLiveAnchor, renderAt, posGen);
+    }
+  } else if(wasAtBottom){
+    msgsFollowBottom=true; _msgsLiveAnchor=null;
     setMsgsScrollTop(c.scrollHeight);
     hideScrollDownBtn();
+    if(!switchedChat) saveChatPos(S.chat);   // пришедшее вживую внизу — увидено
     // 31 июля 2026, раунд 8→10: три подряд попытки поймать/подавить именно
     // МОМЕНТ таинственного увода scrollTop (счётчик событий, settle-debounce,
     // мгновенный re-pin по ResizeObserver) не сработали — числа у Александры
@@ -6269,21 +7395,35 @@ function renderMsgs(){
     // (не полагаясь на msgsFollowBottom — тот сам может быть уже сбит тем же
     // механизмом) и поправляет, если нужно. Что бы ни случилось и когда —
     // ловим заметно быстрее, чем один выстрел на 600мс.
-    scheduleBottomGuard(S.chat, c);
+    scheduleBottomGuard(S.chat, c, renderAt, posGen);
   } else {
-    // Человек читал историю выше — остаёмся на том же месте (по расстоянию
-    // от низа, не по scrollTop напрямую: список каждый раз перерисовывается
-    // с нуля, старый scrollTop уже ничего не значит для новой высоты)
-    const intendedScrollTop=Math.max(0, c.scrollHeight-distanceFromBottom);
-    setMsgsScrollTop(intendedScrollTop);
-    const curCount=(S.messages[S.chat]||[]).length;
-    if(!switchedChat && _lastMsgCount[S.chat]!==undefined && curCount>_lastMsgCount[S.chat]) showScrollDownBtn();
+    // Человек читал историю выше — остаёмся на том же месте. 14 сен 2026:
+    // держим то же СООБЩЕНИЕ на том же месте экрана (anchorBefore), а не
+    // расстояние от низа: при расстоянии от низа каждое новое входящее внизу
+    // сдвигало читаемое вверх на свою высоту. Расстояние от низа осталось
+    // запасным путём, если якорное сообщение пропало (удалили и т.п.).
+    msgsFollowBottom=false;
+    let intendedScrollTop=Math.max(0, c.scrollHeight-distanceFromBottom);
+    const anchored = !!anchorBefore && applyMsgsAnchor(c, anchorBefore);
+    if(anchored) intendedScrollTop=msgsFinalTop(c); else setMsgsScrollTop(intendedScrollTop);
+    // У живого якоря отметка своя и свежая (у цели она хранит момент первого
+    // взведения): по ней msgsHoldPlace решает, не спорит ли якорь с только что
+    // двинувшимся пальцем (итерация 11).
+    _msgsLiveAnchor=(useTarget && anchored) ? {..._unreadTarget, at:performance.now()} : msgsCurrentAnchor(c);
+    if(useTarget) msgsUnreadSettle(c);
+    // Новые входящие ниже экрана, пока человек читает историю, — число на
+    // кнопке «вниз» растёт (считаем пришедшие после прошлой отрисовки).
+    msgsUpdateDownBtn(c, useTarget && anchored);
     // 31 июля 2026, раунд 12: раньше у этой ветки не было НИКАКОЙ защиты от
     // того же увода scrollTop (клавиатура и т.п.) — только у ветки "у низа".
     // Александра поймала именно это: "на старых сообщениях... скачет
     // наверх". См. scheduleDistanceGuard.
-    scheduleDistanceGuard(S.chat, c, intendedScrollTop);
+    if(anchored && _msgsLiveAnchor) scheduleAnchorGuard(S.chat, c, _msgsLiveAnchor, renderAt, posGen);
+    else scheduleDistanceGuard(S.chat, c, intendedScrollTop, posGen);
   }
+  // Что сейчас на экране — прочитано (кроме удержания разделителя: там новые
+  // ещё не показаны толком).
+  if(!(_unreadTarget && !msgsFollowBottom)) msgsAdvanceSeen(c);
   // 14 сен 2026: снят диагностический тост «📏 bottom=… sT=… sH=… cH=…»,
   // который показывался в конце КАЖДОГО renderMsgs() (раунды 31 июля — 3 августа).
   // 31 июля 2026: renderMsgs() каждый раз пересоздаёт ВСЕ строки заново
@@ -6305,9 +7445,16 @@ function renderMsgs(){
   // страница с момента последней проверки, чтобы то, что видно на экране,
   // не убегало.
   let heightCheckpoint=c.scrollHeight;
+  const chatAtRender=S.chat;
+  const msgById=new Map((S.messages[S.chat]||[]).map(m=>[String(m.id),m]));
+  _msgByIdAt={chat:S.chat, map:msgById};   // ту же карту берёт _mediaRO
+  if(_mediaRO){ _mediaRO.disconnect(); c.querySelectorAll("img.msg-img, video.msg-video").forEach(x=>_mediaRO.observe(x)); }
   c.querySelectorAll("img").forEach(img=>{
-    if(!img.complete){
+    if(img.complete){ rememberImgDims(img, msgById); return; }
+    {
       img.addEventListener("load",()=>{
+        rememberImgDims(img, msgById);
+        if(!img.isConnected || S.chat!==chatAtRender) return; // лента уже пересобрана или чат сменился
         const grown=c.scrollHeight-heightCheckpoint;
         heightCheckpoint=c.scrollHeight;
         // 31 июля 2026: временная защита — Александра поймала "гигантский
@@ -6320,24 +7467,243 @@ function renderMsgs(){
         // пропускаем молча (14 сен 2026 диагностический тост здесь снят,
         // сама защита осталась).
         if(Math.abs(grown)>2000) return;
-        if(msgsFollowBottom) setMsgsScrollTop(c.scrollHeight);
-        else if(grown>0) setMsgsScrollTop(c.scrollTop+grown);
+        // 14 сен 2026. (1) Палец двигает ленту — не вмешиваемся: раньше тут
+        // стояло голое msgsFollowBottom, а оно ещё полсекунды после начала
+        // прокрутки говорит «у низа», и догрузившееся фото бросало человека
+        // обратно вниз («листаю вверх — утаскивает»). (2) Читаю историю —
+        // возвращаем на место якорное сообщение вместо прежнего «+grown»:
+        // браузер сам уже сдвинул ленту на рост фото выше экрана (scroll
+        // anchoring, раунд 14), и второй такой же сдвиг уводил читаемое вверх.
+        // Якорь снят раньше последнего жеста — он уже не про то, что человек
+        // читает сейчас; ставить по нему нельзя (жест ещё не успокоился).
+        if(userScrollingNow()) return;
+        msgsHoldPlace(c, img.classList.contains("msg-img"));
       },{once:true});
     }
   });
   _lastMsgCount[S.chat]=(S.messages[S.chat]||[]).length;
+  _renderTail=visList.length ? {chat:S.chat, key:msgKeyOf(visList[visList.length-1])} : null;
   _lastRenderedChat=S.chat;
   if(curCh?.type==="channels") countChannelViews(curCh);
 }
-function showScrollDownBtn(){ const b=el("scroll-down-btn"); if(b) b.style.display="flex"; }
-function hideScrollDownBtn(){ const b=el("scroll-down-btn"); if(b) b.style.display="none"; }
-function scrollMsgsToBottom(){ const c=el("msgs"); if(c){ msgsFollowBottom=true; setMsgsScrollTop(c.scrollHeight); } hideScrollDownBtn(); }
+// 15 сен 2026: переход к сообщению, который запускает сам человек (поиск в
+// чате, стрелки по результатам, закреплённое). Для страховок и догрузки фото
+// это то же, что прокрутка пальцем: место чтения теперь там, куда он перешёл.
+// Раньше первая догрузка фото на новом месте возвращала ленту к прежнему
+// якорю, а у низа — утаскивала вниз. false — строка не в ленте.
+function msgsJumpToRow(row, smooth){
+  const c=el("msgs"); if(!c || !row || !c.contains(row)) return false;
+  _lastUserMoveAt=performance.now(); msgsProgrammaticScrollActive=false;
+  _forceBottomRendersLeft=0; _posGen++; _unreadTarget=null;
+  const to=c.scrollTop+rowTopInView(c,row)-Math.max(0,(c.clientHeight-row.offsetHeight)/2);
+  if(smooth) smoothScrollCorrect(c,to); else setMsgsScrollTop(to);
+  msgsFollowBottom=msgsNearBottom(c, msgsFinalTop(c));
+  _msgsLiveAnchor=msgsFollowBottom ? null : msgsCurrentAnchor(c);
+  msgsUpdateDownBtn(c);   // то, что он увидел на новом месте, — увидено
+  return true;
+}
+// 14 сен 2026: n — сколько новых входящих ждут внизу (показывается на кнопке).
+function showScrollDownBtn(n){
+  const b=el("scroll-down-btn"); if(!b) return;
+  // У самого низа кнопка не нужна: слушатель прокрутки ниже прячет её ближе
+  // 80 px от низа и обнуляет число — показанная там, она пропала бы с первым
+  // же scroll-событием вместе со счётом новых.
+  const c=el("msgs"); if(c && c.scrollHeight-msgsFinalTop(c)-c.clientHeight<80){ hideScrollDownBtn(); return; }
+  b.style.display="flex";
+  const k=el("scroll-down-cnt"); if(k){ k.textContent=n>0?String(n):""; k.style.display=n>0?"":"none"; }
+}
+function hideScrollDownBtn(){
+  const b=el("scroll-down-btn"); if(b) b.style.display="none";
+  // Кнопка спряталась — значит лента у низа (или непрочитанного не осталось):
+  // следующее нажатие снова ведёт к первому непрочитанному, а не в конец.
+  _downJumped=null;
+}
+// 20 сен 2026 (решение владельца): кнопка «вниз» ведёт себя как в Telegram —
+// первое нажатие к первому непрочитанному, второе (если до конца ещё не
+// дошли) в самый конец. Здесь — чат, в котором первое нажатие уже было.
+let _downJumped=null, _downJumpedAt=0;
+// Итерация 7: кнопка — решение человека, сеанс прокрутки на этом кончается
+// (раньше открытый сеанс глушил прижатие догружающегося внизу фото).
+// Итерация 8: в самый низ по кнопке — прочитано всё (как в Telegram), в том
+// числе новые к открытию фото, которые ещё грузятся.
+function scrollMsgsToBottom(){ const c=el("msgs"); if(c){ _userScrollActive=false; _posGen++; msgsFollowBottom=true; _unreadTarget=null; if(_unreadDivider) _unreadDivider.ids=new Set(); setMsgsScrollTop(c.scrollHeight); msgsAdvanceSeen(c); } hideScrollDownBtn(); }
+// Кнопка «вниз», как в Telegram: если ниже есть разделитель непрочитанных, до
+// которого человек ещё не дошёл, — сначала к нему (разделитель наверху),
+// следующее нажатие — в самый низ.
+// Кнопка «вниз», как в Telegram: первое нажатие — к первому сообщению, которого
+// человек ещё не видел (если оно ниже экрана): к разделителю, если оно сразу
+// под ним, иначе к самому сообщению. Следующее нажатие — в самый низ.
+// Итерация 9: раньше к разделителю, а если за него уже читали — сразу вниз, и
+// непрочитанные между пролетали мимо экрана и записывались прочитанными.
+function msgsDownBtnClick(){
+  const c=el("msgs");
+  if(!c) return scrollMsgsToBottom();
+  // Второе нажатие подряд в том же чате — сразу в конец ленты (решение
+  // владельца 20 сен 2026: как в Telegram). Отметка снимается, когда кнопка
+  // прячется, то есть когда лента дошла до низа или непрочитанного не осталось.
+  // Итерация 16: если после перехода человек сам листал ленту, второй шаг
+  // отменяется — нажатие снова ведёт к ближайшему непрочитанному, а не в конец
+  // (четырнадцатый круг: rules R14-6, regress RG-4, journeys J15-2).
+  if(_downJumped===S.chat && _lastUserMoveAt>_downJumpedAt){ _downJumped=null; }
+  if(_downJumped===S.chat){ _downJumped=null; return scrollMsgsToBottom(); }
+  const list=msgsVisibleList(S.chat), si=msgsSeenIdx(list, S.chat);
+  const shift=msgsFinalTop(c)-c.scrollTop, edge=c.clientHeight-40;
+  // Первое невиденное входящее, которое ещё НЕ на экране: если первое из них
+  // человек уже видит, идём к следующему за экраном (итерация 10: раньше в
+  // этом случае кнопка уносила в самый низ, и непрочитанные между пролетали
+  // мимо и записывались прочитанными).
+  const dv=(_unreadDivider && _unreadDivider.chat===S.chat) ? c.querySelector(".unread-divider") : null;
+  const di=dv ? list.findIndex(x=>msgHasKey(x,_unreadDivider.key)) : -1;
+  let node=null, off=44;
+  if(si>=-1) for(let i=si+1;i<list.length;i++){
+    const m=list[i]; if(msgIsOut(m)) continue;
+    let n2=null, o2=44;
+    if(dv && di===i){ n2=dv; o2=8; }
+    else { let j=i; const g=m.groupId; if(g) while(j>0 && list[j-1].groupId===g) j--;   // альбом рисует первое фото
+      n2=msgsRowFor(c, list[j].id); }
+    if(!n2) continue;
+    if(rowTopInView(c,n2)-shift>edge){ node=n2; off=o2; break; }
+  }
+  if(node){
+    _userScrollActive=false; _lastUserMoveAt=performance.now(); _forceBottomRendersLeft=0; _posGen++; _unreadTarget=null;
+    // Итерация 11: цель не дальше, чем лента вообще может прокрутиться — иначе
+    // msgsFinalTop сразу после нажатия больше настоящего конца, порог «40 px от
+    // низа» ниже срабатывает не по делу, и живое сообщение уносит ленту мимо
+    // цели (десятый круг, regress RV10-RG-2, journeys J10-4).
+    const want=Math.min(c.scrollHeight-c.clientHeight, c.scrollTop+rowTopInView(c,node)-off);
+    if(Math.abs(want-msgsFinalTop(c))>2*c.clientHeight) setMsgsScrollTop(want); else smoothScrollCorrect(c, want);
+    msgsFollowBottom=c.scrollHeight-msgsFinalTop(c)-c.clientHeight<40 && msgsNearBottom(c, msgsFinalTop(c));
+    _msgsLiveAnchor=msgsFollowBottom ? null : msgsCurrentAnchor(c);
+    _downJumped=S.chat; _downJumpedAt=performance.now();   // если кнопка останется, следующее нажатие уведёт в конец
+    msgsUpdateDownBtn(c);    // (а если спряталась — hideScrollDownBtn отметку снимет)
+    return;
+  }
+  _downJumped=null;
+  scrollMsgsToBottom();
+}
 // Если человек долистал вниз сам (не через кнопку) — прячем кнопку сама собой
 el("msgs")?.addEventListener("scroll", ()=>{
   const c=el("msgs");
-  if(c && c.scrollHeight-c.scrollTop-c.clientHeight<80) hideScrollDownBtn();
+  if(c && c.scrollHeight-msgsFinalTop(c)-c.clientHeight<80) hideScrollDownBtn();
 });
 el("msgs")?.addEventListener("scroll", handleMsgsScroll);
+// Видео, которое так и не станет грузить метаданные (без preload) или не
+// сможет, размер не меняет — ResizeObserver молчит; удержание разделителя
+// пересматриваем по его событиям. Один слушатель на всю ленту (события
+// suspend/error не всплывают — слушаем на погружении): в итерации 8 они
+// вешались на каждое видео при каждой пересборке и стоили десятки миллисекунд.
+let _vHoldRaf=0;
+["suspend","error"].forEach(t=>el("msgs")?.addEventListener(t, e=>{
+  if(!(e.target && e.target.classList && e.target.classList.contains("msg-video"))) return;
+  if(_vHoldRaf) return;   // пачка событий от всех видео пересборки — один пересчёт на кадр
+  const vch=S.chat;       // итерация 11: кадр не должен пересчитывать место в другом чате
+  _vHoldRaf=requestAnimationFrame(()=>{
+    _vHoldRaf=0;
+    const c=el("msgs");
+    if(c && S.chat===vch && _lastRenderedChat===S.chat && !userScrollingNow()) msgsHoldPlace(c);
+  });
+}, true));
+// 14 сен 2026: сигнал «человек сам листает» (см. userScrollingNow). Считаем
+// только настоящую прокрутку: палец сдвинулся по вертикали больше чем на 8px
+// и сильнее, чем вбок, колесо, клавиши, полоса прокрутки. Простой тап, долгое
+// нажатие и свайп вбок (ответ на сообщение) — НЕ прокрутка: иначе глушились
+// бы страховки, которые ловят увод ленты при закрытии клавиатуры после тапа
+// (раунды 11-12).
+// 15 сен 2026: touchstart ловим на погружении (capture) — обработчик альбома
+// останавливает всплытие, и касание фото раньше не доходило сюда вовсе.
+// touchmove/touchend слушаем прямо на цели касания: браузер шлёт их туда,
+// даже если лента за это время пересобралась и узел уже выброшен, а из
+// выброшенного узла до #msgs они не всплывают — отметка «палец на ленте»
+// залипала до следующего касания и глушила все страховки.
+(function(){
+  const c=el("msgs"); if(!c) return;
+  let sx=0, sy=0;
+  const now=()=>performance.now();
+  const armStrong=ms=>{ _userArmUntil=Math.max(_userArmUntil, now()+ms); };
+  const armWeak=ms=>{ _weakArmUntil=Math.max(_weakArmUntil, now()+ms); };
+  const onMove=e=>{
+    const t=e.touches[0]; if(!t) return;
+    if(!_msgsTouchActive){
+      const dx=t.clientX-sx, dy=t.clientY-sy;
+      if(!(Math.abs(dy)>8 && Math.abs(dy)>Math.abs(dx))) return;
+      _msgsTouchActive=true;
+    }
+    // Палец перехватывает ленту у нашей плавной прокрутки — и когда она началась
+    // уже под пальцем (переезд к непрочитанным посреди жеста у края).
+    _smoothScroll=null; msgsProgrammaticScrollActive=false;
+    _lastTouchMoveAt=now();
+    armMsgsSettle();   // жест без единого scroll-события тоже должен кончиться
+  };
+  c.addEventListener("touchstart",e=>{
+    if(e.touches.length!==1) return;
+    const t=e.touches[0]; sx=t.clientX; sy=t.clientY;
+    _msgsTouchActive=false;   // новое касание: прошлый палец точно убран (инерция прошлого жеста — ещё сеанс)
+    const tg=e.target || c;
+    const end=()=>{
+      tg.removeEventListener("touchmove",onMove); tg.removeEventListener("touchend",end); tg.removeEventListener("touchcancel",end);
+      if(_msgsTouchActive){
+        _msgsTouchActive=false; armStrong(1000); armMsgsSettle();
+        // Жест у края ленту не сдвинул, а пока палец двигался, ни низ, ни цель
+        // «разделитель наверху» не держали (догрузилось фото, пришло сообщение) —
+        // ставим сейчас. Обычный якорь чтения не трогаем: после прокрутки, которую
+        // мы человеку не засчитали, он устарел, и лента прыгнула бы назад.
+        if(!_userScrollActive){
+          const c2=el("msgs");
+          if(c2 && S.chat && _lastRenderedChat===S.chat){
+            if(msgsFollowBottom) msgsMoveTo(c2, c2.scrollHeight, 1);
+            else if(_unreadTarget && _unreadTarget.chat===S.chat){ applyMsgsAnchor(c2, _unreadTarget); msgsUnreadSettle(c2); msgsUpdateDownBtn(c2, !msgsFollowBottom && !!_unreadTarget); }
+          }
+        }
+      }
+    };
+    tg.addEventListener("touchmove",onMove,{passive:true});
+    tg.addEventListener("touchend",end,{passive:true});
+    tg.addEventListener("touchcancel",end,{passive:true});
+  },{passive:true, capture:true});
+  const inputScroll=()=>{ armStrong(1000); _smoothScroll=null; };
+  c.addEventListener("wheel",inputScroll,{passive:true});
+  // Клавиши прокрутки: фокус обычно не на самой ленте, поэтому слушаем документ;
+  // в поле ввода эти клавиши двигают курсор, а не ленту.
+  document.addEventListener("keydown",e=>{
+    // Поиск по странице: браузер сам прокрутит ленту к найденному (по коду
+    // клавиши — на русской раскладке e.key у Ctrl+F другой).
+    if(((e.ctrlKey||e.metaKey) && (e.code==="KeyF"||e.code==="KeyG")) || e.code==="F3") armWeak(30000);
+    if(!S.chat || !["PageUp","PageDown","ArrowUp","ArrowDown","Home","End"," "].includes(e.key)) return;
+    const t=e.target;
+    if(t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    inputScroll();
+  });
+  el("minput")?.addEventListener("focus",()=>{ _lastComposeAt=now(); });
+  // Мышь: полоса прокрутки — обычная и наложенная (нажатие на неё приходит в
+  // саму ленту, не в сообщение), автопрокрутка средней кнопкой. Нажатия,
+  // пришедшие от касания (совместимые события после тапа), не считаем.
+  // Мышь (полоса прокрутки — обычная и наложенная, выделение текста с
+  // автопрокруткой, средняя кнопка) и Tab по ссылке: сдвиг ленты после них —
+  // человек, но только через «слабое» окно (не в 500 мс после изменения
+  // размеров): совместимые события мыши после тапа в Safari и Firefox не
+  // отличить от настоящей мыши.
+  // Итерация 7: нажатие на саму полосу прокрутки (обычную, не наложенную) —
+  // сильное окно: человек взял ленту в руки, плавная прокрутка браузера,
+  // если была в пути, этим нажатием оборвана.
+  c.addEventListener("mousedown",e=>{
+    if(e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
+    if(e.button===1){ armWeak(10000); return; }
+    if(e.button!==0) return;
+    _mouseHeld=true;
+    if(e.target===c && c.clientWidth>0 && e.offsetX>=c.clientWidth){ _barHeld=true; _smoothScroll=null; }
+  });
+  c.addEventListener("focusin",e=>{ if(e.target!==c) armWeak(1000); });
+  const mouseUp=()=>{ _barHeld=false; if(_mouseHeld){ _mouseHeld=false; armWeak(500); armMsgsSettle(); } };
+  window.addEventListener("mouseup",mouseUp);
+  window.addEventListener("blur",mouseUp);
+  // Перетаскивание фото или ссылки из ленты кончается без mouseup (dragstart,
+  // pointercancel, dragend) — иначе отметка «мышь зажата» залипала, сеанс
+  // «человек листает» не кончался, и низ переставал держаться до первого клика.
+  c.addEventListener("dragstart",mouseUp);
+  window.addEventListener("dragend",mouseUp);
+  window.addEventListener("pointercancel",e=>{ if(e.pointerType==="mouse") mouseUp(); });
+  window.addEventListener("mousemove",e=>{ if(_mouseHeld && !(e.buttons&1)) mouseUp(); },{passive:true});
+})();
 
 // Засчитывает просмотр постов канала — один раз на сообщение за сессию,
 // чтобы не спамить сервер повторными вызовами при каждой перерисовке.
@@ -7708,7 +9074,7 @@ function openImgViewer(url){
   // другого модального окна в этом файле — свой closeFn в общем стеке.
   pushNavEntry(closeImgViewer);
 }
-function closeImgViewer(){ closeM("m-imgview"); }
+function closeImgViewer(){ closeM("m-imgview"); setTimeout(msgsFeedShownAgain, 260); }
 function closeImgViewerViaBackStack(){
   if(el("m-imgview").classList.contains("on")) popNavEntry();
 }
@@ -8701,9 +10067,22 @@ document.addEventListener("click",e=>{ closeCtxViaBackStack(); el("rxn-picker").
 // платформенный сигнал "уходим" (сворачивание, переключение задач, закрытие
 // вкладки/приложения), надёжнее beforeunload на мобильных браузерах.
 document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible"){
+    _lastGeomChangeAt=performance.now();
+    // Итерация 7: вернулись — что на экране (в том числе пришедшее в фоне и
+    // прижатое к низу), то и увидено; число на кнопке «вниз» — по этой границе.
+    requestAnimationFrame(()=>{
+      const c=el("msgs");
+      if(c && S.chat && _lastRenderedChat===S.chat && document.visibilityState==="visible") msgsUpdateDownBtn(c, !msgsFollowBottom && !!_unreadTarget && _unreadTarget.chat===S.chat);
+    });
+  }
   if(document.visibilityState==="hidden"){
     const ch=S.chats.find(c=>c.id===S.chat);
     if(ch) ch.draft=getInputText();
+    // 14 сен 2026: место в чате переживает закрытие приложения. Страница уже
+    // скрыта, поэтому «показана ли лента» решаем по раскладке: на телефоне —
+    // только если чат был открыт поверх списка.
+    saveChatPos(S.chat, !isMobileLayout() || !!document.querySelector(".layout")?.classList.contains("chat-open"));
     saveState();
   }
 });
@@ -9115,7 +10494,7 @@ function cyclePins(){
   const curId=pins[S.pinViewIdx];
   // Скроллим к закреплённому
   const row=document.querySelector(`.mrow[data-id="${curId}"]`);
-  if(row){ row.scrollIntoView({block:"center",behavior:"smooth"}); row.style.transition="background .3s"; row.style.background="rgba(108,99,255,.15)"; setTimeout(()=>row.style.background="",800); }
+  if(row){ msgsJumpToRow(row,true) || row.scrollIntoView({block:"center",behavior:"smooth"}); row.style.transition="background .3s"; row.style.background="rgba(108,99,255,.15)"; setTimeout(()=>row.style.background="",800); }
   S.pinViewIdx=(S.pinViewIdx+1)%pins.length;
   renderPinbar();
 }
@@ -9599,8 +10978,8 @@ function playCrystalGiftAnimation(msgLocalId, amount){
 let srchResults=[],srchIdx=0;
 function toggleChatSearch(){ const o=el("srch-overlay"); o.classList.toggle("on"); if(o.classList.contains("on"))el("srch-inp").focus(); else{closeChatSearch();} }
 function closeChatSearch(){ el("srch-overlay").classList.remove("on"); document.querySelectorAll(".highlight").forEach(e=>{const p=e.parentNode;p.replaceChild(document.createTextNode(e.textContent),e);}); srchResults=[]; srchIdx=0; if(el("srch-count"))el("srch-count").textContent="0 / 0"; }
-function searchInChat(q){ if(!q){closeChatSearch();return;} const rows=document.querySelectorAll(".mrow"); srchResults=[]; rows.forEach(row=>{const bub=row.querySelector(".bub");if(bub&&bub.textContent.toLowerCase().includes(q.toLowerCase()))srchResults.push(row);}); if(el("srch-count"))el("srch-count").textContent=`${srchResults.length>0?1:0} / ${srchResults.length}`; srchIdx=0; if(srchResults[0])srchResults[0].scrollIntoView({block:"center"}); }
-function srchNav(d){ if(!srchResults.length)return; srchIdx=(srchIdx+d+srchResults.length)%srchResults.length; if(el("srch-count"))el("srch-count").textContent=`${srchIdx+1} / ${srchResults.length}`; srchResults[srchIdx].scrollIntoView({block:"center"}); }
+function searchInChat(q){ if(!q){closeChatSearch();return;} const rows=document.querySelectorAll(".mrow"); srchResults=[]; rows.forEach(row=>{const bub=row.querySelector(".bub");if(bub&&bub.textContent.toLowerCase().includes(q.toLowerCase()))srchResults.push(row);}); if(el("srch-count"))el("srch-count").textContent=`${srchResults.length>0?1:0} / ${srchResults.length}`; srchIdx=0; if(srchResults[0]) msgsJumpToRow(srchResults[0]) || srchResults[0].scrollIntoView({block:"center"}); }
+function srchNav(d){ if(!srchResults.length)return; srchIdx=(srchIdx+d+srchResults.length)%srchResults.length; if(el("srch-count"))el("srch-count").textContent=`${srchIdx+1} / ${srchResults.length}`; msgsJumpToRow(srchResults[srchIdx]) || srchResults[srchIdx].scrollIntoView({block:"center"}); }
 
 // ── RIGHT PANEL ACTIONS ──────────────────────────────────────
 // Общая функция сохранения личных настроек чата на сервере — раньше
@@ -11619,6 +12998,7 @@ function closeM(id){
 // closeStore()/closeVIP()/closeGifts()/closeStories() ниже. Экран звонка
 // (call-screen) сюда не входит — у него своя, отдельная от .screen вёрстка.
 function closeScreen(id){
+  setTimeout(msgsFeedShownAgain, 260);   // итерация 17: экран уехал — переписка снова перед глазами
   const s=el(id); if(!s) return;
   s.classList.add("closing");
   setTimeout(()=>{ s.classList.remove("on"); s.classList.remove("closing"); }, 180);
@@ -13437,7 +14817,10 @@ function renderSupportQuick(){
     `<div onclick="sendSupportQuery('${q}')" style="background:var(--bg3);border:1px solid rgba(108,99,255,.3);border-radius:20px;padding:6px 13px;font-size:12px;cursor:pointer;color:var(--acc2);transition:all .15s" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">${q}</div>`
   ).join("");
   msgs.appendChild(div);
-  setMsgsScrollTop(msgs.scrollHeight); // 31 июля 2026: было прямое присвоение в обход setMsgsScrollTop() — resulting scroll-событие ошибочно читалось бы как настоящий скролл пользователя (см. агентскую находку в раунде 10)
+  // 15 сен 2026 (итерация 7): прижимаем, только если лента и так держит низ —
+  // иначе чат, открытый на месте чтения или на разделителе, через 50 мс
+  // улетал в самый низ и потом возвращался.
+  if(msgsFollowBottom) setMsgsScrollTop(msgs.scrollHeight); // 31 июля 2026: было прямое присвоение в обход setMsgsScrollTop() — resulting scroll-событие ошибочно читалось бы как настоящий скролл пользователя (см. агентскую находку в раунде 10)
 }
 
 function renderVerifyQuick(){
@@ -13449,7 +14832,7 @@ function renderVerifyQuick(){
   div.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px;";
   div.innerHTML = `<div onclick="openVerification()" style="background:var(--bg3);border:1px solid rgba(56,189,248,.3);border-radius:20px;padding:6px 13px;font-size:12px;cursor:pointer;color:var(--acc3);transition:all .15s" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">📝 Подать заявку</div>`;
   msgs.appendChild(div);
-  setMsgsScrollTop(msgs.scrollHeight); // см. комментарий у renderSupportQuick
+  if(msgsFollowBottom) setMsgsScrollTop(msgs.scrollHeight); // см. комментарий у renderSupportQuick
 }
 
 function sendSupportQuery(text){
