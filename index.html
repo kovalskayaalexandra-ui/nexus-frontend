@@ -263,6 +263,17 @@ button,input,textarea,select{font-family:inherit}
 .ci.on{background:var(--bg4)}
 .ci.on::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;background:var(--acc2);border-radius:0 3px 3px 0}
 .ci.muted .cnm::after{content:" 🔇";font-size:10px;opacity:.5}
+/* 25 сен 2026: строка ПРИГЛАШЕНИЯ в группу. Намеренно не похожа на чат и не
+   открывается тапом: пока приглашение не принято, человек не участник и
+   переписки у него нет. Войти или отказаться можно только кнопкой. */
+.ci-inv{align-items:flex-start;background:var(--bg3);cursor:default}
+.ci-inv .cprev{white-space:normal;overflow:visible;text-overflow:clip}
+.ci-inv-acts{display:flex;gap:8px;margin-top:7px}
+.ci-inv-btn{padding:5px 13px;border-radius:7px;border:none;font-family:inherit;font-size:var(--fs-3);font-weight:600;cursor:pointer;transition:transform var(--t-press,.12s) var(--e-out,ease),opacity .15s}
+.ci-inv-btn:active{transform:scale(.96)}
+.ci-inv-btn.yes{background:var(--acc);color:#fff}
+.ci-inv-btn.no{background:var(--bg4);color:var(--tx2)}
+.ci-inv-btn[disabled]{opacity:.5;pointer-events:none}
 .avwrap{position:relative;flex-shrink:0}
 .chav{width:43px;height:43px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
   font-weight:800;font-size:13px;color:#fff;position:relative;overflow:hidden}
@@ -360,6 +371,10 @@ body.select-mode .ibar{display:none}
 .sab-btn{flex:1;display:flex;align-items:center;justify-content:center;padding:13px 4px;font-size:16px;font-weight:500;color:var(--acc2);cursor:pointer;border-radius:10px;transition:background .1s}
 .sab-btn:hover{background:var(--bg3)}
 .sab-btn.disabled{opacity:.35;pointer-events:none}
+/* 24 сен 2026, дорожка UI (B6): подсветка выбранного сообщения появляется и
+   уходит плавно. Меняется только цвет фона — ни размер, ни положение строки,
+   поэтому высота ленты и прокрутка не задеваются. */
+.mrow{transition:background var(--t-press) var(--e-out)}
 .mrow.selected{background:rgba(108,99,255,.13)!important;border-radius:8px}
 body.select-mode .bub,body.select-mode .skbub,body.select-mode .vbub{cursor:pointer!important}
 .msel-check{display:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--tx3);margin-right:8px;flex-shrink:0;align-self:center;align-items:center;justify-content:center;font-size:13px;color:#fff;transition:.15s}
@@ -428,6 +443,11 @@ body.select-mode .msel-check{display:flex}
   font-weight:700;font-size:10px;color:#fff;overflow:hidden}
 .mav img{width:100%;height:100%;object-fit:cover}
 .bub{padding:var(--sp-2) var(--sp-3);border-radius:16px;max-width:74%;word-break:break-word;font-size:var(--fs-4);line-height:1.5;position:relative;cursor:context-menu;transition:transform .15s ease}
+/* 24 сен 2026 (W2): переносы строк и повторные пробелы сохраняются. Правило
+   висит на самом тексте, а НЕ на .bub — внутри пузыря лежат ещё строка времени,
+   реакции и блок цитаты, и на пузыре pre-wrap показывал бы отступы шаблона
+   как лишние пустые строки. */
+.mtx{white-space:pre-wrap}
 .bub.reply-armed{transform:translateX(14px)}
 .mrow.in .bub{background:var(--in);border-bottom-left-radius:3px}
 .mrow.out .bub{background:var(--out);border-bottom-right-radius:3px}
@@ -715,8 +735,38 @@ button:active,.nbtn:active,.fmt-btn:active,.call-btn:active{transform:scale(.96)
 /* 30 июля 2026: scale(.92→1) был слишком незаметным ("из меньшего в
    большее" почти не читалось) — Александра сравнила с Telegram, там рост
    меню от точки нажатия заметно крупнее. */
+/* 24 сен 2026, дорожка UI: одна система длительностей и кривых на всё
+   приложение. Значения — из согласованной motion-системы: нажатие 90-140,
+   всплывающее 140-180, нижний лист 180-240, смена экрана 220-300 мс.
+   Одна кривая на обычные переходы, отдельная на «уход». */
+:root{
+  --t-press:120ms; --t-pop:170ms; --t-sheet:210ms; --t-screen:260ms;
+  --e-out:cubic-bezier(.25,.8,.35,1); --e-in:cubic-bezier(.4,0,1,1);
+}
+/* Слабое устройство или включённая настройка «уменьшить анимацию»: движение
+   остаётся, но коротким и без смещений — чтобы переход был понятен, а не
+   мигал. Полностью выключать нельзя: пропадёт связь между экранами. */
+@media (prefers-reduced-motion: reduce){
+  :root{ --t-press:80ms; --t-pop:100ms; --t-sheet:120ms; --t-screen:140ms; }
+  /* Экраны и переход список чатов <-> чат: убираем смещение, оставляем
+     короткое проявление. Сам переход виден, но ничего не «едет». */
+  .screen.on{ animation-name:mFadeIn }
+  .screen.closing{ animation-name:mFadeOut }
+  .mobile-mode .format-bar.on{ animation-name:mFadeIn }
+  .mobile-mode .format-bar.on.closing{ animation-name:mFadeOut }
+  .ctx.on, .rxn-picker.on, .srch-overlay.on, .movl.on .modal, .mpanel.on .mp-body{ animation-name:mFadeIn !important }
+  .ctx.closing, .rxn-picker.closing, .srch-overlay.closing, .movl .modal.closing{ animation-name:mFadeOut !important }
+}
+@keyframes mFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes mFadeOut{from{opacity:1}to{opacity:0}}
+@keyframes popIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@keyframes popOut{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(.96)}}
+@keyframes dropIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes dropOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-10px)}}
 @keyframes ctxIn{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:scale(1)}}
-.ctx.on{display:block;animation:ctxIn .18s cubic-bezier(.25,.8,.35,1)}
+@keyframes ctxOut{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(.9)}}
+.ctx.on{display:block;animation:ctxIn var(--t-pop) var(--e-out)}
+.ctx.on.closing{animation:ctxOut var(--t-press) var(--e-in) forwards}
 .ctxi{padding:7px 11px;border-radius:7px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px;transition:background .1s}
 .ctxi:hover{background:var(--bg4)}
 .ctxi.rd{color:var(--rd)}
@@ -737,6 +787,8 @@ body.mobile-mode .ctxi svg{width:17px;height:17px}
 .ctx.fwd-protected .ctx-fwd-item{opacity:.4;cursor:not-allowed;pointer-events:none}
 
 /* ═══ RXNS PICKER ═══ */
+.rxn-picker.on{animation:popIn var(--t-pop) var(--e-out)}
+.rxn-picker.on.closing{animation:popOut var(--t-press) var(--e-in) forwards}
 .rxn-picker{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:999px;padding:5px 8px;z-index:1001;display:none;align-items:center;gap:4px;box-shadow:0 8px 32px rgba(0,0,0,.5)}
 .rxn-picker.on{display:flex}
 .rxn-e{font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background .1s;flex-shrink:0}
@@ -754,6 +806,8 @@ body.mobile-mode .ctxi svg{width:17px;height:17px}
 #rxn-grid .emoji-item:hover{background:var(--bg4)}
 
 /* ═══ SEARCH OVERLAY ═══ */
+.srch-overlay.on{animation:dropIn var(--t-sheet) var(--e-out)}
+.srch-overlay.on.closing{animation:dropOut var(--t-press) var(--e-in) forwards}
 .srch-overlay{position:absolute;top:0;left:0;right:0;background:var(--bg2);border-bottom:1px solid var(--brd);z-index:60;display:none;padding:8px 12px;align-items:center;gap:8px}
 .srch-overlay.on{display:flex}
 .srch-inp{flex:1;background:var(--bg3);border:1px solid var(--brd);border-radius:9px;padding:7px 12px;color:var(--tx);font-size:13px;outline:none}
@@ -766,17 +820,26 @@ body.mobile-mode .ctxi svg{width:17px;height:17px}
 
 /* ═══ MODALS ═══ */
 .movl{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
-.movl.on{display:flex}
+/* 24 сен 2026, дорожка UI: затемнение под окном тоже появляется и уходит
+   плавно. Раньше фон включался мгновенно, а карточка плавно — пара выглядела
+   рассинхронизированной: экран резко темнел, потом мягко выезжало окно. */
+.movl.on{display:flex;animation:mFadeIn var(--t-pop) var(--e-out)}
+.movl.on.closing{animation:mFadeOut var(--t-press) var(--e-in) forwards}
 /* 30 июля 2026: просмотрщик фото — раньше закрывался только тапом ровно по
    тёмному фону (event.target===this), тап по самой картинке не закрывал
    ничего — Александра явно попросила крестик и/или повторный тап. */
+/* A9: раньше окно фото возникало и пропадало мгновенно. Плавный переход
+   прямо из миниатюры — задача нативного клиента (нужны размеры медиа),
+   а согласованное появление и уход делаем уже сейчас. */
+#m-imgview.on{animation:mFadeIn var(--t-pop) var(--e-out)}
+#m-imgview.on.closing{animation:mFadeOut var(--t-press) var(--e-in) forwards}
 .imgview-close{position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1}
 /* Закрытие модалки — то же плавное появление (fadeUp), проигранное в
    обратном порядке, вместо мгновенного исчезновения. closeM() добавляет
    класс closing, ждёт длительность анимации и только потом снимает on —
    see closeM() ниже. */
 @keyframes fadeDown{from{opacity:1;transform:none}to{opacity:0;transform:translateY(14px)}}
-.movl .modal.closing{animation:fadeDown .18s ease-in forwards}
+.movl .modal.closing{animation:fadeDown var(--t-press) var(--e-in) forwards}
 /* 30 июля 2026: тонкая едва заметная рамка у фото — Александра сравнила с
    Telegram: там у фото ВСЕГДА есть маленькая тонкая рамка (не только при
    выделении) — отдельно от акцентной рамки выбора (.grp-cell.selected). */
@@ -826,7 +889,7 @@ body.mobile-mode .ctxi svg{width:17px;height:17px}
 .msg-file-ico{width:34px;height:34px;border-radius:8px;background:var(--acc2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px}
 .msg-file-nm{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px}
 .msg-file-sz{font-size:11px;color:var(--tx2)}
-.modal{background:var(--bg2);border:1px solid var(--brd2);border-radius:18px;padding:var(--sp-5);width:90%;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:fadeUp .25s ease-out;max-height:90vh;overflow-y:auto}
+.modal{background:var(--bg2);border:1px solid var(--brd2);border-radius:18px;padding:var(--sp-5);width:90%;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:fadeUp var(--t-pop) var(--e-out);max-height:90vh;overflow-y:auto}
 .modal.wide{max-width:560px}
 .mtit{font-weight:800;font-size:var(--fs-6);margin-bottom:5px}
 .msub{font-size:var(--fs-3);color:var(--tx2);margin-bottom:var(--sp-4)}
@@ -867,8 +930,8 @@ body.mobile-mode .ctxi svg{width:17px;height:17px}
    анимацию, потом снимается on. */
 @keyframes screenIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 @keyframes screenOut{from{opacity:1;transform:none}to{opacity:0;transform:translateY(16px)}}
-.screen.on{display:flex;animation:screenIn .22s ease-out}
-.screen.closing{display:flex;animation:screenOut .18s ease-in forwards}
+.screen.on{display:flex;animation:screenIn var(--t-screen) var(--e-out)}
+.screen.closing{display:flex;animation:screenOut var(--t-press) var(--e-in) forwards}
 .settings-body{flex:1;overflow-y:auto;padding:24px;max-width:680px;width:100%;margin:0 auto}
 .settings-section{background:var(--bg2);border:1px solid var(--brd);border-radius:14px;margin-bottom:var(--sp-4);overflow:hidden}
 .settings-section-title{font-weight:700;font-size:var(--fs-2);letter-spacing:1.2px;text-transform:uppercase;
@@ -1043,8 +1106,12 @@ tr:hover td{background:var(--bg3)}
 .mobile-mode{--fs-1:11px;--fs-2:12px;--fs-3:14px;--fs-4:16px;--fs-5:17px}
 .mobile-mode .chav{width:50px;height:50px;font-size:15px}
 .mobile-mode .layout{position:relative}
-.mobile-mode .sb{position:absolute;top:0;left:0;right:0;bottom:56px;width:100%;z-index:2;transform:translate3d(0,0,0);transition:transform .25s ease}
-.mobile-mode .cm{position:absolute;top:0;left:0;right:0;bottom:56px;width:100%;transform:translate3d(100%,0,0);transition:transform .25s ease;z-index:1}
+/* 24 сен 2026, дорожка UI: переход список чатов <-> чат сведён к общим токенам.
+   Двигаем только transform, поэтому высота ленты не меняется и прокрутка не
+   задевается. Список и чат едут одной длительностью и одной кривой — иначе
+   пара получается несимметричной. */
+.mobile-mode .sb{position:absolute;top:0;left:0;right:0;bottom:56px;width:100%;z-index:2;transform:translate3d(0,0,0);transition:transform var(--t-screen) var(--e-out)}
+.mobile-mode .cm{position:absolute;top:0;left:0;right:0;bottom:56px;width:100%;transform:translate3d(100%,0,0);transition:transform var(--t-screen) var(--e-out);z-index:1}
 .mobile-mode .layout.chat-open .sb{transform:translate3d(-100%,0,0)}
 .mobile-mode .layout.chat-open .cm{transform:translate3d(0,0,0);z-index:2}
 .mobile-mode .resize-handle{display:none}
@@ -1107,7 +1174,7 @@ body.mobile-mode:has(.rp.mobile-open) .mobile-tabbar{display:none}
    getBoundingClientRect в браузере, а не только предположением о CSS. */
 @keyframes sheetIn{from{opacity:0;transform:translateY(100%)}to{opacity:1;transform:translateY(0)}}
 @keyframes sheetOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(100%)}}
-.mobile-mode .format-bar.on.closing{animation:sheetOut .18s ease-in forwards}
+.mobile-mode .format-bar.on.closing{animation:sheetOut var(--t-press) var(--e-in) forwards}
 .mobile-mode .format-bar.on{position:fixed;left:0;right:0;bottom:0;top:auto;margin:0;
   border-radius:16px 16px 0 0;min-width:0;width:100%;max-height:60vh;overflow-y:auto;
   padding:8px;z-index:60;box-shadow:0 -8px 30px rgba(0,0,0,.45);
@@ -1861,23 +1928,23 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 
     <div class="settings-section mobile-only-quick">
       <div class="settings-section-title">Ещё</div>
-      <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openStore()">
+      <div class="settings-row" onclick="openStore()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(103,232,249,.1)">🛒</div><div><div class="settings-row-label">Магазин</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
-      <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openVIP()">
+      <div class="settings-row" onclick="openVIP()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(251,191,36,.1)">⭐</div><div><div class="settings-row-label">VIP</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
-      <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openSupport()">
+      <div class="settings-row" onclick="dismissScreenSilently('screen-settings');openSupport()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">💬</div><div><div class="settings-row-label">Поддержка</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
-      <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openGifts()">
+      <div class="settings-row" onclick="openGifts()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)">🎁</div><div><div class="settings-row-label">Подарки</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
-      <div class="settings-row" id="mset-devp" style="display:none" onclick="el('screen-settings').classList.remove('on');openAdmin()">
+      <div class="settings-row" id="mset-devp" style="display:none" onclick="openAdmin()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(108,99,255,.1)">⚙️</div><div><div class="settings-row-label">Dev Panel</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
@@ -1885,11 +1952,11 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 
     <div class="settings-section">
       <div class="settings-section-title">Данные</div>
-      <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openContacts()">
+      <div class="settings-row" onclick="openContacts()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14c2.3.3 4 2 4 4.6"/></svg></div><div><div class="settings-row-label">Контакты</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
-      <div class="settings-row" onclick="el('screen-settings').classList.remove('on');openChat(55555)">
+      <div class="settings-row" onclick="dismissScreenSilently('screen-settings');openChat(55555)">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(56,189,248,.1)"><svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="5" fill="#2AABEE"/><rect x="3" y="3" width="18" height="18" rx="5" fill="#2AABEE" transform="rotate(22.5 12 12)"/><path d="M8.3 12.2l2.6 2.6 5-5.2" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div><div class="settings-row-label">Верификация (Angie Verify)</div><div class="settings-row-sub">Синяя галочка для канала или личного профиля</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
@@ -2450,7 +2517,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 <div class="movl" id="m-members"><div class="modal wide">
   <div class="mtit">👥 Участники</div>
   <div id="members-add-row" style="margin-bottom:10px">
-    <button class="xbtn sec" style="width:100%" onclick="openAddMember()">➕ Добавить участников</button>
+    <button class="xbtn sec" style="width:100%" onclick="openAddMember()">✉️ Пригласить участников</button>
   </div>
   <div id="members-list" style="max-height:340px;overflow-y:auto"></div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-members')">Закрыть</button></div>
@@ -2512,7 +2579,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 
 <!-- MODAL: ADD MEMBER -->
 <div class="movl" id="m-addmember"><div class="modal">
-  <div class="mtit">➕ Добавить участников</div>
+  <div class="mtit">✉️ Пригласить участников</div>
   <input class="fii" id="addmember-search" placeholder="Поиск пользователей..." oninput="searchAddMember(this.value)" style="margin-bottom:10px">
   <div id="addmember-results" style="max-height:300px;overflow-y:auto"></div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-addmember')">Закрыть</button></div>
@@ -3097,6 +3164,7 @@ function wsConnect(){
 
   ws.onopen = () => {
     wsConnected = true;
+    wsAuthed = false;   // до ответа auth.ok сервер команды не примет (S1/F1)
     clearTimeout(wsReconnectTimer);
     // Авторизуемся токеном
     ws.send(JSON.stringify({ type: "auth", token }));
@@ -3111,6 +3179,7 @@ function wsConnect(){
 
   ws.onclose = () => {
     wsConnected = false;
+    wsAuthed = false;
     updateConnectionIndicator(true);
     wsScheduleReconnect();
   };
@@ -3125,12 +3194,29 @@ function wsScheduleReconnect(){
   wsReconnectTimer = setTimeout(wsConnect, 5000);
 }
 
+// 24 сен 2026 (S1/F1): сервер теперь отвечает на команды только после
+// подтверждённого входа (в диспетчере стоит if(!ws.userId) return). Фронтенд
+// же слал сразу после открытия сокета, не дожидаясь ответа auth.ok — такие
+// сообщения сервер молча отбрасывал бы. Поэтому до подтверждения складываем
+// в очередь и отправляем её, как только вход подтверждён.
+let wsAuthed=false, wsOutbox=[];
+const WS_OUTBOX_MAX=50;
+function wsFlushOutbox(){
+  if(!wsAuthed || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const q=wsOutbox; wsOutbox=[];
+  for(const d of q){ try{ ws.send(JSON.stringify(d)); }catch(e){ break; } }
+}
 function wsSend(data){
-  if(ws && ws.readyState === WebSocket.OPEN){
-    ws.send(JSON.stringify(data));
-    return true;
+  if(!ws || ws.readyState !== WebSocket.OPEN) return false;
+  if(!wsAuthed){
+    // Очередь не бесконечная: если вход почему-то не подтверждается, не копим
+    // память без предела — старое вытесняем.
+    if(wsOutbox.length >= WS_OUTBOX_MAX) wsOutbox.shift();
+    wsOutbox.push(data);
+    return true;   // для вызывающего это «принято» — уйдёт сразу после auth.ok
   }
-  return false;
+  ws.send(JSON.stringify(data));
+  return true;
 }
 
 // Надёжная отправка с повтором — для важных разовых уведомлений (создание группы и т.п.),
@@ -3146,6 +3232,8 @@ function wsHandleMessage(msg){
   switch(msg.type){
 
     case "auth.ok":
+      wsAuthed = true;
+      wsFlushOutbox();   // всё, что накопилось до подтверждения входа (S1/F1)
       updateConnectionIndicator(false);
       // ⚠️ Раньше здесь ничего не происходило — после разрыва связи (свернули/
       // закрыли приложение, пропал интернет и т.п.) сокет переподключался и
@@ -3392,6 +3480,39 @@ function wsHandleMessage(msg){
         });
         renderChats(); saveState();
         showToast(`${chat.type==="channels"?"📢":"👥"} ${fromName} добавил(а) вас в «${chat.nm}»`);
+      }
+      break;
+    }
+
+    // 25 сен 2026. Вас ПРИГЛАСИЛИ в группу — это ещё не членство. Чат не
+    // заводим: в списке появляется отдельная строка с «Войти» и «Отклонить».
+    // Карточку берём из кадра только для показа строки; настоящие данные
+    // придут с сервера, когда приглашение примут.
+    case "chat.invite": {
+      const inv = msg.payload && msg.payload.invite;
+      if(!inv || !inv.id) break;
+      if(!S.invites) S.invites=[];
+      if(!S.invites.find(x=>x.id===inv.id)){
+        S.invites.unshift(inv);
+        renderChats(); saveState();
+        showToast(`✉️ ${inv.fromName||"Пользователь"} приглашает вас в «${inv.chatName||"чат"}»`);
+      }
+      break;
+    }
+
+    // На приглашение ответили — обновляем состояние у того, кто звал.
+    case "chat.invite.answered": {
+      const p = msg.payload || {};
+      if(!p.chatId || !p.userId) break;
+      const cache = S.chatInvites && S.chatInvites[p.chatId];
+      if(cache){
+        const row = cache.find(r=>String(r.userId)===String(p.userId));
+        if(row){ row.status=p.status; row.answeredAt=new Date().toISOString(); }
+      }
+      if(S.chat===p.chatId){
+        // Вошедший стал настоящим участником — список участников берём с сервера
+        if(p.status==="accepted") loadChatsFromDB();
+        if(el("m-members")?.classList.contains("on")) renderMembersList();
       }
       break;
     }
@@ -4540,21 +4661,155 @@ async function loadChatsFromDB(){
     });
     saveState(); renderChats();
     loadBlockedUsers(); // после чатов — нужно сопоставлять по withUserId
+    loadInvitesFromServer(); // приглашения — отдельным запросом, см. ниже
   } catch(e){ console.warn("loadChatsFromDB error:", e); }
+}
+
+// ── ПРИГЛАШЕНИЯ В ГРУППУ ─────────────────────────────────────
+// 25 сентября 2026. Раньше создатель группы просто записывал выбранных людей
+// в участники — без их ведома и согласия, достаточно было знать чужой id.
+// Теперь им уходит именное приглашение, а участником человек становится сам,
+// нажав «Войти».
+//
+// Источник истины — сервер (правило 16). Локально приглашения не выдумываются
+// и не «принимаются» на клиенте: и список, и сам факт принятия приходят с
+// сервера, и после принятия список чатов перечитывается у него же.
+//
+// ⚠️ Всё, что попадает сюда (название чата, имя пригласившего), написано
+// ПОСТОРОННИМ человеком — экранируем при выводе, как и в списке чатов.
+function safeImgSrc(u){
+  const v=String(u||"");
+  return /^(https:\/\/|data:image\/)/i.test(v) ? v : "";
+}
+
+async function loadInvitesFromServer(){
+  let data;
+  try{
+    data = await apiGet("/api/chats/invites");
+  }catch(e){
+    // Либо нет связи, либо сервер старый и такого маршрута не знает (отвечает
+    // не-JSON). И то и другое — не повод стирать то, что уже показано.
+    return;
+  }
+  if(!data || data.invitesSupported===false || !Array.isArray(data.invites)){
+    if((S.invites||[]).length){ S.invites=[]; renderChats(); saveState(); }
+    return;
+  }
+  const before=JSON.stringify((S.invites||[]).map(i=>i.id));
+  S.invites=data.invites;
+  if(before!==JSON.stringify(S.invites.map(i=>i.id))){ renderChats(); saveState(); }
+}
+
+// Пока запрос в пути — кнопки этой строки недоступны, чтобы двойное нажатие
+// не ушло вторым запросом.
+function inviteRowBusy(inviteId, busy){
+  document.querySelectorAll('[data-invite-id="'+inviteId+'"] .ci-inv-btn').forEach(b=>{
+    if(busy) b.setAttribute("disabled",""); else b.removeAttribute("disabled");
+  });
+}
+
+function inviteRowNode(inv){
+  const d=document.createElement("div");
+  d.className="ci ci-inv";
+  d.setAttribute("data-invite-id", inv.id);
+  const nm=inv.chatName || (inv.chatType==="channels" ? "Канал" : "Группа");
+  const ini=(nm||"?").slice(0,2).toUpperCase();
+  const src=safeImgSrc(inv.chatAvatar);
+  const avHTML=src?`<img src="${escHtml(src)}" style="width:100%;height:100%;object-fit:cover">`:escHtml(ini);
+  const what=inv.chatType==="channels"?"канал":"группу";
+  d.innerHTML=`<div class="avwrap"><div class="chav" style="background:${colBg(colorFromId(inv.chatId))}">${avHTML}</div></div>
+  <div class="cinfo" style="flex:1;overflow:hidden;min-width:0">
+    <div class="cnm">${escHtml(nm)}</div>
+    <div class="cprev">${escHtml(inv.fromName||"Пользователь")} приглашает вас в ${what}</div>
+    <div class="ci-inv-acts">
+      <button class="ci-inv-btn yes" type="button">Войти</button>
+      <button class="ci-inv-btn no" type="button">Отклонить</button>
+    </div>
+  </div>`;
+  d.querySelector(".ci-inv-btn.yes").onclick=(e)=>{ e.stopPropagation(); acceptInvite(inv.id); };
+  d.querySelector(".ci-inv-btn.no").onclick=(e)=>{ e.stopPropagation(); declineInvite(inv.id); };
+  return d;
+}
+
+async function acceptInvite(inviteId){
+  const inv=(S.invites||[]).find(i=>i.id===inviteId); if(!inv) return;
+  inviteRowBusy(inviteId, true);
+  let data;
+  try{
+    data=await apiPost("/api/chats/invites/"+inviteId+"/accept", {}, true);
+  }catch(e){
+    inviteRowBusy(inviteId, false);
+    showToast("❌ Нет связи с сервером");
+    return;
+  }
+  if(!data || !data.success){
+    inviteRowBusy(inviteId, false);
+    showToast("❌ "+((data&&data.error)||"Не удалось войти"));
+    loadInvitesFromServer(); // могли ответить с другого устройства или отозвать
+    return;
+  }
+  S.invites=(S.invites||[]).filter(i=>i.id!==inviteId);
+  saveState();
+  // Участником нас сделал сервер — карточку чата берём у него, а не собираем
+  // на клиенте (иначе после перезагрузки она разъедется с настоящей).
+  await loadChatsFromDB();
+  const chatId=data.chatId||inv.chatId;
+  showToast("✅ Вы вошли в «"+(inv.chatName||"чат")+"»");
+  if(S.chats.find(c=>c.id===chatId)) openChat(chatId);
+}
+
+async function declineInvite(inviteId){
+  const inv=(S.invites||[]).find(i=>i.id===inviteId); if(!inv) return;
+  inviteRowBusy(inviteId, true);
+  let data;
+  try{
+    data=await apiPost("/api/chats/invites/"+inviteId+"/decline", {}, true);
+  }catch(e){
+    inviteRowBusy(inviteId, false);
+    showToast("❌ Нет связи с сервером");
+    return;
+  }
+  if(!data || !data.success){
+    inviteRowBusy(inviteId, false);
+    showToast("❌ "+((data&&data.error)||"Не удалось отклонить"));
+    loadInvitesFromServer();
+    return;
+  }
+  S.invites=(S.invites||[]).filter(i=>i.id!==inviteId);
+  renderChats(); saveState();
+  showToast("Приглашение отклонено");
 }
 
 // ── ЗАГРУЗКА СООБЩЕНИЙ ИЗ БД ─────────────────────────────────
 // Помечает чужие сообщения в чате прочитанными на сервере и уведомляет
 // отправителя по WebSocket, чтобы у него мгновенно появилась вторая галочка
-async function markChatAsRead(chatId){
+// 24 сен 2026 (О3): помечаем прочитанными КОНКРЕТНЫЕ сообщения, которые правда
+// побывали на экране, а не «всё в чате». ids — массив серверных id; без него
+// сервер работает по-старому (нужно для служебных путей).
+// При неудаче список возвращается в очередь: раньше сбой молча проглатывался
+// (console.warn), и сервер навсегда считал сообщения непрочитанными.
+async function markChatAsRead(chatId, ids){
   try{
-    const data=await apiPatch("/api/messages/chat/"+chatId+"/read", {}, true);
+    const body = ids && ids.length ? {ids} : {};
+    const data=await apiPatch("/api/messages/chat/"+chatId+"/read", body, true);
+    if(!data || data.success===false) throw new Error("read not confirmed");
     if(data?.readIds?.length){
       const curChat=S.chats.find(c=>c.id===chatId);
       const memberIds=getChatMemberIds(curChat);
       wsSend({type:"messages.read", payload:{chatId, memberIds, readIds:data.readIds}});
+      // Счётчик непрочитанных уменьшаем ровно на столько, сколько сервер
+      // подтвердил, — не обнуляем «на всякий случай» (правило: остаток правдивый).
+      if(curChat && curChat.unread>0){
+        curChat.unread=Math.max(0, curChat.unread-data.readIds.length);
+        renderChats();
+      }
     }
-  }catch(e){ console.warn("mark chat as read error:", e); }
+    return true;
+  }catch(e){
+    console.warn("mark chat as read error:", e);
+    if(ids && ids.length) msgsRequeueUnsentRead(chatId, ids);
+    return false;
+  }
 }
 
 async function loadMessagesFromDB(chatId){
@@ -4644,6 +4899,13 @@ async function loadMessagesFromDB(chatId){
       // Событие идёт строго в хронологическом порядке — просто применяем
       // его всегда, тогда самое последнее по времени событие в истории
       // (рукопожатие или выключение) и определяет итоговое состояние.
+      // Служебная запись от сервера (например, «приглашения отправлены») —
+      // строка по центру, а не сообщение от человека.
+      if(dbMsg.type==="system"){
+        S.messages[chatId].push({id:nextId(), dbId:dbMsg.id, t:"sys", tx:dbMsg.text||"", ts:new Date(dbMsg.created_at).getTime()});
+        changedAnything=true;
+        continue;
+      }
       if(dbMsg.type==="e2e_disabled"){
         const ch2=S.chats.find(c=>c.id===chatId);
         if(ch2){ ch2.e2eActive=false; ch2.e2ePending=false; }
@@ -4838,10 +5100,17 @@ function updateUserUI(){
 }
 
 // ── LANG PICKER ──────────────────────────────────────────────────
-function openLP(){ renderLG(); el("lpick").classList.add("on"); }
+function openLP(){
+  renderLG();
+  const p=el("lpick");
+  if(p.classList.contains("on")) return;
+  p.classList.add("on");
+  openLayer("lpick", ()=>el("lpick").classList.remove("on"));
+}
+function closeLP(){ if(!el("lpick")?.classList.contains("on")) return; if(closeLayerViaStack("lpick")) return; el("lpick").classList.remove("on"); }
 function renderLG(){ el("lgrid").innerHTML=Object.entries(LANGS).map(([k,l])=>`<div class="li${S.lang===k?" on":""}" onclick="setLang('${k}')"><span class="li-f">${l.flag}</span><div><div class="li-n">${l.name}</div><div class="li-nat">${l.native}</div></div></div>`).join(""); }
 function setLang(code){
-  S.lang=code; applyLang(); el("lpick").classList.remove("on"); renderChats(); renderMsgs(); saveState();
+  S.lang=code; applyLang(); closeLP(); renderChats(); renderMsgs(); saveState();
   showToast(LANGS[code].flag+" "+LANGS[code].native);
   // Сохраняем на сервере, если залогинены — чтобы Dev Panel → Языки видел
   // реальную статистику, а не только локальный выбор в этом браузере
@@ -4862,7 +5131,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-09-20 лента: место в чате";
+const BUILD_TAG = "2026-09-26 приглашения в группу, «назад», анимации";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -4874,8 +5143,19 @@ function openAdmin(){
 }
 function closeAdmin(){ popNavEntry(); }
 function openSettings(){
-  el("screen-settings").classList.add("on");
-  pushNavEntry(()=>closeScreen("screen-settings"));
+  // 24 сен 2026 (W3 шаг 1): вторую запись в стек при уже открытом экране не
+  // кладём. Раньше openSettings() звали ещё раз после сохранения профиля и
+  // после отмены запланированной смены номера — экран уже был открыт, а запись
+  // добавлялась, и одно нажатие «назад» уходило впустую (на глаз это выглядело
+  // как мигание: спрятанный экран на 0,18 с возвращался и уезжал, см. .screen.closing).
+  const sc=el("screen-settings");
+  const wasOpen=sc.classList.contains("on");
+  sc.classList.add("on");
+  if(!wasOpen){
+    const closer=()=>closeScreen("screen-settings");
+    closer.navScreenId="screen-settings";
+    pushNavEntry(closer);
+  }
   const u=S.user;
   const sav=el("settings-av");
   if(sav){ if(u.avatar)sav.innerHTML=`<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;else{sav.textContent=u.initials||"Я";sav.style.background=COLS[0];} }
@@ -4906,6 +5186,16 @@ function openSettings(){
   if(el("theme-sel"))el("theme-sel").value=S.theme||"dark";
   applyLang();
 }
+// 24 сен 2026 (W3 шаг 1): экран прячется, но его запись в стеке остаётся —
+// помечаем её отработавшей, иначе следующее «назад» закроет уже спрятанный
+// экран (видно как мигание) вместо того, что человек видит сейчас.
+// Нужно там, где из Настроек открывают не экран, а ЧАТ (поддержка, бот):
+// чат лежит ниже экранов по слоям, поэтому Настройки обязаны уйти.
+function dismissScreenSilently(id){
+  const sc=el(id); if(!sc) return;
+  sc.classList.remove("on");
+  for(let i=navStack.length-1;i>=0;i--){ const f=navStack[i]; if(f && f.navScreenId===id){ f.navSpent=true; break; } }
+}
 function closeSettings(){ popNavEntry(); }
 function openContacts(){ el("screen-contacts").classList.add("on"); renderContacts(); pushNavEntry(()=>closeScreen("screen-contacts")); }
 function closeContacts(){ popNavEntry(); }
@@ -4913,7 +5203,6 @@ function closeContacts(){ popNavEntry(); }
 // раньше, просто теперь оформлена функцией, а не разметкой) и открывает
 // свой экран поверх; в бэк-стек попадает только новый экран.
 function openCustomStickers(){
-  el("screen-settings").classList.remove("on");
   el("screen-custom-stickers").classList.add("on");
   renderMyCustomPacks();
   pushNavEntry(()=>closeScreen("screen-custom-stickers"));
@@ -4981,14 +5270,27 @@ function renderChats(filter=""){
     c.appendChild(ad);
   }
 
+  // Приглашения — над списком чатов. Это ещё не чаты: переписки за ними нет,
+  // тапом они не открываются, в режим выбора чатов не попадают.
+  if(!filter && !S.chatSelectMode && (S.invites||[]).length){
+    S.invites.forEach(inv=>c.appendChild(inviteRowNode(inv)));
+  }
+
   list.forEach(ch=>{
     const d=document.createElement("div");
     d.className="ci"+(ch.id===S.chat?" on":"")+(ch.pinned?" pinned":"")+(ch.muted?" muted":"")+(S.chatSelectMode&&S.selectedChats.includes(ch.id)?" selected":"");
     const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:(ch.ini||"?");
     d.innerHTML=`<div class="avwrap"><div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>${ch.online?'<div class="odot"></div>':""}</div>
     <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
-      <div class="cnm"${ch.peerNameColor?` style="color:${ch.peerNameColor}"`:""}>${ch.nm}${ch.peerVip?` <span title="VIP" style="display:inline-flex;vertical-align:middle;color:var(--am)">${VIP_STAR_SVG}</span>`:""}${ch.peerStatusEmoji?' '+ch.peerStatusEmoji:""}${ch.muted?' <span style="font-size:10px;opacity:.5">🔇</span>':""}${verifiedBadgeHTML(ch)}</div>
-      <div class="cprev">${ch._typing?`<span class="typing-label">${typingDotsHTML("печатает")}</span>`:(ch.draft?'<span class="draft-label">Черновик: </span>'+ch.draft:ch.prev)}</div>
+      ${/* 24 сен 2026: название, превью и черновик чата приходят от другого
+           человека и раньше подставлялись в разметку КАК ЕСТЬ. Цепочка была
+           такая: создать группу с названием из HTML (название на сервере не
+           проверяется), добавить жертву участником (согласия не требуется),
+           и её приложение рисовало этот HTML у себя при первой же отрисовке
+           списка чатов. Экранируем при выводе — это чинит и те названия,
+           которые уже могли попасть в базу. */""}
+      <div class="cnm"${safeColor(ch.peerNameColor)?` style="color:${safeColor(ch.peerNameColor)}"`:""}>${escHtml(ch.nm)}${ch.peerVip?` <span title="VIP" style="display:inline-flex;vertical-align:middle;color:var(--am)">${VIP_STAR_SVG}</span>`:""}${ch.peerStatusEmoji?' '+escHtml(ch.peerStatusEmoji):""}${ch.muted?' <span style="font-size:10px;opacity:.5">🔇</span>':""}${verifiedBadgeHTML(ch)}</div>
+      <div class="cprev">${ch._typing?`<span class="typing-label">${typingDotsHTML("печатает")}</span>`:(ch.draft?'<span class="draft-label">Черновик: </span>'+escHtml(ch.draft):escHtml(ch.prev))}</div>
     </div>
     <div class="cmeta">
       <div class="ctime">${ch.pinned?'<span class="pin-ico" title="Закреплено">📌</span>':""}${formatChatListTime(ch.lastTs) ?? ch.time}</div>
@@ -5150,7 +5452,7 @@ function globalSearch(v){
     d.className="ci"+(ch.id===S.chat?" on":"");
     d.onclick=()=>openChat(ch.id);
     d.innerHTML=`<div class="chav" style="background:${colBg(ch.col)}">${ch.ini||"?"}</div>
-    <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)"><div class="cnm">${ch.nm}</div><div class="cprev">${ch.prev}</div></div>
+    <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)"><div class="cnm">${escHtml(ch.nm)}</div><div class="cprev">${escHtml(ch.prev)}</div></div>
     <div class="cmeta"><div class="ctime">${ch.time}</div></div>`;
     c.appendChild(d);
   });
@@ -5185,8 +5487,18 @@ function openChat(id,opts){
   // «Непрочитанные сообщения», если место в этом чате ещё не запоминали.
   _openUnread={chat:id, n:ch.unread||0};
   // Загружаем сообщения из БД если чат реальный
-  if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); markChatAsRead(id); refreshChatPeerInfo(ch); }
-  ch.unread=0; renderChats();
+  // ⚠️ 24 сен 2026 (О3): здесь БОЛЬШЕ НЕ помечаем чат прочитанным. Раньше
+  // markChatAsRead(id) уходил безусловно, ещё до того, как что-то появилось на
+  // экране, — «открыть чат» буквально значило «прочитать все сообщения», и при
+  // старте приложения отметка уходила даже за чат, лежащий ЗА списком чатов.
+  // Теперь прочитанными становятся только сообщения, которые правда побывали
+  // на экране (см. msgsTrackDwell).
+  if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); refreshChatPeerInfo(ch); }
+  // И счётчик непрочитанных больше не обнуляем «на всякий случай»: остаток
+  // должен быть правдивым, иначе при выходе из чата он мигал бы 0 → N.
+  // Уменьшаем его ровно настолько, сколько сообщений сервер подтвердил
+  // прочитанными (см. markChatAsRead).
+  renderChats();
   applyVoiceVideoRestriction(ch); // сразу из кэша, refreshChatPeerInfo обновит, если поменялось
   applyScheduleButtonVisibility(ch);
   updateAttachMenuForChat(ch);
@@ -5335,12 +5647,25 @@ function pushNavEntry(closeFn){
 // экран напрямую — просто уходим на шаг назад в истории браузера; настоящее
 // закрытие происходит в обработчике popstate ниже, той же дорогой, что и
 // для аппаратной кнопки "назад" на Android.
+// 24 сен 2026 (W3 шаг 2): history.back() асинхронен — popstate приходит позже,
+// уже следующим кадром. Если в том же действии сразу открыть другое окно
+// («Новый чат» → «Создать группу»), то к моменту popstate на вершине стека
+// лежит НОВОЕ окно, и «назад» закрыл бы именно его. Поэтому пока «назад» в
+// полёте, открытие откладывается до его приземления (см. openM и popstate).
+let _navBackInFlight=false, _navPendingOpen=null, _navPendingLayer=null;
 function popNavEntry(){
-  if(navStack.length>0) history.back();
+  if(navStack.length>0){ _navBackInFlight=true; history.back(); }
 }
 window.addEventListener("popstate",()=>{
+  _navBackInFlight=false;
   const closeFn=navStack.pop();
-  if(closeFn) closeFn();
+  // navSpent — окно этой записи уже закрыли напрямую (см. closeM). Вызывать
+  // нечего, иначе закрыли бы то, что лежит под ним.
+  if(closeFn && !closeFn.navSpent) closeFn();
+  // Окно, которое просили открыть, пока «назад» был в полёте, открываем сейчас —
+  // теперь его запись ляжет в стек ПОВЕРХ закрытого, а не под него.
+  if(_navPendingOpen){ const id=_navPendingOpen; _navPendingOpen=null; openM(id); }
+  if(_navPendingLayer){ const p=_navPendingLayer; _navPendingLayer=null; openLayer(p.id, p.closeNow); }
 });
 
 // ══════════════════════════════════════════════════
@@ -5456,10 +5781,21 @@ function chatRowTouchStart(e,rowEl,id){
   },450);
 }
 function chatRowTouchMove(e){
-  if(!chatSwipeState||chatSwipeState.aborted) return;
+  if(!chatSwipeState) return;
   const t=e.touches[0];
   const dx=t.clientX-chatSwipeState.x0, dy=t.clientY-chatSwipeState.y0;
+  // 23 сен 2026: проверку "палец ушёл слишком далеко" держим ВЫШЕ выхода по
+  // aborted. Раньше выход стоял первой строкой, а первая же вертикальная
+  // подвижка на 1-3 px выставляла aborted (|dy|>|dx| при почти нулевом dx) —
+  // и clearTimeout ниже не выполнялся уже никогда. При МЕДЛЕННОМ потягивании
+  // списка вниз таймер долгого нажатия досчитывал до конца прямо посреди
+  // жеста: вибрация, вход в режим выбора чатов, renderChats() перерисовывал
+  // строку под пальцем, а suppressNextChatRowClick съедал следующий тап по
+  // чату — симптом "чат не открывается с первого раза" (жалоба 28 июля).
+  // Быстрый рывок этим не страдал: там первое же событие даёт |dy|>10 и гасит
+  // таймер ДО того, как выставится aborted.
   if(Math.abs(dx)>CHAT_SWIPE_MOVE_TOLERANCE_PX||Math.abs(dy)>CHAT_SWIPE_MOVE_TOLERANCE_PX) clearTimeout(chatLpTimer);
+  if(chatSwipeState.aborted) return;
   if(Math.abs(dy)>Math.abs(dx)) chatSwipeState.aborted=true;
 }
 function chatRowTouchEnd(e,rowEl){
@@ -5575,6 +5911,13 @@ function chatSelectDelete(){
 
 // ── MESSAGES ──────────────────────────────────────────────────
 // Форматирование текста сообщения: экранирование HTML + спойлеры ||текст||
+// 24 сен 2026: цвет имени собеседника приходит с сервера и подставляется прямо
+// в атрибут style. Пропускаем только настоящий цвет (#rgb, #rrggbb, rgb(...),
+// или простое слово вроде "tomato") — иначе в style можно вписать что угодно.
+function safeColor(c){
+  const v=String(c||"").trim();
+  return /^#[0-9a-fA-F]{3,8}$/.test(v) || /^rgba?\([0-9.,\s%]+\)$/.test(v) || /^[a-zA-Z]{3,20}$/.test(v) ? v : "";
+}
 function escHtml(s){
   return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
@@ -6625,15 +6968,72 @@ function armSettleTimer(chatId){
 // же дважды: раньше на каждое живое сообщение уходило по два запроса
 // (journeys J16-5, regress RG-3), а после закрытия экрана не уходило ни одного
 // и бейдж возвращался на прочитанный чат (journeys J16-1, closure m1).
-let _readSentKey=null;
+// ── О3: что считается прочитанным ───────────────────────────────────────────
+// Правило владельца (24 сен 2026): прочитанным становится сообщение, которое
+// ДЕЙСТВИТЕЛЬНО задержалось на экране. Промелькнувшее при инерционной
+// прокрутке и при прыжке кнопкой «вниз» — не прочитано. Поэтому ведём не одну
+// границу (ею такое состояние не описать), а список: у каждой входящей строки
+// на экране запоминаем, когда она там появилась, и засчитываем её, только если
+// она пробыла на виду не меньше MSGS_DWELL_MS и всё ещё видна.
+const MSGS_DWELL_MS=400;   // проверяемое значение, не окончательно утверждённое
+let _dwellSince=new Map();          // ключ сообщения -> когда появилось на экране
+let _readQueue=new Map();           // чат -> Set серверных id, ждущих отправки
+let _dwellTimer=null;
+function msgsRequeueUnsentRead(chatId, ids){
+  if(!_readQueue.has(chatId)) _readQueue.set(chatId, new Set());
+  const q=_readQueue.get(chatId); for(const id of ids) q.add(id);
+}
+// Отмечаем видимые входящие строки и засчитываем те, что выстояли выдержку.
+function msgsTrackDwell(c, chat){
+  const list=msgsVisibleList(chat); if(!list.length) return;
+  const cr=c.getBoundingClientRect(), ctop=cr.top, cbot=cr.top+c.clientHeight;
+  const now=performance.now();
+  const visible=new Set();
+  let ready=null;
+  for(const r of c.querySelectorAll(".mrow[data-msg-id]")){
+    const b=r.getBoundingClientRect();
+    if(b.bottom<=ctop+1 || b.top>=cbot-1) continue;      // строка не на экране
+    const m=list.find(x=>String(x.id)===r.dataset.msgId);
+    if(!m || msgIsOut(m) || !m.dbId) continue;            // своё и неподтверждённое не считаем
+    const k=msgKeyOf(m); visible.add(k);
+    const t=_dwellSince.get(k);
+    if(t==null){ _dwellSince.set(k, now); continue; }
+    if(now-t>=MSGS_DWELL_MS){ (ready||(ready=[])).push(m.dbId); }
+  }
+  // Строка ушла с экрана, не выстояв выдержку — забываем, чтобы «промелькнуло»
+  // не накапливалось по кусочкам за несколько прокруток.
+  for(const k of [..._dwellSince.keys()]) if(!visible.has(k)) _dwellSince.delete(k);
+  if(ready && ready.length){
+    msgsRequeueUnsentRead(chat, ready);
+    msgsFlushRead(chat);
+  }
+  // Пока на экране есть «зреющие» строки, перепроверим их через выдержку:
+  // без этого неподвижный экран ничего бы не засчитал.
+  if(visible.size) msgsDwellKick();
+}
+// Своя «заводилка» выдержки. Нужна отдельно от msgsAdvanceSeen: та сплошь и
+// рядом выходит рано (например, пока держится решение о разделителе — это до
+// 15 секунд), а выдержка на экране от разделителя не зависит вовсе. Без
+// собственного запуска после открытия чата не засчитывалось ничего.
+function msgsDwellKick(){
+  if(_dwellTimer) return;
+  _dwellTimer=setTimeout(()=>{
+    _dwellTimer=null;
+    const c=el("msgs");
+    if(!c || !S.chat || _lastRenderedChat!==S.chat) return;
+    if(document.visibilityState==="hidden" || msgsFeedCovered()) return;
+    msgsTrackDwell(c, S.chat);
+  }, MSGS_DWELL_MS+40);
+}
+function msgsFlushRead(chatId){
+  const q=_readQueue.get(chatId); if(!q || !q.size) return;
+  const ids=[...q]; _readQueue.set(chatId, new Set());
+  markChatAsRead(chatId, ids);
+}
 function msgsReportRead(chatId){
   if(!chatId || chatId===99999 || chatId===88888 || chatId===77777 || chatId===FEEDBACK_CHAT_ID) return;
   if(document.visibilityState==="hidden" || msgsFeedCovered()) return;
-  const list=msgsVisibleList(chatId);
-  const key=chatId+"|"+(list.length ? msgKeyOf(list[list.length-1]) : "");
-  if(_readSentKey===key) return;
-  _readSentKey=key;
-  markChatAsRead(chatId);
+  msgsFlushRead(chatId);
 }
 // Переписка снова перед глазами (закрыли экран, вернулись из просмотрщика,
 // развернули приложение) — досчитываем увиденное и сообщаем серверу.
@@ -6657,6 +7057,11 @@ function msgsAdvanceSeen(c, shown){
   if(_pendingUnread && _pendingUnread.chat===chat && performance.now()-_pendingUnread.openedAt<MSGS_WAIT_MAX) return;
   if(!shown && !msgsFeedVisible()) return;
   const list=msgsVisibleList(chat); if(!list.length) return;
+  // О3: отслеживание выдержки на экране идёт ДО всех ранних выходов ниже — оно
+  // не зависит от границы «увидено». Стояло в конце функции, а она сплошь и
+  // рядом выходит раньше (например, когда граница уже накрывает видимые
+  // строки, — `if(prevIdx>=vi) return`), и не засчитывалось вообще ничего.
+  msgsTrackDwell(c, chat);
   const shift=msgsFinalTop(c)-c.scrollTop;
   const kids=c.children, ctop=c.getBoundingClientRect().top+shift, cbot=ctop+c.clientHeight;
   let lo=0, hi=kids.length;
@@ -6689,7 +7094,6 @@ function msgsAdvanceSeen(c, shown){
   // чат дочитан, и серверу пора об этом сказать. Иначе после закрытия экрана
   // «прочитано» не уходило никогда и бейдж возвращался (четырнадцатый круг:
   // journeys J15-1, races F5, regress RG-5).
-  if(vi===list.length-1) msgsReportRead(chat);
 }
 // Число на кнопке «вниз» — сколько входящих ниже того, что человек видел.
 // У самого низа кнопки нет.
@@ -7287,7 +7691,7 @@ function renderMsgs(){
       if(m.file){
         bc+=`<div class="msg-file" ${m.file.url&&!m.uploading?`onclick="window.open('${m.file.url}','_blank')"`:""}><div class="msg-file-ico">📄</div><div><div class="msg-file-nm">${escHtml(m.file.name)}</div><div class="msg-file-sz">${m.uploading?"загрузка…":(m.file.size?(m.file.size/1024).toFixed(1)+" KB":"")}</div></div></div>`;
       }
-      if(m.tx)bc+=`<span>${m.e2e?`<span title="${m.e2eFailed?"Не удалось расшифровать на этом устройстве":"Сквозное шифрование"}" style="margin-right:3px">🔒</span>`:""}${formatMsgText(m.tx)}</span>`;
+      if(m.tx)bc+=`<span class="mtx">${m.e2e?`<span title="${m.e2eFailed?"Не удалось расшифровать на этом устройстве":"Сквозное шифрование"}" style="margin-right:3px">🔒</span>`:""}${formatMsgText(m.tx)}</span>`;
       // link preview — только для "голых" ссылок, не для оформленных [текст](url)
       const rawForPreview=(m.tx||"").replace(/\[[^\]]+\]\(https?:\/\/[^\s)]+\)/g,"");
       const urlMatch=rawForPreview.match(/https?:\/\/[^\s]+/);
@@ -7321,6 +7725,7 @@ function renderMsgs(){
     row.innerHTML=h; c.appendChild(row);
   });
   emojifyEl(c);
+  msgsDwellKick();   // О3: лента перерисована — запускаем отсчёт выдержки на экране
   const renderAt=performance.now();
   _lastGeomChangeAt=_lastRenderAt=renderAt;   // пересборка: сдвиги от неё — не человек
   const posGen=++_posGen;   // страховки прошлых отрисовок больше не действуют
@@ -7859,7 +8264,7 @@ function openChannelSettings(){
   el("chset-delete-row").style.display = isOwner ? "block" : "none";
   if(el("chset-delete-btn")) el("chset-delete-btn").textContent = isChannel ? "🗑️ Удалить канал" : "🗑️ Удалить группу";
 
-  el("m-chsettings").classList.add("on");
+  openM("m-chsettings");
 }
 
 // Удалить группу/канал целиком — доступно только владельцу (создателю), не админам.
@@ -7892,7 +8297,7 @@ function deleteGroupFromSettings(){
 function openJoinByLink(){
   closeM("m-newchat");
   if(el("join-link-inp")) el("join-link-inp").value="";
-  el("m-join-link").classList.add("on");
+  openM("m-join-link");
 }
 // Если в адресной строке есть ?join=код (перешли по ссылке-приглашению) —
 // автоматически вступаем в чат, как только пользователь точно залогинен
@@ -8054,7 +8459,7 @@ function updateReactionsSummary(chatId){
 function openReactionsAllowedPicker(){
   renderAllowedReactionsCats();
   renderAllowedReactionsGrid(EMOJI_CATS_LIST[0]);
-  el("m-reactions-allowed").classList.add("on");
+  openM("m-reactions-allowed");
 }
 function renderAllowedReactionsCats(){
   el("rxn-allowed-cats").innerHTML=EMOJI_CATS_LIST.map((cat,i)=>`<div class="emoji-cat${i===0?" on":""}" onclick="switchAllowedRxnCat('${cat}',this)">${cat.split(" ")[0]}</div>`).join("");
@@ -8258,7 +8663,7 @@ function updateSendAsUI(){
   if(S.sendAsChannel){
     const ch=S.chats.find(c=>c.id===S.sendAsChannel);
     if(ch){
-      btn.innerHTML=`<div class="sas-av" style="background:${colBg(ch.col)}">${ch.ini}</div><span>как «${ch.nm}»</span>`;
+      btn.innerHTML=`<div class="sas-av" style="background:${colBg(ch.col)}">${escHtml(ch.ini)}</div><span>как «${escHtml(ch.nm)}»</span>`;
       btn.classList.add("active");
     }
   } else {
@@ -8447,7 +8852,10 @@ function updateE2EButton(ch){
 
 async function sendMsg(){
   const inp=el("minput"); const txt=getInputText();
-  if(!txt && !pendingAttach && !(pendingAttachGroup&&pendingAttachGroup.length)) return;
+  // 24 сен 2026 (W2): проверяем "есть ли хоть что-то кроме пробелов", а не сам
+  // текст — getInputText() больше не обрезает концы, и без этой проверки
+  // сообщение из одних пробелов отправилось бы как настоящее.
+  if(!hasRealText(txt) && !pendingAttach && !(pendingAttachGroup&&pendingAttachGroup.length)) return;
 
   // ── Фотоальбом (несколько фото разом) — своя ветка, до pendingAttach ──
   if(pendingAttachGroup && pendingAttachGroup.length){
@@ -8613,6 +9021,26 @@ async function sendMsg(){
   sendTextToServer(msg, sendText, chatId, ch, tm, memberIds, sendType);
 }
 
+// Сервер подтвердил сообщение — переносим на него время из created_at.
+// Источник истины по времени — сервер: у собеседника и при следующей загрузке
+// истории показывается именно оно (см. разбор ответа сервера при загрузке чата).
+// Возвращает true, если видимое время изменилось и ленту стоит перерисовать.
+function applyServerTime(msg, createdAt, ch){
+  if(!msg || !createdAt) return false;
+  const t=new Date(createdAt).getTime();
+  if(!Number.isFinite(t)) return false;
+  const shown=new Date(t).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"});
+  const changed = msg.time!==shown;
+  msg.ts=t; msg.time=shown;
+  // В списке чатов у этой переписки время последнего сообщения — то же самое,
+  // но подменяем только если последнее сообщение и есть это.
+  const list=S.messages[ch?.id]||[];
+  if(ch && list.length && list[list.length-1]===msg){ ch.time=shown; ch.lastTs=t; }
+  if(changed && S.chat===ch?.id) renderMsgs();
+  if(changed) renderChats();
+  return changed;
+}
+
 async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds, msgType){
   msgType = msgType||"text";
   let dbId=null;
@@ -8623,7 +9051,15 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds, msgType){
       if(!d || !d.success) return false;
       dbId=d?.message?.id||null;
       blockedFromRecipientId=d?.blockedFromRecipientId||null;
-      if(dbId){ msg.dbId=dbId; saveState(); }
+      if(dbId){ msg.dbId=dbId; }
+      // 24 сен 2026: время подтверждённого сообщения берём с СЕРВЕРА (created_at),
+      // а не с часов телефона. Раньше в ленте стояло местное время отправителя,
+      // а после перезагрузки — серверное (см. загрузку истории, там ts и time
+      // считаются из created_at), и время у одного и того же сообщения менялось.
+      // У собеседника оно и так всегда серверное. Если часы телефона сбиты,
+      // расходились и порядок сообщений в ленте.
+      applyServerTime(msg, d?.message?.created_at, ch);
+      if(dbId) saveState();
       return true;
     });
     if(!ok) return; // attemptWithAutoRetry уже пометил msg.failed и перерисовал
@@ -8660,12 +9096,12 @@ function openScheduleTimePicker(){
   // как и обычная отправка. Голосовые/видео-кружочки/стикеры/опросы/
   // контакты пока не отложить — у них отдельные экраны записи/выбора,
   // не общий composer, это отдельная задача на будущее.
-  if(!getInputText() && !pendingAttach){ showToast("✏️ Сначала введите текст или прикрепите файл"); return; }
+  if(!hasRealText(getInputText()) && !pendingAttach){ showToast("✏️ Сначала введите текст или прикрепите файл"); return; }
   if(S.editingId){ showToast("🕓 Сначала завершите редактирование сообщения"); return; }
   const inp=el("sched-dt-input"); if(!inp) return;
   inp.min=toDatetimeLocalValue(new Date(Date.now()+60000));
   inp.value=toDatetimeLocalValue(new Date(Date.now()+3600000)); // по умолчанию через час, как в Telegram
-  el("m-schedule").classList.add("on");
+  openM("m-schedule");
 }
 async function confirmScheduleSend(){
   const inp=el("sched-dt-input");
@@ -8722,7 +9158,7 @@ async function scheduleAttachmentSend(when){
 }
 async function openScheduledMessages(){
   S.scheduledModalChatId=S.chat;
-  el("m-scheduled").classList.add("on");
+  openM("m-scheduled");
   el("scheduled-list").innerHTML=`<div style="color:var(--tx3);font-size:12.5px;padding:20px;text-align:center">Загрузка…</div>`;
   await renderScheduledList();
 }
@@ -8836,8 +9272,40 @@ function cleanupEmptyFormatSpans(){
 // применение форматирования и т.д. — там мгновенное закрытие уместнее,
 // не задерживает следующий шаг тем же 180мс). На десктопе — без изменений,
 // как и было (мгновенное classList.remove).
+// 24 сен 2026, дорожка UI: закрыть слой не мгновенно, а показав обратный
+// переход. Класс .closing включает парную анимацию из CSS, и только после неё
+// снимается .on. Длительность берём из CSS-переменной, чтобы настройка
+// «уменьшить анимацию» работала сама собой, без второго списка чисел в коде.
+function motionMs(name, fallback){
+  const v=getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const n=parseFloat(v);
+  if(!Number.isFinite(n)) return fallback;
+  return v.endsWith("ms") ? n : n*1000;
+}
+function closeWithMotion(elm, cb){
+  if(!elm || !elm.classList.contains("on")){ if(cb) cb(); return; }
+  elm.classList.add("closing");
+  setTimeout(()=>{
+    elm.classList.remove("on");
+    elm.classList.remove("closing");
+    if(cb) cb();
+  }, motionMs("--t-press", 120)+20);
+}
+// Сырое закрытие листа — без участия стека «назад».
+function dismissSheetNow(elm){
+  if(!elm) return;
+  if(isMobileLayout() && elm.classList.contains("on")){
+    elm.classList.add("closing");
+    setTimeout(()=>{ elm.classList.remove("on"); elm.classList.remove("closing"); }, 180);
+  } else {
+    elm.classList.remove("on");
+    elm.classList.remove("closing");
+  }
+}
 function dismissSheet(elm){
   if(!elm) return;
+  // Лист зарегистрирован в стеке «назад» — уходим через историю.
+  if(elm.id && elm.classList.contains("on") && closeLayerViaStack(elm.id)) return;
   if(isMobileLayout() && elm.classList.contains("on")){
     elm.classList.add("closing");
     setTimeout(()=>{ elm.classList.remove("on"); elm.classList.remove("closing"); }, 180);
@@ -8848,7 +9316,8 @@ function dismissSheet(elm){
 function toggleAttachMenu(e){
   e.stopPropagation();
   const m=el("attach-menu");
-  if(m.classList.contains("on")) dismissSheet(m); else m.classList.add("on");
+  if(m.classList.contains("on")) dismissSheet(m);
+  else { m.classList.add("on"); openLayer("attach-menu", ()=>dismissSheetNow(m)); }
 }
 // Закрываем меню вложений по клику вне него
 document.addEventListener("click", e=>{ if(!e.target.closest(".attb")) dismissSheet(el("attach-menu")); });
@@ -8916,7 +9385,7 @@ function openPollCreate(e){
   el("poll-multi").classList.remove("on");
   el("poll-anon").classList.add("on");
   el("poll-lock").classList.remove("on");
-  el("m-poll-create").classList.add("on");
+  openM("m-poll-create");
 }
 function addPollOption(){
   if(pollOptionCount>=10){ showToast("❌ Максимум 10 вариантов"); return; }
@@ -8943,7 +9412,7 @@ async function submitPoll(){
   const chatId=S.chat;
   const tm=now();
   if(!S.messages[chatId])S.messages[chatId]=[];
-  const msg={id:nextId(),t:"out",time:tm,read:false,tx:"",poll};
+  const msg={id:nextId(),t:"out",time:tm,ts:Date.now(),read:false,tx:"",poll};   // ts — W2, 24 сен 2026
   S.messages[chatId].push(msg);
   const ch=S.chats.find(c=>c.id===chatId);
   if(ch){ch.prev="📊 "+q;ch.time=tm;ch.lastTs=Date.now();}
@@ -9031,14 +9500,14 @@ function openShareContact(e){
         return `<div class="contact-item" onclick="sendContactMsg('${id}','${escHtml(nm).replace(/'/g,"\\'")}',${col},'${uname}')"><div class="contact-av" style="background:${colBg(col)}">${(nm||"?")[0]}</div><div><div class="contact-nm">${nm}</div>${uname?`<div class="contact-ph">@${uname}</div>`:""}</div></div>`;
       }).join("")
     : `<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пока нет контактов</div>`;
-  el("m-share-contact").classList.add("on");
+  openM("m-share-contact");
 }
 async function sendContactMsg(userId,nm,col,uname){
   const chatId=S.chat;
   const tm=now();
   if(!S.messages[chatId])S.messages[chatId]=[];
   const contact={userId,nm,col,uname};
-  const msg={id:nextId(),t:"out",time:tm,read:false,tx:"",contact};
+  const msg={id:nextId(),t:"out",time:tm,ts:Date.now(),read:false,tx:"",contact};   // ts — W2, 24 сен 2026
   S.messages[chatId].push(msg);
   const ch=S.chats.find(c=>c.id===chatId);
   if(ch){ch.prev="👤 "+nm;ch.time=tm;ch.lastTs=Date.now();}
@@ -9074,7 +9543,7 @@ function openImgViewer(url){
   // другого модального окна в этом файле — свой closeFn в общем стеке.
   pushNavEntry(closeImgViewer);
 }
-function closeImgViewer(){ closeM("m-imgview"); setTimeout(msgsFeedShownAgain, 260); }
+function closeImgViewer(){ closeWithMotion(el("m-imgview")); setTimeout(msgsFeedShownAgain, 260); }
 function closeImgViewerViaBackStack(){
   if(el("m-imgview").classList.contains("on")) popNavEntry();
 }
@@ -9442,7 +9911,7 @@ async function openVideoCircleRecorder(){
   el("vc-rec-btn").classList.remove("recording");
   el("vc-rec-btn").textContent="⏺";
   el("vc-send-btn").style.display="none";
-  el("m-videocircle").classList.add("on");
+  openM("m-videocircle");
 }
 
 let vcCanvas=null, vcCanvasCtx=null, vcCanvasRaf=null, vcSourceVideo=null;
@@ -9792,7 +10261,7 @@ async function sendImageGroup(caption){
   if(!S.messages[chatId])S.messages[chatId]=[];
 
   const msgs=items.map((it,i)=>{
-    const m={id:nextId(), t:"out", time:tm, read:false, uploading:true, tx:i===0?(caption||""):"", img:it.previewUrl, groupId};
+    const m={id:nextId(), t:"out", time:tm, ts:Date.now(), read:false, uploading:true, tx:i===0?(caption||""):"", img:it.previewUrl, groupId};
     if(it.spoiler) m.spoiler=true;
     m._retryAtt={file:it.file, kind:"image", spoiler:it.spoiler};
     m._retryCaption=i===0?(caption||""):"";
@@ -9902,15 +10371,24 @@ async function sendLocalBotAttachment(caption){
 // ── MEDIA PANEL ──────────────────────────────────────────────
 function toggleMP(mode){
   const p=el("mpanel"); if(p.classList.contains("on")&&S.mpMode===mode){closeMPanelToKeyboard();return;}
-  S.mpMode=mode;p.classList.add("on"); document.querySelectorAll(".mptab").forEach((t,i)=>t.classList.toggle("on",i===(mode==="emoji"?0:1))); renderMP(mode);
+  const wasOpen=p.classList.contains("on");
+  S.mpMode=mode;p.classList.add("on");
+  if(!wasOpen) openLayer("mpanel", closeMPanelNow); document.querySelectorAll(".mptab").forEach((t,i)=>t.classList.toggle("on",i===(mode==="emoji"?0:1))); renderMP(mode);
   // Как в Telegram — пока открыта панель эмодзи/стикеров, значок в строке
   // ввода меняется со смайлика на клавиатуру (см. CSS .ibi.panel-open)
   el("ibi-emoji-btn")?.classList.add("panel-open");
 }
 function mpSwitch(e,mode){ document.querySelectorAll(".mptab").forEach(t=>t.classList.remove("on")); e.classList.add("on"); S.mpMode=mode; renderMP(mode); }
-function closeMPanel(){
+function closeMPanelNow(){
   el("mpanel").classList.remove("on");
   el("ibi-emoji-btn")?.classList.remove("panel-open");
+}
+// Наружная функция: если панель лежит на вершине стека «назад» — уходим через
+// историю, одной дорогой с аппаратной кнопкой. Иначе закрываем напрямую.
+function closeMPanel(){
+  if(!el("mpanel")?.classList.contains("on")) return;
+  if(closeLayerViaStack("mpanel")) return;
+  closeMPanelNow();
 }
 // Тап по значку "клавиатура" (когда открыта панель эмодзи) — закрывает панель
 // И возвращает фокус в поле ввода, чтобы тут же выскочила обычная клавиатура,
@@ -10054,7 +10532,7 @@ function lpStart(e,id,groupIds){
   },450);
 }
 function lpEnd(){ clearTimeout(lpTimer); }
-document.addEventListener("click",e=>{ closeCtxViaBackStack(); el("rxn-picker").classList.remove("on"); });
+document.addEventListener("click",e=>{ closeCtxViaBackStack(); closeRxnPicker(); });
 
 // 30 июля 2026: черновик (напечатанный, но не отправленный текст) писался
 // в S.chats[x].draft на каждую букву (см. onInput), но saveState() (запись
@@ -10111,6 +10589,15 @@ el("msgs")?.addEventListener("click", function(e){
   // есть срабатывало только долгое нажатие → выделение, ровно то, на что
   // пожаловалась Александра ("не открывает, но выделяет"). Пустое место в
   // строке сообщения теперь ведёт себя так же, как сам пузырь.
+  // 24 сен 2026 (A13): если поверх чата открыта панель, тап по ленте обязан
+  // только закрыть её. Раньше этот обработчик (он висит в фазе захвата и сам
+  // зовёт e.stopPropagation) открывал меню сообщения и заодно глушил общий
+  // закрыватель листа по тапу мимо — панель оставалась, а поверх неё
+  // выскакивало меню.
+  {
+    const sheet=[el("attach-menu"), el("mpanel"), el("send-opts-menu"), el("format-bar")].find(x=>x&&x.classList.contains("on"));
+    if(sheet){ e.stopPropagation(); e.preventDefault(); if(sheet.id==="mpanel") closeMPanel(); else dismissSheet(sheet); return; }
+  }
   if(e.target.closest(".mav,.msel-check")) return; // аватар и чекбокс — своя роль, не трогаем
   const bub=e.target.closest(".bub, .vbub, .skbub, .gift-bubble");
   const row=(bub||e.target).closest(".mrow");
@@ -10530,10 +11017,18 @@ function ctxForward(){ S.fwdId=S.ctxId; openForward(); }
 
 // ── CONTENTEDITABLE INPUT: сериализация HTML ↔ наш markdown-синтаксис ──
 // Читает contenteditable и превращает форматированный HTML в plain-текст с ||спойлер|| **bold** и т.д.
+// 24 \u0441\u0435\u043D 2026 (W2): trim() \u0443\u0431\u0440\u0430\u043D \u2014 \u043E\u043D \u0441\u044A\u0435\u0434\u0430\u043B \u043A\u0440\u0430\u0441\u043D\u0443\u044E \u0441\u0442\u0440\u043E\u043A\u0443, \u043E\u0442\u0441\u0442\u0443\u043F\u044B \u0438 \u043F\u0443\u0441\u0442\u044B\u0435
+// \u0441\u0442\u0440\u043E\u043A\u0438 \u0432 \u043A\u043E\u043D\u0446\u0435, \u0445\u043E\u0442\u044F \u0432 \u043F\u043E\u043B\u0435 \u0432\u0432\u043E\u0434\u0430 \u0447\u0435\u043B\u043E\u0432\u0435\u043A \u0438\u0445 \u0432\u0438\u0434\u0435\u043B (\u0443 .minput-ce \u0441\u0442\u043E\u0438\u0442
+// white-space:pre-wrap). \u0422\u0435\u043A\u0441\u0442 \u0443\u0445\u043E\u0434\u0438\u0442 \u0440\u043E\u0432\u043D\u043E \u0442\u0430\u043A\u0438\u043C, \u043A\u0430\u043A\u0438\u043C \u043D\u0430\u0431\u0440\u0430\u043D. \u0417\u0430\u0449\u0438\u0442\u0430 \u043E\u0442
+// \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u0438\u0437 \u043E\u0434\u043D\u0438\u0445 \u043F\u0440\u043E\u0431\u0435\u043B\u043E\u0432 \u0442\u0435\u043F\u0435\u0440\u044C \u0441\u0442\u043E\u0438\u0442 \u043D\u0430 \u0432\u0445\u043E\u0434\u0435 \u0432 sendMsg (hasRealText),
+// \u0430 \u043D\u0435 \u0437\u0434\u0435\u0441\u044C, \u0438\u043D\u0430\u0447\u0435 \u0432\u043C\u0435\u0441\u0442\u0435 \u0441 \u043F\u0443\u0441\u0442\u044B\u043C\u0438 \u0442\u0435\u0440\u044F\u043B\u0438\u0441\u044C \u0431\u044B \u0438 \u043E\u0441\u043C\u044B\u0441\u043B\u0435\u043D\u043D\u044B\u0435 \u043E\u0442\u0441\u0442\u0443\u043F\u044B.
 function getInputText(){
   const inp=el("minput"); if(!inp) return "";
-  return serializeNode(inp).replace(/\u200B/g,"").trim();
+  return serializeNode(inp).replace(/\u200B/g,"");
 }
+// "\u0412 \u0442\u0435\u043A\u0441\u0442\u0435 \u0435\u0441\u0442\u044C \u0445\u043E\u0442\u044C \u0447\u0442\u043E-\u0442\u043E, \u043A\u0440\u043E\u043C\u0435 \u043F\u0440\u043E\u0431\u0435\u043B\u043E\u0432 \u0438 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u043E\u0432" \u2014 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E \u043E\u0442 \u0441\u0430\u043C\u043E\u0433\u043E
+// \u0442\u0435\u043A\u0441\u0442\u0430, \u0447\u0442\u043E\u0431\u044B \u043D\u0435 \u0442\u0440\u043E\u0433\u0430\u0442\u044C \u0435\u0433\u043E \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435.
+function hasRealText(s){ return !!s && s.trim().length>0; }
 function serializeNode(node){
   let out="";
   node.childNodes.forEach(n=>{
@@ -10541,7 +11036,15 @@ function serializeNode(node){
     if(n.nodeType!==1) return;
     const tag=n.tagName;
     if(tag==="BR"){ out+="\n"; return; }
-    if(tag==="DIV"||tag==="P"){ out+=(out?"\n":"")+serializeNode(n); return; }
+    if(tag==="DIV"||tag==="P"){
+      // 24 сен 2026 (W2): <div><br></div> — это ПУСТАЯ строка. <br> внутри
+      // пустого блока браузер вставляет сам, как наполнитель, своего переноса
+      // он не несёт. Раньше считались оба, и одна пустая строка превращалась
+      // в две: "a<div><br></div><div>b</div>" давало "a\n\n\nb" вместо "a\n\nb".
+      const onlyFillerBr = n.childNodes.length===1 && n.firstChild.nodeType===1 && n.firstChild.tagName==="BR";
+      out+=(out?"\n":"")+(onlyFillerBr ? "" : serializeNode(n));
+      return;
+    }
     const inner=serializeNode(n);
     if(n.classList?.contains("ce-spoiler")) out+="||"+inner+"||";
     else if(n.classList?.contains("ce-code")) out+="`"+inner+"`";
@@ -10658,7 +11161,7 @@ function promptLink(){
   el("link-text").value=selectedText;
   el("link-url").value="";
   el("format-bar").classList.remove("on");
-  el("m-linkinsert").classList.add("on");
+  openM("m-linkinsert");
 }
 function confirmLink(){
   const text=el("link-text").value.trim();
@@ -10700,7 +11203,7 @@ function ctxSaveToFav(){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
   if(!S.messages[77777]) S.messages[77777]=[];
   // Сохраняем копию сообщения в Избранное
-  S.messages[77777].push({id:nextId(),t:"out",tx:m.tx||"",sk:m.sk,time:now(),read:true,savedFrom:true});
+  S.messages[77777].push({id:nextId(),t:"out",tx:m.tx||"",sk:m.sk,time:now(),ts:Date.now(),read:true,savedFrom:true});
   const fav=S.chats.find(c=>c.id===77777);
   if(fav){ fav.prev=m.tx||"Стикер"; fav.time=now();fav.lastTs=Date.now(); }
   renderChats(); saveState();
@@ -10730,7 +11233,7 @@ function openReportModal(targetType, chatId, messageId){
   el("report-title").textContent = targetType==="message" ? "Пожаловаться на сообщение" : "Пожаловаться на чат";
   el("report-reason").value="";
   el("report-details").value="";
-  el("m-report").classList.add("on");
+  openM("m-report");
 }
 
 async function submitReport(){
@@ -10772,7 +11275,18 @@ function ctxReact(e){
   const customList=ch?.allowedReactions;
   const allowedQuick=(customList && customList.length) ? customList : QUICK_REACTIONS.filter(em=>isReactionAllowed(S.chat,em));
   el("rxn-quick-row").innerHTML=`<div class="rxn-e rxn-crystal" onclick="openCrystalGiftModal(event)">💎</div>`+allowedQuick.map(em=>`<div class="rxn-e" onclick="addRxn('${em}')">${em}</div>`).join("");
+  // 24 сен 2026 (W3 шаг 2): палитра кладёт в стек СВОЮ запись. Раньше она
+  // строкой выше снимала через стек чужую (меню сообщения), своей не
+  // добавляла — и стек становился на запись короче, чем слоёв на экране:
+  // следующее «назад» закрывало чат прямо под открытой палитрой.
+  if(!rp.classList.contains("on")) openLayer("rxn-picker", closeRxnPickerNow);
   rp.classList.add("on");
+}
+function closeRxnPickerNow(){ closeWithMotion(el("rxn-picker")); }
+function closeRxnPicker(){
+  if(!el("rxn-picker")?.classList.contains("on")) return;
+  if(closeLayerViaStack("rxn-picker")) return;
+  closeRxnPickerNow();
 }
 function toggleRxnExpand(e){
   if(e)e.stopPropagation();
@@ -10801,7 +11315,7 @@ function openDelModal(){
   el("del-info").textContent=canDeleteForAll
     ?"Вы можете удалить сообщение только у себя или у всех участников чата."
     :"Можно удалить только у себя.";
-  el("m-delete").classList.add("on");
+  openM("m-delete");
 }
 // Значок корзины в верхней панели режима выбора (см. #select-bar) — та же
 // модалка "у меня / у всех", что и для одного сообщения, просто с текстом
@@ -10819,7 +11333,7 @@ function openBulkDeleteModal(){
   el("del-info").textContent=canDeleteForAll
     ? `Удалить ${n} ${n===1?"сообщение":"сообщений"} только у себя или у всех участников чата.`
     : "Можно удалить только у себя.";
-  el("m-delete").classList.add("on");
+  openM("m-delete");
 }
 function delForMe(){
   // Та же модалка используется и для массового удаления в режиме выбора
@@ -10905,7 +11419,7 @@ function toggleRxn(msgId, ri){
   sendReactionToggle(m, r.e);
 }
 function addRxn(emoji){
-  el("rxn-picker").classList.remove("on");
+  closeRxnPicker();
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
   sendReactionToggle(m, emoji);
 }
@@ -10915,13 +11429,13 @@ let crystalGiftTargetMsg=null;
 
 function openCrystalGiftModal(e){
   if(e) e.stopPropagation();
-  el("rxn-picker").classList.remove("on");
+  closeRxnPicker();
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId);
   if(!m || !m.dbId){ showToast("⏳ Подождите, сообщение ещё сохраняется"); return; }
   if(m.t==="out"){ showToast("💎 Нельзя подарить самому себе"); return; }
   crystalGiftTargetMsg=m;
   if(el("crystal-gift-custom")) el("crystal-gift-custom").value="";
-  el("m-crystal-gift").classList.add("on");
+  openM("m-crystal-gift");
 }
 function selectCrystalGiftAmount(n){ sendCrystalGift(n); }
 function confirmCrystalGift(){
@@ -10976,8 +11490,18 @@ function playCrystalGiftAnimation(msgLocalId, amount){
 
 // ── CHAT SEARCH ──────────────────────────────────────────────
 let srchResults=[],srchIdx=0;
-function toggleChatSearch(){ const o=el("srch-overlay"); o.classList.toggle("on"); if(o.classList.contains("on"))el("srch-inp").focus(); else{closeChatSearch();} }
-function closeChatSearch(){ el("srch-overlay").classList.remove("on"); document.querySelectorAll(".highlight").forEach(e=>{const p=e.parentNode;p.replaceChild(document.createTextNode(e.textContent),e);}); srchResults=[]; srchIdx=0; if(el("srch-count"))el("srch-count").textContent="0 / 0"; }
+function toggleChatSearch(){
+  const o=el("srch-overlay");
+  if(o.classList.contains("on")){ closeChatSearch(); return; }
+  o.classList.add("on");
+  openLayer("srch-overlay", closeChatSearchNow);
+  el("srch-inp").focus();
+}
+function closeChatSearch(){
+  if(el("srch-overlay")?.classList.contains("on") && closeLayerViaStack("srch-overlay")) return;
+  closeChatSearchNow();
+}
+function closeChatSearchNow(){ closeWithMotion(el("srch-overlay")); document.querySelectorAll(".highlight").forEach(e=>{const p=e.parentNode;p.replaceChild(document.createTextNode(e.textContent),e);}); srchResults=[]; srchIdx=0; if(el("srch-count"))el("srch-count").textContent="0 / 0"; }
 function searchInChat(q){ if(!q){closeChatSearch();return;} const rows=document.querySelectorAll(".mrow"); srchResults=[]; rows.forEach(row=>{const bub=row.querySelector(".bub");if(bub&&bub.textContent.toLowerCase().includes(q.toLowerCase()))srchResults.push(row);}); if(el("srch-count"))el("srch-count").textContent=`${srchResults.length>0?1:0} / ${srchResults.length}`; srchIdx=0; if(srchResults[0]) msgsJumpToRow(srchResults[0]) || srchResults[0].scrollIntoView({block:"center"}); }
 function srchNav(d){ if(!srchResults.length)return; srchIdx=(srchIdx+d+srchResults.length)%srchResults.length; if(el("srch-count"))el("srch-count").textContent=`${srchIdx+1} / ${srchResults.length}`; msgsJumpToRow(srchResults[srchIdx]) || srchResults[srchIdx].scrollIntoView({block:"center"}); }
 
@@ -11132,7 +11656,7 @@ function renderArchiveList(){
     return `<div class="ci" onclick="openArchivedChat(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})">
       <div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>
       <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
-        <div class="cnm">${ch.nm}</div>
+        <div class="cnm">${escHtml(ch.nm)}</div>
         <div class="cprev">${ch.prev||""}</div>
       </div>
       <button class="rp-action-btn" style="width:auto;padding:6px 10px;font-size:11.5px;flex-shrink:0" onclick="event.stopPropagation();unarchiveChat(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})">Вернуть</button>
@@ -11158,7 +11682,7 @@ function openChatConfirm(opts){
     el("ccf-checkbox").checked=false;
   } else cbRow.style.display="none";
   el("ccf-confirm-btn").textContent=opts.confirmLabel||"Удалить";
-  el("m-chat-confirm").classList.add("on");
+  openM("m-chat-confirm");
 }
 function chatConfirmDo(){
   const checked=el("ccf-checkbox").checked;
@@ -11491,7 +12015,7 @@ function openMediaBrowse(type){
     const items=msgs.filter(m=>m.poll);
     list.innerHTML=items.length?items.map(m=>`<div style="padding:10px 4px;border-bottom:1px solid var(--brd);font-size:13.5px">📊 ${escHtml(m.poll.question)}</div>`).join(""):emptyMediaMsg("опросов");
   }
-  el("m-media-browse").classList.add("on");
+  openM("m-media-browse");
 }
 function uiActionBtn(icon,label,onclick){
   return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border-radius:10px;background:var(--bg3);cursor:pointer" onclick="${onclick}">
@@ -11623,7 +12147,7 @@ function openChatInfo(){
     }
   }
 
-  el("m-user-info").classList.add("on");
+  openM("m-user-info");
 }
 
 // ── PROFILE ──────────────────────────────────────────────────
@@ -11658,7 +12182,7 @@ function openEditProfile(){
   if(el("prof-vip-perks-locked")) el("prof-vip-perks-locked").style.display=isVip?"none":"block";
   profAvatarData=u.avatar||"";
   profAvatarFile=null;
-  el("m-profile").classList.add("on");
+  openM("m-profile");
 }
 let profAvatarFile=null;
 // Проверяет username — только латиница/цифры/подчёркивание, как в Telegram.
@@ -11888,7 +12412,7 @@ function openSecurity(){
   el("sec-2fa-backup").style.display = "none";
   el("sec-2fa-on").style.display = S.user?.totp_enabled ? "block" : "none";
   if(el("security-sub")) el("security-sub").textContent = (S.user?.has_password?"Пароль установлен":"Пароль не задан")+(S.user?.totp_enabled?" · 2FA включена":"");
-  el("m-security").classList.add("on");
+  openM("m-security");
 }
 
 async function doSetPassword(){
@@ -11940,7 +12464,7 @@ async function disable2FA(){
 }
 
 async function openSessions(){
-  el("m-sessions").classList.add("on");
+  openM("m-sessions");
   el("sessions-list").innerHTML=`<div style="text-align:center;padding:20px;color:var(--tx3)">Загрузка…</div>`;
   try{
     const data=await apiGet("/api/auth/sessions");
@@ -11981,7 +12505,7 @@ async function terminateAllSessions(){
 }
 function openBlockedList(){
   renderBlockedList();
-  el("m-blocked-list").classList.add("on");
+  openM("m-blocked-list");
 }
 
 function renderBlockedList(){
@@ -11991,7 +12515,7 @@ function renderBlockedList(){
   wrap.innerHTML=chats.map(ch=>`
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--brd)">
       <div style="width:36px;height:36px;border-radius:50%;background:${colBg(ch.col||0)};display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;flex-shrink:0;overflow:hidden">${ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini}</div>
-      <div style="flex:1;font-size:13px">${ch.nm}</div>
+      <div style="flex:1;font-size:13px">${escHtml(ch.nm)}</div>
       <button class="xbtn sec" style="padding:4px 10px;font-size:11px" onclick="unblockUser('${ch.id}')">Разблокировать</button>
     </div>
   `).join("");
@@ -12118,7 +12642,7 @@ function ctxDownload(){
 function exportData(){ const blob=new Blob([JSON.stringify({user:S.user,chats:S.chats,messages:S.messages},null,2)],{type:"application/json"}); const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="angie_export.json";a.click(); showToast("💾 Экспорт готов"); }
 
 function importData(){ showToast("📥 Выберите файл angie_export.json"); }
-function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{S.loggedIn=false;clearToken();saveState();location.reload();}; el("m-confirm").classList.add("on"); }
+function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{S.loggedIn=false;clearToken();saveState();location.reload();}; openM("m-confirm"); }
 // Принудительный выход при бане — сервер прислал это либо через открытый WS
 // (сразу в момент бана), либо через ошибку авторизации при переподключении
 let _forceLogoutShown=false;
@@ -12146,7 +12670,7 @@ function confirmDeleteAccount(){
       setTimeout(()=>location.reload(), 800);
     }catch(e){ showToast("❌ Нет связи с сервером"); }
   };
-  el("m-confirm").classList.add("on");
+  openM("m-confirm");
 }
 
 // ── Смена номера телефона — с защитой от угона аккаунта ────────
@@ -12158,7 +12682,7 @@ function openChangePhoneModal(){
   el("cp-step-phone").style.display="block";
   el("cp-step-code").style.display="none";
   el("cp-step-delayed").style.display="none";
-  el("m-change-phone").classList.add("on");
+  openM("m-change-phone");
 }
 
 async function startPhoneChange(){
@@ -12277,7 +12801,7 @@ function openForwardSourceChat(chatId, name, isPrivate){
 function openNewContact(){ closeContacts(); openNewChat(); }
 
 // ── NEW CHAT ──────────────────────────────────────────────────
-function openNewChat(){ el("nc-results").innerHTML=""; el("nc-search").value=""; el("m-newchat").classList.add("on"); }
+function openNewChat(){ el("nc-results").innerHTML=""; el("nc-search").value=""; openM("m-newchat"); }
 async function searchNewChat(v){
   if(!v){ el("nc-results").innerHTML=""; return; }
   const local=S.contacts.filter(c=>c.nm.toLowerCase().includes(v.toLowerCase())||("@"+(c.uname||"")).includes(v.toLowerCase()));
@@ -12300,7 +12824,7 @@ function createGroup(){
   el("grp-name-label").textContent="Название группы";
   el("grp-members-label").textContent="Участники";
   el("grp-name").placeholder="Например: Dev Team";
-  closeM("m-newchat"); renderGroupMembers(); el("m-group").classList.add("on");
+  closeM("m-newchat"); renderGroupMembers(); openM("m-group");
 }
 function createChannel(){
   creatingChannelMode=true;
@@ -12308,7 +12832,7 @@ function createChannel(){
   el("grp-name-label").textContent="Название канала";
   el("grp-members-label").textContent="Первые подписчики (необязательно)";
   el("grp-name").placeholder="Например: Angie News";
-  closeM("m-newchat"); renderGroupMembers(); el("m-group").classList.add("on");
+  closeM("m-newchat"); renderGroupMembers(); openM("m-group");
 }
 function renderGroupMembers(){
   const list=(S.contacts||[]).length ? S.contacts : S.chats.filter(c=>c.withUserId && c.type==="personal");
@@ -12339,7 +12863,10 @@ async function doCreateGroup(){
   showToast("⏳ Создаём...");
   let data;
   try{
-    data=await apiPost("/api/chats", {type:isChannel?"channels":"groups", name:nm, description:desc, memberIds}, true);
+    // supportsInvites — «эта сборка умеет показывать приглашения». По нему
+    // сервер решает, нужно ли класть в переписку служебную строку-объяснение
+    // для старых сборок (см. POST /api/chats на бэкенде).
+    data=await apiPost("/api/chats", {type:isChannel?"channels":"groups", name:nm, description:desc, memberIds, supportsInvites:true}, true);
   }catch(e){
     console.warn("create chat on server error:", e);
     showToast("❌ Нет связи с сервером");
@@ -12353,14 +12880,46 @@ async function doCreateGroup(){
   const serverInviteLink=data.chat.invite_link||null;
   const newChatId=realId||nextId();
 
-  const newChat={id:newChatId,nm:nm,ini:nm.slice(0,2).toUpperCase(),col:colorFromId(newChatId),online:false,prev:isChannel?"Канал создан":"Группа создана",time:now(),lastTs:Date.now(),unread:0,type:isChannel?"channels":"groups",mbrs:members.length,members:members,memberIds:memberIds,myRole:"owner",mine:isChannel,pinned:false,muted:false,blocked:false,draft:"",inviteLink:serverInviteLink,isPrivate:false};
-  S.chats.unshift(newChat);
-  if(!S.messages[newChat.id])S.messages[newChat.id]=[{id:nextId(),t:"sys",tx:isChannel?"Вы создали канал «"+nm+"»":"Вы создали группу «"+nm+"»"},{id:nextId(),t:"date",tx:"Сегодня",ts:Date.now()}];
-  closeM("m-group"); renderChats(); openChat(newChat.id); saveState();
-  showToast(isChannel ? "📢 Канал «"+nm+"» создан!" : "👥 Группа «"+nm+"» создана!");
+  // 25 сен 2026. Сервер, который понимает приглашения, НИКОГО в группу не
+  // записывает: выбранным людям ушло именное приглашение, и участниками они
+  // станут, только приняв его. Значит и рисовать их участниками локально
+  // нельзя — иначе список участников врёт до первой перезагрузки, а на другом
+  // устройстве их там нет. Старый сервер (invitesSupported не пришёл) ведёт
+  // себя как раньше, и тогда локальный список верен.
+  // consentRequired — сервер сообщает: «кроме вас, в чат никого не записали».
+  // Именно по нему, а не по факту отправленных приглашений: если приглашения
+  // почему-то не ушли, людей в группе всё равно нет, и показывать их
+  // участниками нельзя. Старый сервер такого поля не присылает — там всё
+  // работает как раньше.
+  const invitesMode = data.consentRequired === true;
+  const localMembers = invitesMode ? [members[0]] : members;
+  const localMemberIds = invitesMode ? [] : memberIds;
+  const sentInvites = invitesMode ? (data.pendingInvites||[]).length : 0;
 
-  // Уведомляем приглашённых участников в реальном времени, чтобы им не пришлось перезагружать страницу
-  if(realId && memberIds.length){
+  const newChat={id:newChatId,nm:nm,ini:nm.slice(0,2).toUpperCase(),col:colorFromId(newChatId),online:false,prev:isChannel?"Канал создан":"Группа создана",time:now(),lastTs:Date.now(),unread:0,type:isChannel?"channels":"groups",mbrs:localMembers.length,members:localMembers,memberIds:localMemberIds,myRole:"owner",mine:isChannel,pinned:false,muted:false,blocked:false,draft:"",inviteLink:serverInviteLink,isPrivate:false};
+  S.chats.unshift(newChat);
+  if(!S.messages[newChat.id]){
+    const opening=[{id:nextId(),t:"sys",tx:isChannel?"Вы создали канал «"+nm+"»":"Вы создали группу «"+nm+"»"}];
+    if(invitesMode && sentInvites>0){
+      opening.push({id:nextId(),t:"sys",tx:"Приглашения отправлены: "+sentInvites+". "+(isChannel?"Подписчики":"Участники")+" появятся, когда примут приглашение."});
+    } else if(invitesMode && memberIds.length){
+      opening.push({id:nextId(),t:"sys",tx:"Приглашения отправить не удалось — позовите людей ссылкой-приглашением."});
+    }
+    opening.push({id:nextId(),t:"date",tx:"Сегодня",ts:Date.now()});
+    S.messages[newChat.id]=opening;
+  }
+  closeM("m-group"); renderChats(); openChat(newChat.id); saveState();
+
+  let createdMsg = isChannel ? "📢 Канал «"+nm+"» создан!" : "👥 Группа «"+nm+"» создана!";
+  if(invitesMode && sentInvites>0) createdMsg += " Приглашения отправлены: "+sentInvites;
+  else if(invitesMode && memberIds.length) createdMsg += " Позовите людей ссылкой-приглашением";
+  showToast(createdMsg);
+
+  // Уведомляем участников в реальном времени, чтобы им не пришлось
+  // перезагружать страницу. При приглашениях этого делать не нужно: участников,
+  // кроме создателя, в чате пока нет, а приглашённым сервер шлёт своё
+  // уведомление сам (chat.invite).
+  if(realId && memberIds.length && !invitesMode){
     wsSendReliable({type:"group.created", payload:{
       chat:{id:realId, nm, type:isChannel?"channels":"groups", desc},
       memberIds,
@@ -12437,7 +12996,21 @@ function openMembers(){
     saveState();
   }
   renderMembersList();
-  el("m-members").classList.add("on");
+  loadChatInvites(ch.id);   // «позван / вошёл / отклонил» — см. ниже
+  openM("m-members");
+}
+
+// Состояние приглашений в ЭТОТ чат — для того, кто звал. Сервер отдаёт его
+// только владельцу и админам, как и сам список участников.
+async function loadChatInvites(chatId){
+  if(!S.chatInvites) S.chatInvites={};
+  let data;
+  try{
+    data=await apiGet("/api/chats/"+chatId+"/invites");
+  }catch(e){ return; }   // старый сервер такого маршрута не знает — просто нет раздела
+  if(!data || data.invitesSupported===false || !Array.isArray(data.invites)) return;
+  S.chatInvites[chatId]=data.invites;
+  if(S.chat===chatId && el("m-members")?.classList.contains("on")) renderMembersList();
 }
 
 // ⚠️ Раньше полный список участников (имена, username) видел вообще любой
@@ -12464,17 +13037,43 @@ function renderMembersList(){
   // Сортируем: owner → admin → member
   const order={owner:0,admin:1,member:2};
   const sorted=[...(ch.members||[])].sort((a,b)=>(order[a.role]||3)-(order[b.role]||3));
+  // ⚠️ 25 сен 2026: имя, username и подпись админа пишет другой человек, а
+  // подставлялись они в разметку как есть — ровно та же цепочка, что уже
+  // закрыта в списке чатов. Экранируем при выводе.
   el("members-list").innerHTML=sorted.map(m=>{
     const roleLabel=m.role==="owner"?"Владелец":(m.role==="admin"?(m.tag||"Админ"):"");
-    const roleBadge=roleLabel?`<span class="mem-role ${m.role}">${roleLabel}</span>`:"";
+    const roleBadge=roleLabel?`<span class="mem-role ${m.role}">${escHtml(roleLabel)}</span>`:"";
     const muteBadge=m.canWrite===false?`<span class="mem-role" style="background:var(--bg4);color:var(--tx3)" title="Не может писать">🔇</span>`:"";
-    const avHTML=m.avatar?`<img src="${m.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(m.nm||"?")[0];
+    const mSrc=safeImgSrc(m.avatar);
+    const avHTML=mSrc?`<img src="${escHtml(mSrc)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml((m.nm||"?")[0]);
     return `<div class="mem-item" onclick="openMemberProfile('${m.id}')">
-      <div class="mem-av" style="background:${m.avatar?"none":colBg(m.col||0)}">${avHTML}</div>
-      <div class="mem-info"><div class="mem-nm">${m.nm}${m.role==="owner"?" 👑":(m.role==="admin"?" ⭐":"")}</div><div class="mem-sub">${m.uname?"@"+m.uname:"участник"}</div></div>
+      <div class="mem-av" style="background:${mSrc?"none":colBg(m.col||0)}">${avHTML}</div>
+      <div class="mem-info"><div class="mem-nm">${escHtml(m.nm)}${m.role==="owner"?" 👑":(m.role==="admin"?" ⭐":"")}</div><div class="mem-sub">${m.uname?"@"+escHtml(m.uname):"участник"}</div></div>
       ${roleBadge}${muteBadge}
     </div>`;
-  }).join("");
+  }).join("") + inviteStatesHTML(ch);
+}
+
+// Раздел «Приглашения» под списком участников: кого позвали и чем кончилось.
+// Приглашённый — ещё не участник, поэтому он именно здесь, а не выше.
+function inviteStatesHTML(ch){
+  const list=(S.chatInvites && S.chatInvites[ch.id])||[];
+  const memberIds=new Set((ch.members||[]).map(m=>String(m.id)));
+  // Кто вошёл и уже стоит в списке участников — второй раз не показываем.
+  const rows=list.filter(i=>!(i.status==="accepted" && memberIds.has(String(i.userId))));
+  if(!rows.length) return "";
+  const LABEL={pending:"приглашён", accepted:"вошёл", declined:"отклонил"};
+  return `<div style="margin-top:10px;padding:8px 4px 4px;border-top:1px solid var(--brd);font-size:11.5px;color:var(--tx3)">Приглашения</div>`+
+    rows.map(i=>{
+      const nm=i.name||"Без имени";
+      const src=safeImgSrc(i.avatar);
+      const avHTML=src?`<img src="${escHtml(src)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml(nm[0]||"?");
+      return `<div class="mem-item" style="opacity:.72;cursor:default">
+        <div class="mem-av" style="background:${src?"none":colBg(colorFromId(i.userId))}">${avHTML}</div>
+        <div class="mem-info"><div class="mem-nm">${escHtml(nm)}</div><div class="mem-sub">${i.username?"@"+escHtml(i.username):"приглашение"}</div></div>
+        <span class="mem-role">${escHtml(LABEL[i.status]||i.status)}</span>
+      </div>`;
+    }).join("");
 }
 
 // Read-only карточка участника — раньше клик по любому участнику в списке
@@ -12524,7 +13123,7 @@ function openMemberProfile(memberId){
 
   const canManage = !isSelf && member.role!=="owner" && (myRole==="owner"||myRole==="admin");
   el("mp-manage-btn").style.display = canManage ? "block" : "none";
-  el("m-member-profile").classList.add("on");
+  openM("m-member-profile");
 }
 function openMemberManageFromProfile(){
   closeM("m-member-profile");
@@ -12584,7 +13183,7 @@ function openMemberAct(memberId){
   removeBtn.style.display=canRemove?"block":"none";
   muteBtn.style.display=canRemove?"block":"none";
   muteBtn.textContent = member.canWrite===false ? "🔊 Разрешить писать" : "🔇 Запретить писать";
-  el("m-member-act").classList.add("on");
+  openM("m-member-act");
 }
 
 // ⚠️ Раньше и назначение/снятие админа, и его права — были полностью
@@ -12701,7 +13300,7 @@ function openPermsFor(member){
   el("perms-member").innerHTML=`<div class="mem-av" style="width:36px;height:36px;background:${colBg(member.col||0)}">${(member.nm||"?")[0]}</div><div><div class="mem-nm">${member.nm}</div><div class="mem-sub">${member.uname?"@"+member.uname:"участник"}</div></div>`;
   el("perms-tag").value=member.tag||"";
   renderPermsList(member);
-  el("m-perms").classList.add("on");
+  openM("m-perms");
 }
 
 function cancelPerms(){
@@ -12763,11 +13362,12 @@ function pushSysMsg(text){
   if(S.chat===S.chat)renderMsgs();
 }
 
-// Добавление участников
+// Приглашение участников
+let _addMemberResults=[];
 function openAddMember(){
   el("addmember-search").value="";
   el("addmember-results").innerHTML="";
-  el("m-addmember").classList.add("on");
+  openM("m-addmember");
 }
 
 async function searchAddMember(v){
@@ -12782,19 +13382,46 @@ async function searchAddMember(v){
       if(!results.find(c=>c.id===u.id)) results.push({id:u.id,nm:u.name||u.username||"?",uname:u.username||"",col:colorFromId(u.id)});
     });
   } catch(e){}
-  el("addmember-results").innerHTML=results.map(c=>`<div class="mem-item" onclick="addMemberToGroup('${c.id}','${(c.nm||"").replace(/'/g,"")}','${c.uname||""}',${c.col||0})"><div class="mem-av" style="background:${colBg(c.col||0)}">${(c.nm||"?")[0]}</div><div class="mem-info"><div class="mem-nm">${c.nm}</div><div class="mem-sub">${c.uname?"@"+c.uname:""}</div></div><span style="color:var(--acc);font-size:20px">＋</span></div>`).join("");
+  // ⚠️ Раньше имя человека подставлялось прямо в текст обработчика onclick —
+  // кавычка или угловая скобка в чужом имени ломали строку и позволяли
+  // дописать туда свой код. Теперь в обработчик уходит только НОМЕР строки
+  // в этом списке, а сами имена экранируются, как везде.
+  _addMemberResults=results;
+  el("addmember-results").innerHTML=results.map((c,i)=>`<div class="mem-item" onclick="addMemberToGroup(${i})"><div class="mem-av" style="background:${colBg(c.col||0)}">${escHtml((c.nm||"?")[0])}</div><div class="mem-info"><div class="mem-nm">${escHtml(c.nm)}</div><div class="mem-sub">${c.uname?"@"+escHtml(c.uname):""}</div></div><span style="color:var(--acc);font-size:20px">＋</span></div>`).join("");
   if(!results.length)el("addmember-results").innerHTML=`<div style="color:var(--tx3);font-size:12.5px;padding:12px;text-align:center">Не найдено</div>`;
 }
 
-function addMemberToGroup(id,nm,uname,col){
-  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
-  if(!ch.members)ch.members=[];
-  if(ch.members.find(m=>m.id==id)){ showToast("Уже в группе"); return; }
-  ch.members.push({id:id, nm:nm, uname:uname, col:col, role:"member", perms:memberPerms()});
-  ch.mbrs=ch.members.length;
-  pushSysMsg(nm+" добавлен(а) в группу");
-  showToast("➕ "+nm+" добавлен");
-  closeM("m-addmember"); renderMembersList(); renderChats(); saveState();
+// ⚠️ 25 сен 2026. Раньше эта функция была ЦЕЛИКОМ локальной: дописывала
+// человека в ch.members у себя в браузере, показывала «добавлен» — и всё.
+// На сервер не уходило ничего, сам человек ни в какой группе не оказывался,
+// а после перезагрузки страницы он исчезал и из списка (классический для
+// этого проекта случай «работает только у того, кто нажал», правило 7).
+// Маршрута «добавить участника в существующий чат» на сервере не было вовсе.
+// Теперь это настоящее приглашение: человек получает предложение и решает сам.
+async function addMemberToGroup(idx){
+  const c=(_addMemberResults||[])[idx]; if(!c) return;
+  const ch=S.chats.find(x=>x.id===S.chat); if(!ch) return;
+  const nm=c.nm||"Пользователь";
+  if((ch.members||[]).find(m=>String(m.id)===String(c.id))){ showToast("Уже в группе"); return; }
+  let data;
+  try{
+    data=await apiPost("/api/chats/"+ch.id+"/invite", {userIds:[String(c.id)]}, true);
+  }catch(e){
+    showToast("❌ Нет связи с сервером");
+    return;
+  }
+  if(!data || !data.success){
+    showToast("❌ "+((data&&data.error)||"Не удалось пригласить"));
+    return;
+  }
+  if(!(data.invited||[]).length){
+    const why=(data.skipped||[])[0];
+    showToast("⚠️ "+nm+": "+((why&&why.label)||"не удалось пригласить"));
+    return;
+  }
+  showToast("✉️ Приглашение отправлено: "+nm);
+  closeM("m-addmember");
+  loadChatInvites(ch.id);
 }
 
 // ── FORWARD ──────────────────────────────────────────────────
@@ -12802,7 +13429,7 @@ function openForward(){
   const sorted=[...S.chats].sort((a,b)=>(b.id===77777?1:0)-(a.id===77777?1:0));
   el("fwd-list").innerHTML=sorted.map(ch=>`<div class="contact-item" style="margin-bottom:4px" onclick="doForward(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})"><div class="contact-av" style="background:${colBg(ch.col)}">${ch.ini}</div><div><div class="contact-nm">${ch.nm}</div></div></div>`).join("");
   el("fwd-hide-author")?.classList.remove("on");
-  el("m-forward").classList.add("on");
+  openM("m-forward");
 }
 // ⚠️ Раньше пересылка была ПОЛНОСТЬЮ локальной — buildForwardedMsg() только
 // собирала копию для localStorage отправителя, doForward() ни разу не
@@ -12832,7 +13459,7 @@ function buildForwardPostBody(m, hideAuthor){
 // просто в форме, которую понимает renderMsgs().
 function buildForwardedMsg(m, hideAuthor, srcChat){
   const tm=now();
-  const msg={id:nextId(),t:"out",time:tm,read:false};
+  const msg={id:nextId(),t:"out",time:tm,ts:Date.now(),read:false};   // ts — W2, 24 сен 2026
   if(m.tx) msg.tx=m.tx;
   if(m.img){ msg.img=m.img; if(m.spoiler) msg.spoiler=true; }
   if(m.video){ msg.video=m.video; if(m.spoiler) msg.spoiler=true; }
@@ -12986,12 +13613,62 @@ function showToast(msg){ const t=document.createElement("div"); t.style.cssText=
 // display:none оборвал бы её на середине). Модалки без .modal (видео-
 // кружочек, редактор сторис и т.п. — своя разметка на весь экран) просто
 // закрываются как раньше, мгновенно, у них и открытие без анимации.
-function closeM(id){
+// 24 сен 2026 (W3 шаг 1): раньше модальные окна открывались прямым
+// classList.add("on") и для кнопки «назад» не существовали вовсе — из 41 окна
+// в стеке лежало ровно одно (просмотрщик фото). Поэтому «назад» при открытом
+// окне закрывала то, что лежало ПОД ним: чат, экран Настроек, список чатов.
+// Теперь открытие идёт через openM(), и окно само кладёт в стек свой
+// закрыватель. Все 110 существующих вызовов closeM() править не нужно — она
+// сама решает, уйти через стек или закрыться напрямую.
+function openM(id){
+  const w=el(id); if(!w) return;
+  if(w.classList.contains("on")) return;   // уже открыто: второй записи в стек не создаём
+  // «Назад» ещё в полёте (соседнее окно закрывают этим же действием) — открываем
+  // сразу после того, как оно приземлится, иначе popstate снимет не ту запись.
+  if(_navBackInFlight){ _navPendingOpen=id; return; }
+  w.classList.add("on");
+  const closer=()=>{ closer.navSpent=true; closeM(id, true); };
+  closer.navModalId=id;
+  pushNavEntry(closer);
+}
+// 24 сен 2026 (W3 шаг 2): то же, что openM/closeM, но для слоёв со своей
+// функцией закрытия — панели эмодзи и стикеров, лист вложений, палитра
+// реакций, поиск в чате, выбор языка. Раньше они открывались мимо стека, и
+// «назад» при открытой панели закрывала чат под ней, а палитра реакций даже
+// УБИРАЛА чужую запись из стека (закрывала меню сообщения через back).
+function openLayer(id, closeNow){
+  if(_navBackInFlight){ _navPendingLayer={id, closeNow}; return; }
+  const closer=()=>{ closer.navSpent=true; closeNow(); };
+  closer.navModalId=id;
+  pushNavEntry(closer);
+}
+// true — уходим через историю, вызывающему больше делать нечего.
+function closeLayerViaStack(id){
+  if(navTopModalId()===id){ popNavEntry(); return true; }
+  for(let i=navStack.length-1;i>=0;i--){ const f=navStack[i]; if(f && f.navModalId===id){ f.navSpent=true; break; } }
+  return false;
+}
+// id окна, чья запись сейчас на вершине стека (или null).
+function navTopModalId(){
+  const f=navStack[navStack.length-1];
+  return (f && f.navModalId) || null;
+}
+// viaBack=true — нас уже позвал обработчик popstate, историю трогать не надо.
+function closeM(id, viaBack){
   const wrap=el(id); if(!wrap) return;
+  if(!viaBack && wrap.classList.contains("on") && navTopModalId()===id){
+    popNavEntry();   // уйдём сюда же, но через историю — одной дорогой с кнопкой «назад»
+    return;
+  }
+  // Окно закрывают, пока его запись лежит в стеке не на вершине (поверх него
+  // успели открыть ещё что-то). Историю в этом месте переписать нельзя, поэтому
+  // помечаем запись отработавшей: когда до неё дойдёт «назад», она ничего не сделает.
+  for(let i=navStack.length-1;i>=0;i--){ const f=navStack[i]; if(f && f.navModalId===id){ f.navSpent=true; break; } }
   const box=wrap.querySelector(".modal");
   if(!box){ wrap.classList.remove("on"); return; }
   box.classList.add("closing");
-  setTimeout(()=>{ wrap.classList.remove("on"); box.classList.remove("closing"); }, 180);
+  wrap.classList.add("closing");   // затемнение уходит вместе с карточкой, одной парой
+  setTimeout(()=>{ wrap.classList.remove("on"); wrap.classList.remove("closing"); box.classList.remove("closing"); }, 180);
 }
 // Тот же приём для полноэкранных разделов (Настройки/Контакты/Админка и
 // т.д.) — используется в closeSettings()/closeContacts()/closeAdmin()/
@@ -13051,7 +13728,7 @@ function renderStore(){
   }).join("");
   el("stkst").innerHTML=S.packs.map(p=>{const owned=p.free||S.owned.includes(p.id)||S.vip?.active;const prev=p.stickers.slice(0,4).map(s=>isStickerImg(s)?`<img src="${s}" style="width:28px;height:28px;object-fit:contain">`:`<span>${s}</span>`).join("");return`<div class="scard"><div class="scprev">${prev}</div><div class="scbot"><div><div class="scnm">${p.nm}</div><div class="scdesc">${p.desc}</div></div><button class="scbuy${owned?" owned":""}" ${owned?"disabled":""} onclick="${owned?"":` openStkModal(${p.id})`}">${owned?(p.free?"Бесплатно":(S.vip?.active&&!S.owned.includes(p.id)?"👑 VIP":"✓ Куплено")):`💎 ${p.price} CR`}</button></div></div>`;}).join("");
 }
-function openBuyM(cr,price,sym){ S.buyPkg={cr,price}; el("mbpkg").textContent=cr.toLocaleString()+" CR"; el("mbcr").textContent=cr.toLocaleString()+" 💎"; el("mbpr").textContent=price+" "+sym; if(el("mbuy-method")) el("mbuy-method").value="tinkoff"; updateBuyMethodHint(); el("m-buy").classList.add("on"); }
+function openBuyM(cr,price,sym){ S.buyPkg={cr,price}; el("mbpkg").textContent=cr.toLocaleString()+" CR"; el("mbcr").textContent=cr.toLocaleString()+" 💎"; el("mbpr").textContent=price+" "+sym; if(el("mbuy-method")) el("mbuy-method").value="tinkoff"; updateBuyMethodHint(); openM("m-buy"); }
 
 // cr → productKey в каталоге бэкенда (services/payments/products.js) — суммы совпадают 1-в-1 с S.coinPkgs
 const CR_TO_PRODUCT_KEY = {100:"cr_100",250:"cr_250",500:"cr_500",1000:"cr_1000",2500:"cr_2500",5000:"cr_5000"};
@@ -13287,7 +13964,7 @@ async function completeBuy(){
     showToast("❌ Нет связи с сервером");
   }
 }
-function openStkModal(id){ const p=S.packs.find(x=>x.id===id);if(!p)return; S.buySP=id; el("msttit").textContent="🐱 "+p.nm; el("mstnm").textContent=p.nm; el("mstcnt").textContent=p.stickers.length+" шт."; el("mstpr").textContent=p.price+" 💎 CR"; el("mstbal").textContent=S.bal.toLocaleString()+" 💎"; el("mstrem").textContent=(S.bal-p.price).toLocaleString()+" 💎"; el("m-stk").classList.add("on"); }
+function openStkModal(id){ const p=S.packs.find(x=>x.id===id);if(!p)return; S.buySP=id; el("msttit").textContent="🐱 "+p.nm; el("mstnm").textContent=p.nm; el("mstcnt").textContent=p.stickers.length+" шт."; el("mstpr").textContent=p.price+" 💎 CR"; el("mstbal").textContent=S.bal.toLocaleString()+" 💎"; el("mstrem").textContent=(S.bal-p.price).toLocaleString()+" 💎"; openM("m-stk"); }
 // Раньше списание и владение были полностью локальными — сервер вообще не
 // знал о покупке, теоретически можно было получить любой пак бесплатно
 async function completeStkBuy(){
@@ -14170,7 +14847,7 @@ function openGiftVip(){
         return `<div class="contact-item" onclick="pickGiftVipRecipient('${id}','${safeNm}',${col})"><div class="contact-av" style="background:${colBg(col)}">${(nm||"?")[0]}</div><div><div class="contact-nm">${escHtml(nm)}</div></div></div>`;
       }).join("")
     : `<div style="color:var(--tx3);font-size:12.5px;padding:12px">Нет доступных получателей — сначала начни с кем-то чат</div>`;
-  el("m-gift-vip").classList.add("on");
+  openM("m-gift-vip");
 }
 
 function pickGiftVipRecipient(userId, nm, col){
@@ -14181,7 +14858,7 @@ function pickGiftVipRecipient(userId, nm, col){
     <div class="unknown-bar-btn" style="justify-content:space-between;display:flex;padding:12px 14px" onclick="confirmGiftVip('${p.id}',${p.price})">
       <span>${p.icon} ${p.label}</span><span>${p.price.toLocaleString()} CR</span>
     </div>`).join("");
-  el("m-gift-vip-plan").classList.add("on");
+  openM("m-gift-vip-plan");
 }
 
 function confirmGiftVip(planId, price){
@@ -14215,7 +14892,7 @@ function confirmGiftVip(planId, price){
     const tm=now();
     if(ch){
       if(!S.messages[ch.id])S.messages[ch.id]=[];
-      S.messages[ch.id].push({id:nextId(),t:"out",tx:`🎁 Вы подарили ${recipient.nm} ${plan.label}!`,time:tm,read:false});
+      S.messages[ch.id].push({id:nextId(),t:"out",tx:`🎁 Вы подарили ${recipient.nm} ${plan.label}!`,time:tm,ts:Date.now(),read:false});
       ch.prev="🎁 Подарок VIP"; ch.time=tm;ch.lastTs=Date.now();
       renderChats(); if(S.chat===ch.id) renderMsgs();
     }
@@ -14227,7 +14904,7 @@ function confirmGiftVip(planId, price){
     showToast(`🎁 VIP подарен ${recipient.nm}!`);
     giftVipRecipient=null;
   };
-  el("m-confirm").classList.add("on");
+  openM("m-confirm");
 }
 
 function buyVIP(planId, price){
@@ -14265,7 +14942,7 @@ function buyVIP(planId, price){
     showToast("🎉 VIP активирован! Все привилегии открыты");
     setTimeout(()=>{ viewMyStories(0); },1200);
   };
-  el("m-confirm").classList.add("on");
+  openM("m-confirm");
 }
 
 // ── Прямая покупка VIP за деньги, в обход Crystals (быстрый путь) ──
@@ -14282,7 +14959,7 @@ async function buyVIPDirect(productKey){
 
   if(S.user?.billing_region === "ru"){
     if(el("vip-direct-label")) el("vip-direct-label").textContent = productKey==="vip_year" ? "VIP на 1 год" : "VIP на 1 месяц";
-    el("m-vip-direct").classList.add("on");
+    openM("m-vip-direct");
     const payOpts = {
       productKey,
       summaryId: null, payBtnId: null,
@@ -15208,7 +15885,7 @@ function openGiftModal(id){
   el("mgift-price").textContent = g.price + " 💎 CR";
   el("mgift-limit").textContent = g.limit ? `${g.limit-g.sold} из ${g.limit} штук` : "Неограничено";
   el("mgift-bal").textContent = S.bal.toLocaleString("ru") + " 💎";
-  el("m-gift").classList.add("on");
+  openM("m-gift");
 }
 
 async function sendGift(targetChatId){
@@ -15330,7 +16007,7 @@ function openGiftRecipientPicker(giftId, mode){
   giftPickerMode=mode||"inventory";
   if(el("gift-recipient-search")) el("gift-recipient-search").value="";
   renderGiftRecipientList("");
-  el("m-gift-recipient").classList.add("on");
+  openM("m-gift-recipient");
 }
 function renderGiftRecipientList(filter){
   const wrap=el("gift-recipient-list"); if(!wrap) return;
@@ -15384,7 +16061,7 @@ function showNextBirthdayNotif(){
   el("m-birthday-notif").dataset.notifId=n.id;
   el("m-birthday-notif").dataset.aboutUserId=n.data?.aboutUserId||"";
   el("m-birthday-notif").dataset.aboutUserName=aboutName;
-  el("m-birthday-notif").classList.add("on");
+  openM("m-birthday-notif");
 }
 
 async function dismissBirthdayNotif(){
@@ -15490,7 +16167,7 @@ function showGiftDetailModal(gift){
   el("gd-date").textContent = gift.createdAt ? new Date(gift.createdAt).toLocaleString("ru",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—";
   if(gift.message){ el("gd-msg").textContent=gift.message; el("gd-msg-row").style.display="block"; }
   else { el("gd-msg-row").style.display="none"; }
-  el("m-gift-detail").classList.add("on");
+  openM("m-gift-detail");
 }
 
 // Принимает НОМЕР группы из renderMyGifts (не gift_id — он у старых записей NULL).
@@ -15528,7 +16205,7 @@ function openStoryEditor(){
   selectStoryType("text");
   // Показываем выбор "от себя / от канала" если есть каналы
   renderStoryAuthorChoice();
-  el("m-story-editor").classList.add("on");
+  openM("m-story-editor");
 }
 
 let selectedStoryChannel = null;
@@ -15740,7 +16417,7 @@ function openMyStories(){
   }).join("");
   // Кнопка добавить если не достигнут лимит
   el("mystories-add").style.display=(stories.length<limit)?"block":"none";
-  el("m-mystories").classList.add("on");
+  openM("m-mystories");
 }
 
 function deleteMyStory(id){
@@ -16142,6 +16819,7 @@ function openOfficialChannel(){
   });
   posts.innerHTML=html;
   el("screen-official").classList.add("on");
+  pushNavEntry(()=>closeScreen("screen-official"));   // 24 сен 2026 (W3): был единственным экраном вне стека «назад»
 }
 
 // Настоящий тоггл реакции на посте — считает, сохраняет, показывает твой выбор,
@@ -17175,7 +17853,7 @@ applyTheme(S.theme||"dark");
 
 <div class="screen" id="screen-official">
   <div class="topbar">
-    <div class="logo" onclick="el('screen-official').classList.remove('on')">⬡ Angie</div>
+    <div class="logo" onclick="popNavEntry()">⬡ Angie</div>
     <div style="display:flex;align-items:center;gap:6px">
       <div style="font-weight:800;font-size:15px">Angie Official</div>
       <span class="verify-badge" onmouseenter="showVerifyTip(this,'Официальный канал Энджи Мессенджер')" onmouseleave="hideVerifyTip()">
@@ -17184,7 +17862,7 @@ applyTheme(S.theme||"dark");
     </div>
     <div class="tr">
       <div style="font-size:11px;color:var(--tx2);background:var(--bg3);border:1px solid var(--brd);padding:4px 10px;border-radius:999px">👥 14 382 подписчика</div>
-      <div class="nbtn" onclick="el('screen-official').classList.remove('on')">← Назад</div>
+      <div class="nbtn" onclick="popNavEntry()">← Назад</div>
     </div>
   </div>
   <div class="settings-body" id="official-posts"></div>
