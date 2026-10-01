@@ -3088,6 +3088,11 @@ let ws = null;
 let wsReconnectTimer = null;
 let wsConnected = false;
 let wsHasAuthedOnce = false; // отличаем первый вход (уже всё свежее) от переподключения
+// Номер поколения соединения. Каждое новое соединение получает следующий
+// номер; обработчики запоминают свой и молча выходят, если он уже не
+// текущий. Нужно потому, что брошенный сокет никуда не исчезает и может
+// вызвать onclose, onerror или даже onmessage много позже — см. wsAbandonSocket.
+let wsGeneration = 0;
 // ⚠️ 28 июля 2026: досинхронизация при переподключении (см. ниже) дёргает
 // loadChatsFromDB(), которая заканчивается renderChats() — ПОЛНОЙ пересборкой
 // DOM всех строк списка. На нестабильной мобильной сети переподключения
@@ -3154,44 +3159,168 @@ function updateConnectionIndicator(connecting){
   });
 }
 
+// ── Молчащий сокет: как страница сама замечает пропавшую связь ─────────────
+// 30 сен 2026. Сервер раз в 30 секунд шлёт всем протокольный ping и рвёт тех,
+// кто не ответил. Но это знание СЕРВЕРА о нас, а не наше о сервере: если путь
+// пропал (сменилась сеть, отвалился VPN, NAT забыл трансляцию), разрыв, который
+// устроил сервер, до нас не доедет — сокет останется в состоянии OPEN, onclose
+// не сработает, переподключения не будет, и сообщения просто перестанут
+// приходить без единого признака. Ровно это и было видно 30 сентября: вкладка
+// на ПК открыта, а сообщение с телефона появлялось только после обновления.
+//
+// Поэтому считаем время с последнего ПОЛУЧЕННОГО кадра. Получение — это
+// доказательство, что путь жив; собственная отправка доказательством не
+// является (ws.send лишь кладёт кадр в буфер). Сбрасывать счётчик в тишине
+// нечем: протокольный ping браузер обрабатывает сам, внутри сетевого движка, и
+// странице о нём не сообщает — события ping у window.WebSocket нет вовсе.
+// Поэтому сервер в том же обходе шлёт ещё и обычный кадр {type:"hb"}.
+//
+// ⚠️ Проверка включается ТОЛЬКО после первого такого кадра. На боевом сервере
+// её пока нет: если бы проверка работала сразу, новая сборка рвала бы
+// исправное соединение каждые полторы минуты. Флаг сбрасывается на КАЖДОМ
+// новом соединении — поэтому и откат сервера назад безопасен: клиент просто
+// перестанет включать проверку.
+let wsHbSeen = false;        // сервер ЭТОГО соединения умеет прикладной heartbeat
+let wsLastFrameAt = 0;       // когда пришёл последний кадр, любой
+let wsSilenceTimer = null;
+let WS_SILENCE_MS = 90000;   // три пропущенных кадра подряд (сервер шлёт раз в 30 с)
+
+function wsNoteFrame(){
+  wsLastFrameAt = Date.now();
+  if(wsHbSeen) wsArmSilence();
+}
+function wsArmSilence(ms){
+  clearTimeout(wsSilenceTimer);
+  wsSilenceTimer = setTimeout(wsSilenceCheck, ms || WS_SILENCE_MS);
+}
+function wsDisarmSilence(){
+  clearTimeout(wsSilenceTimer);
+  wsSilenceTimer = null;
+}
+function wsSilenceCheck(){
+  wsSilenceTimer = null;
+  if(!wsHbSeen) return;                                  // сервер старый — не нам судить
+  if(!ws || ws.readyState !== WebSocket.OPEN) return;     // и так не подключены
+  const тихо = Date.now() - wsLastFrameAt;
+  // Таймер могли перевзвести — досчитываем остаток, а не рвём раньше срока.
+  if(тихо < WS_SILENCE_MS){ wsArmSilence(WS_SILENCE_MS - тихо); return; }
+  // Фоновая вкладка: браузер тормозит таймеры, а свёрнутую может и вовсе
+  // заморозить — длинная пауза здесь ничего не доказывает, и человек в эту
+  // вкладку всё равно не смотрит. Ждём возвращения: обработчик ниже проверит
+  // то же самое сразу, как вкладку откроют.
+  if(document.visibilityState === "hidden"){ wsArmSilence(); return; }
+  // Кадров нет слишком долго. Отказываемся от сокета и переподключаемся, не
+  // дожидаясь от него ни одного события (см. wsAbandonSocket).
+  wsAbandonSocket();
+}
+
+// Отказ от сокета: считаем его устаревшим и подключаемся заново, ничего от
+// него не ожидая.
+//
+// ⚠️ 30 сен 2026. Раньше здесь стоял просто ws.close(), а переподключение
+// висело на onclose. Для полуоткрытого сокета это не работает: close()
+// начинает закрывающее рукопожатие и ждёт ответного кадра от стороны, до
+// которой пути уже нет. Сокет застревает в состоянии CLOSING, события close
+// может не случиться вообще — то есть переподключения не было бы ровно в том
+// случае, ради которого вся проверка и делалась.
+//
+// Поколение нужно потому, что брошенный сокет никуда не девается: браузер
+// может довести закрытие до конца минутами позже и вызвать onclose, а при
+// частичном восстановлении сети — и onerror, и onmessage. Без проверки
+// поколения такое запоздалое событие объявило бы нас отключёнными, хотя новое
+// соединение уже работает, стёрло бы подтверждённый вход и запустило бы
+// второе переподключение поверх первого.
+function wsAbandonSocket(){
+  const брошенный = ws;
+  wsGeneration++;          // с этого мгновения события брошенного сокета — чужие
+  ws = null;
+  wsConnected = false;
+  wsAuthed = false;
+  wsHbSeen = false;
+  wsDisarmSilence();
+  updateConnectionIndicator(true);
+  // Закрытие может не завершиться никогда — и это нормально, ответа мы не ждём.
+  if(брошенный){ try { брошенный.close(); } catch(e){} }
+  wsScheduleReconnect();
+}
+// Вкладку открыли — проверяем сразу, не дожидаясь очередного срабатывания.
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible" && wsHbSeen) wsSilenceCheck();
+});
+
 function wsConnect(){
   if(ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   const token = getToken();
   if(!token){ return; }
 
   updateConnectionIndicator(true);
-  try { ws = new WebSocket(WS_URL); } catch(e){ wsScheduleReconnect(); return; }
+  // Своё поколение и свой экземпляр сокета: обработчики ниже работают только
+  // пока это соединение — текущее (см. wsAbandonSocket).
+  const поколение = ++wsGeneration;
+  const своё = () => поколение === wsGeneration;
+  let сокет;
+  try { сокет = new WebSocket(WS_URL); } catch(e){ wsScheduleReconnect(); return; }
+  ws = сокет;
 
-  ws.onopen = () => {
+  сокет.onopen = () => {
+    // Открылся сокет, от которого мы уже отказались — закрываем и уходим.
+    if(!своё()){ try { сокет.close(); } catch(e){} return; }
     wsConnected = true;
     wsAuthed = false;   // до ответа auth.ok сервер команды не примет (S1/F1)
+    // Новое соединение — заново выясняем, умеет ли ЭТОТ сервер прикладной
+    // heartbeat (см. блок выше). До первого кадра проверка молчания выключена.
+    wsHbSeen = false;
+    wsDisarmSilence();
+    wsNoteFrame();
     clearTimeout(wsReconnectTimer);
     // Авторизуемся токеном
-    ws.send(JSON.stringify({ type: "auth", token }));
+    сокет.send(JSON.stringify({ type: "auth", token }));
   };
 
-  ws.onmessage = (e) => {
+  сокет.onmessage = (e) => {
+    if(!своё()) return;   // кадр от брошенного сокета: не наш
+    wsNoteFrame();   // получили что угодно — значит путь до сервера ещё жив
     try {
       const msg = JSON.parse(e.data);
       wsHandleMessage(msg);
     } catch(err) { console.error("WS parse error:", err); }
   };
 
-  ws.onclose = () => {
+  сокет.onclose = () => {
+    if(!своё()) return;   // запоздалое закрытие брошенного сокета: не наше
     wsConnected = false;
     wsAuthed = false;
+    wsHbSeen = false;
+    wsDisarmSilence();
     updateConnectionIndicator(true);
     wsScheduleReconnect();
   };
 
-  ws.onerror = () => {
+  сокет.onerror = () => {
+    if(!своё()) return;   // ошибка брошенного сокета: не наша
     wsConnected = false;
   };
 }
 
+// 30 сен 2026: пауза перед повтором теперь растёт и имеет разброс. Раньше все
+// клиенты ждали ровно 5 секунд и после перезапуска сервера возвращались одной
+// толпой в одну и ту же секунду. С проверкой молчания стало бы хуже: она у
+// всех срабатывает почти одновременно, значит и рвались бы все разом. Первая
+// попытка по-прежнему примерно через 5 секунд — обычный короткий сбой
+// восстанавливается так же быстро, как раньше. Счётчик обнуляется в auth.ok,
+// то есть только после НАСТОЯЩЕГО успешного входа, а не просто открытия сокета.
+let wsReconnectAttempt = 0;
+let WS_RECONNECT_BASE_MS = 5000, WS_RECONNECT_MAX_MS = 30000;
+function wsReconnectDelay(){
+  const шаг = Math.min(WS_RECONNECT_BASE_MS * Math.pow(1.7, wsReconnectAttempt), WS_RECONNECT_MAX_MS);
+  // Разброс ±30%: без него растущая пауза всё равно сводит всех в одну точку.
+  return Math.min(Math.round(шаг * (0.7 + Math.random() * 0.6)), WS_RECONNECT_MAX_MS);
+}
 function wsScheduleReconnect(){
   clearTimeout(wsReconnectTimer);
-  wsReconnectTimer = setTimeout(wsConnect, 5000);
+  const пауза = wsReconnectDelay();
+  wsReconnectAttempt++;
+  wsReconnectTimer = setTimeout(wsConnect, пауза);
 }
 
 // 24 сен 2026 (S1/F1): сервер теперь отвечает на команды только после
@@ -3233,6 +3362,7 @@ function wsHandleMessage(msg){
 
     case "auth.ok":
       wsAuthed = true;
+      wsReconnectAttempt = 0;   // вход подтверждён — пауза снова с нуля
       wsFlushOutbox();   // всё, что накопилось до подтверждения входа (S1/F1)
       updateConnectionIndicator(false);
       // ⚠️ Раньше здесь ничего не происходило — после разрыва связи (свернули/
@@ -3246,6 +3376,15 @@ function wsHandleMessage(msg){
         performReconnectResyncIfDue();
       }
       wsHasAuthedOnce = true;
+      break;
+
+    // Прикладной кадр живости от сервера (раз в 30 секунд). Сам факт его
+    // получения и есть доказательство, что путь жив. Первый такой кадр и
+    // включает проверку молчания: до него сервер может быть старым и кадров
+    // не слать вовсе — тогда проверка не работает, и это правильно.
+    case "hb":
+      wsHbSeen = true;
+      wsArmSilence();
       break;
 
     case "auth.error":
@@ -5131,7 +5270,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-09-26 приглашения в группу, «назад», анимации";
+const BUILD_TAG = "2026-10-01 «назад», живая доставка, обрыв связи";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -5478,6 +5617,11 @@ function openChat(id,opts){
   if(S.selectMode && S.chat!==id){
     S.selectMode=false;
     S.selectedMsgs=[];
+    // 30 сен 2026: заодно снимаем ПРИЗНАК выставленной записи. Без этого
+    // следующий вход в режим выбора считал бы запись уже выставленной, а она
+    // осталась в стеке ниже — и «назад» снимала бы не то.
+    if(selectNavFn) selectNavFn.navSpent=true;
+    selectNavArmed=false; selectNavFn=null;
     document.body.classList.remove("select-mode");
     el("select-bar")?.classList.remove("on");
   }
@@ -5639,9 +5783,16 @@ function closeMobileChatToArchive(){
 // кнопка не делала вообще ничего (history.pushState нигде не вызывался) —
 // нажатие "назад" на телефоне закрывало бы всё приложение, а не экран.
 let navStack=[];
+// 30 сен 2026: сколько НАШИХ записей реально живёт в истории браузера прямо
+// сейчас. Раньше об этом судили по длине navStack, а это не одно и то же:
+// стопка закрывателей и история могли разойтись, и тогда popNavEntry() звал
+// history.back(), когда своей записи уже не было. На Android такой «назад»
+// уходит мимо страницы — приложение сворачивается.
+let navLive=0;
 function pushNavEntry(closeFn){
   navStack.push(closeFn);
   history.pushState({nexusNav:navStack.length},"");
+  navLive++;
 }
 // Кнопки "← Назад" в интерфейсе зовут именно эту функцию, а не закрывают
 // экран напрямую — просто уходим на шаг назад в истории браузера; настоящее
@@ -5652,11 +5803,21 @@ function pushNavEntry(closeFn){
 // («Новый чат» → «Создать группу»), то к моменту popstate на вершине стека
 // лежит НОВОЕ окно, и «назад» закрыл бы именно его. Поэтому пока «назад» в
 // полёте, открытие откладывается до его приземления (см. openM и popstate).
-let _navBackInFlight=false, _navPendingOpen=null, _navPendingLayer=null;
+let _navBackInFlight=false, _navPendingOpen=null, _navPendingLayer=null, _navPendingSelectExit=false;
 function popNavEntry(){
-  if(navStack.length>0){ _navBackInFlight=true; history.back(); }
+  if(navStack.length===0) return;
+  // Своей записи в истории не осталось — уходить «назад» нельзя, это выход из
+  // приложения. Закрываем верхнее окно напрямую, ровно той же функцией,
+  // которую вызвал бы popstate.
+  if(navLive<=0){
+    const closeFn=navStack.pop();
+    if(closeFn && !closeFn.navSpent) closeFn();
+    return;
+  }
+  _navBackInFlight=true; history.back();
 }
 window.addEventListener("popstate",()=>{
+  navLive=Math.max(0, navLive-1);
   _navBackInFlight=false;
   const closeFn=navStack.pop();
   // navSpent — окно этой записи уже закрыли напрямую (см. closeM). Вызывать
@@ -5666,6 +5827,13 @@ window.addEventListener("popstate",()=>{
   // теперь его запись ляжет в стек ПОВЕРХ закрытого, а не под него.
   if(_navPendingOpen){ const id=_navPendingOpen; _navPendingOpen=null; openM(id); }
   if(_navPendingLayer){ const p=_navPendingLayer; _navPendingLayer=null; openLayer(p.id, p.closeNow); }
+  // Выход из режима выбора, отложенный до приземления «назад» (см.
+  // requestExitSelectMode): теперь верхняя запись — наша, и её можно снять.
+  if(_navPendingSelectExit){
+    _navPendingSelectExit=false;
+    S.selectedMsgs=[];
+    if(!disarmSelectNavEntry()) exitSelectMode();
+  }
 });
 
 // ══════════════════════════════════════════════════
@@ -10525,7 +10693,7 @@ function lpStart(e,id,groupIds){
   // клик мышью на десктопе не тронут — oncontextmenu по-прежнему зовёт
   // showCtx() напрямую.
   lpTimer=setTimeout(()=>{
-    if(!S.selectMode) enterSelectMode();
+    if(!S.selectMode) enterSelectMode(); else armSelectNavEntry();
     if(groupIds && groupIds.length>1) toggleMsgSelectGroup(groupIds);
     else toggleMsgSelect(id);
     if(navigator.vibrate)navigator.vibrate(40);
@@ -10722,6 +10890,31 @@ function ctxSelect(){
   toggleMsgSelect(S.ctxId);
 }
 
+// ⚠️ 30 сентября 2026. Режим выбора обязан иметь СВОЮ запись в истории — иначе
+// аппаратная «назад» на Android не снимет выделение, а выйдет из приложения.
+// Раньше запись создавалась только в enterSelectMode(), а вход туда стоял под
+// условием if(!S.selectMode) — и если режим выбора оказывался включён без
+// записи, выделение появлялось, а «назад» проваливалась мимо него.
+// Теперь состояние «запись выставлена» хранится явно и восстанавливается,
+// если её почему-то нет. Каждый раз это НОВАЯ функция-обёртка: помечать
+// отработавшей общую backFromSelectMode нельзя — она одна на все разы.
+let selectNavArmed=false, selectNavFn=null;
+function armSelectNavEntry(replaceTopNavEntry){
+  if(selectNavArmed) return;
+  selectNavFn=function(){ selectNavArmed=false; selectNavFn=null; backFromSelectMode(); };
+  if(replaceTopNavEntry && navStack.length>0) navStack[navStack.length-1]=selectNavFn;
+  else pushNavEntry(selectNavFn);
+  selectNavArmed=true;
+}
+// Снять свою запись, не трогая чужие: если она на вершине — уходим через
+// историю, если под чем-то — помечаем отработавшей.
+function disarmSelectNavEntry(){
+  if(!selectNavArmed || !selectNavFn){ selectNavArmed=false; selectNavFn=null; return false; }
+  if(navStack[navStack.length-1]===selectNavFn){ selectNavArmed=false; selectNavFn=null; popNavEntry(); return true; }
+  selectNavFn.navSpent=true;
+  selectNavArmed=false; selectNavFn=null;
+  return false;
+}
 function enterSelectMode(replaceTopNavEntry){
   S.selectMode=true;
   S.selectedMsgs=[];
@@ -10735,8 +10928,7 @@ function enterSelectMode(replaceTopNavEntry){
   // см. backFromSelectMode() ниже. replaceTopNavEntry — см. ctxSelect():
   // вход в выбор ИЗ контекстного меню замещает его запись, а не добавляет
   // новую поверх (переход из одной модалки сразу в другую, а не "вложенно").
-  if(replaceTopNavEntry && navStack.length>0) navStack[navStack.length-1]=backFromSelectMode;
-  else pushNavEntry(backFromSelectMode);
+  armSelectNavEntry(replaceTopNavEntry);
   renderMsgs();
 }
 function backFromSelectMode(){
@@ -10745,7 +10937,7 @@ function backFromSelectMode(){
     const cnt=el("select-count"); if(cnt)cnt.textContent=S.selectedMsgs.length;
     if(S.selectedMsgs.length>0){
       patchSelectionUI(); // остаёмся в режиме выбора — точечный патч, не полный renderMsgs()
-      pushNavEntry(backFromSelectMode); // остались выбранные — следующий "назад" снимет ещё одно
+      armSelectNavEntry(); // остались выбранные — следующий "назад" снимет ещё одно
       return;
     }
   }
@@ -10758,12 +10950,25 @@ function backFromSelectMode(){
 // снимет только одно выделение. Так же не остаётся лишней записи в navStack.
 function requestExitSelectMode(){
   S.selectedMsgs=[];
-  if(S.selectMode) popNavEntry(); else exitSelectMode();
+  if(!S.selectMode){ exitSelectMode(); return; }
+  // Предыдущий «назад» ещё в полёте (так бывает при массовом удалении: сначала
+  // closeM закрывает окно через историю, и тут же вызывается выход из выбора).
+  // Пока он не приземлился, наша запись НЕ на вершине, и решать, наша ли
+  // верхняя, нельзя — доделаем сразу после popstate.
+  if(_navBackInFlight){ _navPendingSelectExit=true; return; }
+  // ⚠️ 30 сен 2026: раньше здесь безусловно звался popNavEntry(), то есть
+  // снималась ВЕРХНЯЯ запись стека — в предположении, что она наша. Если
+  // своей записи не было или поверх неё успели открыть окно, снималась чужая:
+  // из чата выходило, а в пределе уходило мимо приложения. Теперь снимаем
+  // строго свою, а если её нет — просто выходим из режима выбора.
+  if(disarmSelectNavEntry()) return;   // ушли через историю, остальное сделает popstate
+  exitSelectMode();
 }
 
 function exitSelectMode(){
   S.selectMode=false;
   S.selectedMsgs=[];
+  selectNavArmed=false; selectNavFn=null;
   document.body.classList.remove("select-mode");
   el("select-bar")?.classList.remove("on");
   renderMsgs();
@@ -10822,6 +11027,7 @@ function toggleMsgSelect(id){
   if(cnt)cnt.textContent=S.selectedMsgs.length;
   // Если ничего не выбрано — выходим
   if(!S.selectedMsgs.length){ requestExitSelectMode(); return; }
+  armSelectNavEntry();   // выделение есть — значит «назад» должно снимать именно его
   // "Ответить" в нижней панели имеет смысл только для ровно одного
   // выбранного сообщения (как в Telegram — ответ ссылается на одно
   // сообщение, а не на несколько разом).
@@ -10849,6 +11055,7 @@ function toggleMsgSelectGroup(ids){
   const cnt=el("select-count");
   if(cnt)cnt.textContent=S.selectedMsgs.length;
   if(!S.selectedMsgs.length){ requestExitSelectMode(); return; }
+  armSelectNavEntry();   // то же для выделения альбома целиком
   el("sab-reply-btn")?.classList.toggle("disabled", S.selectedMsgs.length!==1);
   patchSelectionUI(); // см. комментарий у patchSelectionUI — точечный патч вместо полного renderMsgs()
 }
