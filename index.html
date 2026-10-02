@@ -4782,7 +4782,12 @@ async function loadChatsFromDB(){
       if(existing){
         existing.prev = dbChat.last_message || existing.prev;
         existing.time = dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : existing.time;
-        if(dbChat.last_message_at) existing.lastTs = Math.max(existing.lastTs||0, new Date(dbChat.last_message_at).getTime());
+        // То же правило для уже известного чата: пустой чат получает время
+        // создания, иначе при каждой перезагрузке он снова уезжал бы вниз.
+        {
+          const серверТс = new Date(dbChat.last_message_at || dbChat.created_at || 0).getTime() || 0;
+          if(серверТс) existing.lastTs = Math.max(existing.lastTs||0, серверТс);
+        }
         // Самолечение: раньше цвет назначался случайно при каждом создании чата на клиенте —
         // здесь пересчитываем его по стабильному хэшу, чтобы старые сохранённые чаты тоже починились
         existing.col = isPersonal ? (otherUser ? colorFromId(otherUser.userId) : existing.col) : colorFromId(dbChat.id);
@@ -4830,7 +4835,12 @@ async function loadChatsFromDB(){
           avatar: isPersonal ? (otherUser?.avatar || "") : "",
           prev: dbChat.last_message || "",
           time: dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : "",
-          lastTs: dbChat.last_message_at ? new Date(dbChat.last_message_at).getTime() : 0,
+          // ⚠️ 2 октября 2026. Было: 0, если сообщений ещё не было — и свежий
+        // чат падал в самый низ списка. Единое правило: пока сообщений нет,
+        // чат сортируется по времени СОЗДАНИЯ, после первого сообщения — по
+        // времени последнего сообщения. Бэкенд менять не требуется: created_at
+        // уже приходит в ответе.
+        lastTs: new Date(dbChat.last_message_at || dbChat.created_at || 0).getTime() || 0,
           unread: parseInt(dbChat.unread_count,10)||0,
           type: dbChat.type || "personal",
           pinned: !!dbChat.pinned,
@@ -5327,7 +5337,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-02 «назад» по одному, эмодзи, меню сообщения";
+const BUILD_TAG = "2026-10-02 хотфикс: «назад» в TWA, капсула, сортировка";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -5674,11 +5684,11 @@ function openChat(id,opts){
   if(S.selectMode && S.chat!==id){
     S.selectMode=false;
     S.selectedMsgs=[];
-    // 30 сен 2026: заодно снимаем ПРИЗНАК выставленной записи. Без этого
-    // следующий вход в режим выбора считал бы запись уже выставленной, а она
-    // осталась в стеке ниже — и «назад» снимала бы не то.
-    if(selectNavFn) selectNavFn.navSpent=true;
-    selectNavArmed=false; selectNavFn=null;
+    // 30 сен 2026: заодно отдаём записи истории, сделанные под выделение в
+    // ПРЕДЫДУЩЕМ чате. Иначе они остались бы в стеке, и «назад» снимала бы
+    // не то, а в пределе уходила бы мимо приложения.
+    _selNavReplaceTop=false;
+    abandonSelectNavEntries();
     document.body.classList.remove("select-mode");
     el("select-bar")?.classList.remove("on");
   }
@@ -5889,7 +5899,7 @@ window.addEventListener("popstate",()=>{
   if(_navPendingSelectExit){
     _navPendingSelectExit=false;
     S.selectedMsgs=[];
-    if(!disarmSelectNavEntry()) exitSelectMode();
+    exitSelectMode();
   }
 });
 
@@ -9514,11 +9524,23 @@ function motionMs(name, fallback){
 function closeWithMotion(elm, cb){
   if(!elm || !elm.classList.contains("on")){ if(cb) cb(); return; }
   elm.classList.add("closing");
-  setTimeout(()=>{
+  // ⚠️ 2 окт 2026: таймер запоминаем на самом элементе, чтобы повторное
+  // открытие могло его отменить (см. cancelCloseMotion). Без этого окно,
+  // открытое заново в течение ~140 мс после закрытия, гасло от старого
+  // таймера — так пропадала капсула реакций при переносе меню на другое
+  // сообщение.
+  clearTimeout(elm._closeMotionTimer);
+  elm._closeMotionTimer=setTimeout(()=>{
+    elm._closeMotionTimer=null;
     elm.classList.remove("on");
     elm.classList.remove("closing");
     if(cb) cb();
   }, motionMs("--t-press", 120)+20);
+}
+function cancelCloseMotion(elm){
+  if(!elm) return;
+  clearTimeout(elm._closeMotionTimer); elm._closeMotionTimer=null;
+  elm.classList.remove("closing");
 }
 // Сырое закрытие листа — без участия стека «назад».
 function dismissSheetNow(elm){
@@ -10751,6 +10773,7 @@ function showCtx(e,id){
   // .on (это и запускает display:block + анимацию), меряем настоящие
   // размеры и только потом позиционируем по месту — всё синхронно в одном
   // тике, так что бракованного кадра "не в том месте" пользователь не видит.
+  cancelCloseMotion(m);
   m.style.left="-9999px"; m.style.top="-9999px";
   m.classList.add("on");
   // Затемнение фона и подъём выбранного сообщения НАД затемнением.
@@ -10763,6 +10786,7 @@ function showCtx(e,id){
   // массового выделения, где действия относятся к пачке сообщений.
   const показатьКапсулу = !S.selectedMsgs.length && typeof buildRxnQuickRow==="function";
   if(показатьКапсулу){
+    cancelCloseMotion(rp);
     rxnExpanded=false; rp.classList.remove("expanded");
     buildRxnQuickRow();
     rp.style.left="-9999px"; rp.style.top="-9999px";
@@ -10794,41 +10818,62 @@ function ctxRowOf(id){
   const msgs=el("msgs"); if(!msgs) return null;
   return [...msgs.querySelectorAll(".mrow[data-msg-id]")].find(r=>r.dataset.msgId===String(id))||null;
 }
-// Меню привязано к самому сообщению, а не к точке нажатия: по горизонтали к
-// той же стороне, что и пузырь, по вертикали — под пузырём, если место есть,
-// иначе над ним. Капсула реакций встаёт над пузырём, когда меню под ним —
-// тогда само сообщение видно между капсулой и меню, как в Telegram.
-function positionCtxNearMessage(id, fallbackX, fallbackY){
+// ⚠️ 2 октября 2026. Капсула и меню считались по отдельности, поэтому зазор
+// между ними «плавал»: на одних сообщениях получался огромный разрыв, на
+// других правильный. Теперь это ОДНА композиционная группа: сначала меряем
+// настоящие размеры обоих, потом ставим капсулу вплотную над меню с
+// постоянным зазором, а при нехватке места двигаем группу целиком, а не
+// каждый элемент отдельно.
+const CTX_GROUP_GAP=10;   // постоянный зазор капсула↔меню, CSS-пиксели
+function layoutCtxGroup(id, fallbackX, fallbackY){
   const m=el("ctx"), rp=el("rxn-picker");
-  const pad=8, gap=8;
+  if(!m || !m.classList.contains("on")) return;
+  const pad=8;
+  // visualViewport — чтобы группа не уезжала под клавиатуру и учитывала
+  // сдвиг при зуме; если его нет, считаем по обычному окну.
+  const vv=window.visualViewport;
+  const vw=vv?vv.width:window.innerWidth, vh=vv?vv.height:window.innerHeight;
+  const vx=vv?vv.offsetLeft:0, vy=vv?vv.offsetTop:0;
+  const mw=m.offsetWidth, mh=m.offsetHeight;
+  const есть=!!(rp && rp.classList.contains("on"));
+  const ch=есть?rp.offsetHeight:0, cw=есть?rp.offsetWidth:0;
+  const gh=есть ? ch+CTX_GROUP_GAP+mh : mh;   // высота всей группы
   const row=ctxRowOf(id);
-  // По горизонтали ориентируемся на пузырь, по вертикали — на ВСЮ строку:
-  // у сообщения с фото пузырь это только подпись под картинкой, и меню,
-  // выставленное по нему, накрывало бы само фото.
   const bub=row ? (row.querySelector(".bub")||row.querySelector(".gift-bubble")||row.querySelector(".skbub")||row.querySelector(".vbub")||row) : null;
   const a=row ? row.getBoundingClientRect() : null;
   const bx=bub ? bub.getBoundingClientRect() : a;
-  const mw=m.offsetWidth, mh=m.offsetHeight;
-  const капсула=rp && rp.classList.contains("on");
-  const ch=капсула ? rp.offsetHeight : 0, cw=капсула ? rp.offsetWidth : 0;
-  let left, top, вверх=false;
+  let gt, вверх=false;
   if(a && a.width){
-    left = row && row.classList.contains("out") ? bx.right-mw : bx.left;
-    const ниже=window.innerHeight-a.bottom-pad, выше=a.top-pad;
-    if(ниже>=mh+gap){ top=a.bottom+gap; }
-    else if(выше>=mh+gap){ top=a.top-gap-mh; вверх=true; }
-    else { top=window.innerHeight-mh-pad; вверх=true; }
-  } else { left=fallbackX; top=fallbackY; if(fallbackY+mh+pad>window.innerHeight){ top=fallbackY-mh; вверх=true; } }
-  left=Math.max(pad, Math.min(left, window.innerWidth-mw-pad));
-  top=Math.max(pad, Math.min(top, window.innerHeight-mh-pad));
-  m.style.left=left+"px"; m.style.top=top+"px";
-  m.style.transformOrigin=(вверх?"bottom":"top")+" left";
-  if(капсула){
-    let ct = (!вверх && a && a.top-gap-ch>=pad) ? a.top-gap-ch : top-gap-ch;
-    ct=Math.max(pad, Math.min(ct, window.innerHeight-ch-pad));
-    let cl=Math.max(pad, Math.min(left, window.innerWidth-cw-pad));
-    rp.style.left=cl+"px"; rp.style.top=ct+"px";
+    const ниже=vy+vh-a.bottom-pad, выше=a.top-vy-pad;
+    if(ниже>=gh){ gt=a.bottom+pad; }
+    else if(выше>=gh){ gt=a.top-pad-gh; вверх=true; }
+    else { gt=vy+vh-gh-pad; вверх=true; }   // не влезает — двигаем группу целиком
+  } else {
+    gt=(typeof fallbackY==="number"?fallbackY:vy+vh/2)-(есть?ch+CTX_GROUP_GAP:0);
   }
+  gt=Math.max(vy+pad, Math.min(gt, vy+vh-gh-pad));
+  const mt=есть ? gt+ch+CTX_GROUP_GAP : gt;
+  // По горизонтали — к той же стороне, что и пузырь; оба элемента держим
+  // в пределах экрана каждый по своей ширине, но по одному краю.
+  let ml = bx ? (row && row.classList.contains("out") ? bx.right-mw : bx.left)
+              : (typeof fallbackX==="number"?fallbackX:vx+(vw-mw)/2);
+  ml=Math.max(vx+pad, Math.min(ml, vx+vw-mw-pad));
+  m.style.left=ml+"px"; m.style.top=mt+"px";
+  m.style.transformOrigin=(вверх?"bottom":"top")+" left";
+  if(есть){
+    let cl = (row && row.classList.contains("out")) ? ml+mw-cw : ml;
+    cl=Math.max(vx+pad, Math.min(cl, vx+vw-cw-pad));
+    rp.style.left=cl+"px"; rp.style.top=gt+"px";
+  }
+}
+// Совместимое имя: вызывается из showCtx.
+function positionCtxNearMessage(id, fallbackX, fallbackY){ layoutCtxGroup(id, fallbackX, fallbackY); }
+// Группу надо пересчитать, когда изменились размеры её частей или экрана.
+function relayoutCtxGroup(){ if(el("ctx")?.classList.contains("on")) layoutCtxGroup(S.ctxId); }
+window.addEventListener("resize", relayoutCtxGroup);
+if(window.visualViewport){
+  window.visualViewport.addEventListener("resize", relayoutCtxGroup);
+  window.visualViewport.addEventListener("scroll", relayoutCtxGroup);
 }
 // Меню и капсула — один слой с точки зрения человека: закрываются вместе.
 function closeCtx(){
@@ -10872,7 +10917,7 @@ function lpStart(e,id,groupIds){
   // клик мышью на десктопе не тронут — oncontextmenu по-прежнему зовёт
   // showCtx() напрямую.
   lpTimer=setTimeout(()=>{
-    if(!S.selectMode) enterSelectMode(); else armSelectNavEntry();
+    if(!S.selectMode) enterSelectMode();   // запись появится вместе с выделением
     if(groupIds && groupIds.length>1) toggleMsgSelectGroup(groupIds);
     else toggleMsgSelect(id);
     if(navigator.vibrate)navigator.vibrate(40);
@@ -11077,39 +11122,82 @@ function ctxSelect(){
 // Теперь состояние «запись выставлена» хранится явно и восстанавливается,
 // если её почему-то нет. Каждый раз это НОВАЯ функция-обёртка: помечать
 // отработавшей общую backFromSelectMode нельзя — она одна на все разы.
-let selectNavArmed=false, selectNavFn=null, _selectReArmTimer=null;
-// ⚠️ 2 октября 2026. Вооружать запись истории ВНУТРИ обработчика popstate
-// нельзя. В браузере на ПК history.pushState там срабатывает, и по счётчикам
-// всё выглядит правильно — но в Android-обёртке (TWA/Custom Tab) такой вызов
-// может не создать записи вовсе. Приложение при этом считает, что запись есть
-// (navLive увеличен), а в истории её нет: следующая аппаратная «назад» уходит
-// мимо страницы, то есть сворачивает приложение. Ровно это и было видно на
-// видео при ДВУХ и более выделениях: первое «назад» снимало одно выделение,
-// второе сворачивало приложение. При одном выделении симптома нет, потому что
-// перевооружения там не происходит вовсе.
-// Поэтому вооружаем сразу ПОСЛЕ того, как обработчик popstate отработал.
-function armSelectNavEntryAfterPopstate(){
-  if(_selectReArmTimer) return;
-  _selectReArmTimer=setTimeout(()=>{
-    _selectReArmTimer=null;
-    if(S.selectMode && S.selectedMsgs.length>0) armSelectNavEntry();
-  },0);
+// ⚠️ 2 октября 2026, второй заход — по проверке на настоящем Android.
+// Предыдущий механизм держал ОДНУ запись истории и перевыставлял её после
+// каждого «назад». На ПК это работает, а в Android-обёртке (TWA/Custom Tab)
+// pushState, сделанный после начала обработки Back и до следующего жеста
+// пользователя, записи не создаёт вовсе — ни сразу, ни из setTimeout.
+// Приложение считало, что запись есть, а её не было: при двух выделениях
+// второе «назад» уходило мимо страницы и сворачивало приложение.
+//
+// Теперь записи создаются ТОЛЬКО во время самого выбора, то есть внутри
+// пользовательского жеста, и их ровно столько, сколько выбранных сообщений:
+// выбрали третье — в этот же момент появилась третья запись. Каждое «назад»
+// поглощает одну уже существующую запись и снимает одно последнее выделение.
+// После popstate ничего не перевооружается.
+let selNavCount=0;    // сколько наших записей сейчас живо в истории
+let selNavDrain=0;    // сколько наших записей надо поглотить молча
+let _selNavReplaceTop=false;   // первая запись замещает запись меню (см. ctxSelect)
+
+// Каждый раз НОВАЯ функция: navSpent ставится на сам объект, и общая на все
+// разы функция после первой же пометки перестала бы работать навсегда.
+function makeSelectNavCloser(){
+  const f=function(){
+    selNavCount=Math.max(0, selNavCount-1);
+    if(selNavDrain>0){
+      // Лишняя запись (выделение сняли тапом, вышли крестиком или массовым
+      // действием). Поглощаем молча и, если надо, идём за следующей.
+      // Это history.back(), а не pushState — из popstate он работает.
+      selNavDrain--;
+      if(selNavDrain>0 && selNavCount>0 && navLive>0){ _navBackInFlight=true; history.back(); }
+      else selNavDrain=0;
+      return;
+    }
+    backFromSelectMode();
+  };
+  f.navSelect=true;
+  return f;
 }
-function armSelectNavEntry(replaceTopNavEntry){
-  if(selectNavArmed) return;
-  selectNavFn=function(){ selectNavArmed=false; selectNavFn=null; backFromSelectMode(); };
-  if(replaceTopNavEntry && navStack.length>0) navStack[navStack.length-1]=selectNavFn;
-  else pushNavEntry(selectNavFn);
-  selectNavArmed=true;
+
+// Привести число записей к числу выделенных. Вызывается ТОЛЬКО из
+// пользовательских жестов (долгое нажатие, тап по сообщению, выбор альбома,
+// пункт «Выделить»), поэтому pushState здесь всегда настоящий.
+function syncSelectNavEntries(){
+  const нужно = S.selectMode ? S.selectedMsgs.length : 0;
+  while(selNavCount < нужно){
+    const f=makeSelectNavCloser();
+    if(_selNavReplaceTop && selNavCount===0 && navStack.length>0){
+      // Вход в выбор из контекстного меню: его запись замещаем своей, а не
+      // кладём свою поверх — иначе «назад» пришлось бы жать лишний раз.
+      navStack[navStack.length-1]=f;
+    } else {
+      pushNavEntry(f);
+    }
+    _selNavReplaceTop=false;
+    selNavCount++;
+  }
+  if(selNavCount > нужно) releaseSelectNavEntries(selNavCount - нужно);
 }
-// Снять свою запись, не трогая чужие: если она на вершине — уходим через
-// историю, если под чем-то — помечаем отработавшей.
-function disarmSelectNavEntry(){
-  if(!selectNavArmed || !selectNavFn){ selectNavArmed=false; selectNavFn=null; return false; }
-  if(navStack[navStack.length-1]===selectNavFn){ selectNavArmed=false; selectNavFn=null; popNavEntry(); return true; }
-  selectNavFn.navSpent=true;
-  selectNavArmed=false; selectNavFn=null;
-  return false;
+
+// Отдать лишние записи обратно истории. Первый шаг делается из жеста
+// пользователя, остальные — цепочкой из closer (см. makeSelectNavCloser).
+// Переход в ДРУГОЙ чат: двигать историю здесь нельзя — переход сам кладёт свою
+// запись, и наши history.back() столкнулись бы с ней. Поэтому записи не
+// отдаём, а помечаем отработавшими: «назад» по ним ничего не сделает, но и
+// мимо приложения не уйдёт.
+function abandonSelectNavEntries(){
+  for(let i=navStack.length-1;i>=0;i--){
+    const f=navStack[i];
+    if(f && f.navSelect && !f.navSpent) f.navSpent=true;
+  }
+  selNavCount=0; selNavDrain=0;
+}
+function releaseSelectNavEntries(n){
+  if(n<=0) return;
+  selNavDrain += n;
+  if(_navBackInFlight) return;            // приземлится — цепочка продолжится сама
+  if(selNavCount<=0 || navLive<=0){ selNavDrain=0; selNavCount=0; return; }
+  _navBackInFlight=true; history.back();
 }
 function enterSelectMode(replaceTopNavEntry){
   S.selectMode=true;
@@ -11124,7 +11212,9 @@ function enterSelectMode(replaceTopNavEntry){
   // см. backFromSelectMode() ниже. replaceTopNavEntry — см. ctxSelect():
   // вход в выбор ИЗ контекстного меню замещает его запись, а не добавляет
   // новую поверх (переход из одной модалки сразу в другую, а не "вложенно").
-  armSelectNavEntry(replaceTopNavEntry);
+  // Сама запись здесь НЕ создаётся: выбранных пока ноль. Она появится в тот
+  // момент, когда сообщение действительно выберут (syncSelectNavEntries).
+  _selNavReplaceTop=!!replaceTopNavEntry;
   renderMsgs();
 }
 function backFromSelectMode(){
@@ -11133,7 +11223,8 @@ function backFromSelectMode(){
     const cnt=el("select-count"); if(cnt)cnt.textContent=S.selectedMsgs.length;
     if(S.selectedMsgs.length>0){
       patchSelectionUI(); // остаёмся в режиме выбора — точечный патч, не полный renderMsgs()
-      armSelectNavEntryAfterPopstate(); // остались выбранные — следующий «назад» снимет ещё одно
+      // Перевооружать нечего: запись под каждое оставшееся выделение уже
+      // лежит в истории с момента выбора. Это и есть суть правки.
       return;
     }
   }
@@ -11152,20 +11243,16 @@ function requestExitSelectMode(){
   // Пока он не приземлился, наша запись НЕ на вершине, и решать, наша ли
   // верхняя, нельзя — доделаем сразу после popstate.
   if(_navBackInFlight){ _navPendingSelectExit=true; return; }
-  // ⚠️ 30 сен 2026: раньше здесь безусловно звался popNavEntry(), то есть
-  // снималась ВЕРХНЯЯ запись стека — в предположении, что она наша. Если
-  // своей записи не было или поверх неё успели открыть окно, снималась чужая:
-  // из чата выходило, а в пределе уходило мимо приложения. Теперь снимаем
-  // строго свою, а если её нет — просто выходим из режима выбора.
-  if(disarmSelectNavEntry()) return;   // ушли через историю, остальное сделает popstate
   exitSelectMode();
 }
 
 function exitSelectMode(){
   S.selectMode=false;
   S.selectedMsgs=[];
-  clearTimeout(_selectReArmTimer); _selectReArmTimer=null;
-  selectNavArmed=false; selectNavFn=null;
+  _selNavReplaceTop=false;
+  // Если вышли не через «назад» (крестик, массовое действие), наши записи
+  // ещё лежат в истории — отдаём их, иначе остались бы холостые нажатия.
+  releaseSelectNavEntries(selNavCount);
   document.body.classList.remove("select-mode");
   el("select-bar")?.classList.remove("on");
   renderMsgs();
@@ -11224,7 +11311,7 @@ function toggleMsgSelect(id){
   if(cnt)cnt.textContent=S.selectedMsgs.length;
   // Если ничего не выбрано — выходим
   if(!S.selectedMsgs.length){ requestExitSelectMode(); return; }
-  armSelectNavEntry();   // выделение есть — значит «назад» должно снимать именно его
+  syncSelectNavEntries();   // на каждое выделение — своя запись истории
   // "Ответить" в нижней панели имеет смысл только для ровно одного
   // выбранного сообщения (как в Telegram — ответ ссылается на одно
   // сообщение, а не на несколько разом).
@@ -11252,7 +11339,7 @@ function toggleMsgSelectGroup(ids){
   const cnt=el("select-count");
   if(cnt)cnt.textContent=S.selectedMsgs.length;
   if(!S.selectedMsgs.length){ requestExitSelectMode(); return; }
-  armSelectNavEntry();   // то же для выделения альбома целиком
+  syncSelectNavEntries();   // то же для альбома: по записи на каждое сообщение
   el("sab-reply-btn")?.classList.toggle("disabled", S.selectedMsgs.length!==1);
   patchSelectionUI(); // см. комментарий у patchSelectionUI — точечный патч вместо полного renderMsgs()
 }
@@ -11700,6 +11787,8 @@ function toggleRxnExpand(e){
     el("rxn-cats").innerHTML=EMOJI_CATS_LIST.map((cat,i)=>`<div class="emoji-cat${i===0?" on":""}" onclick="event.stopPropagation();switchRxnCat('${cat}',this)">${cat.split(" ")[0]}</div>`).join("");
     el("rxn-grid").innerHTML=EMOJI_DB[EMOJI_CATS_LIST[0]].filter(em=>isReactionAllowed(S.chat,em)).map(em=>`<div class="emoji-item" onclick="addRxn('${em}')">${em}</div>`).join("");
   }
+  // Размер палитры изменился — переставляем всю группу, а не одну её часть.
+  relayoutCtxGroup();
 }
 function switchRxnCat(cat, catEl){
   document.querySelectorAll("#rxn-cats .emoji-cat").forEach(x=>x.classList.remove("on"));
@@ -13186,7 +13275,9 @@ async function startChatWithUser(userId, userName, col){
         const alreadyLocal = S.chats.find(c => c.id === data.chat.id);
         if(alreadyLocal){ openChat(alreadyLocal.id); return; }
       }
-      const ch = {id:data.chat.id,nm:userName,ini:userName.slice(0,2).toUpperCase(),col:col||0,online:false,prev:"",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:"",withUserId:userId,myRole:"member"};
+      // lastTs ставим сразу: пока в чате нет ни одного сообщения, список
+      // сортируется по нему, и без этого новый чат оказывался в самом низу.
+      const ch = {id:data.chat.id,nm:userName,ini:userName.slice(0,2).toUpperCase(),col:col||0,online:false,prev:"",time:now(),lastTs:Date.now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:"",withUserId:userId,myRole:"member"};
       S.chats.unshift(ch); saveState(); renderChats(); openChat(ch.id);
     }
   } catch(e){ showToast("❌ Не удалось создать чат"); }
