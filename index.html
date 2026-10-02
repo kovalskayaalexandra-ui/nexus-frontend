@@ -754,7 +754,7 @@ button:active,.nbtn:active,.fmt-btn:active,.call-btn:active{transform:scale(.96)
   .screen.closing{ animation-name:mFadeOut }
   .mobile-mode .format-bar.on{ animation-name:mFadeIn }
   .mobile-mode .format-bar.on.closing{ animation-name:mFadeOut }
-  .ctx.on, .rxn-picker.on, .srch-overlay.on, .movl.on .modal, .mpanel.on .mp-body{ animation-name:mFadeIn !important }
+  .ctx.on, .rxn-picker.on, .ctx-scrim.on, .srch-overlay.on, .movl.on .modal, .mpanel.on .mp-body{ animation-name:mFadeIn !important }
   .ctx.closing, .rxn-picker.closing, .srch-overlay.closing, .movl .modal.closing{ animation-name:mFadeOut !important }
 }
 @keyframes mFadeIn{from{opacity:0}to{opacity:1}}
@@ -767,7 +767,32 @@ button:active,.nbtn:active,.fmt-btn:active,.call-btn:active{transform:scale(.96)
 @keyframes ctxOut{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(.9)}}
 .ctx.on{display:block;animation:ctxIn var(--t-pop) var(--e-out)}
 .ctx.on.closing{animation:ctxOut var(--t-press) var(--e-in) forwards}
-.ctxi{padding:7px 11px;border-radius:7px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px;transition:background .1s}
+/* ══ 2 октября 2026: меню сообщения приведено к логике Telegram ══
+   Было 10 строк мелким кеглем в узкой карточке и отдельный пункт «Реакция»,
+   который открывал палитру ВМЕСТО меню. Стало: капсула быстрых реакций сразу
+   над меню (как в Telegram), меньше строк и они крупнее, недоступные действия
+   не показываются вовсе (а не показываются и ругаются после тапа), фон
+   затемняется, выбранное сообщение остаётся над затемнением, меню привязано
+   к самому сообщению и старается его не накрывать.
+   Цвета свои — повторяется структура, плотность и поведение, не палитра. */
+.ctxi{padding:11px 13px;border-radius:9px;cursor:pointer;font-size:14.5px;display:flex;align-items:center;gap:11px;transition:background .1s}
+.ctxi svg{width:18px;height:18px;flex-shrink:0}
+.mobile-mode .ctxi{padding:13px 14px;font-size:15px}
+/* Верхняя информационная строка: только если сообщение правили. */
+.ctx-head{padding:7px 13px 9px;font-size:11.5px;color:var(--tx3);display:none;letter-spacing:.02em}
+.ctx.has-edited .ctx-head{display:block}
+/* Строки, которые показываются только по ситуации. */
+.ctx-own-item,.ctx-other-item,.ctx-text-item{display:none}
+.ctx.own-msg .ctx-own-item{display:flex}
+.ctx.other-msg .ctx-other-item{display:flex}
+.ctx.has-text .ctx-text-item{display:flex}
+.ctx-pin-item{display:none}
+.ctx.can-pin .ctx-pin-item{display:flex}
+/* Затемнение фона и выбранное сообщение над ним. */
+.ctx-scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:998;display:none}
+.ctx-scrim.on{display:block;animation:mFadeIn var(--t-pop) var(--e-out)}
+.mrow.ctx-target{position:relative;z-index:999}
+.mrow.ctx-target .bub{box-shadow:0 8px 28px rgba(0,0,0,.5)}
 .ctxi:hover{background:var(--bg4)}
 .ctxi.rd{color:var(--rd)}
 .ctxsep{height:1px;background:var(--brd);margin:3px 0}
@@ -784,11 +809,12 @@ body.mobile-mode .ctxi svg{width:17px;height:17px}
    в принципе", а "владелец канала сейчас её запретил") — тот же приём, что
    уже используется у голосовых/видео, заблокированных приватностью
    собеседника, см. applyVoiceVideoRestriction() и правило в памяти. */
-.ctx.fwd-protected .ctx-fwd-item{opacity:.4;cursor:not-allowed;pointer-events:none}
+.ctx.fwd-protected .ctx-fwd-item{display:none}
 
 /* ═══ RXNS PICKER ═══ */
 .rxn-picker.on{animation:popIn var(--t-pop) var(--e-out)}
 .rxn-picker.on.closing{animation:popOut var(--t-press) var(--e-in) forwards}
+.rxn-picker:not(.expanded){max-width:calc(100vw - 16px);overflow-x:auto}
 .rxn-picker{position:fixed;background:var(--bg3);border:1px solid var(--brd2);border-radius:999px;padding:5px 8px;z-index:1001;display:none;align-items:center;gap:4px;box-shadow:0 8px 32px rgba(0,0,0,.5)}
 .rxn-picker.on{display:flex}
 .rxn-e{font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background .1s;flex-shrink:0}
@@ -1197,9 +1223,38 @@ body.mobile-mode:has(.rp.mobile-open) .mobile-tabbar{display:none}
    десктоп (правила выше) не трогаем. */
 .mobile-mode .ibar{padding:5px 2px}
 .mobile-mode .iwrap{padding:5px 12px}
-.mobile-mode .ibi-ic-emoji,.mobile-mode .ibi-ic-kbd{width:24px;height:24px}
 .mobile-mode .attb svg{width:23px;height:23px}
 .mobile-mode #mic-btn svg,.mobile-mode #vc-btn svg{width:23px;height:23px}
+
+/* ══ 2 октября 2026: пропорции мобильной строки ввода ══
+   Александра сравнила кадры с Telegram на 1080×2400: у Энджи строка ввода
+   заметно выше телеграмовской (≈138 против ≈116 экранных точек), а смайлик
+   наоборот мельче (≈40% высоты строки против ≈53%). Плюс иконки стояли по
+   нижнему краю с разными внутренними отступами, из-за чего их оптические
+   центры не совпадали ни друг с другом, ни с текстом, а слева оставался
+   лишний отступ.
+   Что сделано: пилюля ниже (меньше вертикальных отступов поля), смайлик
+   крупнее примерно на 13% (24 → 27px), скрепка и микрофон по размеру
+   прежние, у всех иконок одна и та же высота строки — ровно высота
+   однострочного поля, поэтому центры совпадают; при многострочном вводе
+   иконки по-прежнему остаются у нижнего края, как в Telegram.
+   Область нажатия у каждой иконки принудительно 44×44 CSS-пиксела через
+   ::after — видимый размер SVG на это не влияет. z-index:-1, чтобы
+   накладка не перекрывала меню вложений, которое лежит внутри скрепки. */
+.mobile-mode .iwrap{padding:3px 10px 3px 6px;gap:6px}
+.mobile-mode .minput-ce{padding:7px 0}
+.mobile-mode .ibi-ic-emoji,.mobile-mode .ibi-ic-kbd{width:27px;height:27px}
+.mobile-mode .iwrap .ibi,
+.mobile-mode .iwrap .attb,
+.mobile-mode .iwrap .mic-btn:not(.recording){height:36px;min-width:30px;padding:0;margin:0;
+  align-items:center;justify-content:center;position:relative}
+.mobile-mode .iwrap .ibi::after,
+.mobile-mode .iwrap .attb::after,
+.mobile-mode .iwrap .mic-btn:not(.recording)::after{content:"";position:absolute;
+  left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%);z-index:-1}
+/* Основная кнопка (отправка) остаётся 44×44 — это главное действие, меньше
+   делать нельзя; теперь высоту строки задаёт именно она, а не пилюля. */
+.mobile-mode .ibar{padding:4px 2px}
 
 /* ══ ЖЕСТЫ В СПИСКЕ ЧАТОВ (этап 10) ══
    Свайп — новый absolute-оверлей поверх строки (.ci-actions), не трогает
@@ -2231,22 +2286,23 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 </div>
 
 <!-- ══ CTX MENU ══ -->
+<div class="ctx-scrim" id="ctx-scrim" onclick="closeCtxViaBackStack()"></div>
 <div class="ctx" id="ctx">
+  <div class="ctx-head" id="ctx-head"></div>
   <div class="ctxi ctx-bulk-item" onclick="selCopyAll()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="13" rx="1.5"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h3"/></svg> Скопировать выделенные</div>
   <div class="ctxi ctx-bulk-item ctx-fwd-item" onclick="selForwardAll()" id="ctx-forward-bulk-item"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6"/><path d="M3 8v3a4 4 0 0 0 4 4h12"/></svg> Переслать выделенные</div>
   <div class="ctxi ctx-bulk-item rd" onclick="selDeleteForMe()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg> Удалить выделенные у меня</div>
   <div class="ctxi ctx-bulk-item rd" onclick="selDeleteAll()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg> Удалить выделенные у всех</div>
   <div class="ctxsep ctx-bulk-item"></div>
   <div class="ctxi" onclick="ctxReply()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 6l-6 6 6 6"/><path d="M21 8v3a4 4 0 0 1-4 4H5"/></svg> Ответить</div>
-  <div class="ctxi" onclick="ctxEdit()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4L16 5l3 3L8 19l-4 1z"/><path d="M14 7l3 3"/></svg> Редактировать</div>
+  <div class="ctxi ctx-own-item" onclick="ctxEdit()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4L16 5l3 3L8 19l-4 1z"/><path d="M14 7l3 3"/></svg> Редактировать</div>
   <div class="ctxi ctx-media-item" onclick="ctxDownload()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Скачать</div>
-  <div class="ctxi" onclick="ctxCopy()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="13" rx="1.5"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h3"/></svg> Копировать</div>
-  <div class="ctxi" onclick="ctxPin()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 15v5"/></svg> Закрепить</div>
+  <div class="ctxi ctx-text-item" onclick="ctxCopy()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="13" rx="1.5"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h3"/></svg> Копировать</div>
+  <div class="ctxi ctx-pin-item" onclick="ctxPin()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 15v5"/></svg> Закрепить</div>
   <div class="ctxi ctx-fwd-item" onclick="ctxForward()" id="ctx-forward-item"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6l6 6-6 6"/><path d="M3 8v3a4 4 0 0 0 4 4h12"/></svg> Переслать</div>
   <div class="ctxi" onclick="ctxSaveToFav()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l2.7 5.9 6.3.6-4.7 4.3 1.3 6.2L12 17l-5.6 3 1.3-6.2-4.7-4.3 6.3-.6z"/></svg> В Избранное</div>
   <div class="ctxi" onclick="ctxSelect()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12l2.5 2.5L16 9"/></svg> Выделить</div>
-  <div class="ctxi" onclick="ctxReact(event)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 10h.01M15.5 10h.01"/><path d="M8 14.5c1.2 1.3 2.6 2 4 2s2.8-.7 4-2"/></svg> Реакция</div>
-  <div class="ctxi" onclick="ctxReport()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2 20h20L12 4z"/><path d="M12 10v4"/><circle cx="12" cy="17" r=".9" fill="currentColor" stroke="none"/></svg> Пожаловаться</div>
+  <div class="ctxi ctx-other-item" onclick="ctxReport()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2 20h20L12 4z"/><path d="M12 10v4"/><circle cx="12" cy="17" r=".9" fill="currentColor" stroke="none"/></svg> Пожаловаться</div>
   <div class="ctxsep"></div>
   <div class="ctxi rd" onclick="openDelModal()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg> Удалить</div>
 </div>
@@ -5073,6 +5129,7 @@ async function loadMessagesFromDB(chatId){
         forwardCount: dbMsg.forward_count||0,
         read: isMe ? !!dbMsg.read_at : true,
         edited: !!dbMsg.edited_at,
+        editedAt: dbMsg.edited_at || null,
         groupId: dbMsg.group_id || null
       };
       // forwarded_author_name/forwarded_from_chat_* приходят пустыми с сервера,
@@ -5270,7 +5327,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-01 «назад», живая доставка, обрыв связи";
+const BUILD_TAG = "2026-10-02 «назад» по одному, эмодзи, меню сообщения";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -9144,7 +9201,11 @@ async function sendMsg(){
   if(S.editingId){
     // EDIT mode
     const ms=S.messages[S.chat]; const m=ms.find(x=>x.id===S.editingId);
-    if(m){m.tx=txt;m.edited=true;}
+    // Время правки запоминаем настоящее, а не выдумываем его при показе.
+    // ⚠️ На сервер правка пока не уходит вовсе (отдельная задача, F16),
+    // поэтому здесь местное время правки; из истории берётся серверное
+    // edited_at (см. загрузку сообщений, поле editedAt).
+    if(m){m.tx=txt;m.edited=true;m.editedAt=new Date().toISOString();}
     cancelEdit(); setInputText(""); aResize(inp); renderMsgs(); saveState(); return;
   }
 
@@ -10577,10 +10638,51 @@ function renderMP(mode){
     }).join("")}</div>`;
   }
 }
+// ⚠️ 2 октября 2026. Вставка эмодзи не включала кнопку отправки.
+// Было: appendChild + focus + aResize + closeMPanel + saveState — и ни одного
+// вызова общего пути ввода. Поэтому #minput оставался с классом .empty, а по
+// нему CSS (.ibar:has(#minput.empty)) прячет кнопку отправки и показывает
+// микрофон; сообщение из одного эмодзи отправить было нельзя, пока не нажмёшь
+// пробел. Заодно эмодзи всегда падал в КОНЕЦ строки, а не туда, где курсор.
+// Теперь вставка идёт в позицию курсора и заканчивается тем же onInput(),
+// что и ввод с клавиатуры: высота поля, счётчик символов, класс .empty,
+// черновик и «печатает…». Искусственный пробел не добавляется.
+//
+// Позицию курсора приходится помнить самим: клик по панели эмодзи уводит
+// фокус из поля, и к моменту вставки своего выделения у поля уже нет.
+let _minputCaret=null;
+function rememberMinputCaret(){
+  const sel=window.getSelection(); if(!sel||!sel.rangeCount) return;
+  const r=sel.getRangeAt(0); const mi=el("minput");
+  if(mi && mi.contains(r.commonAncestorContainer)) _minputCaret=r.cloneRange();
+}
+document.addEventListener("selectionchange", rememberMinputCaret);
 function insEmoji(e){
   if(!S.emoji_recent)S.emoji_recent=[];
   S.emoji_recent=[e,...S.emoji_recent.filter(x=>x!==e)].slice(0,16);
-  const i=el("minput");i.appendChild(document.createTextNode(e));i.focus();aResize(i);closeMPanel();saveState();
+  const i=el("minput"); if(!i) return;
+  i.focus();
+  const node=document.createTextNode(e);
+  const r=_minputCaret;
+  if(r && i.contains(r.commonAncestorContainer)){
+    r.deleteContents();          // если был выделен текст — эмодзи его заменяет
+    r.insertNode(node);
+  } else {
+    i.appendChild(node);         // курсора в поле не было — в конец
+  }
+  // Курсор сразу ЗА вставленным символом: следующий эмодзи встанет рядом, а не
+  // перед ним, и набор текста продолжается с того же места.
+  try {
+    const sel=window.getSelection();
+    const nr=document.createRange(); nr.setStartAfter(node); nr.collapse(true);
+    sel.removeAllRanges(); sel.addRange(nr);
+    _minputCaret=nr.cloneRange();
+  } catch(err){ _minputCaret=null; }
+  // Тот же путь, что и клавиатура: высота, счётчик, снятие .empty (микрофон →
+  // кнопка отправки), черновик, «печатает…».
+  onInput(i);
+  closeMPanel();
+  saveState();
 }
 
 // ── REPLY / EDIT ──────────────────────────────────────────────
@@ -10616,6 +10718,19 @@ function showCtx(e,id){
   const msgObj=(S.messages[S.chat]||[]).find(x=>x.id===id);
   const hasMedia=!!(msgObj && (msgObj.img||msgObj.video||msgObj.videoCircle||msgObj.voice||msgObj.audio||msgObj.file));
   m.classList.toggle("has-media", hasMedia);
+  // Показываем только то, что к ЭТОМУ сообщению применимо: «Редактировать» —
+  // своё, «Пожаловаться» — чужое, «Копировать» — только когда есть текст.
+  // Раньше все строки были всегда, и тап по неприменимой выдавал ошибку.
+  const своё = msgObj ? msgObj.t==="out" : false;
+  m.classList.toggle("own-msg", !!msgObj && своё);
+  m.classList.toggle("other-msg", !!msgObj && !своё);
+  m.classList.toggle("has-text", !!(msgObj && msgObj.tx && msgObj.tx.trim()));
+  // Верхняя информационная строка — только если сообщение правили. Время
+  // берётся настоящее (editedAt), а не придумывается; если его нет (старая
+  // запись без отметки времени) — пишем просто «изменено», без часов.
+  m.classList.toggle("has-edited", !!(msgObj && msgObj.edited));
+  m.classList.toggle("can-pin", typeof canI==="function" ? !!canI("pinMsg") : true);
+  const головаEl=el("ctx-head"); if(головаEl) головаEl.textContent=ctxEditedLine(msgObj);
   // Защита от пересылки — владелец канала запретил пересылать вообще
   // (настоящая блокировка на сервере тоже есть, см. POST /api/messages —
   // здесь только UX, чтобы не молча получать ошибку после выбора чата)
@@ -10638,23 +10753,22 @@ function showCtx(e,id){
   // тике, так что бракованного кадра "не в том месте" пользователь не видит.
   m.style.left="-9999px"; m.style.top="-9999px";
   m.classList.add("on");
-  const mw=m.offsetWidth, mh=m.offsetHeight;
-  const pad=8;
-  let left=Math.min(x, window.innerWidth-mw-pad);
-  left=Math.max(pad,left);
-  let top, openedUp;
-  if(y+mh+pad>window.innerHeight){
-    // не помещается вниз от точки нажатия — открываем меню ВВЕРХ, а не
-    // обрезаем (тот самый баг со скриншота — сообщение внизу экрана)
-    top=y-mh; openedUp=true;
-  } else {
-    top=y; openedUp=false;
-  }
-  top=Math.min(top, window.innerHeight-mh-pad);
-  top=Math.max(pad, top);
-  m.style.left=left+"px";
-  m.style.top=top+"px";
-  m.style.transformOrigin = openedUp ? "bottom left" : "top left";
+  // Затемнение фона и подъём выбранного сообщения НАД затемнением.
+  el("ctx-scrim")?.classList.add("on");
+  markCtxTargetRow(id);
+  // Капсула быстрых реакций показывается вместе с меню (как в Telegram), а не
+  // вместо него. В режиме массового выделения реакции неуместны.
+  const rp=el("rxn-picker");
+  // Капсула показывается всегда вместе с меню; неуместна только в режиме
+  // массового выделения, где действия относятся к пачке сообщений.
+  const показатьКапсулу = !S.selectedMsgs.length && typeof buildRxnQuickRow==="function";
+  if(показатьКапсулу){
+    rxnExpanded=false; rp.classList.remove("expanded");
+    buildRxnQuickRow();
+    rp.style.left="-9999px"; rp.style.top="-9999px";
+    rp.classList.add("on");
+  } else if(rp){ rp.classList.remove("on"); }
+  positionCtxNearMessage(id, x, y);
   // Регистрируем в общем бэк-стеке (см. pushNavEntry выше) — аппаратная
   // кнопка "назад" на Android должна сначала закрыть ЭТО меню, а не сразу
   // выходить из чата (баг со скриншота: назад закрывал весь чат, оставляя
@@ -10663,13 +10777,78 @@ function showCtx(e,id){
   // точки зрения пользователя, не два вложенных.
   if(!wasOpen) pushNavEntry(closeCtx);
 }
-function closeCtx(){ el("ctx").classList.remove("on"); }
+// Строка «изменено …» для верха меню. Время только настоящее: серверное
+// edited_at или местное время правки. Если отметки нет — без времени.
+function ctxEditedLine(m){
+  if(!m || !m.edited) return "";
+  const at=m.editedAt ? new Date(m.editedAt) : null;
+  if(!at || isNaN(at.getTime())) return "изменено";
+  return "изменено "+at.toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"});
+}
+// Выбранное сообщение остаётся читаемым над затемнением.
+function markCtxTargetRow(id){
+  document.querySelectorAll("#msgs .mrow.ctx-target").forEach(r=>r.classList.remove("ctx-target"));
+  ctxRowOf(id)?.classList.add("ctx-target");
+}
+function ctxRowOf(id){
+  const msgs=el("msgs"); if(!msgs) return null;
+  return [...msgs.querySelectorAll(".mrow[data-msg-id]")].find(r=>r.dataset.msgId===String(id))||null;
+}
+// Меню привязано к самому сообщению, а не к точке нажатия: по горизонтали к
+// той же стороне, что и пузырь, по вертикали — под пузырём, если место есть,
+// иначе над ним. Капсула реакций встаёт над пузырём, когда меню под ним —
+// тогда само сообщение видно между капсулой и меню, как в Telegram.
+function positionCtxNearMessage(id, fallbackX, fallbackY){
+  const m=el("ctx"), rp=el("rxn-picker");
+  const pad=8, gap=8;
+  const row=ctxRowOf(id);
+  // По горизонтали ориентируемся на пузырь, по вертикали — на ВСЮ строку:
+  // у сообщения с фото пузырь это только подпись под картинкой, и меню,
+  // выставленное по нему, накрывало бы само фото.
+  const bub=row ? (row.querySelector(".bub")||row.querySelector(".gift-bubble")||row.querySelector(".skbub")||row.querySelector(".vbub")||row) : null;
+  const a=row ? row.getBoundingClientRect() : null;
+  const bx=bub ? bub.getBoundingClientRect() : a;
+  const mw=m.offsetWidth, mh=m.offsetHeight;
+  const капсула=rp && rp.classList.contains("on");
+  const ch=капсула ? rp.offsetHeight : 0, cw=капсула ? rp.offsetWidth : 0;
+  let left, top, вверх=false;
+  if(a && a.width){
+    left = row && row.classList.contains("out") ? bx.right-mw : bx.left;
+    const ниже=window.innerHeight-a.bottom-pad, выше=a.top-pad;
+    if(ниже>=mh+gap){ top=a.bottom+gap; }
+    else if(выше>=mh+gap){ top=a.top-gap-mh; вверх=true; }
+    else { top=window.innerHeight-mh-pad; вверх=true; }
+  } else { left=fallbackX; top=fallbackY; if(fallbackY+mh+pad>window.innerHeight){ top=fallbackY-mh; вверх=true; } }
+  left=Math.max(pad, Math.min(left, window.innerWidth-mw-pad));
+  top=Math.max(pad, Math.min(top, window.innerHeight-mh-pad));
+  m.style.left=left+"px"; m.style.top=top+"px";
+  m.style.transformOrigin=(вверх?"bottom":"top")+" left";
+  if(капсула){
+    let ct = (!вверх && a && a.top-gap-ch>=pad) ? a.top-gap-ch : top-gap-ch;
+    ct=Math.max(pad, Math.min(ct, window.innerHeight-ch-pad));
+    let cl=Math.max(pad, Math.min(left, window.innerWidth-cw-pad));
+    rp.style.left=cl+"px"; rp.style.top=ct+"px";
+  }
+}
+// Меню и капсула — один слой с точки зрения человека: закрываются вместе.
+function closeCtx(){
+  el("ctx").classList.remove("on");
+  el("ctx-scrim")?.classList.remove("on");
+  document.querySelectorAll("#msgs .mrow.ctx-target").forEach(r=>r.classList.remove("ctx-target"));
+  const rp=el("rxn-picker");
+  if(rp && rp.classList.contains("on")){ rxnExpanded=false; rp.classList.remove("expanded"); closeRxnPickerNow(); }
+}
 // Единая точка закрытия меню КАК ПОЛЬЗОВАТЕЛЬСКОГО действия (тап мимо,
 // выбор пункта) — а не аппаратной кнопки "назад". Идёт через тот же
 // popNavEntry(), что и реальная кнопка "назад", чтобы запись в history
 // всегда гасла синхронно с самим меню — иначе следующее нажатие "назад" на
 // телефоне будет закрывать что-то другое (см. правило про бэк-стек).
 function closeCtxViaBackStack(){
+  // ⚠️ 2 октября 2026. Если «назад» уже в полёте, второй history.back() снял бы
+  // ЛИШНЮЮ запись. Так и случалось после правки меню: тап по реакции сам уходил
+  // через стек (addRxn), а тот же click затем доходил до общего обработчика
+  // документа — и вместе с меню закрывался сам чат.
+  if(_navBackInFlight) return;
   if(el("ctx").classList.contains("on")) popNavEntry();
 }
 
@@ -10898,7 +11077,24 @@ function ctxSelect(){
 // Теперь состояние «запись выставлена» хранится явно и восстанавливается,
 // если её почему-то нет. Каждый раз это НОВАЯ функция-обёртка: помечать
 // отработавшей общую backFromSelectMode нельзя — она одна на все разы.
-let selectNavArmed=false, selectNavFn=null;
+let selectNavArmed=false, selectNavFn=null, _selectReArmTimer=null;
+// ⚠️ 2 октября 2026. Вооружать запись истории ВНУТРИ обработчика popstate
+// нельзя. В браузере на ПК history.pushState там срабатывает, и по счётчикам
+// всё выглядит правильно — но в Android-обёртке (TWA/Custom Tab) такой вызов
+// может не создать записи вовсе. Приложение при этом считает, что запись есть
+// (navLive увеличен), а в истории её нет: следующая аппаратная «назад» уходит
+// мимо страницы, то есть сворачивает приложение. Ровно это и было видно на
+// видео при ДВУХ и более выделениях: первое «назад» снимало одно выделение,
+// второе сворачивало приложение. При одном выделении симптома нет, потому что
+// перевооружения там не происходит вовсе.
+// Поэтому вооружаем сразу ПОСЛЕ того, как обработчик popstate отработал.
+function armSelectNavEntryAfterPopstate(){
+  if(_selectReArmTimer) return;
+  _selectReArmTimer=setTimeout(()=>{
+    _selectReArmTimer=null;
+    if(S.selectMode && S.selectedMsgs.length>0) armSelectNavEntry();
+  },0);
+}
 function armSelectNavEntry(replaceTopNavEntry){
   if(selectNavArmed) return;
   selectNavFn=function(){ selectNavArmed=false; selectNavFn=null; backFromSelectMode(); };
@@ -10937,7 +11133,7 @@ function backFromSelectMode(){
     const cnt=el("select-count"); if(cnt)cnt.textContent=S.selectedMsgs.length;
     if(S.selectedMsgs.length>0){
       patchSelectionUI(); // остаёмся в режиме выбора — точечный патч, не полный renderMsgs()
-      armSelectNavEntry(); // остались выбранные — следующий "назад" снимет ещё одно
+      armSelectNavEntryAfterPopstate(); // остались выбранные — следующий «назад» снимет ещё одно
       return;
     }
   }
@@ -10968,6 +11164,7 @@ function requestExitSelectMode(){
 function exitSelectMode(){
   S.selectMode=false;
   S.selectedMsgs=[];
+  clearTimeout(_selectReArmTimer); _selectReArmTimer=null;
   selectNavArmed=false; selectNavFn=null;
   document.body.classList.remove("select-mode");
   el("select-bar")?.classList.remove("on");
@@ -11465,29 +11662,24 @@ let rxnExpanded=false;
 // список сам по себе состоит только из разрешённых. 💎 (дарение кристаллов)
 // — отдельный от реакций механизм (сразу списывает деньги), ограничению не
 // подчиняется и показывается всегда.
-function ctxReact(e){
-  if(e)e.stopPropagation();
-  const ctx=el("ctx"); const rp=el("rxn-picker");
-  rp.style.left=ctx.style.left; rp.style.top=(parseInt(ctx.style.top)-44)+"px";
-  // ctxReact делает e.stopPropagation() выше — общий клик-обработчик
-  // документа для этого клика не сработает, поэтому закрываем меню сами,
-  // но через бэк-стек (см. closeCtxViaBackStack), а не напрямую классом.
-  closeCtxViaBackStack();
-  rxnExpanded=false; rp.classList.remove("expanded");
-  // Если админ настроил конкретный список разрешённых реакций — показываем
-  // сразу ЕГО в быстром ряду (как в Telegram), а не просто урезанную
-  // стандартную восьмёрку. Если ограничений нет (allowedReactions пуст) —
-  // как и раньше, стандартный набор.
+// Быстрый ряд реакций. Список — тот же, что был в пункте «Реакция»: если
+// админ задал allowedReactions, показываем ровно его, иначе стандартную
+// восьмёрку, отфильтрованную тем же isReactionAllowed(). Второй системы
+// реакций не появляется — палитра и капсула берут один и тот же список.
+function buildRxnQuickRow(){
   const ch=S.chats.find(c=>c.id===S.chat);
   const customList=ch?.allowedReactions;
-  const allowedQuick=(customList && customList.length) ? customList : QUICK_REACTIONS.filter(em=>isReactionAllowed(S.chat,em));
+  const все=(customList && customList.length) ? customList : QUICK_REACTIONS.filter(em=>isReactionAllowed(S.chat,em));
+  // В капсуле столько, сколько влезает в экран телефона; остальное — под ➕,
+  // как в Telegram. Без ограничения ряд из восьми реакций плюс 💎 и ➕ не
+  // помещался в 360 CSS-пикселей и упирался в край.
+  const allowedQuick=все.slice(0,6);
   el("rxn-quick-row").innerHTML=`<div class="rxn-e rxn-crystal" onclick="openCrystalGiftModal(event)">💎</div>`+allowedQuick.map(em=>`<div class="rxn-e" onclick="addRxn('${em}')">${em}</div>`).join("");
-  // 24 сен 2026 (W3 шаг 2): палитра кладёт в стек СВОЮ запись. Раньше она
-  // строкой выше снимала через стек чужую (меню сообщения), своей не
-  // добавляла — и стек становился на запись короче, чем слоёв на экране:
-  // следующее «назад» закрывало чат прямо под открытой палитрой.
-  if(!rp.classList.contains("on")) openLayer("rxn-picker", closeRxnPickerNow);
-  rp.classList.add("on");
+  return allowedQuick.length;
+}
+function collapseRxnExpandNow(){
+  rxnExpanded=false;
+  el("rxn-picker")?.classList.remove("expanded");
 }
 function closeRxnPickerNow(){ closeWithMotion(el("rxn-picker")); }
 function closeRxnPicker(){
@@ -11500,6 +11692,10 @@ function toggleRxnExpand(e){
   rxnExpanded=!rxnExpanded;
   const rp=el("rxn-picker");
   rp.classList.toggle("expanded",rxnExpanded);
+  // Раскрытая палитра — свой слой в бэк-стеке: «назад» сначала сворачивает её
+  // обратно к капсуле и только потом закрывает меню. Чат при этом не трогаем.
+  if(rxnExpanded) openLayer("rxn-expanded", collapseRxnExpandNow);
+  else if(!closeLayerViaStack("rxn-expanded")) collapseRxnExpandNow();
   if(rxnExpanded){
     el("rxn-cats").innerHTML=EMOJI_CATS_LIST.map((cat,i)=>`<div class="emoji-cat${i===0?" on":""}" onclick="event.stopPropagation();switchRxnCat('${cat}',this)">${cat.split(" ")[0]}</div>`).join("");
     el("rxn-grid").innerHTML=EMOJI_DB[EMOJI_CATS_LIST[0]].filter(em=>isReactionAllowed(S.chat,em)).map(em=>`<div class="emoji-item" onclick="addRxn('${em}')">${em}</div>`).join("");
@@ -11626,7 +11822,9 @@ function toggleRxn(msgId, ri){
   sendReactionToggle(m, r.e);
 }
 function addRxn(emoji){
-  closeRxnPicker();
+  // Одним тапом: применили реакцию — ушли и капсула, и меню сообщения.
+  if(el("ctx")?.classList.contains("on")) closeCtxViaBackStack();
+  else closeRxnPicker();
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
   sendReactionToggle(m, emoji);
 }
