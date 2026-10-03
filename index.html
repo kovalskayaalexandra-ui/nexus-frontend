@@ -146,26 +146,16 @@ button,input,textarea,select{font-family:inherit}
 .li-nat{font-size:10.5px;color:var(--tx3)}
 
 /* ═══ TOPBAR ═══ */
-/* ⚠️ 3 окт 2026. Раньше верхняя панель принудительно оставалась тёмной во
-   ВСЕХ темах. Для светлой это осознанное пожелание Александры (контраст,
-   меньше «давит на глаза», чем сплошной белый) — оно сохранено ниже. Но в
-   тёмной и в «Монохроме» этот блок навязывал ещё и СТАРЫЙ фиолетовый акцент
-   поверх темы, из-за чего «Монохром» в шапке переставал быть монохромным.
-   Теперь панель берёт токены текущей темы, а тёмная подложка остаётся
-   исключением только для светлой темы. */
+/* ⚠️ 3 окт 2026. Шапка берёт материал текущей темы, как и все поверхности.
+   Раньше в светлой теме она принудительно оставалась тёмной (пожелание
+   Александры от июля: контраст, меньше «давит», чем сплошной белый). С
+   переходом на одну геометрию для трёх тем светлая тема — светлое матовое
+   стекло целиком: плотная светлая поверхность с тонкой границей и тенью,
+   а контраст обеспечивают текст и граница, а не тёмная полоса. */
 .topbar{
   height:var(--h-topbar);background:var(--bg2);border-bottom:1px solid var(--brd);
   display:flex;align-items:center;position:relative;
   padding:0 var(--sp-5);gap:var(--sp-2);flex-shrink:0;z-index:100}
-html[data-theme="light"] .topbar{
-  --bg:#121620; --bg2:#171b28; --bg3:#1e2332; --bg4:#262c40;
-  --brd:rgba(255,255,255,.08); --brd2:rgba(255,255,255,.16);
-  --acc:#6c63ff; --acc2:#a78bfa; --acc3:#38bdf8;
-  --acc-rgb:108,99,255; --acc2-rgb:167,139,250; --acc3-rgb:56,189,248;
-  --gr:#34d399; --rd:#f87171; --am:#fbbf24;
-  --cr:#67e8f9; --cr2:#0891b2;
-  --tx:#eef0f6; --tx2:#9aa0bb; --tx3:#666c8c;
-}
 .logo{font-family:"Syne",sans-serif;font-weight:var(--fw-bold);font-size:var(--fs-xl);
   color:var(--tx);letter-spacing:-.01em;
   flex-shrink:0;cursor:pointer;user-select:none;display:flex;align-items:center;gap:var(--sp-2)}
@@ -420,11 +410,17 @@ body.select-mode .msel-check{display:flex}
 /* Раньше лента всегда прыгала вниз при любом изменении, даже читая историю
    выше — теперь прокрутка вниз только если и так был внизу (см. renderMsgs),
    иначе показываем эту всплывающую кнопку вместо принудительной прокрутки */
-.scroll-down-btn{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:60;
+/* ⚠️ 4 октября 2026: центрирование — свойством translate, а не transform:
+   анимация появления fadeUp сама задаёт transform и на 0,2 с затирала
+   translateX(-50%) — капсула появлялась сдвинутой вправо на полширины и
+   перескакивала. */
+.scroll-down-btn{position:absolute;left:50%;bottom:14px;translate:-50% 0;z-index:60;
   display:none;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--brd2);
   border-radius:999px;padding:8px 16px;font-size:12.5px;font-weight:600;color:var(--tx);
-  cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.35);animation:fadeUp .2s ease-out}
+  cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.35);animation:fadeUp .2s ease-out;
+  white-space:nowrap}   /* в одну строку: от left:50% ширины хватало только на полстроки */
 .scroll-down-btn:hover{background:var(--bg4);border-color:var(--acc)}
+.scroll-down-btn.no-room{visibility:hidden}
 .sdb-cnt{background:var(--acc);color:#fff;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;line-height:16px}
 /* 14 сен 2026: разделитель над первым непрочитанным сообщением, как в Telegram */
 .unread-divider{align-self:stretch;margin:2px -16px;padding:5px 0;text-align:center;font-size:12.5px;font-weight:600;color:var(--tx2);background:var(--bg3)}
@@ -825,54 +821,67 @@ button:active,.nbtn:active,.fmt-btn:active,.call-btn:active{transform:scale(.96)
 }
 html.no-blur .glass{-webkit-backdrop-filter:none !important;backdrop-filter:none !important}
 
-/* ══ СТОРИС: стопка в шапке и раскрываемая лента ══════════════════════════
-   Геометрия одинакова во всех темах, поверхность — из токенов. */
-.story-stack{display:none;align-items:center;flex-shrink:0;cursor:pointer;
-  padding-left:var(--sp-2);min-height:var(--tap)}
-body.mobile-mode .story-stack{display:flex}
-.story-stack .sst{width:26px;height:26px;border-radius:50%;margin-left:-9px;
-  border:2px solid var(--bg);box-sizing:content-box;position:relative;
-  display:flex;align-items:center;justify-content:center;
-  font-size:10px;font-weight:var(--fw-med);color:#fff;overflow:hidden}
-.story-stack .sst:first-child{margin-left:0}
-.story-stack .sst img{width:100%;height:100%;object-fit:cover}
-/* Кольцо сторис остаётся цветным и в «Монохроме» — это смысловой индикатор. */
-.story-stack .sst-ring{padding:2px;border-radius:50%;margin-left:-9px;
-  background:linear-gradient(135deg,var(--story-a),var(--story-b));display:flex}
-.story-stack .sst-ring:first-child{margin-left:0}
-.story-stack .sst-ring .sst{margin-left:0;border-width:2px;border-color:var(--bg)}
-html[data-theme="mono"] .story-stack .sst-ring .sst{border-color:rgba(255,255,255,.07)}
-html[data-theme="mono"] .story-stack .sst{border-color:rgba(255,255,255,.07)}
-.story-stack .sst-more{background:var(--bg4);color:var(--tx2);font-weight:var(--fw-med)}
+/* ══ СТОРИС: стопка → ряд, как в Telegram (3–4 октября 2026) ══════════════
+   Один набор узлов .story-av-wrap в слое #stories-layer над шапкой и верхом
+   списка. Каждый узел позиционируется только transform'ом: его координаты и
+   масштаб интерполируются между местом в стопке (слева от названия, кружки
+   перекрываются) и местом в ряду под шапкой. Один прогресс p ∈ [0,1]
+   управляет положением, размером, перекрытием, подписями и сдвигом поиска,
+   категорий и списка. Геометрия одна для всех тем; тема меняет только цвет
+   колец и материал. */
+#screen-main{position:relative}
+#stories-layer{position:absolute;left:0;right:0;top:0;height:0;z-index:150;pointer-events:none;display:none}
+body.mobile-mode #stories-layer{display:block}
+/* Переписка — отдельный экран: сторис в ней не участвуют. */
+body.mobile-mode #screen-main:has(.layout.chat-open)>#stories-layer{display:none}
+#stories-row{position:absolute;left:0;right:0;top:var(--h-topbar);height:92px;
+  overflow:visible;pointer-events:none;scrollbar-width:none;overscroll-behavior-x:contain}
+#stories-row::-webkit-scrollbar{display:none}
+/* Ряд прокручивается горизонтально только в спокойном раскрытом состоянии. */
+body.stories-expanded #stories-row{overflow-x:auto;overflow-y:hidden;pointer-events:auto;
+  -webkit-overflow-scrolling:touch}
+#stories-row .story-av-wrap{position:absolute;left:0;top:0;width:56px;
+  transform-origin:0 0;will-change:transform,opacity;pointer-events:auto}
+#stories-row .story-av-wrap.st-off{pointer-events:none}
+#stories-row .story-nm{max-width:54px;will-change:opacity}
+#stories-row .ss-spacer{position:absolute;left:0;top:0;height:1px;pointer-events:none}
+/* Название уступает место стопке и возвращается, когда она уезжает вниз.
+   Свойство translate, а не transform: оно не спорит с другими трансформациями
+   элемента и так же обрабатывается компоновщиком. */
+body.mobile-mode #screen-main>.topbar .logo{will-change:translate;translate:var(--st-logo,0px) 0}
+/* Поиск, категории, строка выбора, архив и список сдвигаются одним значением.
+   ⚠️ Саму панель поиска не сдвигаем — только её содержимое, кроме «Добавить»:
+   любая трансформация предка сделала бы её position:fixed относительной этого
+   предка, и кнопка уехала бы вместе со списком. */
+body.mobile-mode .sb>:not(.sb-toolbar),
+body.mobile-mode .sb-toolbar>:not(#fab-newchat){will-change:translate;translate:0 var(--st-shift,0px)}
+/* В спокойном раскрытом состоянии место занимает сама колонка — иначе низ
+   списка ушёл бы за экран и до последних чатов было бы не докрутить. */
+body.mobile-mode.stories-expanded .sb{top:92px}
 
-#stories-strip{height:var(--stories-h,0px);overflow:hidden;flex-shrink:0;
-  --stories-p:0}
-#stories-strip.animated{transition:height var(--t-sheet,200ms) var(--e-out,ease)}
-@media (prefers-reduced-motion:reduce){ #stories-strip.animated{transition-duration:1ms} }
-body.stories-open #stories-strip{border-bottom:1px solid var(--brd)}
-#stories-strip .ss-inner{display:flex;gap:var(--sp-3);align-items:center;
-  padding:var(--sp-3) var(--sp-4);height:92px;overflow-x:auto;overflow-y:hidden;
-  -webkit-overflow-scrolling:touch;scrollbar-width:none}
-#stories-strip .ss-inner::-webkit-scrollbar{display:none}
-/* Аватары разъезжаются из стопки в ленту пропорционально прогрессу жеста. */
-#stories-strip .story-av-wrap{margin-left:calc(-22px * (1 - var(--stories-p)));
-  opacity:calc(.35 + .65 * var(--stories-p))}
-#stories-strip .story-av-wrap:first-child{margin-left:0}
-#stories-strip .story-nm{opacity:var(--stories-p)}
 /* ══════════════════════════════════════════════════════════════════════════
-   «МОНОХРОМ» — МАТЕРИАЛ: ВОДА И ОПТИЧЕСКОЕ СТЕКЛО (3 октября 2026)
-   Первая попытка была просто серой перекраской: плоские непрозрачные
-   прямоугольники, размытие не читалось, потому что под панелями не было
-   материала. Здесь сделано иначе:
-     • многослойный фон с мягкими световыми пятнами и сверхтонким шумом —
-       именно он и просвечивает сквозь стекло;
-     • ОДИН компонент материала (.mat) с полупрозрачной заливкой-градиентом,
-       backdrop-filter, тонкой внешней границей, внутренним верхним бликом и
-       мягкой тенью без чёрного ореола;
-     • связанные элементы объединены в цельные поверхности, тяжёлые
-       разделители заменены расстоянием и слабым изменением прозрачности.
-   Светлая и тёмная темы этот материал не получают — у них свой характер. */
+   ОДНА КОМПОНЕНТНАЯ ГЕОМЕТРИЯ ДЛЯ ТРЁХ ТЕМ (3 октября 2026)
+   Решение: светлая, тёмная и «Монохром» имеют ОДНУ И ТУ ЖЕ форму и
+   расположение элементов. Тема меняет только материал — фон, поверхность,
+   границу, текст, тень, размытие и акцент.
 
+   Как устроено:
+     • ниже — наборы переменных трёх тем (и больше ничего тематического);
+     • затем общие правила вида html[data-theme] .x — они действуют во всех
+       темах, задают геометрию и берут материал ТОЛЬКО из переменных;
+     • в самом конце — короткий список смысловых цветовых исключений
+       «Монохрома» (монохромные заглушки аватаров, обесцвеченные значки и т.п.):
+       это цвет, а не форма.
+   Вес селектора html[data-theme] .x тот же, что был у html[data-theme="mono"] .x,
+   поэтому «Монохром» выглядит ровно как раньше — его переменные равны прежним
+   значениям буквально. Проверяется попиксельно и стендом равенства геометрии.
+
+   «Монохром» — материал «вода и оптическое стекло»: многослойный фон со
+   световыми пятнами и сверхтонким шумом, полупрозрачная заливка-градиент,
+   backdrop-filter, тонкая граница, внутренний блик, мягкая тень.
+   Светлая — светлое матовое стекло. Тёмная — глубокое тёмное стекло. */
+
+/* ── Наборы переменных тем ─────────────────────────────────────────────── */
 html[data-theme="mono"]{
   color-scheme:dark;
   /* ⚠️ 3 октября 2026. Раньше кольца были ярко-голубыми и читались как ряд
@@ -880,82 +889,343 @@ html[data-theme="mono"]{
      цвет во всей ленте — тонкая холодная кромка у НЕПРОСМОТРЕННОЙ истории. */
   --story-a:rgba(238,246,255,.92); --story-b:rgba(158,186,214,.52);
   --story-seen-a:rgba(255,255,255,.17); --story-seen-b:rgba(255,255,255,.10);
-  --story-edge:rgba(126,186,232,.48);
-  /* Материал */
-  --mat-fill:linear-gradient(180deg, rgba(255,255,255,.09) 0%, rgba(255,255,255,.045) 42%, rgba(255,255,255,.028) 100%);
-  --mat-tint:rgba(255,255,255,.018);
-  --mat-brd:rgba(255,255,255,.14);
-  --mat-blur:22px;
-  --mat-sat:140%;
-  /* Тень мягкая и холодная, без чёрного ореола */
-  --mat-shadow:0 10px 34px rgba(8,12,18,.34);
-  /* Внутренний блик по верхнему краю + слабая нижняя кромка */
-  --mat-inner:inset 0 1px 0 rgba(255,255,255,.17), inset 0 -1px 0 rgba(255,255,255,.045);
-}
-
-/* ── Фон: несколько слоёв, чтобы стеклу было что преломлять ────────────── */
-html[data-theme="mono"] body{
-  background:
+  --story-edge:rgba(126,186,232,.48); --story-seen-edge:rgba(255,255,255,.09);
+  --story-shadow:0 2px 8px rgba(6,9,13,.30);
+  --story-lock-bg:rgba(255,255,255,.08); --story-lock-brd:rgba(255,255,255,.14);
+  /* фон: несколько слоёв, чтобы стеклу было что преломлять */
+  --app-bg:
     radial-gradient(1180px 720px at 6% -6%, rgba(150,190,230,.26), transparent 56%),
     radial-gradient(900px 560px at 98% 10%, rgba(226,236,246,.14), transparent 58%),
     radial-gradient(880px 700px at 78% 96%, rgba(110,150,190,.20), transparent 60%),
     radial-gradient(700px 480px at 40% 52%, rgba(255,255,255,.055), transparent 68%),
     linear-gradient(166deg, #141a21 0%, #0d1116 44%, #121820 100%);
+  --screen-bg:
+    radial-gradient(900px 560px at 8% -6%, rgba(150,190,230,.22), transparent 56%),
+    radial-gradient(760px 520px at 96% 8%, rgba(226,236,246,.12), transparent 58%),
+    linear-gradient(166deg, #141a21 0%, #0d1116 46%, #121820 100%);
+  --sheet-bg:
+    radial-gradient(95% 62% at 16% -4%, rgba(190,212,234,.16), transparent 62%),
+    radial-gradient(72% 52% at 94% 20%, rgba(156,184,210,.11), transparent 60%),
+    radial-gradient(85% 58% at 46% 106%, rgba(130,158,188,.10), transparent 66%),
+    linear-gradient(180deg, #14181e 0%, #0e1217 55%, #0b0e13 100%);
+  --noise-op:.05;
+  /* материал */
+  --mat-fill:linear-gradient(180deg, rgba(255,255,255,.09) 0%, rgba(255,255,255,.045) 42%, rgba(255,255,255,.028) 100%);
+  --mat-tint:rgba(255,255,255,.018);
+  --mat-brd:rgba(255,255,255,.14);
+  --mat-blur:22px;
+  --mat-sat:140%;
+  --mat-shadow:0 10px 34px rgba(8,12,18,.34);
+  --mat-inner:inset 0 1px 0 rgba(255,255,255,.17), inset 0 -1px 0 rgba(255,255,255,.045);
+  --mat-solid:rgba(26,31,37,.94);
+  /* плотные поверхности, под которые уезжает текст: шапки и нижняя панель */
+  --bar-bg:rgba(24,29,35,.90); --bar-bg-blur:rgba(24,29,35,.74);
+  --nav-bg:rgba(24,29,35,.96); --nav-bg-blur:rgba(24,29,35,.94);
+  --bar-img:linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.028) 55%, rgba(255,255,255,.014) 100%);
+  --bar-filter:blur(24px) saturate(60%) brightness(.86);
+  --chdr-inner:inset 0 1px 0 rgba(255,255,255,.12);
+  --line:rgba(255,255,255,.07); --line-soft:rgba(255,255,255,.05);
+  /* меню сообщения и капсула реакций: плотнее и обесцвечены */
+  --menu-bg:rgba(23,28,34,.93); --menu-bg-blur:rgba(23,28,34,.80);
+  --menu-img:linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,.016) 100%);
+  --menu-brd:rgba(255,255,255,.13);
+  --menu-shadow:0 3px 10px rgba(6,9,13,.36), inset 0 1px 0 rgba(255,255,255,.15), inset 0 -1px 0 rgba(255,255,255,.04);
+  --menu-filter:blur(26px) saturate(40%) brightness(.78);
+  --scrim:rgba(6,9,13,.42); --overlay:rgba(6,9,13,.55);
+  /* карточки (настройки, магазин, действия профиля) — без размытия */
+  --card-bg:var(--bg2); --card2-bg:var(--bg3); --card-brd:var(--brd);
+  /* строки списка чатов */
+  --row-hover:rgba(255,255,255,.045); --row-active:rgba(255,255,255,.075);
+  --row-active-inner:inset 0 1px 0 rgba(255,255,255,.08);
+  /* вкладки списка */
+  --tabs-img:linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.012));
+  --tabs-line:inset 0 -1px 0 rgba(255,255,255,.06);
+  --tab-on:var(--tx);
+  /* нижняя панель */
+  --nav-fg:var(--tx3); --nav-on:var(--tx);
+  --glider-bg:rgba(255,255,255,.085);
+  --glider-shadow:inset 0 1px 0 rgba(255,255,255,.20), 0 1px 6px rgba(6,9,13,.28);
+  --badge-bg:rgba(255,255,255,.88); --badge-fg:#11151a; --badge-shadow:0 1px 4px rgba(6,9,13,.4);
+  /* переключатели */
+  --tgl-off:rgba(255,255,255,.10); --tgl-knob:rgba(226,233,240,.70);
+  --tgl-knob-shadow:0 1px 3px rgba(6,9,13,.35);
+  --tgl-on:rgba(255,255,255,.26); --tgl-knob-on:#eef3f8;
+  /* кнопки */
+  --icon-btn-fg:var(--tx); --icon-btn-shadow:0 4px 14px rgba(8,12,18,.30);
+  --fab-bg:rgba(255,255,255,.055);
+  --fab-img:linear-gradient(180deg, rgba(255,255,255,.13), rgba(255,255,255,.04));
+  --fab-brd:rgba(255,255,255,.18); --fab-fg:var(--tx);
+  --fab-shadow:0 6px 18px rgba(8,12,18,.30), inset 0 1px 0 rgba(255,255,255,.22);
+  --btn-bg:rgba(255,255,255,.085);
+  --btn-img:linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.05));
+  --btn-brd:rgba(255,255,255,.18); --btn-fg:var(--tx);
+  --btn-shadow:0 4px 14px rgba(8,12,18,.26), inset 0 1px 0 rgba(255,255,255,.2);
+  --btn2-bg:var(--btn-bg); --btn2-img:var(--btn-img); --btn2-brd:var(--btn-brd);
+  --btn2-fg:var(--btn-fg); --btn2-shadow:var(--btn-shadow);
+  --danger-bg:rgba(248,113,113,.05); --danger-brd:rgba(248,113,113,.30);
+  /* поля ввода */
+  --field-bg:rgba(255,255,255,.055); --field-brd:rgba(255,255,255,.12);
+  --field-focus:rgba(255,255,255,.26); --field-ring:rgba(255,255,255,.06);
+  /* пузыри и лента */
+  --bub-in:rgba(255,255,255,.065); --bub-in-shadow:inset 0 1px 0 rgba(255,255,255,.09);
+  --bub-out:rgba(255,255,255,.135); --bub-out-shadow:inset 0 1px 0 rgba(255,255,255,.16);
+  --bub-time:rgba(238,241,244,.58); --bub-time-out:rgba(238,241,244,.66);
+  --dsep-bg:rgba(255,255,255,.07); --dsep-brd:rgba(255,255,255,.08);
+  --strip-bg:rgba(255,255,255,.05); --strip-brd:rgba(255,255,255,.09);
+  /* плитки кнопок-значков, вспомогательные кнопки, нейтральный аватар */
+  --tile-bg:var(--bg3); --tile-brd:var(--brd); --av-neutral:var(--bg3);
+  /* окна, панель эмодзи, всплывающие уведомления, затемнение листов */
+  --modal-bg:var(--mat-tint); --panel-bg:var(--bg2);
+  --toast-bg:var(--menu-bg); --toast-bg-blur:var(--menu-bg-blur); --toast-brd:var(--menu-brd);
+  --toast-shadow:0 10px 30px rgba(6,9,13,.42), inset 0 1px 0 rgba(255,255,255,.12);
+  --sheet-scrim:rgba(0,0,0,.72); --float-shadow:0 24px 80px rgba(0,0,0,.6);
+  --fab-solid:rgba(30,36,43,.96);
+  /* VIP-баннер */
+  --vip-bg:rgba(251,191,36,.07); --vip-brd:rgba(251,191,36,.20); --vip-fg:var(--am);
+  /* состояние наведения */
+  --hover-brd:rgba(255,255,255,.30);
+  --send-fg:#11151a; --send-glow:0 4px 13px rgba(6,9,13,.35);
+}
+html[data-theme="light"]{
+  color-scheme:light;
+  --story-edge:rgba(108,99,255,.30); --story-seen-edge:rgba(30,40,70,.10);
+  --story-seen-a:rgba(30,40,70,.16); --story-seen-b:rgba(30,40,70,.08);
+  --story-shadow:0 2px 8px rgba(40,50,90,.12);
+  --story-lock-bg:rgba(30,40,70,.06); --story-lock-brd:rgba(30,40,70,.12);
+  /* светлое матовое стекло: мягкий светлый фон с едва заметными пятнами акцента */
+  --app-bg:
+    radial-gradient(1180px 720px at 6% -6%, rgba(108,99,255,.10), transparent 56%),
+    radial-gradient(900px 560px at 98% 10%, rgba(79,168,216,.08), transparent 58%),
+    radial-gradient(880px 700px at 78% 96%, rgba(144,137,240,.08), transparent 60%),
+    linear-gradient(166deg, #f6f7fb 0%, #eff1f6 46%, #f4f3fa 100%);
+  --screen-bg:
+    radial-gradient(900px 560px at 8% -6%, rgba(108,99,255,.09), transparent 56%),
+    radial-gradient(760px 520px at 96% 8%, rgba(79,168,216,.07), transparent 58%),
+    linear-gradient(166deg, #f6f7fb 0%, #eff1f6 46%, #f4f3fa 100%);
+  --sheet-bg:
+    radial-gradient(95% 62% at 16% -4%, rgba(108,99,255,.09), transparent 62%),
+    radial-gradient(85% 58% at 46% 106%, rgba(79,168,216,.07), transparent 66%),
+    linear-gradient(180deg, #f7f8fb 0%, #f0f2f7 100%);
+  --noise-op:.025;
+  --mat-fill:linear-gradient(180deg, rgba(255,255,255,.86) 0%, rgba(255,255,255,.72) 100%);
+  --mat-tint:rgba(255,255,255,.55);
+  --mat-brd:rgba(30,40,70,.10);
+  --mat-blur:20px;
+  --mat-sat:160%;
+  --mat-shadow:0 8px 26px rgba(40,50,90,.10);
+  --mat-inner:inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(30,40,70,.04);
+  --mat-solid:rgba(250,251,253,.97);
+  --bar-bg:rgba(251,252,254,.95); --bar-bg-blur:rgba(251,252,254,.80);
+  --nav-bg:rgba(251,252,254,.97); --nav-bg-blur:rgba(251,252,254,.90);
+  --bar-img:linear-gradient(180deg, rgba(255,255,255,.92) 0%, rgba(255,255,255,.66) 100%);
+  --bar-filter:blur(22px) saturate(160%);
+  --chdr-inner:inset 0 1px 0 rgba(255,255,255,.9);
+  --line:rgba(30,40,70,.08); --line-soft:rgba(30,40,70,.06);
+  --menu-bg:rgba(252,252,254,.97); --menu-bg-blur:rgba(252,252,254,.86);
+  --menu-img:linear-gradient(180deg, rgba(255,255,255,.92) 0%, rgba(255,255,255,.74) 100%);
+  --menu-brd:rgba(30,40,70,.10);
+  --menu-shadow:0 3px 10px rgba(30,40,80,.14), inset 0 1px 0 rgba(255,255,255,.95);
+  --menu-filter:blur(24px) saturate(140%);
+  --scrim:rgba(20,24,40,.20); --overlay:rgba(20,24,40,.32);
+  --card-bg:rgba(255,255,255,.80); --card2-bg:rgba(255,255,255,.64); --card-brd:rgba(30,40,70,.08);
+  --row-hover:rgba(30,40,70,.045); --row-active:rgba(108,99,255,.09);
+  --row-active-inner:inset 0 0 0 1px rgba(108,99,255,.10);
+  --tabs-img:linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.46));
+  --tabs-line:inset 0 -1px 0 rgba(30,40,70,.07);
+  --tab-on:var(--acc);
+  --nav-fg:var(--tx2); --nav-on:var(--acc);
+  --glider-bg:rgba(108,99,255,.12);
+  --glider-shadow:inset 0 1px 0 rgba(255,255,255,.75);
+  --badge-bg:var(--acc); --badge-fg:#fff; --badge-shadow:0 1px 4px rgba(108,99,255,.35);
+  --tgl-off:rgba(30,40,70,.16); --tgl-knob:#ffffff;
+  --tgl-knob-shadow:0 1px 3px rgba(30,40,70,.28);
+  --tgl-on:var(--acc); --tgl-knob-on:#ffffff;
+  --icon-btn-fg:var(--acc); --icon-btn-shadow:0 4px 12px rgba(40,50,90,.10);
+  /* «Добавить» — матовое стекло светлой темы, а не белый диск с ореолом:
+     полупрозрачная основа почти в тон фону, тонкая грань, короткая тень. */
+  --fab-bg:rgba(255,255,255,.18);
+  --fab-img:linear-gradient(180deg, rgba(255,255,255,.24), rgba(255,255,255,.04));
+  --fab-brd:rgba(30,40,70,.14); --fab-fg:var(--acc);
+  --fab-shadow:0 2px 6px rgba(30,40,70,.12), inset 0 1px 0 rgba(255,255,255,.6);
+  --btn-bg:var(--acc);
+  --btn-img:linear-gradient(135deg, var(--acc), var(--acc2));
+  --btn-brd:transparent; --btn-fg:#ffffff;
+  --btn-shadow:0 4px 14px rgba(108,99,255,.22);
+  --btn2-bg:rgba(255,255,255,.80); --btn2-img:none; --btn2-brd:rgba(30,40,70,.12);
+  --btn2-fg:var(--tx); --btn2-shadow:0 2px 8px rgba(40,50,90,.06);
+  --danger-bg:rgba(217,87,107,.06); --danger-brd:rgba(217,87,107,.32);
+  --field-bg:rgba(255,255,255,.82); --field-brd:rgba(30,40,70,.12);
+  --field-focus:rgba(108,99,255,.45); --field-ring:rgba(108,99,255,.12);
+  --bub-in:#ffffff; --bub-in-shadow:0 1px 2px rgba(30,40,70,.07), inset 0 0 0 1px rgba(30,40,70,.05);
+  --bub-out:#e8e4fd; --bub-out-shadow:inset 0 0 0 1px rgba(108,99,255,.10);
+  --bub-time:rgba(36,38,47,.52); --bub-time-out:rgba(36,38,47,.56);
+  --dsep-bg:rgba(255,255,255,.80); --dsep-brd:rgba(30,40,70,.08);
+  --strip-bg:rgba(255,255,255,.72); --strip-brd:rgba(30,40,70,.08);
+  --tile-bg:rgba(255,255,255,.80); --tile-brd:rgba(30,40,70,.11); --av-neutral:rgba(30,40,70,.09);
+  --modal-bg:rgba(252,252,254,.94); --panel-bg:var(--bar-bg);
+  --toast-bg:rgba(252,252,254,.96); --toast-bg-blur:rgba(252,252,254,.84); --toast-brd:rgba(30,40,70,.10);
+  --toast-shadow:0 10px 28px rgba(30,40,80,.16), inset 0 1px 0 #ffffff;
+  --sheet-scrim:rgba(20,24,40,.32); --float-shadow:0 18px 50px rgba(40,50,90,.14);
+  --fab-solid:#e9eaf1;
+  --vip-bg:rgba(255,247,228,.92); --vip-brd:rgba(200,140,40,.35); --vip-fg:#8a5a00;
+  --hover-brd:rgba(108,99,255,.45);
+  /* значки разделов настроек: один цвет, читаемый на светлом */
+  --ico-tile:rgba(108,99,255,.08); --ico-fg:var(--acc);
+  --send-fg:#ffffff; --send-glow:0 4px 13px rgba(var(--acc-rgb),.4);
+}
+html[data-theme="dark"],
+html[data-theme="amoled"]{
+  color-scheme:dark;
+  --story-edge:rgba(167,139,250,.45); --story-seen-edge:rgba(255,255,255,.08);
+  --story-seen-a:rgba(255,255,255,.16); --story-seen-b:rgba(255,255,255,.08);
+  --story-shadow:0 2px 8px rgba(0,0,0,.35);
+  --story-lock-bg:rgba(255,255,255,.07); --story-lock-brd:rgba(255,255,255,.12);
+  /* глубокое тёмное стекло: тёмно-синий графит и мягкие пятна акцента */
+  --app-bg:
+    radial-gradient(1180px 720px at 6% -6%, rgba(108,99,255,.20), transparent 56%),
+    radial-gradient(900px 560px at 98% 10%, rgba(56,189,248,.09), transparent 58%),
+    radial-gradient(880px 700px at 78% 96%, rgba(167,139,250,.13), transparent 60%),
+    linear-gradient(166deg, #151a2a 0%, #0f1220 46%, #13172a 100%);
+  --screen-bg:
+    radial-gradient(900px 560px at 8% -6%, rgba(108,99,255,.18), transparent 56%),
+    radial-gradient(760px 520px at 96% 8%, rgba(56,189,248,.08), transparent 58%),
+    linear-gradient(166deg, #151a2a 0%, #0f1220 46%, #13172a 100%);
+  --sheet-bg:
+    radial-gradient(95% 62% at 16% -4%, rgba(108,99,255,.16), transparent 62%),
+    radial-gradient(85% 58% at 46% 106%, rgba(167,139,250,.10), transparent 66%),
+    linear-gradient(180deg, #141829 0%, #0e111d 100%);
+  --noise-op:.04;
+  --mat-fill:linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.035) 42%, rgba(255,255,255,.02) 100%);
+  --mat-tint:rgba(22,26,42,.42);
+  --mat-brd:rgba(255,255,255,.10);
+  --mat-blur:22px;
+  --mat-sat:150%;
+  --mat-shadow:0 10px 34px rgba(4,6,16,.45);
+  --mat-inner:inset 0 1px 0 rgba(255,255,255,.12), inset 0 -1px 0 rgba(255,255,255,.03);
+  --mat-solid:rgba(22,26,42,.96);
+  --bar-bg:rgba(20,24,39,.94); --bar-bg-blur:rgba(20,24,39,.88);
+  --nav-bg:rgba(20,24,39,.97); --nav-bg-blur:rgba(20,24,39,.94);
+  --bar-img:linear-gradient(180deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.022) 55%, rgba(255,255,255,.012) 100%);
+  --bar-filter:blur(24px) saturate(120%) brightness(.9);
+  --chdr-inner:inset 0 1px 0 rgba(255,255,255,.08);
+  --line:rgba(255,255,255,.07); --line-soft:rgba(255,255,255,.05);
+  --menu-bg:rgba(26,30,47,.95); --menu-bg-blur:rgba(26,30,47,.84);
+  --menu-img:linear-gradient(180deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.02) 100%);
+  --menu-brd:rgba(255,255,255,.10);
+  --menu-shadow:0 3px 10px rgba(0,0,0,.40), inset 0 1px 0 rgba(255,255,255,.10);
+  --menu-filter:blur(26px) saturate(70%) brightness(.85);
+  --scrim:rgba(4,6,16,.45); --overlay:rgba(4,6,16,.58);
+  --card-bg:rgba(30,35,55,.62); --card2-bg:rgba(40,46,70,.55); --card-brd:rgba(255,255,255,.08);
+  --row-hover:rgba(255,255,255,.04); --row-active:rgba(108,99,255,.15);
+  --row-active-inner:inset 0 0 0 1px rgba(167,139,250,.14);
+  --tabs-img:linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.01));
+  --tabs-line:inset 0 -1px 0 rgba(255,255,255,.06);
+  --tab-on:var(--acc2);
+  --nav-fg:var(--tx2); --nav-on:var(--acc2);
+  --glider-bg:rgba(108,99,255,.22);
+  --glider-shadow:inset 0 1px 0 rgba(255,255,255,.10);
+  --badge-bg:var(--acc); --badge-fg:#ffffff; --badge-shadow:0 1px 4px rgba(0,0,0,.45);
+  --tgl-off:rgba(255,255,255,.12); --tgl-knob:#e9ebf5;
+  --tgl-knob-shadow:0 1px 3px rgba(0,0,0,.40);
+  --tgl-on:var(--acc); --tgl-knob-on:#ffffff;
+  --icon-btn-fg:var(--acc2); --icon-btn-shadow:0 4px 14px rgba(0,0,0,.30);
+  --fab-bg:rgba(108,99,255,.22);
+  --fab-img:linear-gradient(180deg, rgba(167,139,250,.30), rgba(108,99,255,.12));
+  --fab-brd:rgba(167,139,250,.32); --fab-fg:#ffffff;
+  --fab-shadow:0 6px 18px rgba(0,0,0,.40), inset 0 1px 0 rgba(255,255,255,.16);
+  --btn-bg:var(--acc);
+  --btn-img:linear-gradient(135deg, var(--acc), var(--acc2));
+  --btn-brd:transparent; --btn-fg:#ffffff;
+  --btn-shadow:0 4px 14px rgba(108,99,255,.28);
+  --btn2-bg:rgba(255,255,255,.06); --btn2-img:none; --btn2-brd:rgba(255,255,255,.12);
+  --btn2-fg:var(--tx); --btn2-shadow:none;
+  --danger-bg:rgba(248,113,113,.06); --danger-brd:rgba(248,113,113,.30);
+  --field-bg:rgba(255,255,255,.05); --field-brd:rgba(255,255,255,.10);
+  --field-focus:rgba(167,139,250,.55); --field-ring:rgba(108,99,255,.18);
+  --bub-in:var(--in); --bub-in-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  --bub-out:var(--out); --bub-out-shadow:inset 0 1px 0 rgba(255,255,255,.10);
+  --bub-time:rgba(238,240,246,.52); --bub-time-out:rgba(238,240,246,.78);
+  --dsep-bg:rgba(255,255,255,.06); --dsep-brd:rgba(255,255,255,.07);
+  --strip-bg:rgba(255,255,255,.04); --strip-brd:rgba(255,255,255,.08);
+  --tile-bg:rgba(255,255,255,.06); --tile-brd:rgba(255,255,255,.10); --av-neutral:var(--bg4);
+  --modal-bg:rgba(24,28,44,.92); --panel-bg:var(--bar-bg);
+  --toast-bg:rgba(26,30,47,.96); --toast-bg-blur:rgba(26,30,47,.86); --toast-brd:rgba(255,255,255,.10);
+  --toast-shadow:0 10px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);
+  --sheet-scrim:rgba(4,6,16,.60); --float-shadow:0 24px 70px rgba(0,0,0,.55);
+  --fab-solid:#2a2660;
+  --vip-bg:rgba(251,191,36,.07); --vip-brd:rgba(251,191,36,.22); --vip-fg:var(--am);
+  --hover-brd:rgba(167,139,250,.55);
+  --ico-tile:rgba(167,139,250,.10); --ico-fg:var(--acc2);
+  --send-fg:#ffffff; --send-glow:0 4px 13px rgba(var(--acc-rgb),.4);
+}
+
+/* Сохранённая у части людей тема AMOLED — тот же набор, что у тёмной, но фон
+   истинно чёрный. */
+html[data-theme="amoled"]{
+  --app-bg:#000000; --screen-bg:#000000; --sheet-bg:#000000;
+  --mat-tint:rgba(8,8,12,.55); --bar-bg:rgba(4,4,8,.96); --bar-bg-blur:rgba(4,4,8,.90);
+  --nav-bg:rgba(4,4,8,.97); --nav-bg-blur:rgba(4,4,8,.95);
+  --noise-op:0;
+}
+
+/* ── Общий фон ─────────────────────────────────────────────────────────── */
+html[data-theme] body{
+  background:var(--app-bg);
   background-attachment:fixed;
 }
 /* Сверхтонкий шум без различимого рисунка — убирает «пластиковую» гладкость. */
-html[data-theme="mono"] body::before{
+html[data-theme] body::before{
   content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
-  opacity:.05;mix-blend-mode:overlay;
+  opacity:var(--noise-op);mix-blend-mode:overlay;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");background-size:180px 180px;
 }
-html[data-theme="mono"] .layout,
-html[data-theme="mono"] .topbar{position:relative;z-index:1}
+html[data-theme] .layout,
+html[data-theme] .topbar{position:relative;z-index:1}
 
 /* ── Компонент материала ───────────────────────────────────────────────── */
-html[data-theme="mono"] .topbar,
-html[data-theme="mono"] .mobile-tabbar,
-html[data-theme="mono"] .iwrap,
-html[data-theme="mono"] .ctx,
-html[data-theme="mono"] .rxn-picker,
-html[data-theme="mono"] .modal,
-html[data-theme="mono"] .chead,
-html[data-theme="mono"] .sb-toolbar input,
-html[data-theme="mono"] .tsrch input,
-html[data-theme="mono"] .asec,
-html[data-theme="mono"] .cbal,
-html[data-theme="mono"] .nbtn,
-html[data-theme="mono"] .upill,
-html[data-theme="mono"] .new-chat-btn,
-html[data-theme="mono"] .mat{
+html[data-theme] .topbar,
+html[data-theme] .mobile-tabbar,
+html[data-theme] .iwrap,
+html[data-theme] .ctx,
+html[data-theme] .rxn-picker,
+html[data-theme] .modal,
+html[data-theme] .chead,
+html[data-theme] .sb-toolbar input,
+html[data-theme] .tsrch input,
+html[data-theme] .asec,
+html[data-theme] .cbal,
+html[data-theme] .nbtn,
+html[data-theme] .upill,
+html[data-theme] .new-chat-btn,
+html[data-theme] .mat{
   background-color:var(--mat-tint) !important;
   background-image:var(--mat-fill) !important;
   border:1px solid var(--mat-brd);
   box-shadow:var(--mat-shadow), var(--mat-inner);
 }
 @supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-  html[data-theme="mono"]:not(.no-blur) .topbar,
-  html[data-theme="mono"]:not(.no-blur) .mobile-tabbar,
-  html[data-theme="mono"]:not(.no-blur) .iwrap,
-  html[data-theme="mono"]:not(.no-blur) .ctx,
-  html[data-theme="mono"]:not(.no-blur) .rxn-picker,
-  html[data-theme="mono"]:not(.no-blur) .modal,
-  html[data-theme="mono"]:not(.no-blur) .chead,
-  html[data-theme="mono"]:not(.no-blur) .new-chat-btn,
-  html[data-theme="mono"]:not(.no-blur) .mat{
+  html[data-theme]:not(.no-blur) .topbar,
+  html[data-theme]:not(.no-blur) .mobile-tabbar,
+  html[data-theme]:not(.no-blur) .iwrap,
+  html[data-theme]:not(.no-blur) .ctx,
+  html[data-theme]:not(.no-blur) .rxn-picker,
+  html[data-theme]:not(.no-blur) .modal,
+  html[data-theme]:not(.no-blur) .chead,
+  html[data-theme]:not(.no-blur) .new-chat-btn,
+  html[data-theme]:not(.no-blur) .mat{
     -webkit-backdrop-filter:blur(var(--mat-blur)) saturate(var(--mat-sat));
     backdrop-filter:blur(var(--mat-blur)) saturate(var(--mat-sat));
   }
 }
 /* Слабое устройство: материал остаётся, но плотнее и без размытия. */
-html.no-blur[data-theme="mono"] .topbar,
-html.no-blur[data-theme="mono"] .mobile-tabbar,
-html.no-blur[data-theme="mono"] .modal,
-html.no-blur[data-theme="mono"] .ctx{background-color:rgba(26,31,37,.94) !important}
+html.no-blur[data-theme] .topbar,
+html.no-blur[data-theme] .mobile-tabbar,
+html.no-blur[data-theme] .modal,
+html.no-blur[data-theme] .ctx{background-color:var(--mat-solid) !important}
 
 /* ── Геометрия: цельные поверхности вместо отдельных прямоугольников ──── */
 /* Шапка — одна поверхность, без нижней линии. */
-html[data-theme="mono"] .topbar{border:none;border-bottom:1px solid rgba(255,255,255,.07);
+html[data-theme] .topbar{border:none;border-bottom:1px solid var(--line);
   box-shadow:var(--mat-inner)}
 /* На телефоне в шапке помещаются бренд, стопка сторис и баланс; имя профиля
    прячем, аватар остаётся — иначе пилюля уезжала за край. */
@@ -963,174 +1233,424 @@ body.mobile-mode .topbar{overflow:hidden;gap:var(--sp-2);padding:0 var(--sp-3)}
 body.mobile-mode .upill .unm{display:none}
 body.mobile-mode .upill{padding:3px}
 body.mobile-mode .cbal{padding:4px 8px}
-body.mobile-mode .story-stack{margin-left:auto}
-html[data-theme="mono"] .topbar::after{display:none}
-/* Левая колонка — одна большая стеклянная поверхность; строки списка
-   собственного размытия НЕ имеют (иначе прокрутка встала бы). */
-/* Колонка прозрачная — сквозь неё виден многослойный фон, иначе стеклянным
-   панелям нечего преломлять. */
-html[data-theme="mono"] .sb{border-right:none;border-radius:0;
+html[data-theme] .topbar::after{display:none}
+/* Колонки и экраны прозрачные — сквозь них виден общий фон, иначе стеклянным
+   панелям нечего преломлять. Строки списка собственного размытия НЕ имеют
+   (иначе прокрутка встала бы). */
+html[data-theme] .sb{border-right:none;border-radius:0;
   background:transparent !important;box-shadow:none}
-html[data-theme="mono"] .layout{background:transparent}
-html[data-theme="mono"] .msgs{background:transparent}
-html[data-theme="mono"] .cm{background:transparent}
-html[data-theme="mono"] .ibar{background:transparent}
-html[data-theme="mono"] .chat{background:transparent}
-html[data-theme="mono"] .stabs{border-bottom:none;padding:0 var(--sp-3)}
-html[data-theme="mono"] .stab{font-weight:var(--fw-med);letter-spacing:.04em}
-html[data-theme="mono"] .stab.on{color:var(--tx)}
-/* Вкладка-индикатор тонкой световой чертой, а не жирной линией. */
-html[data-theme="mono"] .sb-toolbar{border-bottom:none;padding:var(--sp-2) var(--sp-4) var(--sp-3)}
-html[data-theme="mono"] .sb-toolbar input{border-radius:var(--r-pill);padding-left:34px}
-html[data-theme="mono"] .clist{padding-top:0}
+html[data-theme] .layout{background:transparent}
+html[data-theme] .msgs{background:transparent}
+html[data-theme] .cm{background:transparent}
+html[data-theme] .ibar{background:transparent}
+html[data-theme] .chat{background:transparent}
+html[data-theme] .stabs{border-bottom:none;padding:0 var(--sp-3)}
+html[data-theme] .stab{font-weight:var(--fw-med);letter-spacing:.04em}
+html[data-theme] .stab.on{color:var(--tab-on)}
+html[data-theme] .sb-toolbar{border-bottom:none;padding:var(--sp-2) var(--sp-4) var(--sp-3)}
+html[data-theme] .sb-toolbar input{border-radius:var(--r-pill);padding-left:34px}
+html[data-theme] .clist{padding-top:0}
 /* Строки списка: без разделителей, подложка только у наведения и выбранного. */
-html[data-theme="mono"] .ci{border-radius:var(--r-md);margin:2px var(--sp-3);
+html[data-theme] .ci{border-radius:var(--r-md);margin:2px var(--sp-3);
   background-color:transparent}
-html[data-theme="mono"] .ci:hover{background-color:rgba(255,255,255,.045)}
-html[data-theme="mono"] .ci.on,
-html[data-theme="mono"] .ci.active{background-color:rgba(255,255,255,.075);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
-/* Нижняя навигация — плавающая стеклянная панель. */
-html[data-theme="mono"] .mobile-tabbar{left:var(--sp-2);right:var(--sp-2);bottom:2px;
+html[data-theme] .ci:hover{background-color:var(--row-hover)}
+html[data-theme] .ci.on,
+html[data-theme] .ci.active{background-color:var(--row-active);
+  box-shadow:var(--row-active-inner)}
+/* Нижняя навигация — плавающая стеклянная капсула, одинаковая во всех темах.
+   Над нижним краем экрана с учётом safe-area. */
+html[data-theme] .mobile-tabbar{left:var(--sp-2);right:var(--sp-2);
+  bottom:calc(2px + env(safe-area-inset-bottom,0px));
   border-radius:var(--r-xl);height:52px;border:1px solid var(--mat-brd)}
-html[data-theme="mono"] .mtab-item{color:var(--tx3)}
-/* Активный раздел — спокойная стеклянная подложка под значком и световая
-   кромка, без цветной заливки. Подложка одна и переезжает (.mtab-glider). */
-html[data-theme="mono"] .mtab-item.on{color:var(--tx)}
-html[data-theme="mono"] .mtab-glider{
-  background:rgba(255,255,255,.085);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.20), 0 1px 6px rgba(6,9,13,.28)}
-html[data-theme="mono"] .mtab-badge{background:rgba(255,255,255,.88);color:#11151a;
-  box-shadow:0 1px 4px rgba(6,9,13,.4)}
-/* Строка ввода — стеклянная капсула, сама панель прозрачная. */
-html[data-theme="mono"] .ibar{background:transparent;border-top:none;padding-bottom:var(--sp-3)}
-html[data-theme="mono"] .ibar::before{display:none}
-html[data-theme="mono"] .iwrap{border-radius:var(--r-xl)}
-/* Шапка чата — часть той же системы. */
-html[data-theme="mono"] .chead{border-bottom:1px solid rgba(255,255,255,.07)}
-/* Меню и капсула реакций — одна стеклянная композиция. */
-html[data-theme="mono"] .ctx,
-html[data-theme="mono"] .rxn-picker{border-radius:var(--r-lg)}
-html[data-theme="mono"] .rxn-picker:not(.expanded){border-radius:var(--r-pill)}
-/* ⚠️ 3 октября 2026. Общий материал с saturate(140%) брал цвет у того, что
-   лежит под ним: над зелёной картинкой и меню, и капсула реакций
-   окрашивались в зелёный. Для этих двух поверхностей материал свой —
-   плотнее, темнее и ОБЕСЦВЕЧЕННЫЙ: свет и размытие фона читаются,
-   собственный цвет остаётся графитовым. */
-html[data-theme="mono"] .ctx,
-html[data-theme="mono"] .rxn-picker{
-  background-color:rgba(23,28,34,.93) !important;
-  background-image:linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.03) 46%, rgba(255,255,255,.016) 100%) !important;
-  border:1px solid rgba(255,255,255,.13);
-  box-shadow:0 14px 42px rgba(6,9,13,.48), inset 0 1px 0 rgba(255,255,255,.15), inset 0 -1px 0 rgba(255,255,255,.04);
+html[data-theme] .mtab-item{color:var(--nav-fg)}
+/* Активный раздел — подложка под значком; она одна и переезжает (.mtab-glider). */
+html[data-theme] .mtab-item.on{color:var(--nav-on)}
+html[data-theme] .mtab-glider{background:var(--glider-bg);box-shadow:var(--glider-shadow)}
+html[data-theme] .mtab-badge{background:var(--badge-bg);color:var(--badge-fg);
+  box-shadow:var(--badge-shadow)}
+/* Строка ввода — капсула, сама панель прозрачная. */
+html[data-theme] .ibar{background:transparent;border-top:none;padding-bottom:var(--sp-3)}
+html[data-theme] .ibar::before{display:none}
+html[data-theme] .iwrap{border-radius:var(--r-xl)}
+html[data-theme] .chead{border-bottom:1px solid var(--line)}
+/* Меню и капсула реакций — одна композиция. */
+html[data-theme] .ctx,
+html[data-theme] .rxn-picker{border-radius:var(--r-lg)}
+html[data-theme] .rxn-picker:not(.expanded){border-radius:var(--r-pill)}
+/* ⚠️ 3 октября 2026. Общий материал с насыщением брал цвет у того, что лежит
+   под ним: над зелёной картинкой меню и капсула окрашивались в зелёный. Для
+   этих двух поверхностей материал свой — плотнее и обесцвеченный.
+   4 октября 2026: тень короткая (--menu-shadow 0 3px 10px) — группа лежит над
+   затемнением вплотную к яркому сообщению, и прежняя длинная тень (0 14px
+   42px) ложилась на него тёмной полосой. */
+html[data-theme] .ctx,
+html[data-theme] .rxn-picker{
+  background-color:var(--menu-bg) !important;
+  background-image:var(--menu-img) !important;
+  border:1px solid var(--menu-brd);
+  box-shadow:var(--menu-shadow);
 }
 @supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-  html[data-theme="mono"]:not(.no-blur) .ctx,
-  html[data-theme="mono"]:not(.no-blur) .rxn-picker{
-    background-color:rgba(23,28,34,.80) !important;
-    -webkit-backdrop-filter:blur(26px) saturate(40%) brightness(.78);
-    backdrop-filter:blur(26px) saturate(40%) brightness(.78);
+  html[data-theme]:not(.no-blur) .ctx,
+  html[data-theme]:not(.no-blur) .rxn-picker{
+    background-color:var(--menu-bg-blur) !important;
+    -webkit-backdrop-filter:var(--menu-filter);
+    backdrop-filter:var(--menu-filter);
   }
 }
-/* «Ещё реакции» — тонкий контурный плюс одного размера со значками меню,
-   а не крупный системный символ. */
-html[data-theme="mono"] .rxn-more svg{opacity:.8}
-html[data-theme="mono"] .ctx-scrim{background:rgba(6,9,13,.42)}
+/* «Ещё реакции» — тонкий контурный плюс одного размера со значками меню. */
+html[data-theme] .rxn-more svg{opacity:.8}
+html[data-theme] .ctx-scrim::before{background:var(--scrim)}
 /* ⚠️ 3 октября 2026. Под шапку и под нижнюю панель уезжает прокручиваемый
-   текст. При общей прозрачности 4-9 % он читался сквозь них почти в полную
-   силу и выглядел как наложение двух экранов. Этим двум поверхностям дана
-   плотная графитовая основа: свет и размытие остаются, текст под ними
-   становится тенью, а не второй строкой. */
-html[data-theme="mono"] .topbar,
-html[data-theme="mono"] .mobile-tabbar,
-html[data-theme="mono"] .chdr{
-  background-color:rgba(24,29,35,.90) !important;
-  background-image:linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,.028) 55%, rgba(255,255,255,.014) 100%) !important;
+   текст. Этим поверхностям дана плотная основа: свет и размытие остаются,
+   текст под ними становится тенью, а не второй строкой. */
+html[data-theme] .topbar,
+html[data-theme] .mobile-tabbar,
+html[data-theme] .chdr{
+  background-color:var(--bar-bg) !important;
+  background-image:var(--bar-img) !important;
 }
 @supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-  html[data-theme="mono"]:not(.no-blur) .topbar,
-  html[data-theme="mono"]:not(.no-blur) .mobile-tabbar,
-  html[data-theme="mono"]:not(.no-blur) .chdr{
-    background-color:rgba(24,29,35,.74) !important;
-    -webkit-backdrop-filter:blur(24px) saturate(60%) brightness(.86);
-    backdrop-filter:blur(24px) saturate(60%) brightness(.86);
+  html[data-theme]:not(.no-blur) .topbar,
+  html[data-theme]:not(.no-blur) .mobile-tabbar,
+  html[data-theme]:not(.no-blur) .chdr{
+    background-color:var(--bar-bg-blur) !important;
+    -webkit-backdrop-filter:var(--bar-filter);
+    backdrop-filter:var(--bar-filter);
   }
 }
+/* ⚠️ 4 октября 2026. Нижняя панель плавает НАД содержимым (заголовки и
+   строки настроек, контакты уезжают под неё), и сквозь прежнюю основу .74
+   читался заголовок раздела. Размытие на это не годится как единственная
+   защита: оно может не сработать (слабое устройство, часть содержимого в
+   отдельном слое), а основа должна гасить текст и сама. Поэтому у панели своя
+   плотная основа (--nav-bg-blur ≈ .9–.95); световой градиент, грань, блик,
+   тень и размытие остаются — это то же стекло, только плотнее. Геометрия не
+   меняется. */
+html[data-theme] .mobile-tabbar{background-color:var(--nav-bg) !important}
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  html[data-theme]:not(.no-blur) .mobile-tabbar{background-color:var(--nav-bg-blur) !important}
+}
+/* «Новые сообщения» с 4 октября 2026 плавает над перепиской (над строкой
+   ввода, а не поверх неё) — та же плотная основа, что у нижней панели, иначе
+   сквозь полупрозрачную капсулу «Монохрома» читался текст сообщения под ней. */
+html[data-theme] .scroll-down-btn{background-color:var(--nav-bg);background-image:var(--bar-img);
+  border:1px solid var(--menu-brd);color:var(--tx);box-shadow:var(--menu-shadow)}
 /* Шапка чата — та же поверхность, что и общая шапка. */
-html[data-theme="mono"] .chdr{border-bottom:1px solid rgba(255,255,255,.07);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+html[data-theme] .chdr{border-bottom:1px solid var(--line);box-shadow:var(--chdr-inner)}
 /* Настройки — лёгкие группы, а не толстые серые контейнеры. */
-html[data-theme="mono"] .settings-row{border-bottom:none}
-/* Переключатель не должен светиться ярче заголовка раздела: включённый —
-   спокойное серебро, выключенный — почти невидимая подложка. */
-html[data-theme="mono"] .ts,
-html[data-theme="mono"] .perm-tgl{background:rgba(255,255,255,.10) !important}
-html[data-theme="mono"] .ts::before,
-html[data-theme="mono"] .perm-tgl::after{background:rgba(226,233,240,.70) !important;box-shadow:0 1px 3px rgba(6,9,13,.35)}
-html[data-theme="mono"] .toggle input:checked+.ts,
-html[data-theme="mono"] .perm-tgl.on{background:rgba(255,255,255,.26) !important}
-html[data-theme="mono"] .toggle input:checked+.ts::before,
-html[data-theme="mono"] .perm-tgl.on::after{background:#eef3f8 !important}
-html[data-theme="mono"] .settings-group,
-html[data-theme="mono"] .asec{border-radius:var(--r-lg);padding:var(--sp-4)}
-html[data-theme="mono"] .settings-row-ico{background:rgba(255,255,255,.07) !important;
-  color:var(--tx2);border-radius:var(--r-sm)}
-html[data-theme="mono"] .settings-row-ico svg{opacity:.9}
-/* Служебные значки настроек — одного характера, а не каждый своего цвета.
-   Обесцвечиваем и сам значок, и эмодзи, которые кое-где стоят вместо SVG. */
-html[data-theme="mono"] .settings-row-ico{filter:grayscale(1)}
-html[data-theme="mono"] .settings-row-ico svg [fill]:not([fill="none"]){fill:currentColor}
-html[data-theme="mono"] .settings-row-ico{color:var(--tx2)}
-/* Значки нижней навигации и шапки — тоже единый характер. */
-html[data-theme="mono"] .mtab-item svg{opacity:.92}
+html[data-theme] .settings-row{border-bottom:none}
+html[data-theme] .settings-section{background:var(--card-bg);border-color:var(--card-brd)}
+/* Переключатель не светится ярче заголовка раздела. */
+html[data-theme] .ts,
+html[data-theme] .perm-tgl{background:var(--tgl-off) !important}
+html[data-theme] .ts::before,
+html[data-theme] .perm-tgl::after{background:var(--tgl-knob) !important;box-shadow:var(--tgl-knob-shadow)}
+html[data-theme] .toggle input:checked+.ts,
+html[data-theme] .perm-tgl.on{background:var(--tgl-on) !important}
+html[data-theme] .toggle input:checked+.ts::before,
+html[data-theme] .perm-tgl.on::after{background:var(--tgl-knob-on) !important}
+html[data-theme] .settings-group,
+html[data-theme] .asec{border-radius:var(--r-lg);padding:var(--sp-4)}
+html[data-theme] .settings-row-ico{border-radius:var(--r-sm)}
+html[data-theme] .mtab-item svg{opacity:.92}
 /* Модальные окна и нижние листы. */
-html[data-theme="mono"] .movl{background:rgba(6,9,13,.55)}
-html[data-theme="mono"] .modal{border-radius:var(--r-xl)}
-/* Лента сторис — на том же материале, без собственной рамки. */
-html[data-theme="mono"] #stories-strip{border-bottom:1px solid rgba(255,255,255,.07)}
-/* Непросмотренная: светлое стекло + тонкая холодная кромка снаружи. */
-html[data-theme="mono"] .story-ring,
-html[data-theme="mono"] .story-stack .sst-ring{
-  box-shadow:0 0 0 1px var(--story-edge), 0 2px 8px rgba(6,9,13,.30)}
-/* Просмотренная: то же стекло, но приглушённое и совсем без цвета. */
-html[data-theme="mono"] .story-ring.seen,
-html[data-theme="mono"] .story-stack .sst-ring.seen{
+html[data-theme] .movl{background:var(--overlay)}
+html[data-theme] .modal{border-radius:var(--r-xl)}
+/* Непросмотренная история: стекло и тонкая кромка снаружи. */
+html[data-theme] .story-ring{
+  box-shadow:0 0 0 1px var(--story-edge), var(--story-shadow)}
+/* Просмотренная: то же стекло, но приглушённое и без цвета. */
+html[data-theme] .story-ring.seen{
   background:linear-gradient(135deg,var(--story-seen-a),var(--story-seen-b)) !important;
-  box-shadow:0 0 0 1px rgba(255,255,255,.09)}
-html[data-theme="mono"] .story-ring.vip-ring{
+  box-shadow:0 0 0 1px var(--story-seen-edge)}
+html[data-theme] .story-ring.vip-ring{
   background:linear-gradient(135deg,rgba(251,191,36,.55),rgba(251,191,36,.18)) !important;
   box-shadow:0 0 0 1px rgba(251,191,36,.30)}
-html[data-theme="mono"] .story-ring.locked-ring{
-  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);box-shadow:none}
-html[data-theme="mono"] .story-nm{color:var(--tx2)}
-/* «Подтверждён» — смысловая отметка, но не синее пятно в сером списке. */
-html[data-theme="mono"] .verify-badge{filter:grayscale(1) brightness(1.3);opacity:.9}
-/* Точка «в сети» — приглушена, но различима. */
-html[data-theme="mono"] .odot{background:#5fbf96 !important;box-shadow:0 0 0 2px rgba(14,17,20,.75)}
-html[data-theme="mono"] body.stories-open #stories-strip{border-bottom-color:rgba(255,255,255,.07)}
+html[data-theme] .story-ring.locked-ring{
+  background:var(--story-lock-bg);border:1px solid var(--story-lock-brd);box-shadow:none}
+html[data-theme] .story-nm{color:var(--tx2)}
 
-/* ── Кнопка «Добавить»: стекло, а не белый диск ───────────────────────── */
-html[data-theme="mono"] .new-chat-btn{
-  color:var(--tx);border-radius:var(--r-md);
-  box-shadow:0 4px 14px rgba(8,12,18,.30), var(--mat-inner);
+/* ── Кнопки: стекло, а не цветной диск ─────────────────────────────────── */
+html[data-theme] .new-chat-btn{
+  color:var(--icon-btn-fg);border-radius:var(--r-md);
+  box-shadow:var(--icon-btn-shadow), var(--mat-inner);
 }
-html[data-theme="mono"] .mobile-mode #fab-newchat,
-body.mobile-mode html[data-theme="mono"] #fab-newchat{}
-html[data-theme="mono"] #fab-newchat{
+/* «Добавить» — отдельная от нижней панели кнопка, одинаковая во всех темах;
+   меняется только материал. Не белый прожектор. */
+html[data-theme] body.mobile-mode #fab-newchat{
   width:54px;height:54px;border-radius:50%;font-size:26px;font-weight:300;
-  color:var(--tx);
-  background-color:rgba(255,255,255,.055) !important;
-  background-image:linear-gradient(180deg, rgba(255,255,255,.13), rgba(255,255,255,.04)) !important;
-  border:1px solid rgba(255,255,255,.18);
-  box-shadow:0 6px 18px rgba(8,12,18,.30), inset 0 1px 0 rgba(255,255,255,.22);
+  color:var(--fab-fg);
+  background-color:var(--fab-bg) !important;
+  background-image:var(--fab-img) !important;
+  border:1px solid var(--fab-brd);
+  box-shadow:var(--fab-shadow);
   transition:transform var(--t-press,120ms) var(--e-out,ease), opacity var(--t-press,120ms) var(--e-out,ease);
 }
-html[data-theme="mono"] #fab-newchat:hover{transform:none;opacity:.94}
-html[data-theme="mono"] #fab-newchat:active{transform:scale(.95);opacity:.8}
+html[data-theme] body.mobile-mode #fab-newchat{bottom:calc(72px + env(safe-area-inset-bottom,0px))}
+html[data-theme] body.mobile-mode #fab-newchat:hover{transform:none;opacity:.94}
+html[data-theme] body.mobile-mode #fab-newchat:active{transform:scale(.95);opacity:.8}
 
-/* ── Цвет: служебное серебро, контент цветной ─────────────────────────── */
-/* Заглушки аватаров — спокойная монохромная система. Настоящее фото внутри
-   лежит поверх и НЕ обесцвечивается. */
+/* ── Типографика: иерархия не одной жирностью ─────────────────────────── */
+html[data-theme] .logo{font-weight:700;letter-spacing:-.015em;color:var(--tx)}
+html[data-theme] .cnm{font-weight:var(--fw-med);letter-spacing:-.005em}
+html[data-theme] .cprev{font-weight:400;color:var(--tx2)}
+html[data-theme] .ctime{font-weight:400;color:var(--tx2);font-variant-numeric:tabular-nums}
+/* Неактивная вкладка списка и подсказки полей — спокойные, но различимые. */
+html[data-theme] .stab{color:var(--tx2);opacity:.78}
+html[data-theme] .stab.on{opacity:1}
+html[data-theme] input::placeholder,
+html[data-theme] textarea::placeholder{color:var(--tx2) !important;opacity:.72}
+/* Время в пузыре читается без напряжения. */
+html[data-theme] .mt{color:var(--bub-time)}
+html[data-theme] .mrow.out .mt{color:var(--bub-time-out)}
+html[data-theme] .story-nm{color:var(--tx2);opacity:.9}
+html[data-theme] .atitle{font-weight:650;letter-spacing:-.01em}
+html[data-theme] .settings-row-label{font-weight:500}
+html[data-theme] .mtit{font-weight:650}
+html[data-theme] .cba{color:var(--tx)}
+
+/* ── Вкладки — продолжение шапки ──────────────────────────────────────── */
+html[data-theme] .stabs{
+  box-shadow:var(--tabs-line);
+  padding:0 var(--sp-3);
+}
+/* Баланс на телефоне компактнее, чтобы пилюля профиля не уезжала за край. */
+body.mobile-mode .cbal .cba{font-size:12px}
+/* Прятать на телефоне нужно только «плюс» — прямого потомка пилюли.
+   Значок кристалла лежит в <span> и остаётся на месте. */
+body.mobile-mode .cbal>svg{display:none}
+
+/* ── Экраны и слои ─────────────────────────────────────────────────────── */
+/* Полноэкранные экраны (контакты, настройки, магазин, VIP, подарки, архив,
+   Dev Panel, редактор сторис) — прозрачные, под ними тот же фон темы. */
+html[data-theme] .screen{background:transparent}
+html[data-theme] .screen::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--screen-bg)}
+/* Правая инфо-панель на десктопе. */
+html[data-theme] .rp{background:transparent !important;border-left:1px solid var(--line)}
+/* Открытый на телефоне профиль — собственный непрозрачный слой с фоном темы. */
+html[data-theme] .rp.mobile-open{
+  background:var(--bg) !important;border-left:none;isolation:isolate}
+html[data-theme] .rp.mobile-open::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:var(--sheet-bg)}
+html[data-theme] .rp.mobile-open .rphdr{
+  background:var(--mat-fill);border-bottom:none;padding-top:18px}
+/* Разделы профиля отделяются расстоянием и слабым светом, а не линиями. */
+html[data-theme] .rp.mobile-open .rpsec{border-bottom:none;padding:16px 16px 8px}
+html[data-theme] .rp.mobile-open .rpsec+.rpsec{box-shadow:inset 0 1px 0 var(--line-soft)}
+html[data-theme] .rp.mobile-open .rp-actions{padding:14px 16px;
+  box-shadow:inset 0 1px 0 var(--line-soft)}
+html[data-theme] .rp.mobile-open .rpst2{color:var(--tx2);letter-spacing:.06em}
+html[data-theme] .rpai,
+html[data-theme] .rp-action-btn{background:var(--card2-bg);border-color:var(--card-brd)}
+html[data-theme] .rpai:hover,
+html[data-theme] .rp-action-btn:hover{background:var(--bg4)}
+html[data-theme] .rp-action-btn.rd:hover{background:rgba(248,113,113,.1)}
+/* Карточки и секции — лёгкие стеклянные группы. */
+html[data-theme] .asec,
+html[data-theme] .gift-card,
+html[data-theme] .store-card,
+html[data-theme] .pack-card,
+html[data-theme] .vip-card,
+html[data-theme] .settings-group,
+html[data-theme] .srch-overlay{
+  background-color:var(--mat-tint) !important;
+  background-image:var(--mat-fill) !important;
+  border:1px solid var(--mat-brd) !important;
+  box-shadow:var(--mat-shadow), var(--mat-inner);
+  border-radius:var(--r-lg);
+}
+html[data-theme] .cpkg,
+html[data-theme] .sbal{background:var(--card-bg)}
+/* Поля ввода и селекты — капсулы одной системы. */
+html[data-theme] .fsel,
+html[data-theme] .finp,
+html[data-theme] input:not([type="checkbox"]):not([type="radio"]),
+html[data-theme] textarea,
+html[data-theme] select{
+  background-color:var(--field-bg) !important;
+  background-image:none !important;
+  border:1px solid var(--field-brd) !important;
+  color:var(--tx);
+  border-radius:var(--r-md);
+}
+html[data-theme] input:focus,
+html[data-theme] textarea:focus{border-color:var(--field-focus) !important;
+  box-shadow:0 0 0 3px var(--field-ring)}
+/* Главная кнопка действия. Опасные действия остаются красными: это смысл,
+   а не украшение. */
+html[data-theme] .abtn{
+  background-color:var(--btn-bg) !important;
+  background-image:var(--btn-img) !important;
+  border:1px solid var(--btn-brd) !important;
+  color:var(--btn-fg) !important;
+  box-shadow:var(--btn-shadow);
+}
+html[data-theme] .abtn.sec{
+  background-color:var(--btn2-bg) !important;
+  background-image:var(--btn2-img) !important;
+  border-color:var(--btn2-brd) !important;
+  color:var(--btn2-fg) !important;
+  box-shadow:var(--btn2-shadow);
+}
+html[data-theme] .abtn:active{transform:scale(.985);opacity:.9}
+/* ⚠️ 3 октября 2026. «Добавить в контакты» была сплошным белым прямоугольником.
+   Теперь это та же поверхность, что и остальной интерфейс, а красное
+   действие — только текстом и кромкой. */
+html[data-theme] .unknown-bar{background:transparent}
+html[data-theme] .unknown-bar-btn{
+  background-color:var(--mat-tint) !important;
+  background-image:var(--mat-fill) !important;
+  border:1px solid var(--mat-brd);color:var(--tx);
+  box-shadow:var(--mat-shadow), var(--mat-inner);
+}
+html[data-theme] .unknown-bar-btn.rd{
+  background-image:none !important;background-color:var(--danger-bg) !important;
+  border-color:var(--danger-brd);color:var(--rd);box-shadow:none;
+}
+html[data-theme] .unknown-bar-btn:active{transform:scale(.985);opacity:.9}
+html[data-theme] .abtn.danger,
+html[data-theme] .abtn.rd{color:var(--rd) !important}
+html[data-theme] .pkgamt{font-weight:700;letter-spacing:-.01em}
+html[data-theme] .sbamt{font-weight:700;letter-spacing:-.01em}
+html[data-theme] .pkgbo{font-weight:500}
+html[data-theme] .ssec{font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+html[data-theme] .vip-store-banner{border-width:1px}
+html[data-theme] .empty-state,
+html[data-theme] .no-data{background:transparent;color:var(--tx3)}
+/* Пузыри сообщений. */
+html[data-theme] .mrow.in .bub{
+  background-color:var(--bub-in) !important;
+  box-shadow:var(--bub-in-shadow)}
+html[data-theme] .mrow.out .bub{
+  background-color:var(--bub-out) !important;
+  box-shadow:var(--bub-out-shadow)}
+/* Разделитель дат — прозрачностью, а не плашкой. */
+html[data-theme] .dsep,
+html[data-theme] .date-sep{background:var(--dsep-bg) !important;
+  border:1px solid var(--dsep-brd);color:var(--tx2)}
+/* Закреплённое сообщение и строки ответа/правки — часть той же системы. */
+html[data-theme] .pinbar,
+html[data-theme] .rstrip,
+html[data-theme] .estrip{background-color:var(--strip-bg) !important;
+  border-color:var(--strip-brd) !important}
+
+/* ── Дополнения по ревью трёх тем (3 октября 2026) ──────────────────────── */
+/* Просмотр сторис — медиа на чёрном во всех темах: слой фона темы его не
+   перекрывает (раньше светлая тема делала просмотр светлым, и белые имя,
+   полосы прогресса и текст становились невидимыми). */
+html[data-theme] #screen-stories::before{content:none}
+/* Капсула ввода: размытие — на подложке, а не на самой капсуле. Иначе капсула
+   становится «корнем» для position:fixed, и лист вложений внутри неё
+   сжимался до её ширины и терял собственное размытие. */
+html[data-theme] .iwrap{position:relative;z-index:0}
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  /* Сама капсула прозрачна (граница той же толщины — геометрия не меняется),
+     а материал целиком — размытие, заливка, граница и тень — рисует подложка
+     в тех же границах. Порядок отрисовки тот же, что был у капсулы. */
+  html[data-theme]:not(.no-blur) .iwrap{-webkit-backdrop-filter:none;backdrop-filter:none;
+    background-color:transparent !important;background-image:none !important;
+    border-color:transparent;box-shadow:none}
+  html[data-theme]:not(.no-blur) .iwrap::before{content:"";position:absolute;inset:-1px;z-index:-1;
+    border-radius:inherit;pointer-events:none;
+    background-color:var(--mat-tint);background-image:var(--mat-fill);
+    border:1px solid var(--mat-brd);box-shadow:var(--mat-shadow), var(--mat-inner);
+    -webkit-backdrop-filter:blur(var(--mat-blur)) saturate(var(--mat-sat));
+    backdrop-filter:blur(var(--mat-blur)) saturate(var(--mat-sat));
+    transition:border-color .2s}
+  html[data-theme]:not(.no-blur) .iwrap:focus-within::before{border-color:var(--acc)}
+}
+/* Поиск в чате — плотная поверхность шапки, а не полупрозрачная карточка:
+   сквозь неё печаталась шапка чата. */
+html[data-theme] .srch-overlay{
+  background-color:var(--bar-bg) !important;background-image:var(--bar-img) !important;
+  border:none !important;border-bottom:1px solid var(--line) !important;border-radius:0;
+  box-shadow:var(--chdr-inner)}
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  html[data-theme]:not(.no-blur) .srch-overlay{background-color:var(--bar-bg-blur) !important;
+    -webkit-backdrop-filter:var(--bar-filter);backdrop-filter:var(--bar-filter)}
+}
+/* Всплывающее уведомление о сообщении — материал меню. Спрятанное за краем
+   экрана больше не отбрасывает тень на правый край. */
+html[data-theme] .notif{background:var(--toast-bg);border-color:var(--toast-brd);box-shadow:var(--toast-shadow)}
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  html[data-theme]:not(.no-blur) .notif{background:var(--toast-bg-blur);
+    -webkit-backdrop-filter:var(--menu-filter);backdrop-filter:var(--menu-filter)}
+}
+.notif:not(.on){visibility:hidden;box-shadow:none !important;
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1), visibility 0s .3s}
+/* Окна: плотнее в светлой и тёмной — сквозь них читались поля переписки. */
+html[data-theme] .modal{background-color:var(--modal-bg) !important}
+/* Панель эмодзи и стикеров — поверхность нижней панели темы. */
+html[data-theme] .mpanel{background:var(--panel-bg);border-top:1px solid var(--line)}
+/* Выбор языка — затемнение темы, лист — плотный материал меню. */
+html[data-theme] .lpick{background:var(--sheet-scrim)}
+html[data-theme] .lsheet{background:var(--toast-bg)}
+/* Карточка входа — тень темы, а не чёрный ореол на белом. */
+html[data-theme] .abox{box-shadow:var(--float-shadow)}
+/* Кнопки-значки в шапке чата и профиля, вспомогательные .xbtn.sec — одна
+   плитка темы (в светлой были плоскими серыми). Встроенные стили этих
+   кнопок перекрываются поэтому через !important. */
+html[data-theme] .chdr .back-btn,
+html[data-theme] .chdr .ibt,
+html[data-theme] .rp-back-btn,
+html[data-theme] .xbtn.sec{background:var(--tile-bg) !important;border-color:var(--tile-brd) !important}
+/* «Добавить» без размытия (слабое устройство, «уменьшить движение»):
+   плотный фон, иначе сквозь знак просвечивали строки списка. */
+html.no-blur[data-theme] body.mobile-mode #fab-newchat,
+html.no-blur[data-theme] .new-chat-btn,
+html.no-blur[data-theme] .iwrap{background-color:var(--fab-solid) !important}
+/* Наведение и фокус на десктопе — общие правила темы перекрывали базовые. */
+html[data-theme] .abtn:hover{filter:brightness(1.06)}
+html[data-theme] .abtn.sec:hover,
+html[data-theme] .xbtn.sec:hover,
+html[data-theme] .nbtn:hover,
+html[data-theme] .cbal:hover,
+html[data-theme] .upill:hover{border-color:var(--hover-brd) !important}
+html[data-theme] select:focus{border-color:var(--field-focus) !important;box-shadow:0 0 0 3px var(--field-ring)}
+/* Редкость подарков — смысл, а не украшение: окраска возвращается поверх
+   общего материала карточки. */
+html[data-theme] .gift-card.rare{border-color:rgba(var(--acc2-rgb),.35) !important}
+html[data-theme] .gift-card.epic{border-color:rgba(52,211,153,.35) !important}
+html[data-theme] .gift-card.legendary{border-color:rgba(251,191,36,.45) !important;
+  background-image:linear-gradient(160deg,rgba(251,191,36,.07),rgba(251,191,36,.02)),var(--mat-fill) !important}
+/* VIP-баннер магазина. */
+html[data-theme] .vip-store-banner{background-color:var(--vip-bg) !important;border-color:var(--vip-brd) !important}
+/* Значки разделов настроек в светлой и тёмной: один цвет темы на тонкой
+   плитке — цветные контуры тёмной палитры на светлом не читались (1,4–2,5:1),
+   а у раздела «Ещё» плиток не было вовсе. «Монохром» — своё исключение ниже. */
+html[data-theme]:not([data-theme="mono"]) .settings-row-ico{background:var(--ico-tile) !important;color:var(--ico-fg)}
+html[data-theme]:not([data-theme="mono"]) .settings-row-ico svg [stroke]:not([stroke="none"]){stroke:currentColor}
+html[data-theme]:not([data-theme="mono"]) .settings-row-ico svg [fill]:not([fill="none"]){fill:currentColor}
+
+/* Поле ответа в просмотре сторис лежит на чёрном медиа — светлое поле темы
+   с белым текстом там не читалось. */
+html[data-theme] #screen-stories input,
+html[data-theme] #screen-stories textarea{background-color:rgba(255,255,255,.14) !important;
+  border-color:rgba(255,255,255,.28) !important;color:#ffffff}
+html[data-theme] #screen-stories input::placeholder{color:rgba(255,255,255,.62) !important}
+/* Просмотр фото — тёмная подложка во всех темах. */
+html[data-theme] #m-imgview{background:rgba(0,0,0,.88)}
+/* Главная кнопка: градиент рисуется под границей, без тёмной полосы справа. */
+html[data-theme] .abtn{background-origin:border-box}
+/* Кнопка «отправить» — читаемый знак на диске темы. */
+html[data-theme] .sndbtn{color:var(--send-fg);box-shadow:var(--send-glow)}
+html[data-theme] .sndbtn svg{stroke:currentColor}
+/* Кнопка покупки стикеров: одна геометрия во всех темах — граница есть
+   всегда, в светлой и тёмной она прозрачная. */
+html[data-theme] .scbuy{border:1px solid transparent}
+/* Фильтры редкости подарков были голыми кнопками браузера. Теперь — капсулы
+   той же системы, что поля и вкладки. */
+html[data-theme] .fbtn{min-height:34px;padding:6px 14px;border-radius:var(--r-pill);
+  background:var(--field-bg);border:1px solid var(--field-brd);color:var(--tx2);
+  font:inherit;font-size:12.5px;font-weight:var(--fw-med);cursor:pointer}
+html[data-theme] .fbtn.on{background:var(--row-active);border-color:var(--hover-brd);color:var(--tx)}
+
+/* ── «Монохром»: смысловые цветовые исключения ─────────────────────────── */
+/* Это цвет, а не форма: в «Монохроме» служебное — серебро и графит, цветным
+   остаётся только смысл (ошибка, «в сети», кристалл, VIP, содержимое). */
+/* Заглушки аватаров — монохромные; настоящее фото лежит поверх и НЕ
+   обесцвечивается. */
 html[data-theme="mono"] .chav,
 html[data-theme="mono"] .mav,
 html[data-theme="mono"] .rpav,
@@ -1141,159 +1661,33 @@ html[data-theme="mono"] .av{
   color:rgba(236,240,244,.82) !important;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.14);
 }
-/* ⚠️ 3 октября 2026. Кружок сторис был полупрозрачным, и сквозь него
-   просвечивало цветное кольцо — получался «неоновый шар». Здесь заливка
-   непрозрачная, кольцо остаётся кольцом. */
-html[data-theme="mono"] .story-av-inner,
-html[data-theme="mono"] .story-stack .sst{
+/* Кружок сторис непрозрачный: сквозь полупрозрачный просвечивало кольцо. */
+html[data-theme="mono"] .story-av-inner{
   background-color:#242b33 !important;
   background-image:linear-gradient(145deg, rgba(255,255,255,.13), rgba(255,255,255,.035)) !important;
   color:rgba(236,240,244,.84) !important;
   border-color:transparent;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.12);
 }
-/* Кристаллы остаются голубыми как валюта, но контейнер — стеклянный. */
-html[data-theme="mono"] .cbal{border-color:var(--mat-brd)}
-/* Цветным остаётся сам кристалл, сумма — обычный текст. */
-html[data-theme="mono"] .cba{color:var(--tx)}
-html[data-theme="mono"] .cbal{color:rgba(126,200,222,.80)}
-/* Служебные кнопки шапки — одного характера, не радуга. */
+/* Значки разделов настроек — одного характера, а не каждый своего цвета. */
+html[data-theme="mono"] .settings-row-ico{background:rgba(255,255,255,.07) !important;
+  color:var(--tx2);filter:grayscale(1)}
+html[data-theme="mono"] .settings-row-ico svg{opacity:.9}
+html[data-theme="mono"] .settings-row-ico svg [fill]:not([fill="none"]){fill:currentColor}
+/* «Подтверждён» — смысловая отметка, но не синее пятно в сером списке. */
+html[data-theme="mono"] .verify-badge{filter:grayscale(1) brightness(1.3);opacity:.9}
+html[data-theme="mono"] .odot{background:#5fbf96 !important;box-shadow:0 0 0 2px rgba(14,17,20,.75)}
+/* Баланс: цветным остаётся сам кристалл. */
+html[data-theme="mono"] .cbal{border-color:var(--mat-brd);color:rgba(126,200,222,.80)}
 html[data-theme="mono"] .nbtn{color:var(--tx2) !important;border-color:var(--mat-brd) !important}
 html[data-theme="mono"] .nbtn svg{opacity:.85}
-
-/* ── Типографика: иерархия не одной жирностью ─────────────────────────── */
-html[data-theme="mono"] .logo{font-weight:700;letter-spacing:-.015em;color:var(--tx)}
-html[data-theme="mono"] .cnm{font-weight:var(--fw-med);letter-spacing:-.005em}
-html[data-theme="mono"] .cprev{font-weight:400;color:var(--tx2)}
-html[data-theme="mono"] .ctime{font-weight:400;color:var(--tx2);font-variant-numeric:tabular-nums}
-/* Неактивная вкладка списка и подсказки полей — спокойные, но различимые. */
-html[data-theme="mono"] .stab{color:var(--tx2);opacity:.78}
-html[data-theme="mono"] .stab.on{opacity:1}
-html[data-theme="mono"] input::placeholder,
-html[data-theme="mono"] textarea::placeholder{color:var(--tx2) !important;opacity:.72}
-/* Время в пузыре было почти невидимым (белый 35%). */
-html[data-theme="mono"] .mt{color:rgba(238,241,244,.58)}
-html[data-theme="mono"] .mrow.out .mt{color:rgba(238,241,244,.66)}
-/* Подпись сторис — читается, но не спорит с именем чата. */
-html[data-theme="mono"] .story-nm{color:var(--tx2);opacity:.9}
-html[data-theme="mono"] .atitle{font-weight:650;letter-spacing:-.01em}
-html[data-theme="mono"] .settings-row-label{font-weight:500}
-html[data-theme="mono"] .mtit{font-weight:650}
-
-/* ── Полировка шапки и вкладок ─────────────────────────────────────────── */
-/* Вкладки — продолжение шапки, а не отдельная таблица: та же поверхность,
-   без собственной рамки, индикатор тонкой световой чертой. */
-html[data-theme="mono"] .stabs{
-  background-image:linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.012));
-  box-shadow:inset 0 -1px 0 rgba(255,255,255,.06);
-  padding:0 var(--sp-3);
-}
-html[data-theme="mono"] .stab.on::after{background:linear-gradient(90deg,transparent,rgba(255,255,255,.75),transparent)}
-/* Баланс на телефоне компактнее, чтобы пилюля профиля не уезжала за край. */
-body.mobile-mode .cbal .cba{font-size:12px}
-/* Прятать на телефоне нужно только «плюс» — прямого потомка пилюли.
-   Значок кристалла лежит в <span> и остаётся на месте. */
-body.mobile-mode .cbal>svg{display:none}
-
-/* ── Распространение материала на остальные экраны ─────────────────────── */
-/* Полноэкранные экраны (контакты, профиль, настройки, магазин, VIP, подарки,
-   архив, Dev Panel, редактор сторис) — прозрачные, чтобы под панелями был
-   тот же многослойный фон. */
-html[data-theme="mono"] .screen{background:transparent}
-html[data-theme="mono"] .screen::before{content:"";position:absolute;inset:0;z-index:-1;
-  background:
-    radial-gradient(900px 560px at 8% -6%, rgba(150,190,230,.22), transparent 56%),
-    radial-gradient(760px 520px at 96% 8%, rgba(226,236,246,.12), transparent 58%),
-    linear-gradient(166deg, #141a21 0%, #0d1116 46%, #121820 100%)}
-/* Правая инфо-панель на десктопе. */
-html[data-theme="mono"] .rp{background:transparent !important;border-left:1px solid rgba(255,255,255,.07)}
-/* Исключение: открытый на телефоне профиль — собственный слой с тем же
-   многослойным фоном, что и остальные экраны, но ничего не пропускает. */
-html[data-theme="mono"] .rp.mobile-open{
-  background:var(--bg) !important;border-left:none;isolation:isolate}
-html[data-theme="mono"] .rp.mobile-open::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
-  background:
-    radial-gradient(95% 62% at 16% -4%, rgba(190,212,234,.16), transparent 62%),
-    radial-gradient(72% 52% at 94% 20%, rgba(156,184,210,.11), transparent 60%),
-    radial-gradient(85% 58% at 46% 106%, rgba(130,158,188,.10), transparent 66%),
-    linear-gradient(180deg, #14181e 0%, #0e1217 55%, #0b0e13 100%)}
-/* Шапка профиля — та же стеклянная поверхность, что и везде. */
-html[data-theme="mono"] .rp.mobile-open .rphdr{
-  background:var(--mat-fill);border-bottom:none;padding-top:18px}
-/* Разделы профиля отделяются расстоянием и слабым светом, а не линиями. */
-html[data-theme="mono"] .rp.mobile-open .rpsec{border-bottom:none;padding:16px 16px 8px}
-html[data-theme="mono"] .rp.mobile-open .rpsec+.rpsec{box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
-html[data-theme="mono"] .rp.mobile-open .rp-actions{padding:14px 16px;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
-html[data-theme="mono"] .rp.mobile-open .rpst2{color:var(--tx2);letter-spacing:.06em}
-/* Карточки и секции — лёгкие стеклянные группы. */
-html[data-theme="mono"] .asec,
-html[data-theme="mono"] .gift-card,
-html[data-theme="mono"] .store-card,
-html[data-theme="mono"] .pack-card,
-html[data-theme="mono"] .vip-card,
-html[data-theme="mono"] .settings-group,
-html[data-theme="mono"] .srch-overlay{
-  background-color:var(--mat-tint) !important;
-  background-image:var(--mat-fill) !important;
-  border:1px solid var(--mat-brd) !important;
-  box-shadow:var(--mat-shadow), var(--mat-inner);
-  border-radius:var(--r-lg);
-}
-/* Поля ввода и селекты — стеклянные капсулы одной системы. */
-html[data-theme="mono"] .fsel,
-html[data-theme="mono"] .finp,
-html[data-theme="mono"] input:not([type="checkbox"]):not([type="radio"]),
-html[data-theme="mono"] textarea,
-html[data-theme="mono"] select{
-  background-color:rgba(255,255,255,.055) !important;
-  background-image:none !important;
-  border:1px solid rgba(255,255,255,.12) !important;
-  color:var(--tx);
-  border-radius:var(--r-md);
-}
-html[data-theme="mono"] input:focus,
-html[data-theme="mono"] textarea:focus{border-color:rgba(255,255,255,.26) !important;
-  box-shadow:0 0 0 3px rgba(255,255,255,.06)}
-/* Главная кнопка действия — стекло с контрастным знаком, а не фиолетовый
-   градиент. Опасные действия остаются красными: это смысл, а не украшение. */
-html[data-theme="mono"] .abtn{
-  background-color:rgba(255,255,255,.085) !important;
-  background-image:linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.05)) !important;
-  border:1px solid rgba(255,255,255,.18) !important;
-  color:var(--tx) !important;
-  box-shadow:0 4px 14px rgba(8,12,18,.26), inset 0 1px 0 rgba(255,255,255,.2);
-}
-html[data-theme="mono"] .abtn:active{transform:scale(.985);opacity:.9}
-/* ⚠️ 3 октября 2026. «Добавить в контакты» была сплошным белым прямоугольником
-   и светила ярче всего на экране. Теперь это та же стеклянная поверхность,
-   что и остальной интерфейс, а красное действие — только текстом и кромкой. */
-html[data-theme="mono"] .unknown-bar{background:transparent}
-html[data-theme="mono"] .unknown-bar-btn{
-  background-color:var(--mat-tint) !important;
-  background-image:var(--mat-fill) !important;
-  border:1px solid var(--mat-brd);color:var(--tx);
-  box-shadow:var(--mat-shadow), var(--mat-inner);
-}
-html[data-theme="mono"] .unknown-bar-btn.rd{
-  background-image:none !important;background-color:rgba(248,113,113,.05) !important;
-  border-color:rgba(248,113,113,.30);color:var(--rd);box-shadow:none;
-}
-html[data-theme="mono"] .unknown-bar-btn:active{transform:scale(.985);opacity:.9}
-html[data-theme="mono"] .abtn.danger,
-html[data-theme="mono"] .abtn.rd{color:var(--rd) !important}
-/* Пустые состояния — спокойные, без серых плит. */
-/* ⚠️ 3 октября 2026. В магазине доминировали бирюзовый, жёлтый и зелёный:
-   цифры, заголовки, рамки и бонусы были цветными одновременно. Здесь цвет
-   остаётся ТОЛЬКО как смысловой акцент: кристалл — свой голубой, VIP —
-   небольшой золотой. Цены, суммы, заголовки и рамки нейтральны,
-   бонус приглушён. */
-html[data-theme="mono"] .pkgamt{color:var(--tx) !important;font-weight:700;letter-spacing:-.01em}
-html[data-theme="mono"] .sbamt{color:var(--tx) !important;font-weight:700;letter-spacing:-.01em}
+/* Магазин: цвет — только смысловой акцент (кристалл свой, VIP — небольшой
+   золотой); цены, суммы, заголовки и рамки нейтральны, бонус приглушён. */
+html[data-theme="mono"] .pkgamt,
+html[data-theme="mono"] .sbamt{color:var(--tx) !important}
 html[data-theme="mono"] .pkgpr{color:var(--tx2)}
-html[data-theme="mono"] .pkgbo{color:rgba(160,196,178,.72) !important;font-weight:500}
-html[data-theme="mono"] .ssec{color:var(--tx2);font-weight:600;letter-spacing:.06em;text-transform:uppercase}
-/* Кристалл сохраняет свой цвет, но ледяной и спокойный, а не неоновый. */
+html[data-theme="mono"] .pkgbo{color:rgba(160,196,178,.72) !important}
+html[data-theme="mono"] .ssec{color:var(--tx2)}
 html[data-theme="mono"] .pkgico svg{opacity:.85}
 html[data-theme="mono"] .cpkg{border-color:rgba(255,255,255,.10)}
 html[data-theme="mono"] .cpkg.pop{border-color:rgba(255,255,255,.26)}
@@ -1301,29 +1695,10 @@ html[data-theme="mono"] .cpkg:hover{border-color:rgba(255,255,255,.30);box-shado
 html[data-theme="mono"] .pkgb{background:rgba(255,255,255,.90) !important;color:#11151a !important;
   box-shadow:0 2px 8px rgba(6,9,13,.4)}
 html[data-theme="mono"] .sbal{background:rgba(255,255,255,.04) !important;border-color:rgba(255,255,255,.10)}
-/* VIP — единственное золотое пятно, и оно небольшое. */
-html[data-theme="mono"] .vip-store-banner{border-width:1px;border-color:rgba(251,191,36,.20) !important;
+html[data-theme="mono"] .vip-store-banner{border-color:rgba(251,191,36,.20) !important;
   background-image:linear-gradient(180deg, rgba(251,191,36,.055), rgba(255,255,255,.02)) !important}
 html[data-theme="mono"] .scbuy{background:rgba(255,255,255,.09) !important;color:var(--tx) !important;
-  border:1px solid rgba(255,255,255,.16) !important}
-html[data-theme="mono"] .empty-state,
-html[data-theme="mono"] .no-data{background:transparent;color:var(--tx3)}
-/* Пузыри сообщений: входящие и исходящие различаются светом, а не цветом. */
-html[data-theme="mono"] .mrow.in .bub{
-  background-color:rgba(255,255,255,.065) !important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.09)}
-html[data-theme="mono"] .mrow.out .bub{
-  background-color:rgba(255,255,255,.135) !important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}
-/* Разделитель дат — расстоянием и прозрачностью, а не плашкой. */
-html[data-theme="mono"] .dsep,
-html[data-theme="mono"] .date-sep{background:rgba(255,255,255,.07) !important;
-  border:1px solid rgba(255,255,255,.08);color:var(--tx2)}
-/* Закреплённое сообщение и строка ответа — часть той же системы. */
-html[data-theme="mono"] .pinbar,
-html[data-theme="mono"] .rstrip,
-html[data-theme="mono"] .estrip{background-color:rgba(255,255,255,.05) !important;
-  border-color:rgba(255,255,255,.09) !important}
+  border-color:rgba(255,255,255,.16) !important}
 @keyframes mFadeIn{from{opacity:0}to{opacity:1}}
 @keyframes mFadeOut{from{opacity:1}to{opacity:0}}
 @keyframes popIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
@@ -1356,7 +1731,28 @@ html[data-theme="mono"] .estrip{background-color:rgba(255,255,255,.05) !importan
 .ctx-pin-item{display:none}
 .ctx.can-pin .ctx-pin-item{display:flex}
 /* Затемнение фона и выбранное сообщение над ним. */
-.ctx-scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:998;display:none}
+/* ⚠️ 4 октября 2026. Затемнение — псевдоэлемент с вырезом по форме сообщения
+   (--ctx-hole ставит layoutCtxGroup): под вырезом сообщение остаётся тем же
+   до пикселя. Сам .ctx-scrim прозрачный и ловит тап по всему экрану, в том
+   числе по сообщению в вырезе, — тап мимо меню закрывает его, как и раньше. */
+.ctx-scrim{position:fixed;inset:0;background:transparent;z-index:998;display:none}
+.ctx-scrim::before{content:"";position:absolute;inset:0;background:rgba(0,0,0,.45);clip-path:var(--ctx-hole,none);pointer-events:none}
+/* Полная палитра реакций заменяет строки меню, пока раскрыта. */
+.ctx.on.under-palette{visibility:hidden;pointer-events:none}
+/* Сообщение, приподнятое под меню (layoutCtxGroup): плавный сдвиг поверх
+   соседних строк. Под пузырь кладётся тот же фон экрана, иначе сквозь
+   полупрозрачное стекло читались бы соседние сообщения. Это фон с исходного
+   места пузыря (--ctx-bgx/--ctx-bgy — его координаты на экране до подъёма),
+   поэтому поднятое сообщение выглядит так же, как в момент касания.
+   attachment:fixed тут не годится: внутри колонки чата с transform он
+   привязался бы к самому пузырю. Прокрутка ленты при этом не меняется. */
+.mrow.ctx-lift,.mrow.ctx-returning{transition:translate var(--t-pop,.22s) var(--e-out,ease)}
+.mrow.ctx-returning{position:relative;z-index:999}
+.mrow.ctx-lift>:not(.msel-check):not(.mav){position:relative}
+.mrow.ctx-lift>:not(.msel-check):not(.mav)::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;
+  background:var(--app-bg,var(--bg));background-size:100vw 100vh;background-repeat:no-repeat;
+  background-position:var(--ctx-bgx,0px) var(--ctx-bgy,0px);pointer-events:none}
+@media (prefers-reduced-motion: reduce){ .mrow.ctx-lift,.mrow.ctx-returning{transition:none} }
 .ctx-scrim.on{display:block;animation:mFadeIn var(--t-pop) var(--e-out)}
 .mrow.ctx-target{position:relative;z-index:999}
 .mrow.ctx-target .bub{box-shadow:0 8px 28px rgba(0,0,0,.5)}
@@ -2230,9 +2626,6 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
   </div>
   <div class="topbar">
     <div class="logo">⬡ Монохром</div>
-    <!-- Компактная стопка аватаров с активными сторис. Постоянной большой
-         полосы над чатами больше нет: лента раскрывается жестом. -->
-    <div class="story-stack" id="story-stack" aria-label="Сторис"></div>
     <div class="tsrch">
       <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       <input type="text" id="gsrch" placeholder="Поиск..." oninput="globalSearch(this.value)">
@@ -2255,22 +2648,23 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       </div>
     </div>
   </div>
+  <!-- Сторис: ОДИН набор аватаров. В свёрнутом виде он стоит стопкой слева от
+       названия в шапке, в раскрытом — рядом под шапкой. Между состояниями
+       узлы не пересоздаются: меняются только transform и opacity. -->
+  <div id="stories-layer" aria-label="Сторис"><div id="stories-row"></div></div>
   <div class="layout">
     <div class="sb">
-      <div class="stabs">
-        <div class="stab on" onclick="setTab(this,'all')" id="stab-all">Все</div>
-        <div class="stab" onclick="setTab(this,'personal')" id="stab-pers">Лично</div>
-        <div class="stab" onclick="setTab(this,'groups')" id="stab-grp">Группы</div>
-        <div class="stab" onclick="setTab(this,'channels')" id="stab-ch">Каналы</div>
-      </div>
-      <!-- Лента сторис: по умолчанию высота 0, растёт вслед за пальцем.
-           Во время жеста меняются только CSS-переменные, DOM не трогается. -->
-      <div id="stories-strip"><div class="ss-inner" id="stories-strip-inner"></div></div>
       <div class="sb-toolbar">
         <svg class="sb-search-ico" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input id="sb-search" placeholder="Поиск чатов..." oninput="filterChats(this.value)">
         <button class="new-chat-btn" onclick="openContacts()" title="Контакты" style="margin-right:4px"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14c2.3.3 4 2 4 4.6"/></svg></button>
         <button class="new-chat-btn" id="fab-newchat" onclick="openNewChat()" title="Новый чат"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v12M6 12h12"/></svg></button>
+      </div>
+      <div class="stabs">
+        <div class="stab on" onclick="setTab(this,'all')" id="stab-all">Все</div>
+        <div class="stab" onclick="setTab(this,'personal')" id="stab-pers">Лично</div>
+        <div class="stab" onclick="setTab(this,'groups')" id="stab-grp">Группы</div>
+        <div class="stab" onclick="setTab(this,'channels')" id="stab-ch">Каналы</div>
       </div>
       <div class="chat-select-bar" id="chat-select-bar">
         <span style="cursor:pointer;display:inline-flex;color:var(--tx2)" onclick="requestExitChatSelectMode()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
@@ -6051,7 +6445,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-03 нижняя панель: корневые вкладки Чаты — Контакты — Настройки";
+const BUILD_TAG = "2026-10-04 одна геометрия трёх тем, сторис как в Telegram, финальная полировка";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -6174,7 +6568,7 @@ function renderChats(filter=""){
     ad.className="ci";
     ad.onclick=()=>openArchive();
     const preview=archivedChats.length ? archivedChats.slice(0,3).map(x=>escHtml(x.nm)).join(", ") : "Пусто";
-    ad.innerHTML=`<div class="chav" style="background:var(--bg3);color:var(--tx2)">${uiIcon("archive",19)}</div>
+    ad.innerHTML=`<div class="chav" style="background:var(--av-neutral);color:var(--tx2)">${uiIcon("archive",19)}</div>
     <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
       <div class="cnm">Архив</div>
       <div class="cprev">${preview}</div>
@@ -6436,7 +6830,7 @@ function openChat(id,opts){
   // список подписчиков никаким способом). Сам список внутри — только для
   // owner/admin, см. renderMembersList().
   const memBtn=el("rp-members-btn");
-  if(memBtn)memBtn.style.display=(ch.type==="groups"||ch.type==="channels")?"block":"none";
+  if(memBtn)memBtn.style.display=(ch.type==="groups"||ch.type==="channels")?"":"none";
 
   // 🔒 Кнопка сквозного шифрования — только для настоящих личных чатов
   updateE2EButton(ch);
@@ -6448,9 +6842,9 @@ function openChat(id,opts){
   // Базовые системные чаты (Избранное/Angie Official/AngieSupport) —
   // нельзя удалить, заблокировать или отправить в архив
   const isSystem=isSystemChat(ch.id);
-  if(archBtn) archBtn.style.display=isSystem?"none":"block";
-  if(el("rp-delete-btn")) el("rp-delete-btn").style.display=isSystem?"none":"block";
-  if(el("rp-block-btn")) el("rp-block-btn").style.display=isSystem?"none":"block";
+  if(archBtn) archBtn.style.display=isSystem?"none":"";
+  if(el("rp-delete-btn")) el("rp-delete-btn").style.display=isSystem?"none":"";
+  if(el("rp-block-btn")) el("rp-block-btn").style.display=isSystem?"none":"";
 
   // Панель "Добавить в контакты / Пожаловаться / Удалить" — для личных чатов
   // с людьми, которых нет в контактах, или для ещё пустых чатов (ни одного сообщения)
@@ -6461,7 +6855,7 @@ function openChat(id,opts){
   if(chSetBtn){
     const myRole=myRoleIn(ch);
     const canEdit=(ch.type==="channels"||ch.type==="groups")&&(ch.mine||myRole==="owner"||myRole==="admin");
-    chSetBtn.style.display=canEdit?"block":"none";
+    chSetBtn.style.display=canEdit?"":"none";
     chSetBtn.innerHTML=uiIcon("gear",15)+(ch.type==="channels"?" Изменить канал":" Изменить группу");
   }
 
@@ -9013,7 +9407,29 @@ function showScrollDownBtn(n){
   // же scroll-событием вместе со счётом новых.
   const c=el("msgs"); if(c && c.scrollHeight-msgsFinalTop(c)-c.clientHeight<80){ hideScrollDownBtn(); return; }
   b.style.display="flex";
+  placeScrollDownBtn();
   const k=el("scroll-down-cnt"); if(k){ k.textContent=n>0?String(n):""; k.style.display=n>0?"":"none"; }
+}
+// ⚠️ 4 октября 2026. Капсула стояла в 14 px от низа ВСЕЙ колонки чата
+// (position:absolute в .cm) — то есть поверх строки ввода, а при открытой
+// панели эмодзи — поверх панели. Теперь она привязана к низу самой ленты:
+// всегда над строкой ввода, полосами ответа и правки и панелью эмодзи и
+// двигается вместе с ними в том же кадре (ResizeObserver срабатывает после
+// раскладки, до отрисовки). Высоту ленты не меняет — по-прежнему absolute.
+// Если лента так сжалась, что капсула в неё не помещается, капсула временно
+// прячется (visibility), а не налезает на строку ввода.
+const DOWN_BTN_GAP=14;
+function placeScrollDownBtn(){
+  const b=el("scroll-down-btn"), c=el("msgs"); if(!b || !c) return;
+  const host=b.parentElement; if(!host || c.offsetParent!==host) return;
+  const низЛенты=c.offsetTop+c.offsetHeight;
+  b.style.bottom=(Math.max(0, host.clientHeight-низЛенты)+DOWN_BTN_GAP)+"px";
+  if(b.style.display!=="none") b.classList.toggle("no-room", c.offsetHeight < b.offsetHeight+DOWN_BTN_GAP+8);
+}
+if(window.ResizeObserver && el("msgs")){
+  const ro=new ResizeObserver(placeScrollDownBtn);
+  ro.observe(el("msgs"));
+  const колонка=el("msgs").parentElement; if(колонка) ro.observe(колонка);
 }
 function hideScrollDownBtn(){
   const b=el("scroll-down-btn"); if(b) b.style.display="none";
@@ -11655,7 +12071,9 @@ function showCtx(e,id){
     rp.style.left="-9999px"; rp.style.top="-9999px";
     rp.classList.add("on");
   } else if(rp){ rp.classList.remove("on"); }
+  S.ctxTapY=y;
   positionCtxNearMessage(id, x, y);
+  ctxFollowStart();
   // Регистрируем в общем бэк-стеке (см. pushNavEntry выше) — аппаратная
   // кнопка "назад" на Android должна сначала закрыть ЭТО меню, а не сразу
   // выходить из чата (баг со скриншота: назад закрывал весь чат, оставляя
@@ -11688,6 +12106,104 @@ function ctxRowOf(id){
 // постоянным зазором, а при нехватке места двигаем группу целиком, а не
 // каждый элемент отдельно.
 const CTX_GROUP_GAP=10;   // постоянный зазор капсула↔меню, CSS-пиксели
+// ⚠️ 4 октября 2026. Сообщение под меню должно оставаться полностью ярким, как
+// в Telegram. Подъём строки через z-index не работал никогда: строка живёт
+// внутри колонки чата (.cm с transform — свой слой наложения), а затемнение —
+// на уровне страницы, и любой z-index строки сравнивался только внутри .cm.
+// Даже поднятое, полупрозрачное стекло пузыря легло бы на затемнение и
+// потемнело. Поэтому затемнение рисуется С ВЫРЕЗОМ ровно по форме сообщения
+// (clip-path по скруглённым прямоугольникам его частей): под вырезом —
+// настоящее сообщение без единого изменённого пикселя, вокруг — затемнение.
+// Если сообщение вместе с меню не помещается на экране, яркой остаётся
+// непрерывная полоса сообщения рядом с группой, а часть под группой уходит в
+// затемнение — меню, капсула и яркое сообщение не перекрываются никогда.
+// Части сообщения, которые попадают в вырез: пузырь (с реакциями внутри),
+// стикер, подарок, голосовое, подпись времени у стикера. Кружок выбора и
+// аватар не входят: аватар продолжения группы невидим, и вырез показал бы
+// пустой яркий кружок.
+function ctxMsgParts(row){
+  if(!row) return [];
+  return [...row.children].filter(k=>!k.classList.contains("msel-check") && !k.classList.contains("mav")
+    && k.offsetWidth>0 && k.offsetHeight>0 && getComputedStyle(k).visibility!=="hidden");
+}
+// Насколько строка сейчас приподнята (в том числе посреди анимации подъёма).
+function ctxLiftNow(row){
+  const v=row ? getComputedStyle(row).translate : "none";
+  if(!v || v==="none") return 0;
+  const p=v.split(" "); return parseFloat(p[1]||"0")||0;
+}
+// Сообщение целиком (объединение частей) — на своём месте в ленте, без подъёма.
+function ctxMsgBaseRect(row){
+  const части=ctxMsgParts(row); if(!части.length) return null;
+  const dy=ctxLiftNow(row);
+  let l=Infinity,t=Infinity,r=-Infinity,b=-Infinity;
+  for(const k of части){ const q=k.getBoundingClientRect(); l=Math.min(l,q.left); t=Math.min(t,q.top-dy); r=Math.max(r,q.right); b=Math.max(b,q.bottom-dy); }
+  return {left:l,top:t,right:r,bottom:b};
+}
+// Видимая часть: то же, обрезанное лентой.
+function ctxMsgVisibleRect(row){
+  const u=ctxMsgBaseRect(row); if(!u) return null;
+  let {left:l,top:t,right:r,bottom:b}=u;
+  const f=el("msgs")?.getBoundingClientRect();
+  if(f){ l=Math.max(l,f.left); t=Math.max(t,f.top); r=Math.min(r,f.right); b=Math.min(b,f.bottom); }
+  return (r-l>=1 && b-t>=1) ? {left:l,top:t,right:r,bottom:b} : null;
+}
+// Поднять (или опустить) строку на dy пикселей — только визуально: прокрутка
+// ленты и её «место чтения» не трогаются. Класс .ctx-lift кладёт под
+// полупрозрачный пузырь тот же фон экрана, иначе сквозь стекло читались бы
+// соседние сообщения, над которыми оно проезжает.
+function ctxSetLift(row, dy){
+  if(!row) return;
+  dy=Math.round(dy);
+  const было=Math.round(parseFloat(row.dataset.ctxLift||"0"))||0;
+  if(dy===было && (dy!==0 || !row.classList.contains("ctx-lift"))) return;
+  if(dy){ row.classList.remove("ctx-returning"); row.classList.add("ctx-lift"); row.dataset.ctxLift=String(dy); row.style.translate="0 "+dy+"px"; }
+  else ctxLiftRelease(row);
+}
+// Вернуть строку на место плавно; подложка и подъём над соседями держатся,
+// пока она едет обратно.
+function ctxLiftRelease(row){
+  const rows=row ? [row] : [...document.querySelectorAll("#msgs .mrow.ctx-lift")];
+  rows.forEach(r=>{
+    delete r.dataset.ctxLift;
+    if(!r.style.translate){ r.classList.remove("ctx-lift","ctx-returning"); return; }
+    r.classList.add("ctx-returning");
+    r.style.translate="";
+    let готово=false;
+    const done=()=>{ if(готово) return; готово=true; r.removeEventListener("transitionend", onEnd);
+      if(!r.dataset.ctxLift) r.classList.remove("ctx-lift","ctx-returning"); };
+    const onEnd=(e)=>{ if(e.target===r && e.propertyName==="translate") done(); };
+    r.addEventListener("transitionend", onEnd);
+    setTimeout(done, 500);
+  });
+}
+// Путь выреза: весь экран плюс скруглённый прямоугольник на каждую часть
+// сообщения в пределах ленты и яркой полосы; заполнение evenodd делает их дырами.
+function ctxHolePath(row, полоса){
+  const W=window.innerWidth, H=window.innerHeight;
+  const f=el("msgs")?.getBoundingClientRect(); if(!f || !полоса) return "none";
+  const n=v=>Math.round(v*100)/100;
+  let d=`M0 0H${W}V${H}H0Z`, дыр=0;
+  for(const k of ctxMsgParts(row)){
+    const q=k.getBoundingClientRect(), s=getComputedStyle(k);
+    const l=Math.max(q.left,f.left), r=Math.min(q.right,f.right);
+    const t=Math.max(q.top,f.top,полоса.top), b=Math.min(q.bottom,f.bottom,полоса.bottom);
+    if(r-l<1 || b-t<1) continue;
+    const рад=(v)=>parseFloat(String(v).split(" ")[0])||0;
+    const max=Math.min((r-l)/2,(b-t)/2);
+    // Срезанный угол (часть ушла за ленту или под группу) — прямой.
+    let tl=(t>q.top+.5||l>q.left+.5)?0:Math.min(рад(s.borderTopLeftRadius),max);
+    let tr=(t>q.top+.5||r<q.right-.5)?0:Math.min(рад(s.borderTopRightRadius),max);
+    let br=(b<q.bottom-.5||r<q.right-.5)?0:Math.min(рад(s.borderBottomRightRadius),max);
+    let bl=(b<q.bottom-.5||l>q.left+.5)?0:Math.min(рад(s.borderBottomLeftRadius),max);
+    d+=`M${n(l+tl)} ${n(t)}H${n(r-tr)}`+(tr?`A${n(tr)} ${n(tr)} 0 0 1 ${n(r)} ${n(t+tr)}`:"")
+      +`V${n(b-br)}`+(br?`A${n(br)} ${n(br)} 0 0 1 ${n(r-br)} ${n(b)}`:"")
+      +`H${n(l+bl)}`+(bl?`A${n(bl)} ${n(bl)} 0 0 1 ${n(l)} ${n(b-bl)}`:"")
+      +`V${n(t+tl)}`+(tl?`A${n(tl)} ${n(tl)} 0 0 1 ${n(l+tl)} ${n(t)}`:"")+"Z";
+    дыр++;
+  }
+  return дыр ? `path(evenodd, "${d}")` : "none";
+}
 function layoutCtxGroup(id, fallbackX, fallbackY){
   const m=el("ctx"), rp=el("rxn-picker");
   if(!m || !m.classList.contains("on")) return;
@@ -11697,25 +12213,68 @@ function layoutCtxGroup(id, fallbackX, fallbackY){
   const vv=window.visualViewport;
   const vw=vv?vv.width:window.innerWidth, vh=vv?vv.height:window.innerHeight;
   const vx=vv?vv.offsetLeft:0, vy=vv?vv.offsetTop:0;
-  const mw=m.offsetWidth, mh=m.offsetHeight;
   const есть=!!(rp && rp.classList.contains("on"));
+  // Полная палитра реакций заменяет меню, как в Telegram: пока она раскрыта,
+  // строки меню скрыты, и группа — это одна палитра. «Назад» сворачивает
+  // палитру и возвращает меню.
+  const палитра=есть && rp.classList.contains("expanded");
+  m.classList.toggle("under-palette", палитра);
+  const mw=m.offsetWidth, mh=m.offsetHeight;
   const ch=есть?rp.offsetHeight:0, cw=есть?rp.offsetWidth:0;
-  const gh=есть ? ch+CTX_GROUP_GAP+mh : mh;   // высота всей группы
+  const gh=палитра ? ch : есть ? ch+CTX_GROUP_GAP+mh : mh;   // высота всей группы
   const row=ctxRowOf(id);
   const bub=row ? (row.querySelector(".bub")||row.querySelector(".gift-bubble")||row.querySelector(".skbub")||row.querySelector(".vbub")||row) : null;
-  const a=row ? row.getBoundingClientRect() : null;
-  const bx=bub ? bub.getBoundingClientRect() : a;
-  let gt, вверх=false;
-  if(a && a.width){
+  const bx=bub ? bub.getBoundingClientRect() : null;
+  const a=row ? ctxMsgVisibleRect(row) : null;   // видимая часть сообщения (без подъёма)
+  const u=row ? ctxMsgBaseRect(row) : null;      // сообщение целиком
+  const f=el("msgs")?.getBoundingClientRect();
+  let gt, вверх=false, полоса=null, подъём=0;
+  // Как в Telegram: если рядом с сообщением нет места для группы, а вместе
+  // они на экране помещаются, сообщение плавно приподнимается (или опускается)
+  // в пределах ленты на наименьшее расстояние. Если сообщение длиннее
+  // свободного места — остаётся на месте, яркой остаётся полоса рядом с группой.
+  const сдвиг=()=>{
+    if(!u || !f) return null;
+    const h=u.bottom-u.top, варианты=[];
+    // Группа снизу: верх сообщения не выше ленты, низ группы — в экране.
+    const loA=f.top+4, hiA=Math.min(f.bottom-4-h, vy+vh-pad-gh-pad-h);
+    if(loA<=hiA){ const t=Math.min(Math.max(u.top,loA),hiA); варианты.push({dy:t-u.top, вниз:true}); }
+    // Группа сверху: низ сообщения не ниже ленты, верх группы — в экране.
+    const loB=Math.max(f.top+4, vy+pad+gh+pad), hiB=f.bottom-4-h;
+    if(loB<=hiB){ const t=Math.min(Math.max(u.top,loB),hiB); варианты.push({dy:t-u.top, вниз:false}); }
+    варианты.sort((x,y)=>Math.abs(x.dy)-Math.abs(y.dy));
+    return варианты[0]||null;
+  };
+  if(a){
     const ниже=vy+vh-a.bottom-pad, выше=a.top-vy-pad;
-    if(ниже>=gh){ gt=a.bottom+pad; }
-    else if(выше>=gh){ gt=a.top-pad-gh; вверх=true; }
-    else { gt=vy+vh-gh-pad; вверх=true; }   // не влезает — двигаем группу целиком
+    const с=(ниже>=gh || выше>=gh) ? null : сдвиг();
+    if(ниже>=gh){ gt=a.bottom+pad; полоса=a; }
+    else if(выше>=gh){ gt=a.top-pad-gh; вверх=true; полоса=a; }
+    else if(с){
+      подъём=с.dy; полоса={top:-1e9, bottom:1e9};
+      if(с.вниз) gt=u.bottom+подъём+pad;
+      else { gt=u.top+подъём-pad-gh; вверх=true; }
+    }
+    else {
+      // Не помещается ни снизу, ни сверху: группа встаёт к краю экрана, яркой
+      // остаётся полоса сообщения рядом с ней. Край выбираем так, чтобы место
+      // касания осталось ярким; если касание не мешает — где полоса длиннее.
+      const внизу={top:a.top, bottom:Math.min(a.bottom, vy+vh-pad-gh-pad)};
+      const вверху={top:Math.max(a.top, vy+pad+gh+pad), bottom:a.bottom};
+      const h1=внизу.bottom-внизу.top, h2=вверху.bottom-вверху.top;
+      const ty=(typeof fallbackY==="number") ? fallbackY : null;
+      const в=(p)=>ty!==null && ty>=p.top && ty<=p.bottom;
+      let группаВнизу = h1>=h2;
+      if(в(внизу) && !в(вверху)) группаВнизу=true;
+      else if(в(вверху) && !в(внизу)) группаВнизу=false;
+      if(группаВнизу){ gt=vy+vh-gh-pad; вверх=true; полоса=h1>=1?{...a, ...внизу}:null; }
+      else { gt=vy+pad; полоса=h2>=1?{...a, ...вверху}:null; }
+    }
   } else {
     gt=(typeof fallbackY==="number"?fallbackY:vy+vh/2)-(есть?ch+CTX_GROUP_GAP:0);
   }
   gt=Math.max(vy+pad, Math.min(gt, vy+vh-gh-pad));
-  const mt=есть ? gt+ch+CTX_GROUP_GAP : gt;
+  const mt=(есть && !палитра) ? gt+ch+CTX_GROUP_GAP : gt;
   // По горизонтали — к той же стороне, что и пузырь; оба элемента держим
   // в пределах экрана каждый по своей ширине, но по одному краю.
   let ml = bx ? (row && row.classList.contains("out") ? bx.right-mw : bx.left)
@@ -11728,20 +12287,54 @@ function layoutCtxGroup(id, fallbackX, fallbackY){
     cl=Math.max(vx+pad, Math.min(cl, vx+vw-cw-pad));
     rp.style.left=cl+"px"; rp.style.top=gt+"px";
   }
+  // Меню переоткрыли на другом сообщении — прежнее возвращается на место.
+  document.querySelectorAll("#msgs .mrow.ctx-lift").forEach(r=>{ if(r!==row && r.dataset.ctxLift) ctxLiftRelease(r); });
+  ctxSetLift(row, подъём);
+  // Подложка — фон экрана с ИСХОДНОГО места пузыря: поднятое сообщение
+  // выглядит ровно так, как в момент касания, а не как стекло на новом фоне.
+  if(row && row.classList.contains("ctx-lift")){
+    const dyNow=ctxLiftNow(row);
+    for(const k of ctxMsgParts(row)){ const q=k.getBoundingClientRect(); k.style.setProperty("--ctx-bgx",(-q.left)+"px"); k.style.setProperty("--ctx-bgy",(-(q.top-dyNow))+"px"); }
+  }
+  el("ctx-scrim")?.style.setProperty("--ctx-hole", row ? ctxHolePath(row, полоса) : "none");
 }
 // Совместимое имя: вызывается из showCtx.
 function positionCtxNearMessage(id, fallbackX, fallbackY){ layoutCtxGroup(id, fallbackX, fallbackY); }
 // Группу надо пересчитать, когда изменились размеры её частей или экрана.
-function relayoutCtxGroup(){ if(el("ctx")?.classList.contains("on")) layoutCtxGroup(S.ctxId); }
+function relayoutCtxGroup(){ if(el("ctx")?.classList.contains("on")) layoutCtxGroup(S.ctxId, undefined, S.ctxTapY); }
 window.addEventListener("resize", relayoutCtxGroup);
 if(window.visualViewport){
   window.visualViewport.addEventListener("resize", relayoutCtxGroup);
   window.visualViewport.addEventListener("scroll", relayoutCtxGroup);
 }
+// Пока меню открыто, вырез следует за сообщением: лента может сдвинуться сама
+// (пришло новое сообщение, догрузилось фото, перерисовка). Раз в кадр сверяем
+// положение строки и размеры экрана и пересчитываем только при изменении.
+let _ctxFollowRaf=0;
+function ctxFollowStart(){
+  cancelAnimationFrame(_ctxFollowRaf);
+  let прошлое="";
+  const шаг=()=>{
+    if(!el("ctx")?.classList.contains("on")){ _ctxFollowRaf=0; return; }
+    const row=ctxRowOf(S.ctxId);
+    if(row && !row.classList.contains("ctx-target")) markCtxTargetRow(S.ctxId);
+    const r=row ? row.getBoundingClientRect() : null, vv=window.visualViewport;
+    const ключ=(r?[r.left,r.top,r.right,r.bottom].map(Math.round).join(","):"-")
+      +"|"+(vv?[vv.width,vv.height,vv.offsetLeft,vv.offsetTop]:[innerWidth,innerHeight]).map(Math.round).join(",")
+      +"|"+(el("rxn-picker")?.offsetHeight||0)+"|"+(el("ctx")?.offsetHeight||0);
+    if(ключ!==прошлое){ прошлое=ключ; layoutCtxGroup(S.ctxId, undefined, S.ctxTapY); }
+    _ctxFollowRaf=requestAnimationFrame(шаг);
+  };
+  _ctxFollowRaf=requestAnimationFrame(шаг);
+}
 // Меню и капсула — один слой с точки зрения человека: закрываются вместе.
 function closeCtx(){
   el("ctx").classList.remove("on");
+  el("ctx").classList.remove("under-palette");
   el("ctx-scrim")?.classList.remove("on");
+  el("ctx-scrim")?.style.removeProperty("--ctx-hole");
+  cancelAnimationFrame(_ctxFollowRaf); _ctxFollowRaf=0;
+  ctxLiftRelease();   // приподнятое сообщение плавно возвращается на место
   document.querySelectorAll("#msgs .mrow.ctx-target").forEach(r=>r.classList.remove("ctx-target"));
   const rp=el("rxn-picker");
   if(rp && rp.classList.contains("on")){ rxnExpanded=false; rp.classList.remove("expanded"); closeRxnPickerNow(); }
@@ -12630,6 +13223,7 @@ function buildRxnQuickRow(){
 function collapseRxnExpandNow(){
   rxnExpanded=false;
   el("rxn-picker")?.classList.remove("expanded");
+  relayoutCtxGroup();
 }
 function closeRxnPickerNow(){ closeWithMotion(el("rxn-picker")); }
 function closeRxnPicker(){
@@ -12966,18 +13560,154 @@ function storiesAvailable(){
   return (S.my_stories||[]).some(x=>Date.now()<x.expires);
 }
 function storiesRange(){ return storiesAvailable()?STORIES_RANGE:STORIES_RANGE_EMPTY; }
-function storiesProgress(){
-  const strip=el("stories-strip");
-  return strip ? (parseFloat(strip.style.getPropertyValue("--stories-p"))||0) : 0;
+// ── Трансформация «стопка → ряд» ────────────────────────────────────────
+// 4 окт 2026. Раньше ряд был отдельным блоком, который раскрывался высотой,
+// а стопка в шапке — отдельной копией аватаров. Теперь узел один: в стопке и
+// в ряду это один и тот же .story-av-wrap, и между состояниями меняются
+// только его transform и opacity. Конечные геометрии (стопка и ряд)
+// считаются один раз при отрисовке и при смене размера окна; на каждом кадре
+// никаких замеров и пересборки DOM нет.
+const ST_SLOT=56;          // шаг ячеек в ряду (= ширина узла в CSS)
+const ST_RING=44;          // диаметр кольца в ряду (.story-ring)
+const ST_ROW_PAD=12;       // отступ ряда слева
+const ST_ROW_TOP=8;        // кольцо от верха ряда
+const ST_STACK_RING=30;    // диаметр кольца в стопке
+const ST_STACK_STEP=21;    // шаг стопки: кружки перекрываются на 9px
+const ST_STACK_MAX=3;      // сколько первых активных сторис видно в стопке
+const ST_STACK_GAP=8;      // от стопки до названия
+const ST_SETTLE_MS=240;    // доводка после отпускания (общая кривая --e-out)
+let _stP=0, _stRaf=0, _stAnim=null, _stGeom=null, _stScroll0=0, _stExpandedMode=false;
+
+// Кубическая Безье (.25,.8,.35,1) — та же кривая, что --e-out у всех переходов.
+function stEase(t){
+  const x1=.25, y1=.8, x2=.35, y2=1;
+  const bx=(u)=>3*x1*u*(1-u)*(1-u)+3*x2*u*u*(1-u)+u*u*u;
+  const by=(u)=>3*y1*u*(1-u)*(1-u)+3*y2*u*u*(1-u)+u*u*u;
+  let lo=0, hi=1, u=t;
+  for(let i=0;i<24;i++){ u=(lo+hi)/2; if(bx(u)<t) lo=u; else hi=u; }
+  return by(u);
 }
+function stReducedMotion(){ return !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches); }
+
+// Конечные геометрии. Координаты узла — в системе #stories-row (его верх —
+// нижний край шапки); шапка лежит выше, при y<0.
+function storiesLayout(){
+  const ряд=el("stories-row");
+  const шапка=document.querySelector("#screen-main>.topbar");
+  if(!ряд || !шапка){ _stGeom=null; return; }
+  const узлы=[...ряд.querySelectorAll(".story-av-wrap")];
+  const мобильный=document.body.classList.contains("mobile-mode");
+  // ⚠️ Ничего не замеряем у самого слоя: при открытом чате он скрыт
+  // (display:none), и замер дал бы ноль — масштаб 30/0 браузер отбросил бы, и
+  // все аватары легли бы в угол ряда. Размеры — из вёрстки (константы и
+  // переменная высоты шапки), они от видимости не зависят.
+  const высотаШапки=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--h-topbar")) || 58;
+  const отступ=parseFloat(getComputedStyle(шапка).paddingLeft) || 8;
+  const R=ST_RING;
+  const сдвигКольца=(ST_SLOT-ST_RING)/2;
+  const s0=ST_STACK_RING/R;
+  const yСтопки=(высотаШапки-ST_STACK_RING)/2 - высотаШапки;
+  // В стопке — первые активные сторис по порядку ряда.
+  const место=[]; let k=0;
+  узлы.forEach((n)=>{ const активна=n.dataset.active==="1" && k<ST_STACK_MAX; место.push(активна ? k++ : -1); });
+  const K=k;
+  const ширинаСтопки=K ? ST_STACK_RING+(K-1)*ST_STACK_STEP : 0;
+  const последнее=Math.max(0, K-1);
+  _stGeom={
+    узлы, K, s0,
+    названиеСдвиг: (мобильный && K) ? ширинаСтопки+ST_STACK_GAP : 0,
+    a: узлы.map((n,i)=>{
+      const kk=место[i];
+      // Узлы вне стопки ждут под её последним кружком (или первым) и
+      // проявляются по мере раскрытия.
+      const слот=kk>=0 ? kk : (n.dataset.active==="1" ? последнее : 0);
+      return {
+        x0: отступ + слот*ST_STACK_STEP - сдвигКольца*s0,
+        y0: yСтопки,
+        x1: ST_ROW_PAD + i*ST_SLOT,
+        y1: ST_ROW_TOP,
+        вСтопке: kk>=0,
+      };
+    }),
+  };
+  // Ширина прокрутки ряда.
+  let спейсер=ряд.querySelector(".ss-spacer");
+  if(!спейсер){ спейсер=document.createElement("div"); спейсер.className="ss-spacer"; ряд.prepend(спейсер); }
+  спейсер.style.width=(ST_ROW_PAD*2 + узлы.length*ST_SLOT)+"px";
+  storiesFrame();
+}
+function storiesProgress(){ return _stP; }
+// Один кадр: всё из одного p. Только transform/opacity и две переменные.
+function storiesFrame(){
+  _stRaf=0;
+  const g=_stGeom, p=_stP;
+  const ряд=el("stories-row");
+  const спокойноРаскрыто = p>=1 && !_stAnim && storiesState==="expanded";
+  if(спокойноРаскрыто!==_stExpandedMode && ряд){
+    if(спокойноРаскрыто){
+      document.body.classList.add("stories-expanded");
+      ряд.scrollLeft=_stScroll0;                // ряд встаёт туда, где его оставили
+    } else {
+      _stScroll0=ряд.scrollLeft;                 // уходим из прокрутки без скачка
+      document.body.classList.remove("stories-expanded");
+    }
+    _stExpandedMode=спокойноРаскрыто;
+  }
+  if(p<=0 && !_stAnim) _stScroll0=0;
+  const sb=document.querySelector(".sb");
+  if(sb) sb.style.setProperty("--st-shift", (_stExpandedMode ? 0 : Math.round(STORIES_H*p*100)/100)+"px");
+  const шапка=document.querySelector("#screen-main>.topbar");
+  if(шапка) шапка.style.setProperty("--st-logo", (g ? g.названиеСдвиг*(1-p) : 0)+"px");
+  document.body.classList.toggle("stories-open", p>0.02);
+  if(!g) return;
+  const прокрутка=_stExpandedMode ? 0 : _stScroll0;
+  const s=g.s0+(1-g.s0)*p;
+  const подписи=Math.max(0, Math.min(1, (p-0.5)/0.5));
+  const проявление=Math.max(0, Math.min(1, (p-0.15)/0.45));
+  // По вертикали кружки уходят из строки названия быстрее, чем разъезжаются
+  // (ease-out), — иначе в начале жеста они наезжали бы на сдвигающееся
+  // название. По горизонтали и по размеру — линейно от p.
+  const pY=1-(1-p)*(1-p);
+  g.узлы.forEach((n,i)=>{
+    const a=g.a[i];
+    const x=a.x0+((a.x1-прокрутка)-a.x0)*p;
+    const y=a.y0+(a.y1-a.y0)*pY;
+    n.style.transform="translate3d("+x.toFixed(2)+"px,"+y.toFixed(2)+"px,0) scale("+s.toFixed(4)+")";
+    const видимость=a.вСтопке ? 1 : проявление;
+    n.style.opacity=видимость.toFixed(3);
+    n.classList.toggle("st-off", видимость<0.05);
+    const nm=n.querySelector(".story-nm");
+    if(nm) nm.style.opacity=подписи.toFixed(3);
+  });
+}
+function storiesRequestFrame(){ if(!_stRaf) _stRaf=requestAnimationFrame(storiesFrame); }
+// Прогресс во время жеста — сразу за пальцем; плавно — доводка после
+// отпускания (или мгновенно, если просили уменьшить движение).
 function setStoriesProgress(pr, плавно){
-  const strip=el("stories-strip"); if(!strip) return;
   pr=Math.max(0, Math.min(1, pr));
-  strip.classList.toggle("animated", !!плавно);
-  strip.style.setProperty("--stories-p", pr.toFixed(3));
-  strip.style.setProperty("--stories-h", Math.round(STORIES_H*pr)+"px");
-  document.body.classList.toggle("stories-open", pr>0.02);
+  if(!плавно || stReducedMotion()){
+    if(_stAnim){ cancelAnimationFrame(_stAnim.raf); _stAnim=null; }
+    _stP=pr; storiesRequestFrame(); return;
+  }
+  if(_stAnim) cancelAnimationFrame(_stAnim.raf);
+  const от=_stP, к=pr, t0=performance.now();
+  if(Math.abs(к-от)<0.001){ _stAnim=null; _stP=к; storiesRequestFrame(); return; }
+  _stAnim={raf:0};
+  const шаг=(t)=>{
+    const u=Math.min(1, (t-t0)/ST_SETTLE_MS);
+    _stP=от+(к-от)*stEase(u);
+    if(u>=1){
+      _stP=к; _stAnim=null; storiesFrame();
+      // Обновления, отложенные на время доводки, — теперь.
+      if(storiesPendingRender) applyPendingStories();
+      return;
+    }
+    storiesFrame();
+    _stAnim.raf=requestAnimationFrame(шаг);
+  };
+  _stAnim.raf=requestAnimationFrame(шаг);
 }
+window.addEventListener("resize", ()=>{ if(typeof storiesLayout==="function") storiesLayout(); });
 function archiveDist(){
   const box=el("pull-archive");
   return box ? (parseFloat(box.style.height)||0) : 0;
@@ -13851,7 +14581,8 @@ const THEME_PALETTES = {
     acc:"#6c63ff", acc2:"#a78bfa", acc3:"#38bdf8",
     gr:"#34d399", rd:"#f87171", am:"#fbbf24",
     cr:"#67e8f9", cr2:"#0891b2",
-    tx:"#eef0f6", tx2:"#9aa0bb", tx3:"#666c8c",
+    // tx3 поднят с #666c8c (~3.3:1) до ~4.4:1 — подписи и время читаются.
+    tx:"#eef0f6", tx2:"#9aa0bb", tx3:"#7c82a0",
     in:"#242940", out:"#54479c",
     "msgs-bg":"transparent",
     "acc-rgb":"108,99,255", "acc2-rgb":"167,139,250", "acc3-rgb":"56,189,248",
@@ -13878,9 +14609,12 @@ const THEME_PALETTES = {
     // приглушила все акценты, ближе к сдержанности Telegram. Фирменный
     // фиолетовый Angie (--acc) оставила как есть, это основа бренда
     acc:"#6c63ff", acc2:"#9089f0", acc3:"#4fa8d8",
-    gr:"#4caf7d", rd:"#d9576b", am:"#e0a544",
-    cr:"#4a9bb5", cr2:"#3d7f94",
-    tx:"#24262f", tx2:"#64697d", tx3:"#9296a8",
+    // 3 окт 2026: смысловые цвета затемнены для текста на светлом стекле —
+    // зелёный был 2.6:1, голубой 3.1:1, красный 3.9:1, золотой 1.8:1.
+    gr:"#2f8a5b", rd:"#c0394f", am:"#a8741a",
+    cr:"#2a7f99", cr2:"#226b81",
+    // tx3 поднят с #9296a8 (~2.9:1 на белом) до ~4.3:1.
+    tx:"#24262f", tx2:"#64697d", tx3:"#787d92",
     // Пузыри сообщений — раньше были почти неотличимы от белого фона
     // переписки (#f1f2f6 на #ffffff — разница пара процентов яркости).
     // Теперь заметно светлее фона, но не сливаются с ним
@@ -15258,7 +15992,7 @@ function showToast(msg){
   // Ведущие эмодзи без собственного смысла просто убираем.
   if(!вид) текст=текст.replace(/^(?:\p{Extended_Pictographic}|\uFE0F|\u200D)+\s*/u,"");
   const t=document.createElement("div");
-  t.style.cssText="background:var(--bg3);border:1px solid var(--brd2);border-radius:999px;padding:7px 15px;font-size:12.5px;color:var(--tx);box-shadow:0 8px 32px rgba(0,0,0,.5);pointer-events:none;animation:fadeUp .2s ease-out;display:flex;align-items:center;gap:7px";
+  t.style.cssText="background:var(--toast-bg);border:1px solid var(--toast-brd);border-radius:999px;padding:7px 15px;font-size:12.5px;color:var(--tx);box-shadow:var(--toast-shadow);pointer-events:none;animation:fadeUp .2s ease-out;display:flex;align-items:center;gap:7px";
   if(вид){
     const [имя,цвет]=TOAST_ЗНАЧОК[вид];
     const з=document.createElement("span");
@@ -15356,7 +16090,7 @@ function renderStore(){
           <svg viewBox="0 0 24 24" width="36" height="36"><path d="M4 9l3.5 2.5L12 5l4.5 6.5L20 9l-1.7 8.5H5.7L4 9z" fill="#fbbf24"/><path d="M5.7 17.5h12.6l.5-2.5H5.2l.5 2.5z" fill="#f59e0b"/><circle cx="4" cy="8" r="1.7" fill="#fbbf24"/><circle cx="12" cy="4.2" r="1.9" fill="#fbbf24"/><circle cx="20" cy="8" r="1.7" fill="#fbbf24"/></svg>
           <div style="min-width:0"><div style="font-weight:700;font-size:15px;color:var(--tx)">${S.vip?.active?"VIP активен":"Монохром VIP"}</div>
           <div style="font-size:12px;color:var(--tx2);margin-top:3px">${S.vip?.active?"До: "+S.vip.until:"Сторис, анимации, все стикеры и ещё 9 функций"}</div></div>
-          <div style="margin-left:auto;font-weight:600;font-size:12.5px;white-space:nowrap;color:var(--am);opacity:.9">${S.vip?.active?"Управлять":"от 500 CR ›"}</div>
+          <div style="margin-left:auto;font-weight:600;font-size:12.5px;white-space:nowrap;color:var(--vip-fg);opacity:.9">${S.vip?.active?"Управлять":"от 500 CR ›"}</div>
         </div><div style="height:1px;background:var(--brd);margin:18px 0"></div>`;
       sw.prepend(vipSec);
     }
@@ -17325,24 +18059,24 @@ function buildStoryRingGradient(count, c1, c2){
   return `conic-gradient(${stops.join(", ")})`;
 }
 
-// ⚠️ 3 октября 2026. Постоянной большой полосы сторис над чатами больше нет.
-// Эта функция рисует ДВА места сразу:
-//   • компактную стопку максимум из трёх аватаров в шапке (collapsed);
-//   • содержимое ленты, которая раскрывается жестом (expanded).
+// ⚠️ 4 октября 2026. Сторис рисуются ОДИН раз — набором узлов в #stories-row.
+// В свёрнутом состоянии первые активные из них стоят стопкой слева от
+// названия, в раскрытом — рядом под шапкой (см. storiesLayout/storiesFrame).
 // Пока идёт жест, ничего не перерисовываем: иначе аватары перестраивались бы
 // прямо под пальцем. Обновление откладывается до конца жеста
 // (storiesPendingRender → applyPendingStories).
 function renderStoriesBar(){
   purgeExpiredStories();
-  if(typeof pullActive!=="undefined" && (pullActive || storiesState==="pulling-stories" || storiesState==="pulling-archive" || storiesState==="collapsing")){
+  if(typeof pullActive!=="undefined" && (pullActive || storiesState==="pulling-stories" || storiesState==="pulling-archive" || storiesState==="collapsing" || _stAnim)){
     storiesPendingRender=true;
     return;
   }
+  const ряд=el("stories-row");
+  if(!ряд) return;
   const isVip = S.vip?.active;
   const myActiveStories=(S.my_stories||[]).filter(s=>Date.now()<s.expires);
   const limit=isVip?storyLimit():3;
   const myStoryLabel=isVip&&myActiveStories.length>0?myActiveStories.length+"/"+limit:"+"+(isVip?"":"👑");
-
   const friendEntries=Object.entries(S.friend_stories||{}).filter(([uid,data])=>{
     data.items=(data.items||[]).filter(s=>Date.now()<s.expires);
     return data.items.length>0;
@@ -17351,58 +18085,38 @@ function renderStoriesBar(){
     data.items=(data.items||[]).filter(s=>Date.now()<s.expires);
     return data.items.length>0;
   });
-
-  // ── Стопка в шапке ──────────────────────────────────────────────────
-  const стопка=el("story-stack");
-  if(стопка){
-    const все=[
-      ...channelEntries.map(([cid,d])=>({act:"viewChannelStories('"+cid+"')", key:"c"+cid, col:d.col, ini:d.ini, av:d.avatar})),
-      ...friendEntries.map(([uid,d])=>({act:"viewFriendStories('"+uid+"')", key:"u"+uid, col:d.col, ini:d.ini, av:d.avatar})),
-    ];
-    if(myActiveStories.length>0) все.unshift({act:"viewMyStories(0)", key:"me", col:0, ini:(S.user?.initials||"Я"), av:S.user?.avatar});
-    const показать=все.slice(0,3);
-    const ещё=все.length-показать.length;
-    const кружок=(x)=>`<div class="sst" style="background:${colBg(x.col)}">${x.av?`<img src="${escHtml(x.av)}">`:escHtml(x.ini||"?")}</div>`;
-    стопка.innerHTML = все.length
-      ? показать.map(x=>`<div class="sst-ring${isStorySeen(x.key)?" seen":""}" onclick="${x.act}">${кружок(x)}</div>`).join("")
-        + (ещё>0?`<div class="sst sst-more">+${ещё}</div>`:"")
-      : "";
-    стопка.style.display = все.length ? "" : "none";
-  }
-
-  // ── Содержимое ленты ────────────────────────────────────────────────
-  const лента=el("stories-strip-inner");
-  if(!лента) return;
-  // Позиция горизонтальной прокрутки не должна сбрасываться при приходе
-  // новой сторис.
-  const прокрутка=лента.scrollLeft;
-  лента.innerHTML = `
-    <div class="story-av-wrap" onclick="${isVip?(myActiveStories.length>0?'viewMyStories(0)':'openStoryEditor()'):'openVIP()'}">
-      <div class="story-ring${isVip?(myActiveStories.length>0?'':' vip-ring'):' locked-ring'}" ${isVip&&myActiveStories.length>0?`style="background:${buildStoryRingGradient(myActiveStories.length,'var(--am)','#ff6b6b')}"`:""}>
-        <div class="story-av-inner" style="background:${colBg(0)};font-weight:800;font-size:12px;color:#fff">
-          ${S.user.avatar?`<img src="${S.user.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(S.user.initials||"Я")}
-        </div>
+  const мои=myActiveStories.length>0;
+  const кружок=(фон, текст, аватар)=>`<div class="story-av-inner" style="background:${фон};font-weight:700;font-size:12px;color:#fff">${аватар?`<img src="${escHtml(аватар)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml(текст||"?")}</div>`;
+  // Позиция горизонтальной прокрутки не сбрасывается при приходе новой сторис.
+  const прокрутка=ряд.scrollLeft;
+  ряд.innerHTML = `
+    <div class="story-av-wrap" data-key="me" data-active="${мои?1:0}" onclick="${isVip?(мои?'viewMyStories(0)':'openStoryEditor()'):'openVIP()'}">
+      <div class="story-ring${isVip?(мои?'':' vip-ring'):' locked-ring'}" ${isVip&&мои?`style="background:${buildStoryRingGradient(myActiveStories.length,'var(--am)','#ff6b6b')}"`:""}>
+        ${кружок(colBg(0), S.user?.initials||"Я", S.user?.avatar)}
       </div>
-      <div class="story-nm">${isVip?(myActiveStories.length>0?myStoryLabel:"+ Моя"):`<span style="display:inline-flex;vertical-align:middle;color:var(--am)">${VIP_STAR_SVG}</span> VIP`}</div>
+      <div class="story-nm">${isVip?(мои?myStoryLabel:"+ Моя"):`<span style="display:inline-flex;vertical-align:middle;color:var(--am)">${VIP_STAR_SVG}</span> VIP`}</div>
     </div>
     ${channelEntries.map(([cid,data])=>`
-      <div class="story-av-wrap" onclick="viewChannelStories('${cid}')">
+      <div class="story-av-wrap" data-key="c${escHtml(cid)}" data-active="1" onclick="viewChannelStories('${cid}')">
         <div class="story-ring${isStorySeen("c"+cid)?" seen":""}" style="background:${buildStoryRingGradient(data.items.length)}">
-          <div class="story-av-inner" style="background:${colBg(data.col)};font-weight:700;font-size:12px;color:#fff">${data.avatar?`<img src="${data.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:data.ini}</div>
+          ${кружок(colBg(data.col), data.ini, data.avatar)}
         </div>
-        <div class="story-nm">${(data.name||"?").split(" ")[0]}${data.mine?" 📢":""}</div>
+        <div class="story-nm">${escHtml((data.name||"?").split(" ")[0])}</div>
       </div>
     `).join("")}
     ${friendEntries.map(([uid,data])=>`
-      <div class="story-av-wrap" onclick="viewFriendStories('${uid}')">
+      <div class="story-av-wrap" data-key="u${escHtml(uid)}" data-active="1" onclick="viewFriendStories('${uid}')">
         <div class="story-ring${isStorySeen("u"+uid)?" seen":""}" style="background:${buildStoryRingGradient(data.items.length)}">
-          <div class="story-av-inner" style="background:${colBg(data.col)};font-weight:700;font-size:12px;color:#fff">${data.avatar?`<img src="${data.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:data.ini}</div>
+          ${кружок(colBg(data.col), data.ini, data.avatar)}
         </div>
-        <div class="story-nm">${(data.name||"?").split(" ")[0]}</div>
+        <div class="story-nm">${escHtml((data.name||"?").split(" ")[0])}</div>
       </div>
     `).join("")}
   `;
-  лента.scrollLeft=прокрутка;
+  // Состав изменился — обе конечные геометрии считаются заново. Прокрутку
+  // возвращаем ПОСЛЕ этого: до расстановки узлов ширина прокрутки нулевая.
+  storiesLayout();
+  if(_stExpandedMode) ряд.scrollLeft=прокрутка; else _stScroll0=прокрутка||_stScroll0;
 }
 // loginOK already merged above
 
@@ -19307,7 +20021,7 @@ applyTheme(S.theme||"dark", true);
     <!-- Plans -->
     <div style="font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--tx3);margin-bottom:12px">Выберите план</div>
     <div class="vip-plans-grid" id="vip-plans"></div>
-    <button class="xbtn" style="width:100%;justify-content:center;margin-top:4px;background:var(--bg3);border:1px solid var(--brd)" onclick="openGiftVip()">🎁 Подарить VIP другу</button>
+    <button class="xbtn sec" style="width:100%;justify-content:center;margin-top:4px" onclick="openGiftVip()">🎁 Подарить VIP другу</button>
 
     <!-- Perks -->
     <div style="font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--tx3);margin:24px 0 12px">Что входит в VIP</div>
@@ -19869,7 +20583,6 @@ applyTheme(S.theme||"dark", true);
           <div onclick="selectStoryBg('linear-gradient(135deg,#a18cd1,#fbc2eb)',this)" style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#a18cd1,#fbc2eb);cursor:pointer;border:2px solid transparent" data-bg="5"></div>
           <div onclick="selectStoryBg('linear-gradient(135deg,#ffecd2,#fcb69f)',this)" style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#ffecd2,#fcb69f);cursor:pointer;border:2px solid transparent" data-bg="6"></div>
         </div>
-      </div>
       </div>
     </div>
     <div id="story-emoji-editor" style="display:none">
