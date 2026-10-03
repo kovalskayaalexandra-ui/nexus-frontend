@@ -995,9 +995,9 @@ html[data-theme="mono"] .mobile-tabbar{left:var(--sp-2);right:var(--sp-2);bottom
   border-radius:var(--r-xl);height:52px;border:1px solid var(--mat-brd)}
 html[data-theme="mono"] .mtab-item{color:var(--tx3)}
 /* Активный раздел — спокойная стеклянная подложка под значком и световая
-   кромка, без цветной заливки. */
+   кромка, без цветной заливки. Подложка одна и переезжает (.mtab-glider). */
 html[data-theme="mono"] .mtab-item.on{color:var(--tx)}
-html[data-theme="mono"] .mtab-item.on .mtab-ic-wrap{
+html[data-theme="mono"] .mtab-glider{
   background:rgba(255,255,255,.085);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.20), 0 1px 6px rgba(6,9,13,.28)}
 html[data-theme="mono"] .mtab-badge{background:rgba(255,255,255,.88);color:#11151a;
@@ -1747,6 +1747,21 @@ body.mobile-mode.tabbar-on .storebody{padding-bottom:70px}
   font-size:10.5px;flex:1;padding:4px 0;transition:color .15s}
 .mtab-item.on{color:var(--acc)}
 .mtab-ic-wrap{border-radius:999px;padding:3px 10px;transition:background .18s,box-shadow .18s}
+/* Подложка активного пункта: один элемент, переезжает под активный значок. */
+.mtab-item{position:relative;z-index:1}
+.mtab-glider{position:absolute;left:0;top:0;width:0;height:0;border-radius:999px;pointer-events:none;z-index:0;
+  background:rgba(var(--acc-rgb),.14);will-change:transform;
+  transition:transform var(--t-screen) var(--e-out), width var(--t-screen) var(--e-out), height var(--t-screen) var(--e-out)}
+.mtab-glider.no-anim{transition:none}
+/* Смена корневой вкладки: без сдвига, мягкое проявление и уход за одну длительность. */
+@keyframes rootIn{from{opacity:0}to{opacity:1}}
+@keyframes rootOut{from{opacity:1}to{opacity:0}}
+.screen.root-in.on{animation:rootIn var(--t-screen) var(--e-out)}
+.screen.root-out.closing{animation:rootOut var(--t-screen) var(--e-in) forwards;pointer-events:none}
+@media (prefers-reduced-motion: reduce){
+  .mtab-glider{transition:none}
+  .screen.root-in.on, .screen.root-out.closing{animation:none !important}
+}
 .mtab-ic-wrap{position:relative;display:inline-flex}
 .mtab-badge{position:absolute;top:-4px;right:-9px;background:var(--acc);color:#fff;font-size:9px;font-weight:700;
   min-width:15px;height:15px;border-radius:999px;display:none;align-items:center;justify-content:center;padding:0 3px;line-height:1}
@@ -2196,6 +2211,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
        (см. CSS ниже, body:has(.screen.on)) — тогда работает "← Назад" самого
        экрана. position:fixed — место физически в разметке не важно. -->
   <div class="mobile-tabbar" id="mobile-tabbar">
+    <div class="mtab-glider" aria-hidden="true"></div>
     <div class="mtab-item on" id="mtab-chats" onclick="tabGoChats()">
       <div class="mtab-ic-wrap">
         <svg width="21" height="21" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
@@ -6035,7 +6051,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-03 хотфикс: истёкшая сессия — экран входа вместо «Соединение…»";
+const BUILD_TAG = "2026-10-03 нижняя панель: корневые вкладки Чаты — Контакты — Настройки";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -6046,20 +6062,12 @@ function openAdmin(){
   pushNavEntry(()=>closeScreen("screen-admin"));
 }
 function closeAdmin(){ popNavEntry(); }
-function openSettings(){
-  // 24 сен 2026 (W3 шаг 1): вторую запись в стек при уже открытом экране не
-  // кладём. Раньше openSettings() звали ещё раз после сохранения профиля и
-  // после отмены запланированной смены номера — экран уже был открыт, а запись
-  // добавлялась, и одно нажатие «назад» уходило впустую (на глаз это выглядело
-  // как мигание: спрятанный экран на 0,18 с возвращался и уезжал, см. .screen.closing).
-  const sc=el("screen-settings");
-  const wasOpen=sc.classList.contains("on");
-  sc.classList.add("on");
-  if(!wasOpen){
-    const closer=()=>closeScreen("screen-settings");
-    closer.navScreenId="screen-settings";
-    pushNavEntry(closer);
-  }
+// 3 окт 2026: Настройки — корневой раздел нижней панели, открываются заменой
+// корневой вкладки (см. rootTabGo). Повторный вызов при уже открытых
+// Настройках (после сохранения профиля, отмены смены номера) только
+// обновляет содержимое и записи в стек не добавляет — как и раньше.
+function openSettings(){ rootTabGo("settings"); }
+function renderSettingsScreen(){
   const u=S.user;
   const sav=el("settings-av");
   if(sav){ if(u.avatar)sav.innerHTML=`<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;else{sav.textContent=u.initials||"Я";sav.style.background=COLS[0];} }
@@ -6101,7 +6109,7 @@ function dismissScreenSilently(id){
   for(let i=navStack.length-1;i>=0;i--){ const f=navStack[i]; if(f && f.navScreenId===id){ f.navSpent=true; break; } }
 }
 function closeSettings(){ popNavEntry(); }
-function openContacts(){ el("screen-contacts").classList.add("on"); renderContacts(); pushNavEntry(()=>closeScreen("screen-contacts")); }
+function openContacts(){ rootTabGo("contacts"); }
 function closeContacts(){ popNavEntry(); }
 // Открывается из Настроек — сама закрывает Настройки (та же логика, что была
 // раньше, просто теперь оформлена функцией, а не разметкой) и открывает
@@ -6595,6 +6603,7 @@ window.addEventListener("popstate",()=>{
   // теперь его запись ляжет в стек ПОВЕРХ закрытого, а не под него.
   if(_navPendingOpen){ const id=_navPendingOpen; _navPendingOpen=null; openM(id); }
   if(_navPendingLayer){ const p=_navPendingLayer; _navPendingLayer=null; openLayer(p.id, p.closeNow); }
+  if(_rootTabPending){ const t=_rootTabPending; _rootTabPending=null; rootTabGo(t); }
   // Выход из режима выбора, отложенный до приземления «назад» (см.
   // requestExitSelectMode): теперь верхняя запись — наша, и её можно снять.
   if(_navPendingSelectExit){
@@ -6607,18 +6616,104 @@ window.addEventListener("popstate",()=>{
 // ══════════════════════════════════════════════════
 //  НИЖНЯЯ ПАНЕЛЬ ВКЛАДОК (этап 6 дорожной карты)
 // ══════════════════════════════════════════════════
-// Панель видна (см. CSS) только когда не открыт ни один .screen — поэтому
-// "Контакты"/"Настройки" тут только ОТКРЫВАЮТ свой экран (никогда не может
-// понадобиться их "выключить" через таб-бар, для этого есть кнопка "← Назад"
-// самого экрана, см. этап 5). "Чаты" — единственная вкладка, которая может
-// понадобиться, пока сама панель видна: возвращает из открытого чата к
-// списку, если чат сейчас открыт, иначе ничего не делает (уже там).
-function tabGoChats(){
-  const layoutEl=document.querySelector(".layout");
-  if(layoutEl && layoutEl.classList.contains("chat-open")) popNavEntry();
+// ⚠️ 3 окт 2026. Раньше «Чаты» закрывала только открытый чат — а внутри чата
+// панели теперь нет вовсе, поэтому из Контактов и Настроек «Чаты» не
+// возвращала никуда. Кроме того, Контакты и Настройки клали каждый свою
+// запись в стек: Контакты → Настройки → Контакты копили записи, и «назад»
+// потом открывал уже закрытые вкладки.
+//
+// Теперь три вкладки — это ЗАМЕНА корневого раздела, а не открытие вложенного
+// экрана:
+//   • пока открыт Чаты, своей записи у корня нет;
+//   • при уходе на Контакты или Настройки кладётся РОВНО ОДНА корневая запись
+//     (внутри тапа — то есть внутри жеста пользователя, как требует обёртка
+//     Android); её закрыватель возвращает в Чаты — это и есть Android «назад»
+//     с корневой вкладки;
+//   • Контакты ↔ Настройки меняют экран, запись остаётся одна;
+//   • возврат в Чаты убирает эту запись и из стопки, и из истории браузера,
+//     иначе следующее «назад» ушло бы впустую.
+// Обычный popNavEntry() здесь не используется: он закрывает то, что лежит на
+// вершине стопки, а нужно заменить именно корневой раздел.
+function tabGoChats(){ rootTabGo("chats"); }
+function tabGoContacts(){ rootTabGo("contacts"); }
+function tabGoSettings(){ rootTabGo("settings"); }
+
+const ROOT_TAB_SCREENS={contacts:"screen-contacts", settings:"screen-settings"};
+const ROOT_TAB_MS=260;   // общая длительность перехода экранов (--t-screen)
+let _rootTabPending=null;
+function rootTabMotionMs(){
+  return window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : ROOT_TAB_MS;
 }
-function tabGoContacts(){ if(!el("screen-contacts").classList.contains("on")) openContacts(); }
-function tabGoSettings(){ if(!el("screen-settings").classList.contains("on")) openSettings(); }
+function rootScreenOpen(tab){
+  const sc=el(ROOT_TAB_SCREENS[tab]);
+  return !!sc && sc.classList.contains("on") && !sc.classList.contains("closing");
+}
+// Какая корневая вкладка видна — определяется по экрану, а не хранится
+// отдельно: так активный пункт не может разойтись с тем, что на экране.
+function currentRootTab(){
+  if(rootScreenOpen("contacts")) return "contacts";
+  if(rootScreenOpen("settings")) return "settings";
+  return "chats";
+}
+function rootNavEntry(){
+  for(let i=navStack.length-1;i>=0;i--){ const f=navStack[i]; if(f && f.navRootTab && !f.navSpent) return {f, i}; }
+  return null;
+}
+// Смена видимого корневого раздела: прежний мягко уходит, новый проявляется,
+// оба за одну и ту же длительность. Панель при этом не прячется (см.
+// updateTabbarVisibility: уходящий экран с .closing уже не считается открытым).
+function rootScreenSwap(из, в){
+  const мс=rootTabMotionMs();
+  const вход = в ? el(ROOT_TAB_SCREENS[в]) : null;
+  const уход = из ? el(ROOT_TAB_SCREENS[из]) : null;
+  if(вход){
+    вход.classList.remove("closing","root-out");
+    вход.classList.add("root-in","on");
+    if(в==="settings") renderSettingsScreen(); else renderContacts();
+  }
+  if(уход && уход!==вход){
+    уход.classList.remove("root-in");
+    if(мс===0) уход.classList.remove("on","closing","root-out");
+    else {
+      уход.classList.add("closing","root-out");
+      // Если за это время на вкладку вернулись, root-out уже снят — не прячем.
+      setTimeout(()=>{ if(уход.classList.contains("root-out")) уход.classList.remove("on","closing","root-out"); }, мс);
+    }
+  }
+  if(!в) setTimeout(msgsFeedShownAgain, мс);   // список снова перед глазами — как после closeScreen
+  updateTabbarVisibility();
+}
+function rootTabGo(вкладка){
+  // «Назад» ещё в полёте — переключимся, когда он приземлится (popstate),
+  // иначе запись новой вкладки легла бы под снимаемую.
+  if(_navBackInFlight){ _rootTabPending=вкладка; return; }
+  const было=currentRootTab();
+  if(вкладка===было){
+    // Повторный тап по активной вкладке: только обновить содержимое.
+    if(вкладка==="settings") renderSettingsScreen();
+    else if(вкладка==="contacts") renderContacts();
+    return;
+  }
+  const запись=rootNavEntry();
+  if(вкладка==="chats"){
+    rootScreenSwap(было, null);
+    if(запись){
+      запись.f.navSpent=true;   // закрывать уже нечего — экран ушёл выше
+      if(запись.i===navStack.length-1){
+        // Убираем запись и из истории: иначе следующее «назад» было бы холостым.
+        if(navLive>0){ _navBackInFlight=true; history.back(); }
+        else navStack.pop();
+      }
+    }
+    return;
+  }
+  rootScreenSwap(было==="chats" ? null : было, вкладка);
+  if(запись){ запись.f.navScreenId=ROOT_TAB_SCREENS[вкладка]; return; }   // запись одна на все корневые вкладки
+  const закрыть=()=>{ const т=currentRootTab(); if(т!=="chats") rootScreenSwap(т, null); };
+  закрыть.navRootTab=true;
+  закрыть.navScreenId=ROOT_TAB_SCREENS[вкладка];   // для dismissScreenSilently
+  pushNavEntry(закрыть);
+}
 
 // ══════════════════════════════════════════════════
 //  ПРАВАЯ ИНФО-ПАНЕЛЬ → ПОЛНОЭКРАННЫЙ ЭКРАН (этап 7 дорожной карты)
@@ -6934,13 +7029,15 @@ function updateTabbarVisibility(){
   if(!document.body.classList.contains("mobile-mode")){
     document.body.classList.remove("tabbar-on"); return;
   }
-  const открытые=[...document.querySelectorAll(".screen.on")].map(x=>x.id);
+  // Уходящий экран (.closing) уже не считается открытым: при смене корневой
+  // вкладки панель не должна прятаться ни на кадр.
+  const открытые=[...document.querySelectorAll(".screen.on")].filter(x=>!x.classList.contains("closing")).map(x=>x.id);
   const чатОткрыт=!!document.querySelector(".layout.chat-open");
   const профильОткрыт=!!document.querySelector(".rp.mobile-open");
   // Любой экран, которого нет в списке корневых, делает панель вложенной.
   const естьВложенный=открытые.some(id=>!TABBAR_ROOT_SCREENS[id]);
   const корневой=открытые.find(id=>TABBAR_ROOT_SCREENS[id]);
-  const видна = !чатОткрыт && !профильОткрыт && !естьВложенный && открытые.length<=1;
+  const видна = !чатОткрыт && !профильОткрыт && !естьВложенный;
   // Пока профиль открыт, слои под ним выключаются целиком: иначе строка
   // ввода и шапка чата остаются «живыми» под прозрачными местами слоя.
   document.body.classList.toggle("rp-open",профильОткрыт);
@@ -6948,7 +7045,27 @@ function updateTabbarVisibility(){
   if(!видна) return;
   const активный=корневой?TABBAR_ROOT_SCREENS[корневой]:"mtab-chats";
   панель.querySelectorAll(".mtab-item").forEach(x=>x.classList.toggle("on",x.id===активный));
+  moveTabGlider();
 }
+// Подложка активного пункта — один элемент, который переезжает под значок
+// активного пункта (а не своя подложка у каждого пункта).
+let _tabGliderPlaced=false;
+function moveTabGlider(){
+  const панель=el("mobile-tabbar");
+  const g=панель && панель.querySelector(".mtab-glider");
+  if(!g) return;
+  const цель=панель.querySelector(".mtab-item.on .mtab-ic-wrap");
+  if(!document.body.classList.contains("tabbar-on") || !цель){ _tabGliderPlaced=false; return; }
+  const p=панель.getBoundingClientRect(), r=цель.getBoundingClientRect();
+  if(!r.width){ _tabGliderPlaced=false; return; }
+  // Панель только что появилась — ставим подложку на место без проезда.
+  if(!_tabGliderPlaced) g.classList.add("no-anim");
+  g.style.width=r.width+"px";
+  g.style.height=r.height+"px";
+  g.style.transform="translate("+(r.left-p.left-панель.clientLeft)+"px,"+(r.top-p.top-панель.clientTop)+"px)";
+  if(!_tabGliderPlaced){ void g.offsetWidth; g.classList.remove("no-anim"); _tabGliderPlaced=true; }
+}
+window.addEventListener("resize",()=>{ _tabGliderPlaced=false; moveTabGlider(); });
 // Класс .on у экранов, .chat-open у .layout и .mobile-open у профиля ставятся
 // из двух десятков мест. Вместо того чтобы дописывать вызов в каждое, следим
 // за атрибутом class у этих конкретных узлов — их полтора десятка, наблюдение
