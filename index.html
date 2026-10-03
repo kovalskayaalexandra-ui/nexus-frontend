@@ -91,6 +91,9 @@ button,input,textarea,select{font-family:inherit}
   background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(var(--acc-rgb),.2),transparent 60%),
              radial-gradient(ellipse 60% 40% at 85% 100%,rgba(var(--acc3-rgb),.1),transparent 50%),var(--bg)}
 .auth.on{display:flex}
+/* Почему человек снова на экране входа: сессия истекла, а не «что-то сломалось». */
+.auth-session-note{margin:4px 0 14px;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.35;
+  text-align:center;color:var(--tx);background:rgba(var(--acc-rgb),.10);border:1px solid rgba(var(--acc-rgb),.22)}
 .abox{background:var(--bg2);border:1px solid var(--brd2);border-radius:24px;padding:36px 32px;width:100%;max-width:420px;box-shadow:0 24px 80px rgba(0,0,0,.6);animation:fadeUp .3s ease-out}
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 /* 3 окт 2026: градиент у названия убран — цвет берётся из токенов темы,
@@ -2075,6 +2078,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 <div class="auth" id="auth-phone">
   <div class="abox">
     <div class="alogo">⬡ Монохром</div>
+    <div class="auth-session-note" id="auth-session-note" style="display:none" role="status"></div>
     <div class="atitle" id="t-entph">Введите номер телефона</div>
     <div class="asub" id="t-phsub">Мы отправим вам код подтверждения</div>
     <div class="pw">
@@ -3913,6 +3917,24 @@ function wsAbandonSocket(){
   if(брошенный){ try { брошенный.close(); } catch(e){} }
   wsScheduleReconnect();
 }
+// Остановка соединения БЕЗ переподключения: сервер отказал в авторизации.
+// Как и wsAbandonSocket, ничего не ждёт от сокета — поколение увеличивается
+// сразу, поэтому его запоздалые onclose/onerror/onmessage уже ничего не
+// тронут, а onclose не запустит новое переподключение. Счётчик попыток не
+// сбрасывается: если окажется, что это всё же сбой на сервере, пауза перед
+// следующей попыткой продолжит расти, а не начнётся заново.
+function wsShutdown(){
+  const старый = ws;
+  wsGeneration++;
+  ws = null;
+  wsConnected = false;
+  wsAuthed = false;
+  wsHbSeen = false;
+  wsDisarmSilence();
+  clearTimeout(wsReconnectTimer);
+  wsReconnectTimer = null;
+  if(старый){ try { старый.close(); } catch(e){} }
+}
 // Вкладку открыли — проверяем сразу, не дожидаясь очередного срабатывания.
 document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState === "visible" && wsHbSeen) wsSilenceCheck();
@@ -4057,9 +4079,14 @@ function wsHandleMessage(msg){
       wsArmSilence();
       break;
 
+    // ⚠️ 3 окт 2026. Раньше обычный auth.error («Неверный токен» — например,
+    // истёкший 30-дневный JWT) только писал в консоль. Сервер следом закрывал
+    // сокет, onclose запускал переподключение, сервер снова отвечал тем же — и
+    // так без конца: в шапке навсегда «Соединение…», экрана входа нет.
     case "auth.error":
-      console.warn("WS auth error:", msg.error);
-      if(msg.banned || msg.accountDeleted) forceLogoutBanned(msg.error);
+      // Бан и удалённый аккаунт — прежняя отдельная обработка.
+      if(msg.banned || msg.accountDeleted){ wsShutdown(); forceLogoutBanned(msg.error); break; }
+      wsAuthRejected();
       break;
 
     // Сервер разорвал соединение сразу при бане — раньше забаненный, у
@@ -4738,15 +4765,19 @@ function checkBannedResponse(data){
 
 async function apiPost(path, body, auth=false){
   const headers = {"Content-Type":"application/json"};
-  if(auth){ const t=getToken(); if(t) headers["Authorization"]="Bearer "+t; }
+  const t = auth ? getToken() : null;
+  if(t) headers["Authorization"]="Bearer "+t;
   const res = await fetch(API_URL+path,{method:"POST",headers,body:JSON.stringify(body)});
+  if(res.status===401) onAuthorizedRequest401(path, t);
   return checkBannedResponse(await res.json());
 }
 
 async function apiPatch(path, body, auth=false){
   const headers = {"Content-Type":"application/json"};
-  if(auth){ const t=getToken(); if(t) headers["Authorization"]="Bearer "+t; }
+  const t = auth ? getToken() : null;
+  if(t) headers["Authorization"]="Bearer "+t;
   const res = await fetch(API_URL+path,{method:"PATCH",headers,body:JSON.stringify(body)});
+  if(res.status===401) onAuthorizedRequest401(path, t);
   return checkBannedResponse(await res.json());
 }
 
@@ -4768,6 +4799,7 @@ async function apiGet(path){
   const t=getToken();
   const headers = t ? {"Authorization":"Bearer "+t} : {};
   const res = await fetch(API_URL+path,{headers});
+  if(res.status===401) onAuthorizedRequest401(path, t);
   return checkBannedResponse(await res.json());
 }
 
@@ -5033,6 +5065,9 @@ async function doReg(){
 
 function loginOK(){
   S.loggedIn=true; saveState();
+  // Следующая истёкшая сессия должна обрабатываться снова.
+  _sessionExpiredShown=false;
+  const заметкаСессии=el("auth-session-note"); if(заметкаСессии) заметкаСессии.style.display="none";
   document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on"));
   updateUserUI(); renderChats(); openChat(S.chat||1,{skipMobileSlide:true}); updBal();
   updateLogoText();
@@ -6000,7 +6035,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-03 «Монохром»: геометрия экранов, нейтральный материал, значки";
+const BUILD_TAG = "2026-10-03 хотфикс: истёкшая сессия — экран входа вместо «Соединение…»";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -14037,6 +14072,90 @@ function exportData(){ const blob=new Blob([JSON.stringify({user:S.user,chats:S.
 
 function importData(){ showToast("📥 Выберите файл angie_export.json"); }
 function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{S.loggedIn=false;clearToken();saveState();location.reload();}; openM("m-confirm"); }
+// ── Истёкшая сессия ────────────────────────────────────────────────────────
+// 3 окт 2026. Один сценарий для всех путей: auth.error по WebSocket, 401 у
+// /api/users/me при запуске и 401 у любого запроса с токеном.
+//
+// Почему перед выходом сервер спрашивают ещё раз. В WS-авторизации сервер
+// ловит ЛЮБУЮ ошибку одним catch — в том числе сбой базы — и отвечает тем же
+// «Неверный токен». А HTTP-маршруты отвечают 401 и на неверный текущий
+// пароль или код 2FA (routes/auth.js). Выкидывать человека из приложения по
+// такому ответу нельзя. /api/users/me отвечает 401 только тогда, когда не
+// принят сам токен (истёк, отозван, подделан) — по нему и решаем.
+// Результат проверки привязан к токену, с которым её начали: если за это время
+// человек уже вошёл заново, ответ про старый токен ничего не трогает.
+let _sessionCheck=null;
+function checkSessionToken(){
+  if(_sessionCheck) return _sessionCheck;
+  const токен=getToken();
+  if(!токен) return Promise.resolve({итог:"expired", токен});
+  _sessionCheck=(async()=>{
+    try{
+      const r=await fetch(API_URL+"/api/users/me",{headers:{"Authorization":"Bearer "+токен}});
+      if(r.status===401) return {итог:"expired", токен};
+      if(r.status===403){
+        let d=null; try{ d=await r.json(); }catch(e){}
+        if(d && (d.banned || d.accountDeleted)){ checkBannedResponse(d); return {итог:"banned", токен}; }
+        return {итог:"unknown", токен};
+      }
+      return {итог: r.ok ? "valid" : "unknown", токен};
+    }catch(e){ return {итог:"unknown", токен}; }   // нет сети — по нему ничего не понять
+  })();
+  _sessionCheck.finally(()=>{ _sessionCheck=null; });
+  return _sessionCheck;
+}
+
+// Сервер не принял токен по WebSocket. Соединение останавливается СРАЗУ —
+// не дожидаясь onclose, — а дальше решает проверка токена по HTTP.
+function wsAuthRejected(){
+  wsShutdown();
+  updateConnectionIndicator(true);
+  checkSessionToken().then(({итог, токен})=>{
+    if(!S.loggedIn || getToken()!==токен) return;   // уже вышли или вошли заново
+    if(итог==="expired") sessionExpired();
+    else if(итог==="banned") {}                      // прежняя обработка уже вызвана
+    // Токен рабочий или сеть недоступна: это не истёкшая сессия, а сбой —
+    // пробуем снова с растущей паузой, как при обычном обрыве.
+    else wsScheduleReconnect();
+  });
+}
+
+// HTTP-запрос с токеном получил 401.
+function onAuthorizedRequest401(путь, токен){
+  if(!S.loggedIn || !токен || getToken()!==токен) return;
+  // Этот маршрут отвечает 401 только из-за самого токена — он и есть проверка.
+  if(String(путь).startsWith("/api/users/me")){ sessionExpired(); return; }
+  checkSessionToken().then(({итог, токен:т})=>{
+    if(итог==="expired" && S.loggedIn && getToken()===т) sessionExpired();
+  });
+}
+
+const SESSION_EXPIRED_TEXT="Сессия истекла. Войдите снова";
+let _sessionExpiredShown=false;
+function sessionExpired(){
+  if(_sessionExpiredShown) return;   // WS и несколько HTTP-ответов могут прийти почти одновременно
+  _sessionExpiredShown=true;
+  // Соединение и все его таймеры — прочь, переподключения не будет.
+  wsShutdown();
+  wsReconnectAttempt=0;
+  // Уведомления, накопленные для этой сессии, не должны уйти от имени
+  // следующего входа.
+  wsOutbox=[];
+  // Чистим ТОЛЬКО авторизацию: токен и признак входа. Чаты, сообщения,
+  // черновики, тема, язык и прочие настройки остаются как были.
+  _mandatory2FAData=null;
+  clearToken();
+  S.loggedIn=false;
+  saveState();
+  // Меню сообщения лежит выше экранов входа — закрываем, чтобы не висело поверх.
+  try{ if(el("ctx")?.classList.contains("on")) closeCtx(); }catch(e){}
+  // Логотипы на экранах входа тоже показывали «Соединение…».
+  updateConnectionIndicator(false);
+  showA("auth-phone");               // showA оставляет видимым ровно один экран входа
+  const заметка=el("auth-session-note");
+  if(заметка){ заметка.textContent=SESSION_EXPIRED_TEXT; заметка.style.display="block"; }
+}
+
 // Принудительный выход при бане — сервер прислал это либо через открытый WS
 // (сразу в момент бана), либо через ошибку авторизации при переподключении
 let _forceLogoutShown=false;
@@ -16055,30 +16174,20 @@ loadState();
 applyLang();
 detectLang();
 
-// При наличии токена — обновляем данные с сервера в фоне
-if(S.loggedIn){
-  // ⚠️ Защита: на всякий случай принудительно закрываем все полноэкранные
-  // оверлеи (News/VIP/верификация и т.п.) при каждой загрузке — что бы ни
-  // было причиной их случайного открытия, так они не будут перекрывать
-  // обычный чат при обновлении страницы.
-  document.querySelectorAll(".screen.on").forEach(s=>{ if(s.id!=="screen-main") s.classList.remove("on"); });
-  document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on"));
-  el("rp")?.classList.remove("mobile-open");
-  // Создаём Избранное если его ещё нет (для тех кто уже залогинен)
-  if(!S.chats.find(c=>c.id===77777)){
-    S.chats.push({id:77777,nm:"Избранное",ini:"",col:2,online:false,prev:"Сохранённые сообщения",time:"",unread:0,type:"personal",pinned:true,muted:false,blocked:false,draft:"",saved:true});
-    if(!S.messages[77777]) S.messages[77777]=[{id:1,t:"sys",tx:"Это ваше Избранное — сохраняйте сюда важные сообщения, ссылки и заметки. Видите только вы."}];
-    saveState();
-  }
-  updateUserUI(); renderChats(); openChat(S.chat||1,{skipMobileSlide:true}); updBal();
-  updateLogoText();
-  // Подключаем WebSocket при старте если уже залогинены
-  setTimeout(wsConnect, 500);
-  checkPendingJoinLink();
-  // Фоновое обновление профиля с сервера если есть токен
-  if(getToken()){
-    fetch(API_URL+"/api/users/me",{headers:{"Authorization":"Bearer "+getToken()}})
-      .then(r=>r.ok?r.json():null)
+// Фоновое обновление профиля при запуске. ⚠️ 3 окт 2026: раньше ответ 401
+// (истёкший токен) молча пропускался — приложение оставалось «полуживым»:
+// всё на экране, но ни один запрос не проходит, а сокет вечно переподключается.
+// Теперь 401 ведёт в тот же единый сценарий истёкшей сессии, а 403 с флагом
+// бана или удаления — в прежнюю отдельную обработку.
+function syncProfileFromServer(){
+  const токен=getToken();
+  if(!токен) return Promise.resolve();
+  return fetch(API_URL+"/api/users/me",{headers:{"Authorization":"Bearer "+токен}})
+      .then(async r=>{
+        if(r.status===401){ onAuthorizedRequest401("/api/users/me", токен); return null; }
+        if(r.status===403){ try{ checkBannedResponse(await r.json()); }catch(e){} return null; }
+        return r.ok?r.json():null;
+      })
       .then(resp=>{
         const data = resp && resp.user; // GET /api/users/me отдаёт { user: {...} }, не плоский объект
         if(!data||!data.id) return;
@@ -16107,6 +16216,31 @@ if(S.loggedIn){
         saveState(); updateUserUI(); updBal();
       })
       .catch(()=>{});
+}
+
+// При наличии токена — обновляем данные с сервера в фоне
+if(S.loggedIn){
+  // ⚠️ Защита: на всякий случай принудительно закрываем все полноэкранные
+  // оверлеи (News/VIP/верификация и т.п.) при каждой загрузке — что бы ни
+  // было причиной их случайного открытия, так они не будут перекрывать
+  // обычный чат при обновлении страницы.
+  document.querySelectorAll(".screen.on").forEach(s=>{ if(s.id!=="screen-main") s.classList.remove("on"); });
+  document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on"));
+  el("rp")?.classList.remove("mobile-open");
+  // Создаём Избранное если его ещё нет (для тех кто уже залогинен)
+  if(!S.chats.find(c=>c.id===77777)){
+    S.chats.push({id:77777,nm:"Избранное",ini:"",col:2,online:false,prev:"Сохранённые сообщения",time:"",unread:0,type:"personal",pinned:true,muted:false,blocked:false,draft:"",saved:true});
+    if(!S.messages[77777]) S.messages[77777]=[{id:1,t:"sys",tx:"Это ваше Избранное — сохраняйте сюда важные сообщения, ссылки и заметки. Видите только вы."}];
+    saveState();
+  }
+  updateUserUI(); renderChats(); openChat(S.chat||1,{skipMobileSlide:true}); updBal();
+  updateLogoText();
+  // Подключаем WebSocket при старте если уже залогинены
+  setTimeout(wsConnect, 500);
+  checkPendingJoinLink();
+  // Фоновое обновление профиля с сервера если есть токен
+  if(getToken()){
+    syncProfileFromServer();
     loadSupportMessages();
     loadVerifyBotMessages();
     syncFeedbackBotStatus();
