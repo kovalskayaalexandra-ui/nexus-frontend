@@ -867,8 +867,12 @@ html.no-blur .glass{-webkit-backdrop-filter:none !important;backdrop-filter:none
    категорий и списка. Геометрия одна для всех тем; тема меняет только цвет
    колец и материал. */
 #screen-main{position:relative}
-#stories-layer{position:absolute;left:0;right:0;top:0;height:0;z-index:150;pointer-events:none;display:none}
-body.mobile-mode #stories-layer{display:block}
+/* ⚠️ 4 октября 2026 (проверка 420f42e на телефоне). Стопка — постоянная
+   часть шапки и вход в создание сторис: три слота видны всегда, на телефоне
+   и на ПК, даже когда ни одной сторис нет. Раньше слой был только в
+   мобильном режиме, а без активных сторис стопки не было вовсе — функцию
+   нельзя было найти, а с ПК нельзя было опубликовать сторис. */
+#stories-layer{position:absolute;left:0;right:0;top:0;height:0;z-index:150;pointer-events:none;display:block}
 /* Переписка — отдельный экран: сторис в ней не участвуют. */
 body.mobile-mode #screen-main:has(.layout.chat-open)>#stories-layer{display:none}
 #stories-row{position:absolute;left:0;right:0;top:var(--h-topbar);height:92px;
@@ -882,10 +886,60 @@ body.stories-expanded #stories-row{overflow-x:auto;overflow-y:hidden;pointer-eve
 #stories-row .story-av-wrap.st-off{pointer-events:none}
 #stories-row .story-nm{max-width:54px;will-change:opacity}
 #stories-row .ss-spacer{position:absolute;left:0;top:0;height:1px;pointer-events:none}
+#stories-row .story-ring{position:relative}
+/* Пустые кольца и своя ячейка без своей сторис — спокойное стекло без цвета:
+   это часть интерфейса, а не аватары неизвестных людей. Цвета — из
+   переменных темы, форма одна. */
+#stories-row .st-empty .story-ring,
+#stories-row .story-ring.st-ring-none{padding:1.5px;background:var(--st-slot-ring,rgba(128,128,128,.28));box-shadow:none;border:0}
+#stories-row .st-empty .story-av-inner{border:0;
+  background-color:var(--st-slot-fill,#2a2f38) !important;background-image:var(--st-slot-img,none) !important;
+  box-shadow:inset 0 1px 0 var(--st-slot-hi,transparent)}
+#stories-row .st-empty .story-ring:hover,#stories-row .st-empty:active .story-ring{transform:none}
+/* В стопке кружки перекрываются — под курсором не увеличиваются. На
+   сенсорном экране :hover после тапа «залипает» — там без увеличения вовсе. */
+/* Нажатие (:active) при этом остаётся — кольцо чуть сжимается. */
+body:not(.stories-expanded) #stories-row .story-av-wrap:not(:active) .story-ring:hover{transform:none}
+@media (hover:none){ #stories-row .story-av-wrap:not(:active) .story-ring:hover{transform:none} }
+/* ПК: ряд уже окна — правый край обрезает кружки и во время движения, а не
+   только в спокойном раскрытом виде (иначе они пролетали бы над шапкой
+   переписки). Сверху и слева не обрезаем: стопка стоит в шапке над рядом. */
+body:not(.mobile-mode) #stories-row{clip-path:inset(-200px 0 -200px -200px)}
+/* ПК, окно 601–1100 px: место под стопку (80 px) выталкивало пилюлю профиля
+   (вход в Настройки) и флаг языка за край шапки. Кнопка «Магазин» здесь
+   прячется — она дублирует пилюлю баланса, которая открывает тот же магазин.
+   На всех ширинах шапка теперь помещается не хуже, чем до стопки. */
+@media (min-width:601px) and (max-width:1100px){ body:not(.mobile-mode) #screen-main>.topbar #t-shop{display:none} }
+/* «+» в своей ячейке: в стопке — пустой стеклянный кружок со знаком поверх
+   аватара; по мере раскрытия он растворяется (storiesFrame), и в ряду видны
+   аватар и маленький значок «+». */
+#stories-row .st-plus{position:absolute;inset:1.5px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background-color:var(--st-slot-fill,#2a2f38);background-image:var(--st-slot-img,none);
+  box-shadow:inset 0 1px 0 var(--st-slot-hi,transparent);color:var(--st-slot-ink,currentColor);pointer-events:none;will-change:opacity}
+#stories-row .st-badge{position:absolute;left:33px;top:27px;width:19px;height:19px;box-sizing:border-box;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;will-change:opacity;
+  background:var(--st-badge-bg,var(--acc));color:var(--st-badge-ink,#fff);border:2px solid var(--st-badge-sep,var(--bg2))}
+/* Стопка — кнопка «Сторис»: прозрачная область над стопкой и названием.
+   Тап или клик раскрывает ряд (на ПК жеста нет), повторный — сворачивает.
+   Кружки лежат выше неё и сами ведут туда же, пока ряд не раскрыт. */
+#stories-toggle{position:absolute;left:0;top:0;width:0;height:44px;margin:0;padding:0;border:0;border-radius:var(--r-md,12px);
+  background:transparent;color:inherit;font:inherit;cursor:pointer;pointer-events:auto;-webkit-user-select:none;user-select:none}
+/* «Свернуть» — только на ПК, у правого края раскрытого ряда. */
+#stories-close{position:absolute;left:0;top:0;width:28px;height:28px;margin:0;padding:0;box-sizing:border-box;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;pointer-events:auto;visibility:hidden;opacity:0;
+  background-color:var(--st-slot-fill,var(--bg3));background-image:var(--st-slot-img,none);
+  border:1px solid var(--st-slot-ring,var(--brd));color:var(--tx2)}
+#stories-close.on{visibility:visible}
+#stories-close:hover{color:var(--tx)}
+body.mobile-mode #stories-close{display:none}
 /* Название уступает место стопке и возвращается, когда она уезжает вниз.
    Свойство translate, а не transform: оно не спорит с другими трансформациями
-   элемента и так же обрабатывается компоновщиком. */
-body.mobile-mode #screen-main>.topbar .logo{will-change:translate;translate:var(--st-logo,0px) 0}
+   элемента и так же обрабатывается компоновщиком.
+   На ПК справа от названия поиск: там место под стопку занимает отступ
+   (--st-reserve), а translate уводит название влево в раскрытом виде. На
+   телефоне отступа нет — справа от названия свободно. */
+#screen-main>.topbar .logo{will-change:translate;margin-left:var(--st-reserve,0px);
+  translate:calc(var(--st-logo,0px) - var(--st-reserve,0px)) 0}
 /* Поиск, категории, строка выбора, архив и список сдвигаются одним значением.
    ⚠️ Саму панель поиска не сдвигаем — только её содержимое, кроме «Добавить»:
    любая трансформация предка сделала бы её position:fixed относительной этого
@@ -895,6 +949,12 @@ body.mobile-mode .sb-toolbar>:not(#fab-newchat){will-change:translate;translate:
 /* В спокойном раскрытом состоянии место занимает сама колонка — иначе низ
    списка ушёл бы за экран и до последних чатов было бы не докрутить. */
 body.mobile-mode.stories-expanded .sb{top:92px}
+/* ПК: ряд стоит в колонке списка чатов. Пока он движется, содержимое колонки
+   сдвигается тем же значением; в спокойном раскрытом виде место занимает
+   отступ колонки. Сдвиг — только на время движения: постоянный translate
+   сделал бы детей колонки опорой для position:fixed внутри них. */
+body:not(.mobile-mode).stories-moving #screen-main .sb>*{translate:0 var(--st-shift,0px)}
+body:not(.mobile-mode).stories-expanded #screen-main .sb{padding-top:92px}
 
 /* ══════════════════════════════════════════════════════════════════════════
    ОДНА КОМПОНЕНТНАЯ ГЕОМЕТРИЯ ДЛЯ ТРЁХ ТЕМ (3 октября 2026)
@@ -929,6 +989,11 @@ html[data-theme="mono"]{
   --story-edge:rgba(126,186,232,.48); --story-seen-edge:rgba(255,255,255,.09);
   --story-shadow:0 2px 8px rgba(6,9,13,.30);
   --story-lock-bg:rgba(255,255,255,.08); --story-lock-brd:rgba(255,255,255,.14);
+  /* Пустые слоты стопки (4 окт 2026): непрозрачное стекло без цвета. */
+  --st-slot-ring:rgba(255,255,255,.17); --st-slot-fill:#262d35;
+  --st-slot-img:linear-gradient(145deg,rgba(255,255,255,.10),rgba(255,255,255,.02));
+  --st-slot-hi:rgba(255,255,255,.10); --st-slot-ink:rgba(236,240,244,.74);
+  --st-badge-bg:#d6dce2; --st-badge-ink:#101418; --st-badge-sep:#161b21;
   /* фон: несколько слоёв, чтобы стеклу было что преломлять */
   --app-bg:
     radial-gradient(1180px 720px at 6% -6%, rgba(150,190,230,.26), transparent 56%),
@@ -1029,6 +1094,10 @@ html[data-theme="light"]{
   --story-seen-a:rgba(30,40,70,.16); --story-seen-b:rgba(30,40,70,.08);
   --story-shadow:0 2px 8px rgba(40,50,90,.12);
   --story-lock-bg:rgba(30,40,70,.06); --story-lock-brd:rgba(30,40,70,.12);
+  --st-slot-ring:rgba(30,40,70,.18); --st-slot-fill:#e7e9f0;
+  --st-slot-img:linear-gradient(145deg,rgba(255,255,255,.80),rgba(255,255,255,.15));
+  --st-slot-hi:rgba(255,255,255,.75); --st-slot-ink:rgba(36,38,47,.62);
+  --st-badge-bg:var(--acc); --st-badge-ink:#fff; --st-badge-sep:#f4f5f9;
   /* светлое матовое стекло: мягкий светлый фон с едва заметными пятнами акцента */
   --app-bg:
     radial-gradient(1180px 720px at 6% -6%, rgba(108,99,255,.10), transparent 56%),
@@ -1117,6 +1186,10 @@ html[data-theme="amoled"]{
   --story-seen-a:rgba(255,255,255,.16); --story-seen-b:rgba(255,255,255,.08);
   --story-shadow:0 2px 8px rgba(0,0,0,.35);
   --story-lock-bg:rgba(255,255,255,.07); --story-lock-brd:rgba(255,255,255,.12);
+  --st-slot-ring:rgba(255,255,255,.15); --st-slot-fill:#232838;
+  --st-slot-img:linear-gradient(145deg,rgba(255,255,255,.08),rgba(255,255,255,.015));
+  --st-slot-hi:rgba(255,255,255,.08); --st-slot-ink:rgba(238,240,246,.68);
+  --st-badge-bg:var(--acc); --st-badge-ink:#fff; --st-badge-sep:#171b28;
   /* глубокое тёмное стекло: тёмно-синий графит и мягкие пятна акцента */
   --app-bg:
     radial-gradient(1180px 720px at 6% -6%, rgba(108,99,255,.20), transparent 56%),
@@ -1200,6 +1273,7 @@ html[data-theme="amoled"]{
    истинно чёрный. */
 html[data-theme="amoled"]{
   --app-bg:#000000; --screen-bg:#000000; --sheet-bg:#000000;
+  --st-slot-fill:#12141c; --st-badge-sep:#050508;
   --mat-tint:rgba(8,8,12,.55); --bar-bg:rgba(4,4,8,.96); --bar-bg-blur:rgba(4,4,8,.90);
   --nav-bg:rgba(4,4,8,.97); --nav-bg-blur:rgba(4,4,8,.95);
   --noise-op:0;
@@ -2689,7 +2763,11 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
   <!-- Сторис: ОДИН набор аватаров. В свёрнутом виде он стоит стопкой слева от
        названия в шапке, в раскрытом — рядом под шапкой. Между состояниями
        узлы не пересоздаются: меняются только transform и opacity. -->
-  <div id="stories-layer" aria-label="Сторис"><div id="stories-row"></div></div>
+  <div id="stories-layer" aria-label="Сторис">
+    <button type="button" id="stories-toggle" aria-label="Сторис" aria-expanded="false" aria-controls="stories-row" title="Сторис" onclick="storiesToggle()"></button>
+    <div id="stories-row"></div>
+    <button type="button" id="stories-close" aria-label="Свернуть сторис" title="Свернуть" tabindex="-1" onclick="storiesToggle(false)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
   <div class="layout">
     <div class="sb">
       <div class="sb-toolbar">
@@ -5524,6 +5602,9 @@ function loginOK(){
   document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on"));
   updateUserUI(); renderChats(); openChat(S.chat||1,{skipMobileSlide:true}); updBal();
   updateLogoText();
+  // Стопка сторис — постоянная часть шапки: сразу, иначе название прыгнуло бы
+  // на 80 px, когда она появится по таймеру.
+  try{ renderStoriesBar(); }catch(e){}
   // Подключаем WebSocket
   setTimeout(wsConnect, 300);
   checkPendingJoinLink();
@@ -6488,7 +6569,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-04 хотфикс: стопка сторис видна сразу, без синей подсветки нажатия";
+const BUILD_TAG = "2026-10-04 сторис: постоянная стопка из трёх слотов, клик на ПК, вход в создание";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -6518,7 +6599,8 @@ function renderSettingsScreen(){
   try{ if(el("stories-diag-disp")){
     const узлы=[...document.querySelectorAll("#stories-row .story-av-wrap")];
     el("stories-diag-disp").textContent="активных "+узлы.filter(n=>n.dataset.active==="1").length
-      +" · в стопке "+(_stGeom?_stGeom.K:0)+" · ждут отрисовки: "+(storiesPendingRender?"да":"нет")
+      +" · в стопке "+(_stGeom?_stGeom.K:0)+" (пустых "+узлы.filter(n=>n.classList.contains("st-empty")).length+")"
+      +" · ждут отрисовки: "+(storiesPendingRender?"да":"нет")
       +" · касание: "+(pullActive||chatListTouchActive?"да":"нет");
   } }catch(e){}
   if(el("blocked-count")){
@@ -13629,10 +13711,10 @@ const ST_ROW_PAD=12;       // отступ ряда слева
 const ST_ROW_TOP=8;        // кольцо от верха ряда
 const ST_STACK_RING=30;    // диаметр кольца в стопке
 const ST_STACK_STEP=21;    // шаг стопки: кружки перекрываются на 9px
-const ST_STACK_MAX=3;      // сколько первых активных сторис видно в стопке
+const ST_STACK_MAX=3;      // слотов в стопке: своя ячейка + две чужие или пустые
 const ST_STACK_GAP=8;      // от стопки до названия
 const ST_SETTLE_MS=240;    // доводка после отпускания (общая кривая --e-out)
-let _stP=0, _stRaf=0, _stAnim=null, _stGeom=null, _stScroll0=0, _stExpandedMode=false;
+let _stP=0, _stRaf=0, _stAnim=null, _stGeom=null, _stScroll0=0, _stExpandedMode=false, _stLogoW=0, _stTapT=-1e9;
 window._storiesReady=true;   // см. applyMobileModeClass
 
 // Кубическая Безье (.25,.8,.35,1) — та же кривая, что --e-out у всех переходов.
@@ -13664,34 +13746,85 @@ function storiesLayout(){
   const сдвигКольца=(ST_SLOT-ST_RING)/2;
   const s0=ST_STACK_RING/R;
   const yСтопки=(высотаШапки-ST_STACK_RING)/2 - высотаШапки;
-  // В стопке — первые активные сторис по порядку ряда.
-  const место=[]; let k=0;
-  узлы.forEach((n)=>{ const активна=n.dataset.active==="1" && k<ST_STACK_MAX; место.push(активна ? k++ : -1); });
-  const K=k;
+  // ⚠️ 4 октября 2026. Стопка — всегда три первых узла ряда: своя ячейка,
+  // затем чужие сторис, а если их меньше двух — пустые кольца (их рисует
+  // renderStoriesBar). Раньше в стопку шли только активные сторис, и без
+  // них её не было вовсе.
+  const K=Math.min(ST_STACK_MAX, узлы.length);
   const ширинаСтопки=K ? ST_STACK_RING+(K-1)*ST_STACK_STEP : 0;
-  const последнее=Math.max(0, K-1);
+  const сдвиг=K ? ширинаСтопки+ST_STACK_GAP : 0;
   _stGeom={
-    узлы, K, s0,
-    названиеСдвиг: (мобильный && K) ? ширинаСтопки+ST_STACK_GAP : 0,
+    узлы, K, s0, мобильный,
+    названиеСдвиг: сдвиг,
     a: узлы.map((n,i)=>{
-      const kk=место[i];
-      // Узлы вне стопки ждут под её последним кружком (или первым) и
-      // проявляются по мере раскрытия.
-      const слот=kk>=0 ? kk : (n.dataset.active==="1" ? последнее : 0);
+      // Узлы вне стопки ждут под её последним кружком и проявляются по мере
+      // раскрытия; пустые кольца — наоборот, растворяются.
+      const слот=i<K ? i : Math.max(0, K-1);
       return {
         x0: отступ + слот*ST_STACK_STEP - сдвигКольца*s0,
         y0: yСтопки,
         x1: ST_ROW_PAD + i*ST_SLOT,
         y1: ST_ROW_TOP,
-        вСтопке: kk>=0,
+        вСтопке: i<K,
+        пустой: n.classList.contains("st-empty"),
       };
     }),
   };
-  // Ширина прокрутки ряда.
+  // На ПК справа от названия поиск: место под стопку — отступом (см. CSS).
+  шапка.style.setProperty("--st-reserve", (мобильный ? 0 : сдвиг)+"px");
+  // На ПК ряд — в колонке списка чатов, а не во всю ширину окна.
+  const колонка=document.querySelector("#screen-main .sb");
+  const ширинаКолонки=(!мобильный && колонка && колонка.getBoundingClientRect().width) || 290;
+  // Справа в колонке — полоса под кнопку «Свернуть»: кружки уходят под край
+  // ряда, а не под кнопку.
+  ряд.style.right=мобильный ? "" : "auto";
+  ряд.style.width=мобильный ? "" : (ширинаКолонки-44)+"px";
+  // Кнопка «Сторис» — над стопкой и названием (ширину названия берём, когда
+  // шапка видна; пока скрыта — прежнюю).
+  const лого=шапка.querySelector(".logo");
+  stFitTitle(шапка, лого, мобильный, отступ+сдвиг);
+  const ширинаЛого=лого ? лого.getBoundingClientRect().width : 0;
+  if(ширинаЛого>0) _stLogoW=ширинаЛого;
+  const кнопка=el("stories-toggle");
+  if(кнопка){
+    кнопка.style.left=Math.max(0, отступ-4)+"px";
+    кнопка.style.top=((высотаШапки-44)/2)+"px";
+    кнопка.style.width=(сдвиг + (_stLogoW||120) + 8)+"px";
+  }
+  const закрыть=el("stories-close");
+  if(закрыть){
+    закрыть.style.left=(ширинаКолонки-44+8)+"px";
+    закрыть.style.top=(высотаШапки + ST_ROW_TOP + (ST_RING-28)/2)+"px";
+  }
+  // Ширина прокрутки ряда (пустые кольца в ряду растворяются и места не занимают).
+  const сторис=узлы.filter((n)=>!n.classList.contains("st-empty")).length;
   let спейсер=ряд.querySelector(".ss-spacer");
   if(!спейсер){ спейсер=document.createElement("div"); спейсер.className="ss-spacer"; ряд.prepend(спейсер); }
-  спейсер.style.width=(ST_ROW_PAD*2 + узлы.length*ST_SLOT)+"px";
+  спейсер.style.width=(ST_ROW_PAD*2 + сторис*ST_SLOT)+"px";
   storiesFrame();
+}
+// ⚠️ 4 октября 2026. На телефоне название стоит после постоянной стопки
+// (80 px) и на узком экране наезжало бы на баланс: «⬡ Monochrome» на 360 px,
+// «Соединение...» на 320 px. Шрифт названия уменьшается ровно настолько,
+// чтобы оно поместилось до баланса (не меньше 12 px); если и так не
+// помещается — обрезается. Размер один в свёрнутом и раскрытом виде, поэтому
+// при раскрытии ничего не прыгает. На ПК место под стопку — отступом, а
+// название прежнего размера.
+function stFitTitle(шапка, лого, мобильный, слева){
+  if(!лого) return;
+  const сброс=()=>{ лого.style.fontSize=""; лого.style.maxWidth=""; лого.style.overflow=""; };
+  if(!мобильный){ if(лого.style.fontSize || лого.style.maxWidth) сброс(); return; }
+  const пр=шапка.querySelector(".tr");
+  const ш=шапка.getBoundingClientRect();
+  if(!пр || !ш.width) return;                    // шапка скрыта — оставляем как есть
+  сброс();
+  const доступно=пр.getBoundingClientRect().left - 8 - (ш.left+слева);
+  const ширина=лого.offsetWidth;
+  const базовый=parseFloat(getComputedStyle(лого).fontSize) || 20;
+  if(ширина<=доступно || ширина<=0 || доступно<=0){ return; }
+  const размер=Math.max(12, Math.floor(базовый*доступно/ширина*2)/2);
+  лого.style.fontSize=размер+"px";
+  if(лого.offsetWidth>доступно){ лого.style.maxWidth=Math.max(0, Math.floor(доступно))+"px"; лого.style.overflow="hidden"; }
 }
 function storiesProgress(){ return _stP; }
 // Один кадр: всё из одного p. Только transform/opacity и две переменные.
@@ -13716,6 +13849,9 @@ function storiesFrame(){
   const шапка=document.querySelector("#screen-main>.topbar");
   if(шапка) шапка.style.setProperty("--st-logo", (g ? g.названиеСдвиг*(1-p) : 0)+"px");
   document.body.classList.toggle("stories-open", p>0.02);
+  document.body.classList.toggle("stories-moving", p>0 && !_stExpandedMode);
+  const кнопка=el("stories-toggle");
+  if(кнопка){ const раскрыт=p>=0.5 ? "true" : "false"; if(кнопка.getAttribute("aria-expanded")!==раскрыт) кнопка.setAttribute("aria-expanded", раскрыт); }
   if(!g) return;
   const прокрутка=_stExpandedMode ? 0 : _stScroll0;
   const s=g.s0+(1-g.s0)*p;
@@ -13730,12 +13866,27 @@ function storiesFrame(){
     const x=a.x0+((a.x1-прокрутка)-a.x0)*p;
     const y=a.y0+(a.y1-a.y0)*pY;
     n.style.transform="translate3d("+x.toFixed(2)+"px,"+y.toFixed(2)+"px,0) scale("+s.toFixed(4)+")";
-    const видимость=a.вСтопке ? 1 : проявление;
+    const видимость=a.вСтопке ? (a.пустой ? 1-проявление : 1) : проявление;
     n.style.opacity=видимость.toFixed(3);
     n.classList.toggle("st-off", видимость<0.05);
     const nm=n.querySelector(".story-nm");
     if(nm) nm.style.opacity=подписи.toFixed(3);
   });
+  // Своя ячейка без своей сторис: в стопке — пустой кружок со знаком «+», в
+  // ряду — аватар с маленьким значком «+».
+  const я=g.узлы[0];
+  if(я){
+    const обложка=я.querySelector(".st-plus"); if(обложка) обложка.style.opacity=(1-проявление).toFixed(3);
+    const значок=я.querySelector(".st-badge"); if(значок) значок.style.opacity=подписи.toFixed(3);
+  }
+  // «Свернуть» на ПК — вместе с подписями; с клавиатуры — только в раскрытом ряду.
+  const закрыть=el("stories-close");
+  if(закрыть){
+    закрыть.classList.toggle("on", !g.мобильный && p>0.02);
+    закрыть.style.opacity=подписи.toFixed(3);
+    const таб=(!g.мобильный && p>=0.99) ? "0" : "-1";
+    if(закрыть.getAttribute("tabindex")!==таб) закрыть.setAttribute("tabindex", таб);
+  }
 }
 function storiesRequestFrame(){ if(!_stRaf) _stRaf=requestAnimationFrame(storiesFrame); }
 // Прогресс во время жеста — сразу за пальцем; плавно — доводка после
@@ -13809,6 +13960,96 @@ function commitStoriesCollapsed(){
   } else {
     f.navSpent=true;
   }
+}
+// ⚠️ 4 октября 2026. Стопка — кнопка «Сторис»: на ПК жеста вытягивания нет,
+// поэтому клик (и тап на телефоне) раскрывает тот же ряд той же анимацией, а
+// повторный клик по названию, кнопка «Свернуть» или Escape — сворачивают.
+// Запись истории — та же, что у жеста (commitStoriesExpanded), поэтому
+// «назад» сворачивает ряд и после клика.
+function storiesToggle(открыть){
+  if(pullActive && pullEngaged) return;          // палец уже ведёт ряд
+  // Второй клик двойного нажатия: кружки к этому времени уже уехали из шапки,
+  // и он попадает в эту кнопку — без этой проверки ряд раскрывался и тут же
+  // сворачивался. «Свернуть» и Escape зовут с явным false и не ждут.
+  if(открыть===undefined && (_stAnim || performance.now()-_stTapT<ST_SETTLE_MS+160)) return;
+  const раскрыт=storiesState!=="collapsed";
+  if(открыть===undefined) открыть=!раскрыт;
+  if(открыть){ if(!раскрыт){ _stTapT=performance.now(); commitStoriesExpanded(true); } return; }
+  if(!раскрыт) return;
+  const сЗакрытия=document.activeElement && document.activeElement.id==="stories-close";
+  _stTapT=performance.now();
+  commitStoriesCollapsed();
+  // Фокус не должен остаться на исчезнувшей кнопке.
+  if(сЗакрытия){ const к=el("stories-toggle"); if(к) к.focus(); }
+}
+// Тап по кружку стопки: пока ряд не раскрыт — раскрывает его (true: дальше
+// ничего не делать). В спокойном раскрытом ряду кружок открывает свою сторис.
+function storiesTapExpand(){
+  if(storiesState==="expanded" && _stP>=0.99 && !_stAnim) return false;
+  if(storiesState==="collapsed" && !pullActive){ _stTapT=performance.now(); commitStoriesExpanded(true); }
+  return true;
+}
+// Чужая сторис по ключу узла (c<id канала> / u<id автора>). id не попадает в
+// текст обработчика: он приходит из сокета и мог бы закрыть кавычки.
+function storyOpenByKey(ключ){
+  ключ=String(ключ||"");
+  if(ключ[0]==="c") viewChannelStories(ключ.slice(1));
+  else if(ключ[0]==="u") viewFriendStories(ключ.slice(1));
+}
+// Своя ячейка ряда: есть своя сторис — просмотр, нет — редактор. Решение
+// принимается в момент нажатия: VIP может прийти с сервера уже после
+// отрисовки. Без VIP openStoryEditor показывает объяснение и экран VIP.
+function storyMeTap(){
+  const мои=(S.my_stories||[]).filter(x=>Date.now()<x.expires);
+  if(мои.length) viewMyStories(0); else openStoryEditor();
+}
+// Escape сначала сворачивает ряд — если поверх него ничего не открыто.
+document.addEventListener("keydown",(e)=>{
+  if(e.key!=="Escape" || e.defaultPrevented || storiesState==="collapsed") return;
+  // Поверх ряда открыто что-то своё (панель эмодзи, выбор языка, поиск,
+  // переписка на телефоне) — его запись выше в стеке «назад», Escape не наш.
+  if(_navBackInFlight) return;
+  if(storiesNavFn ? navStack[navStack.length-1]!==storiesNavFn : navStack.length>0) return;
+  if(document.querySelector(".movl.on,.ctx.on")) return;
+  if([...document.querySelectorAll(".screen.on")].some(x=>!x.classList.contains("closing"))) return;
+  e.preventDefault();
+  storiesToggle(false);
+});
+// ПК: ряд листается колесом мыши (полосы прокрутки у ряда нет).
+el("stories-row")?.addEventListener("wheel",(e)=>{
+  const ряд=e.currentTarget;
+  if(!_stExpandedMode || document.body.classList.contains("mobile-mode")) return;
+  if(Math.abs(e.deltaY)<=Math.abs(e.deltaX) || ряд.scrollWidth<=ряд.clientWidth) return;
+  ряд.scrollLeft+=e.deltaY; e.preventDefault();
+},{passive:false});
+// ПК: ширину колонки списка меняют перетаскиванием — ряд и кнопка «Свернуть»
+// идут за ней. Ширина названия известна после загрузки шрифта.
+if(window.ResizeObserver){
+  const колонка=document.querySelector("#screen-main .sb");
+  let ширина=0;
+  if(колонка) new ResizeObserver(()=>{
+    const w=колонка.getBoundingClientRect().width;
+    if(Math.abs(w-ширина)<0.5) return;
+    ширина=w;
+    if(!document.body.classList.contains("mobile-mode")) storiesLayout();
+  }).observe(колонка);
+}
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{ try{ storiesLayout(); }catch(e){} });
+// Название меняется («Соединение...» ↔ «⬡ Монохром», язык), баланс — тоже:
+// кнопка «Сторис» и подгонка названия идут за ними. Петли нет: storiesLayout
+// меняет у названия только отступ и translate (размер рамки от них не
+// меняется), а подгонка шрифта на тех же размерах даёт тот же результат.
+if(window.ResizeObserver){
+  const шапка=document.querySelector("#screen-main>.topbar");
+  const лого=шапка && шапка.querySelector(".logo"), пр=шапка && шапка.querySelector(".tr");
+  const размеры=new Map();
+  const н=new ResizeObserver((записи)=>{
+    let есть=false;
+    for(const з of записи){ const w=з.target.getBoundingClientRect().width; if(w>0 && Math.abs(w-(размеры.get(з.target)||0))>=0.5){ размеры.set(з.target, w); есть=true; } }
+    if(есть){ try{ storiesLayout(); }catch(e){} }
+  });
+  if(лого) н.observe(лого);
+  if(пр) н.observe(пр);
 }
 
 // ⚠️ 4 октября 2026 (настоящий Android). Если строку под пальцем пересобрал
@@ -18148,7 +18389,16 @@ async function loadStoriesFeed(){
 // просмотрено прямо сейчас, и НЕ переживает перезагрузку. Серверное поле —
 // отдельная задача.
 const storySeenNow=new Set();
-function markStorySeen(ключ){ if(ключ){ storySeenNow.add(String(ключ)); } }
+// Отметка сразу перестраивает ряд: «непросмотренные впереди» и серое кольцо.
+// Это происходит под открытым просмотром — ряд не перемешивается под пальцем
+// при следующей посторонней перерисовке.
+function markStorySeen(ключ){
+  if(!ключ) return;
+  const к=String(ключ);
+  if(storySeenNow.has(к)) return;
+  storySeenNow.add(к);
+  renderStoriesBar();
+}
 function isStorySeen(ключ){ return storySeenNow.has(String(ключ)); }
 
 function buildStoryRingGradient(count, c1, c2){
@@ -18179,10 +18429,7 @@ function renderStoriesBar(){
   }
   const ряд=el("stories-row");
   if(!ряд) return;
-  const isVip = S.vip?.active;
   const myActiveStories=(S.my_stories||[]).filter(s=>Date.now()<s.expires);
-  const limit=isVip?storyLimit():3;
-  const myStoryLabel=isVip&&myActiveStories.length>0?myActiveStories.length+"/"+limit:"+"+(isVip?"":"👑");
   const friendEntries=Object.entries(S.friend_stories||{}).filter(([uid,data])=>{
     data.items=(data.items||[]).filter(s=>Date.now()<s.expires);
     return data.items.length>0;
@@ -18193,29 +18440,43 @@ function renderStoriesBar(){
   });
   const мои=myActiveStories.length>0;
   const кружок=(фон, текст, аватар)=>`<div class="story-av-inner" style="background:${фон};font-weight:700;font-size:12px;color:#fff">${аватар?`<img src="${escHtml(аватар)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml(текст||"?")}</div>`;
+  // ⚠️ 4 октября 2026. Стопка — постоянная часть шапки и вход в создание
+  // сторис. Первый слот — всегда своя ячейка: без своей сторис это пустой
+  // стеклянный кружок с «+» (в ряду — аватар со значком «+» и подписью
+  // «Моя сторис»), со своей — её кольцо. Дальше чужие сторис, непросмотренные
+  // впереди. Если чужих меньше двух, оставшиеся места стопки занимают пустые
+  // кольца — без инициалов и цвета, в раскрытом ряду они растворяются.
+  // Действие узла — через storiesTapExpand(): пока ряд не раскрыт, тап по
+  // любому кружку стопки раскрывает его.
+  const чужие=[
+    ...channelEntries.map(([cid,data])=>({ключ:"c"+cid, data})),
+    ...friendEntries.map(([uid,data])=>({ключ:"u"+uid, data})),
+  ];
+  const поПорядку=[...чужие.filter(x=>!isStorySeen(x.ключ)), ...чужие.filter(x=>isStorySeen(x.ключ))];
+  const пустых=Math.max(0, ST_STACK_MAX-1-чужие.length);
+  const плюс=(р,т)=>`<svg viewBox="0 0 24 24" width="${р}" height="${р}" fill="none" stroke="currentColor" stroke-width="${т}" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
   // Позиция горизонтальной прокрутки не сбрасывается при приходе новой сторис.
   const прокрутка=ряд.scrollLeft;
   ряд.innerHTML = `
-    <div class="story-av-wrap" data-key="me" data-active="${мои?1:0}" onclick="${isVip?(мои?'viewMyStories(0)':'openStoryEditor()'):'openVIP()'}">
-      <div class="story-ring${isVip?(мои?'':' vip-ring'):' locked-ring'}" ${isVip&&мои?`style="background:${buildStoryRingGradient(myActiveStories.length,'var(--am)','#ff6b6b')}"`:""}>
+    <div class="story-av-wrap st-me" data-key="me" data-active="${мои?1:0}" onclick="if(storiesTapExpand())return;storyMeTap()">
+      <div class="story-ring${мои?"":" st-ring-none"}" ${мои?`style="background:${buildStoryRingGradient(myActiveStories.length,'var(--am)','#ff6b6b')}"`:""}>
         ${кружок(colBg(0), S.user?.initials||"Я", S.user?.avatar)}
+        ${мои?"":`<div class="st-plus" aria-hidden="true">${плюс(17,1.6)}</div>`}
       </div>
-      <div class="story-nm">${isVip?(мои?myStoryLabel:"+ Моя"):`<span style="display:inline-flex;vertical-align:middle;color:var(--am)">${VIP_STAR_SVG}</span> VIP`}</div>
+      ${мои?"":`<div class="st-badge" aria-hidden="true">${плюс(11,2.6)}</div>`}
+      <div class="story-nm">Моя сторис</div>
     </div>
-    ${channelEntries.map(([cid,data])=>`
-      <div class="story-av-wrap" data-key="c${escHtml(cid)}" data-active="1" onclick="viewChannelStories('${cid}')">
-        <div class="story-ring${isStorySeen("c"+cid)?" seen":""}" style="background:${buildStoryRingGradient(data.items.length)}">
-          ${кружок(colBg(data.col), data.ini, data.avatar)}
+    ${поПорядку.map((x)=>`
+      <div class="story-av-wrap" data-key="${escHtml(x.ключ)}" data-active="1" onclick="if(storiesTapExpand())return;storyOpenByKey(this.dataset.key)">
+        <div class="story-ring${isStorySeen(x.ключ)?" seen":""}" style="background:${buildStoryRingGradient(x.data.items.length)}">
+          ${кружок(colBg(x.data.col), x.data.ini, x.data.avatar)}
         </div>
-        <div class="story-nm">${escHtml((data.name||"?").split(" ")[0])}</div>
+        <div class="story-nm">${escHtml((x.data.name||"?").split(" ")[0])}</div>
       </div>
     `).join("")}
-    ${friendEntries.map(([uid,data])=>`
-      <div class="story-av-wrap" data-key="u${escHtml(uid)}" data-active="1" onclick="viewFriendStories('${uid}')">
-        <div class="story-ring${isStorySeen("u"+uid)?" seen":""}" style="background:${buildStoryRingGradient(data.items.length)}">
-          ${кружок(colBg(data.col), data.ini, data.avatar)}
-        </div>
-        <div class="story-nm">${escHtml((data.name||"?").split(" ")[0])}</div>
+    ${Array.from({length:пустых},(_,i)=>`
+      <div class="story-av-wrap st-empty" data-key="empty${i+1}" data-active="0" aria-hidden="true" onclick="storiesTapExpand()">
+        <div class="story-ring"><div class="story-av-inner"></div></div>
       </div>
     `).join("")}
   `;
@@ -18228,6 +18489,9 @@ function renderStoriesBar(){
 
 // If already logged in — render stories bar immediately
 if(S.loggedIn){
+  // 4 окт 2026: стопка — постоянная часть шапки, рисуем её сразу, а не через
+  // 400 мс (иначе название в первые кадры стояло бы без стопки и прыгало).
+  try{ renderStoriesBar(); }catch(e){}
   setTimeout(()=>{
     renderStoriesBar();
     if(!S.chats.find(c=>c.id===99999)){
