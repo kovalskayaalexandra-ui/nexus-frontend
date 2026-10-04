@@ -692,6 +692,43 @@ body.mobile-mode.micvid-video .ibar:has(#minput.empty) #vc-btn{display:flex}
 button{transition:transform .1s}
 button:active,.nbtn:active,.fmt-btn:active,.call-btn:active{transform:scale(.96)}
 
+/* ⚠️ 4 октября 2026 (настоящий Android). Системная подсветка нажатия
+   Chromium — синий прямоугольник rgba(51,181,229,.4) во всю область
+   элемента — накрывала вкладки нижней панели, строки, пункты меню и кнопки и
+   спорила с нашей округлой подложкой. Убираем её у всех элементов: свойство
+   наследуется, а звёздочка перекрывает возможные собственные значения.
+   Вместо неё — своя аккуратная обратная связь ниже: уменьшение, прозрачность
+   или округлый материал, без прямоугольного фона. Клавиатурный фокус не
+   трогаем: outline нигде глобально не отключается, :focus-visible — ниже. */
+html, html *{-webkit-tap-highlight-color:transparent}
+/* Вкладки нижней панели: под пальцем чуть сжимается сам значок. Не обёртка
+   .mtab-ic-wrap — по её размеру moveTabGlider() ставит округлую подложку, и
+   сжатая обёртка дала бы подложку на 10% меньше. Текст вкладки не выделяется
+   долгим нажатием (системное синее выделение — тот же прямоугольник). */
+.mtab-ic-wrap>svg{transition:transform var(--t-press,.12s) var(--e-out,ease)}
+.mtab-item:active .mtab-ic-wrap>svg{transform:scale(.88)}
+.mtab-item:active{opacity:.85}
+.mobile-tabbar{-webkit-user-select:none;user-select:none}
+/* Строка чата и пункт меню — скруглённые, у них меняется материал. */
+.ci:active{background:var(--row-active,var(--bg3))}
+.ctxi:active{background:var(--bg4)}
+/* Строки настроек, вкладки категорий, значки — прозрачность, без фона.
+   Категории — ещё и под темой (там у .stab своя прозрачность, сильнее). */
+.settings-row:active,.stab:active,.ibi:active,.back-btn:active,.rp-back-btn:active,.ibt:active,.attb:active{opacity:.6}
+html[data-theme] .stab:active,html[data-theme] .stab.on:active{opacity:.55}
+/* Кнопки действий после свайпа строки — цветные плашки: прозрачность
+   показала бы строку сквозь них, поэтому плашка просто темнеет (у «Удалить»
+   внутри эмодзи, а не значок — сжимать нечего). */
+.ci-act:active{filter:brightness(.82)}
+.contact-item:active,.story-av-wrap:active .story-ring{transform:scale(.97)}
+/* На сенсорном экране :hover «залипает» после тапа — прямоугольный фон
+   строки оставался бы висеть. Наведение — только там, где оно есть.
+   html впереди: базовые правила :hover ниже по файлу с тем же весом. */
+@media (hover:none){ html .settings-row:hover,html .vip-perk:hover,html .bot-cmd-item:hover,html .failed-msg-menu-item:hover{background:transparent} }
+/* Клавиатура на ПК: видимое кольцо фокуса — только при навигации с клавиатуры. */
+:where(button,a,[tabindex],select,summary):focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+@media (prefers-reduced-motion: reduce){ .mtab-item:active .mtab-ic-wrap>svg,.contact-item:active,.story-av-wrap:active .story-ring{transform:none} }
+
 /* ═══ MEDIA PANEL ═══ */
 /* ⚠️ Раньше position:absolute;bottom:57px — плавала ПОВЕРХ переписки, не
    занимая настоящего места в потоке. Александра явно попросила, чтобы, как
@@ -1254,6 +1291,7 @@ html[data-theme] .clist{padding-top:0}
 html[data-theme] .ci{border-radius:var(--r-md);margin:2px var(--sp-3);
   background-color:transparent}
 html[data-theme] .ci:hover{background-color:var(--row-hover)}
+html[data-theme] .ci:active{background-color:var(--row-active)}   /* отклик на нажатие вместо системной подсветки */
 html[data-theme] .ci.on,
 html[data-theme] .ci.active{background-color:var(--row-active);
   box-shadow:var(--row-active-inner)}
@@ -2687,7 +2725,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
            (chatListTouchActive, не даёт фоновой досинхронизации дёрнуть
            renderChats() прямо во время тапа). -->
       <div class="clist" id="clist"
-        ontouchstart="chatListTouchActive=true; pullArchiveStart(event)"
+        ontouchstart="chatListTouchActive=true; pullArchiveStart(event); chatListTouchWatch(event)"
         ontouchmove="pullArchiveMove(event)"
         ontouchend="chatListTouchActive=false; pullArchiveEnd()"
         ontouchcancel="chatListTouchActive=false; pullArchiveEnd()"></div>
@@ -2929,6 +2967,11 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       <div class="settings-section-title">🔧 Отладка (временно)</div>
       <div class="settings-row">
         <div class="settings-row-left"><div><div class="settings-row-label">Версия сборки</div><div class="settings-row-sub" id="build-tag-disp"></div></div></div>
+      </div>
+      <!-- 4 окт 2026: состояние стопки сторис — если на телефоне кружков у
+           названия снова не будет, один скриншот этой строки покажет почему. -->
+      <div class="settings-row">
+        <div class="settings-row-left"><div><div class="settings-row-label">Сторис</div><div class="settings-row-sub" id="stories-diag-disp"></div></div></div>
       </div>
     </div>
 
@@ -6445,7 +6488,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-04 одна геометрия трёх тем, сторис как в Telegram, финальная полировка";
+const BUILD_TAG = "2026-10-04 хотфикс: стопка сторис видна сразу, без синей подсветки нажатия";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -6471,6 +6514,13 @@ function renderSettingsScreen(){
   if(el("settings-phone"))el("settings-phone").textContent=u.phone||S.phone||"";
   if(el("settings-ph-disp"))el("settings-ph-disp").textContent=u.phone||S.phone||"";
   if(el("build-tag-disp"))el("build-tag-disp").textContent=BUILD_TAG;
+  // Строка отладки не должна ломать экран настроек ни при каком состоянии.
+  try{ if(el("stories-diag-disp")){
+    const узлы=[...document.querySelectorAll("#stories-row .story-av-wrap")];
+    el("stories-diag-disp").textContent="активных "+узлы.filter(n=>n.dataset.active==="1").length
+      +" · в стопке "+(_stGeom?_stGeom.K:0)+" · ждут отрисовки: "+(storiesPendingRender?"да":"нет")
+      +" · касание: "+(pullActive||chatListTouchActive?"да":"нет");
+  } }catch(e){}
   if(el("blocked-count")){
     const realBlockedCount=(S.blocked||[]).filter(id=>S.chats.find(c=>String(c.id)===String(id))).length;
     el("blocked-count").textContent=realBlockedCount+" пользователей";
@@ -7406,8 +7456,14 @@ function isMobileLayout(){
   return window.matchMedia(MOBILE_BREAKPOINT_MQ).matches;
 }
 function applyMobileModeClass(){
+  const было=document.body.classList.contains("mobile-mode");
   document.body.classList.toggle("mobile-mode",isMobileLayout());
   updateTabbarVisibility();
+  // Сдвиг названия под стопку сторис зависит от режима — пересчитываем сразу,
+  // а не ждём resize (событие change у matchMedia приходит и без него).
+  // ⚠️ Первый вызов — ещё при загрузке, до объявления переменных сторис (let):
+  // storiesLayout() тогда упал бы. Флаг ставится после их объявления.
+  if(было!==document.body.classList.contains("mobile-mode") && window._storiesReady) storiesLayout();
 }
 
 // ⚠️ 3 октября 2026. Нижняя навигация показывается ТОЛЬКО на корневых
@@ -13577,6 +13633,7 @@ const ST_STACK_MAX=3;      // сколько первых активных ст�
 const ST_STACK_GAP=8;      // от стопки до названия
 const ST_SETTLE_MS=240;    // доводка после отпускания (общая кривая --e-out)
 let _stP=0, _stRaf=0, _stAnim=null, _stGeom=null, _stScroll0=0, _stExpandedMode=false;
+window._storiesReady=true;   // см. applyMobileModeClass
 
 // Кубическая Безье (.25,.8,.35,1) — та же кривая, что --e-out у всех переходов.
 function stEase(t){
@@ -13754,9 +13811,35 @@ function commitStoriesCollapsed(){
   }
 }
 
+// ⚠️ 4 октября 2026 (настоящий Android). Если строку под пальцем пересобрал
+// renderChats() — пришло сообщение, обновился статус, — touchmove/touchend
+// уходят в выброшенный узел и до #clist не всплывают. pullActive и
+// chatListTouchActive оставались true навсегда: КАЖДОЕ следующее обновление
+// сторис откладывалось до конца следующего жеста (стопки у названия не было,
+// пока не потянешь список), а досинхронизация после переподключения ждала
+// конца касания бесконечно. Браузер шлёт события касания на исходную цель
+// даже после того, как она выпала из документа, — там их и ловим.
+function chatListTouchWatch(e){
+  const цель=e.target, список=el("clist");
+  if(!цель || !список || цель===список) return;
+  const выпала=()=>!список.contains(цель);   // иначе событие дойдёт до #clist само
+  const ход=(ev)=>{ if(выпала()) pullArchiveMove(ev); };
+  const конец=()=>{
+    цель.removeEventListener("touchmove",ход); цель.removeEventListener("touchend",конец); цель.removeEventListener("touchcancel",конец);
+    if(!выпала()) return;
+    chatListTouchActive=false; pullArchiveEnd();
+  };
+  цель.addEventListener("touchmove",ход,{passive:true});
+  цель.addEventListener("touchend",конец,{passive:true});
+  цель.addEventListener("touchcancel",конец,{passive:true});
+}
 function pullArchiveStart(e){
   const list=el("clist");
   if(!isMobileLayout() || !list || list.scrollTop>0 || (e.touches&&e.touches.length>1)){
+    // ⚠️ 4 октября 2026. Второй палец посреди жеста: раньше жест просто
+    // бросался, и ряд оставался в состоянии «тянем» навсегда (обновления
+    // сторис копились). Доводим его, как будто первый палец отпустили.
+    if(pullActive) pullArchiveEnd();
     pullStartY=null; pullActive=false; return;
   }
   pullStartY=e.touches[0].clientY;
@@ -13785,7 +13868,14 @@ function pullArchiveMove(e){
 
   if(dy<=PULL_DEADZONE){
     // Всё ещё может оказаться обычным тапом — DOM не трогаем.
-    if(pullEngaged && dy<=0){ resetPullVisual(); pullEngaged=false; }
+    if(pullEngaged && dy<=0){
+      resetPullVisual(); pullEngaged=false;
+      // ⚠️ 4 октября 2026. Палец вернулся выше точки старта — жест отменён.
+      // Раньше ряд оставался «тянем» с почти нулевым p: каждое следующее
+      // обновление сторис откладывалось до конца следующего жеста.
+      if(pullStartState==="expanded"){ storiesState="expanded"; setStoriesProgress(1); }
+      else if(storiesState==="pulling-stories" || storiesState==="pulling-archive"){ storiesState="collapsed"; setStoriesProgress(0); }
+    }
     return;
   }
   pullEngaged=true;
@@ -13821,7 +13911,15 @@ function pullArchiveEnd(){
     else commitStoriesExpanded(false);
     resetPullVisual(); applyPendingStories(); return;
   }
-  if(!был){ applyPendingStories(); return; }
+  if(!был){
+    // Страховка: жест закончился, не дойдя до движения сторис, — ряд не должен
+    // остаться в промежуточном состоянии «тянем».
+    if(storiesState==="pulling-stories" || storiesState==="pulling-archive"){
+      if(pullStartState==="expanded") commitStoriesExpanded(false); else collapseStoriesNow();
+      resetPullVisual();
+    }
+    applyPendingStories(); return;
+  }
 
   if(стадия===2){
     commitStoriesExpanded(pullStartState!=="expanded");
@@ -17973,8 +18071,13 @@ function purgeExpiredStories(){
     });
   }
   if(changed) saveState();
+  return changed;
 }
-setInterval(purgeExpiredStories, 5*60*1000); // проверяем каждые 5 минут, пока приложение открыто
+// ⚠️ 4 октября 2026. Раньше проверка раз в 5 минут только чистила данные: в
+// стопке у названия оставались кружки уже истёкших сторис (и название стояло
+// сдвинутым), пока что-нибудь другое не перерисует ряд.
+function storiesPurgeTick(){ if(purgeExpiredStories()) renderStoriesBar(); }
+setInterval(storiesPurgeTick, 5*60*1000); // проверяем каждые 5 минут, пока приложение открыто
 
 // Кольцо сторис, разрезанное на сегменты по числу активных сторис — как в
 // Telegram (6 сторис = 6 дуг с маленькими зазорами, не сплошной круг)
@@ -18067,7 +18170,10 @@ function buildStoryRingGradient(count, c1, c2){
 // (storiesPendingRender → applyPendingStories).
 function renderStoriesBar(){
   purgeExpiredStories();
-  if(typeof pullActive!=="undefined" && (pullActive || storiesState==="pulling-stories" || storiesState==="pulling-archive" || storiesState==="collapsing" || _stAnim)){
+  // Откладываем, только пока сторис реально движутся под пальцем или
+  // доводятся: просто лежащий на списке палец (тап, прокрутка) перерисовке
+  // стопки не мешает — 4 октября 2026 из-за этого обновления копились.
+  if(typeof pullActive!=="undefined" && ((pullActive && pullEngaged) || storiesState==="pulling-stories" || storiesState==="pulling-archive" || storiesState==="collapsing" || _stAnim)){
     storiesPendingRender=true;
     return;
   }
