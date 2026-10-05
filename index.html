@@ -1528,6 +1528,28 @@ html[data-theme] .mtab-item.on{color:var(--nav-on)}
 html[data-theme] .mtab-glider{background:var(--glider-bg);box-shadow:var(--glider-shadow)}
 html[data-theme] .mtab-badge{background:var(--badge-bg);color:var(--badge-fg);
   box-shadow:var(--badge-shadow)}
+/* 5 окт 2026. Счётчики непрочитанного в «Монохроме»: вместо белого круга —
+   графитовое стекло с тонкой холодной серебристой границей и мягкой цифрой.
+   Заметно, но тише имени чата. Строка списка и вкладка «Чаты» — один
+   материал, нижний компактнее. Светлую и тёмную темы не трогает. */
+html[data-theme="mono"]{
+  --cnt-bg:rgba(34,40,47,.72);
+  --cnt-img:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.02));
+  --cnt-brd:rgba(198,214,230,.34); --cnt-brd-muted:rgba(198,214,230,.20);
+  --cnt-fg:rgba(232,237,242,.84); --cnt-fg-muted:rgba(214,221,228,.56);
+  --cnt-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 1px 2px rgba(4,7,10,.35);
+}
+html[data-theme="mono"] .badge,
+html[data-theme="mono"] .mtab-badge{background-color:var(--cnt-bg);background-image:var(--cnt-img);
+  border:1px solid var(--cnt-brd);color:var(--cnt-fg);box-shadow:var(--cnt-shadow);box-sizing:border-box;
+  font-variant-numeric:tabular-nums;font-weight:600;line-height:1;text-align:center;letter-spacing:0}
+html[data-theme="mono"] .badge{display:inline-flex;align-items:center;justify-content:center;
+  min-width:19px;height:19px;padding:0 6px;font-size:11px}
+html[data-theme="mono"] .badge.muted{color:var(--cnt-fg-muted);border-color:var(--cnt-brd-muted)}
+/* Над значком — компактнее; тёмное кольцо-разделитель без размытия отделяет
+   счётчик от стеклянной подложки значка. */
+html[data-theme="mono"] .mtab-badge{min-width:15px;height:15px;padding:0 4px;font-size:9px;top:-4px;right:-10px;
+  box-shadow:var(--cnt-shadow),0 0 0 1.5px rgba(12,15,19,.55)}
 /* Строка ввода — капсула, сама панель прозрачная. */
 html[data-theme] .ibar{background:transparent;border-top:none;padding-bottom:var(--sp-3)}
 html[data-theme] .ibar::before{display:none}
@@ -2196,6 +2218,26 @@ body.mobile-mode .ctxi svg{width:17px;height:17px}
 .settings-row-sub{font-size:var(--fs-3);color:var(--tx2);margin-top:1px}
 .settings-row-value{font-size:12.5px;color:var(--tx3)}
 .settings-row-arrow{color:var(--tx3);font-size:16px}
+/* 5 окт 2026: выбранное значение в строке настроек («Все» / «Мои контакты» / «Никто»). */
+.settings-row-value{margin-left:auto;margin-right:6px;font-size:var(--fs-3);color:var(--tx2);white-space:nowrap;flex-shrink:0}
+/* Экран «Время последнего посещения и статус «онлайн»». */
+.ls-opts{display:flex;flex-direction:column;gap:2px;margin:8px 0 12px}
+.ls-opt{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 10px;border-radius:12px;cursor:pointer;color:var(--tx);font-size:var(--fs-4)}
+.ls-opt:active{background:var(--bg3)}
+.ls-radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--tx3);flex-shrink:0;position:relative;box-sizing:border-box}
+.ls-opt.on .ls-radio{border-color:var(--acc)}
+.ls-opt.on .ls-radio::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--acc)}
+.ls-opt.locked{color:var(--tx3)}
+.ls-opt.busy{opacity:.55;pointer-events:none}
+.ls-lock{margin-left:auto;display:none;align-items:center;gap:4px;font-size:var(--fs-1);color:var(--tx3)}
+.ls-opt.locked .ls-lock{display:inline-flex}
+.ls-lock-ico{display:inline-flex;align-items:center}
+.ls-vip{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--bg3);font-size:var(--fs-2);color:var(--tx2);line-height:1.35;margin-bottom:10px}
+.ls-vip .ls-vip-btn{margin-left:auto;flex-shrink:0;padding:6px 12px}
+.ls-vip.flash{animation:lsFlash .5s}
+@keyframes lsFlash{0%,100%{transform:none}30%{transform:translateX(-4px)}60%{transform:translateX(4px)}}
+.ls-note{font-size:var(--fs-2);color:var(--tx3);line-height:1.4;margin-bottom:10px}
+@media (prefers-reduced-motion:reduce){ .ls-vip.flash{animation:none} }
 .toggle{position:relative;width:42px;height:23px;flex-shrink:0}
 .toggle input{opacity:0;width:0;height:0}
 .ts{position:absolute;inset:0;background:var(--bg4);border-radius:23px;cursor:pointer;transition:.3s}
@@ -3235,8 +3277,9 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(251,191,36,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fbbf24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><div><div class="settings-row-label">Кто видит мой номер</div></div></div>
         <select class="fsel" style="width:130px" id="priv-phone" onchange="savePrivacy()"><option>Все</option><option selected>Мои контакты</option><option>Никто</option></select>
       </div>
-      <div class="settings-row" onclick="openEditProfile()">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg></div><div><div class="settings-row-label">Кто видит онлайн</div><div class="settings-row-sub">👑 Скрыть время захода — в редактировании профиля</div></div></div>
+      <div class="settings-row" onclick="openLastSeenPrivacy()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg></div><div><div class="settings-row-label">Кто видит онлайн</div><div class="settings-row-sub">Время захода и статус «онлайн»</div></div></div>
+        <div class="settings-row-value" id="priv-lastseen-value">Все</div>
         <div class="settings-row-arrow">›</div>
       </div>
       <div class="settings-row">
@@ -3678,6 +3721,18 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-gift-recipient')">Отмена</button></div>
 </div></div>
 
+<div class="movl" id="m-lastseen"><div class="modal">
+  <div class="mtit">Время последнего посещения и статус «онлайн»</div>
+  <div class="msub">Кто видит, когда вы были в сети и что вы сейчас онлайн</div>
+  <div class="ls-opts">
+    <div class="ls-opt" data-v="everyone" onclick="chooseLastSeen('everyone')"><span class="ls-radio"></span><span class="ls-name">Все</span></div>
+    <div class="ls-opt" data-v="contacts" onclick="chooseLastSeen('contacts')"><span class="ls-radio"></span><span class="ls-name">Мои контакты</span><span class="ls-lock"><span class="ls-lock-ico"></span>VIP</span></div>
+    <div class="ls-opt" data-v="nobody" onclick="chooseLastSeen('nobody')"><span class="ls-radio"></span><span class="ls-name">Никто</span><span class="ls-lock"><span class="ls-lock-ico"></span>VIP</span></div>
+  </div>
+  <div class="ls-vip" id="ls-vip"><span class="ls-lock-ico"></span><span>Скрывать время захода от всех или оставить его только контактам — привилегия VIP.</span><button class="xbtn ls-vip-btn" onclick="closeM('m-lastseen'); openVIP();">VIP</button></div>
+  <div class="ls-note">Скрыв своё время, вы по-прежнему видите его у других. Заблокированные не видят ваш статус никогда.</div>
+  <div class="macts"><button class="xbtn sec" onclick="closeM('m-lastseen')">Готово</button></div>
+</div></div>
 <div class="movl" id="m-blocked-list"><div class="modal">
   <div class="mtit">🚫 Заблокированные</div>
   <div id="blocked-list-items"></div>
@@ -3765,7 +3820,6 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
     <div class="fg"><span class="fl">👑 Цвет имени (VIP)</span><input type="color" class="fii" id="prof-name-color" style="height:38px;padding:2px"></div>
   </div>
   <div id="prof-vip-perks-locked" style="display:none;font-size:11px;color:var(--tx3);margin:-6px 0 10px">👑 Эмодзи-статус и цвет имени — доступны только с активным VIP</div>
-  <div class="trow" id="prof-hide-lastseen-row"><div><div class="trl">👑 Скрыть время захода</div><div style="font-size:11px;color:var(--tx3)">Вы по-прежнему видите чужое, вас — никто</div></div><label class="toggle"><input type="checkbox" id="prof-hide-lastseen" onchange="toggleProfilePrivacy('hideLastSeen',this.checked)"><span class="ts"></span></label></div>
   <div class="trow" id="prof-hide-phone-row"><div><div class="trl">👑 Скрыть номер телефона</div><div style="font-size:11px;color:var(--tx3)">Пока без эффекта — номер и так никому не показывается, задел на будущее</div></div><label class="toggle"><input type="checkbox" id="prof-hide-phone" onchange="toggleProfilePrivacy('hidePhone',this.checked)"><span class="ts"></span></label></div>
   <div class="trow" id="prof-block-vv-row"><div><div class="trl">👑 Запретить голосовые и видео от других</div><div style="font-size:11px;color:var(--tx3)">У тех, кто пишет вам, кнопки записи голосового/видео станут неактивны</div></div><label class="toggle"><input type="checkbox" id="prof-block-vv" onchange="toggleProfilePrivacy('blockVoiceVideo',this.checked)"><span class="ts"></span></label></div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-profile')">Отмена</button><button class="xbtn" onclick="saveProfile()">💾 Сохранить</button></div>
@@ -4260,7 +4314,7 @@ function loadState(){
   ];
   SYSTEM_CHAT_DEFAULTS.forEach(def=>{
     if(S.chats && !S.chats.find(c=>c.id===def.id)){
-      S.chats.push({id:def.id,nm:def.nm,ini:def.ini,col:def.col,online:def.online,prev:def.prev,time:def.id===77777?"":now(),unread:0,type:def.type,pinned:def.pinned,muted:false,blocked:false,draft:"",saved:def.saved,verified:def.id!==77777});
+      S.chats.push({id:def.id,nm:def.nm,ini:def.ini,col:def.col,online:def.online,prev:def.prev,time:def.id===77777?"":now(),unread:0,type:def.type,pinned:def.pinned,muted:false,blocked:false,saved:def.saved,verified:def.id!==77777});
       if(!S.messages[def.id]) S.messages[def.id]=def.greet;
     }
   });
@@ -4294,8 +4348,27 @@ function loadState(){
   // по id (стабильный), а не по имени (оно как раз и меняется).
   [[99999,"Монохром Поддержка"],[66666,"Монохром Боты"],[55555,"Монохром Верификация"],[44444,"Монохром Отзывы"],[88888,"Монохром Официальный"]].forEach(([sid,newNm])=>{
     const sc=S.chats?.find(c=>c.id===sid);
-    if(sc && sc.nm && sc.nm.indexOf("Nexus")!==-1) sc.nm=newNm;
+    // ⚠️ 5 окт 2026: и прежние имена «Angie…» («AngieSupport 🤖» и т.п.), а не
+    // только «Nexus…». Иначе openSupport, искавший чат по имени, не находил его
+    // и заводил второй 99999 с жёстким unread:1 — «1», которая не снималась.
+    if(sc && sc.nm && sc.nm!==newNm && /Nexus|Angie/i.test(sc.nm)) sc.nm=newNm;
   });
+  // 5 окт 2026: служебные чаты — по одному на id (на устройствах, где уже
+  // успел появиться дубль 99999, лишний убирается).
+  if(Array.isArray(S.chats)){
+    const видели=new Set();
+    S.chats=S.chats.filter(c=>{
+      if(![77777,88888,99999,66666,55555,44444].includes(c.id)) return true;
+      if(видели.has(c.id)) return false;
+      видели.add(c.id); return true;
+    });
+    // Ложные черновики из невидимых знаков ("\n" после стирания и т.п.),
+    // сохранённые прежними сборками, — убираем: «Черновик:» без текста.
+    S.chats.forEach(c=>{ if(c && "draft" in c && !hasMeaningfulDraft(c.draft)) delete c.draft; });
+    // «Печатает…» — мгновенный признак; сохранённый при закрытии, он прятал бы
+    // превью и черновик до следующего набора собеседника.
+    S.chats.forEach(c=>{ if(c){ delete c._typing; delete c._typingTimer; } });
+  }
 }
 
 function saveState(){
@@ -4469,6 +4542,7 @@ function performReconnectResyncIfDue(){
   if(chatListTouchActive){ setTimeout(performReconnectResyncIfDue, 1000); return; }
   lastReconnectResyncAt=Date.now();
   loadChatsFromDB();
+  loadSupportMessages();   // прочтение поддержки могли изменить на другом устройстве
   // 31 июля 2026, раунд 15: та же защита, что у двойного рендера при
   // ОТКРЫТИИ чата (раунд 10, _forceBottomRendersLeft) — только тут рендер
   // уже ОТКРЫТОГО чата, вызванный фоновой пересинхронизацией при
@@ -4668,6 +4742,7 @@ function wsConnect(){
   сокет.onclose = () => {
     if(!своё()) return;   // запоздалое закрытие брошенного сокета: не наше
     wsConnected = false;
+    try{ presenceMarkStale(); }catch(e){}
     wsAuthed = false;
     wsHbSeen = false;
     wsDisarmSilence();
@@ -4753,6 +4828,13 @@ function wsHandleMessage(msg){
       // список чатов и историю открытого чата, как делает Telegram.
       if(wsHasAuthedOnce){
         performReconnectResyncIfDue();
+        // Присутствие, пропущенное без связи, — сразу и без 15-секундного
+        // ограничения: собеседник открытого чата и (если загружены) контакты.
+        try{
+          const открыт=S.chats.find(c=>c.id===S.chat);
+          if(открыт && peerOf(открыт)) refreshChatPeerInfo(открыт);
+          if((S.contacts||[]).length) loadContacts();
+        }catch(e){}
       }
       wsHasAuthedOnce = true;
       break;
@@ -4816,17 +4898,22 @@ function wsHandleMessage(msg){
           nm: "Новый чат",
           ini: "??",
           col: colorFromId(senderId),
-          online: true,
+          // 5 окт 2026: присутствие — с сервера (user.presence/refreshChatPeerInfo),
+          // а не «в сети» навсегда; счётчик — 0, общий путь ниже даёт ровно +1
+          // (раньше здесь стояла 1, и первое сообщение считалось дважды).
+          online: false,
           prev: text,
           time: now(),
-          unread: 1,
+          unread: 0,
           type: "personal",
-          pinned: false, muted: false, blocked: false, draft: "",
+          pinned: false, muted: false, blocked: false, 
           withUserId: senderId
         };
         S.chats.unshift(ch);
         // Подгружаем имя отправителя из БД
+        const presenceSince=performance.now();
         apiGet("/api/users/"+senderId).then(d=>{
+          if(d.user && d.user.presence){ setPresence(senderId, d.user.presence, {since:presenceSince}); }
           if(d.user){ ch.nm = d.user.name||d.user.username||"Пользователь"; ch.ini = ch.nm.slice(0,2).toUpperCase(); renderChats(); saveState(); }
         }).catch(()=>{});
       }
@@ -4999,7 +5086,7 @@ function wsHandleMessage(msg){
           col:colorFromId(chat.id), online:false,
           prev:(chat.type==="channels"?"Канал создан":"Группа создана"), time:now(), lastTs:Date.now(),
           unread:0, type:chat.type, mbrs:2, myRole:"member", mine:false,
-          pinned:false, muted:false, blocked:false, draft:""
+          pinned:false, muted:false, blocked:false
         });
         renderChats(); saveState();
         showToast(`${chat.type==="channels"?"📢":"👥"} ${fromName} добавил(а) вас в «${chat.nm}»`);
@@ -5300,13 +5387,26 @@ function wsHandleMessage(msg){
       const already = S.messages[99999].some(m=>m.serverId===serverId);
       if(!already){
         const d = createdAt ? new Date(createdAt) : new Date();
-        S.messages[99999].push({id:nextId(), serverId, t:"in", fr:"NS", col:6, tx:text, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), isSupport:true});
+        S.messages[99999].push({id:nextId(), serverId, t:"in", fr:"NS", col:6, tx:text, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), isSupport:true, readAt:null});
         const sch=S.chats.find(c=>c.id===99999);
-        if(sch){ sch.prev=text; sch.time=now();sch.lastTs=Date.now(); if(S.chat!==99999) sch.unread=(sch.unread||0)+1; }
-        if(S.chat===99999){ renderMsgs(); markChatAsRead(99999); }
+        if(sch){ sch.prev=text; sch.time=now();sch.lastTs=Date.now(); }
+        // ⚠️ 5 окт 2026: счётчик не «+1 вручную», а число непрочитанных на
+        // сервере (syncSupportUnread в renderChats). Пришло при открытой
+        // поддержке — прочитанным станет после показа (выдержка на экране),
+        // а не сразу: раньше здесь шёл PATCH /api/messages/chat/99999/read,
+        // который сервер отвергал (99999 — не uuid), и «1» не снималась.
+        if(S.chat===99999) renderMsgs();
         renderChats(); saveState();
         if(S.chat!==99999 && sch) showNotif(sch, text);
       }
+      break;
+    }
+
+    case "support.read": {
+      // Прочитали на другом устройстве (или это подтверждение своей отметки).
+      const прочитаны=new Set(((msg.payload&&msg.payload.readIds)||[]).map(String));
+      (S.messages[99999]||[]).forEach(m=>{ if(m.serverId && прочитаны.has(String(m.serverId)) && !m.readAt) m.readAt=new Date().toISOString(); });
+      renderChats(); saveState();
       break;
     }
 
@@ -5392,6 +5492,14 @@ function wsHandleMessage(msg){
       break;
     }
 
+    case "user.presence": {
+      // 5 окт 2026: сервер присылает только тем, кому видно (или «скрыто» —
+      // при смене настройки или блокировке); показываем как есть.
+      const p=msg.payload||{};
+      if(p.userId){ setPresence(p.userId, p, {ws:true}); applyPresence(p.userId); }
+      break;
+    }
+
     case "user.typing": {
       const { userId, chatId } = msg.payload;
       const ch = S.chats.find(c => c.id === chatId);
@@ -5402,7 +5510,9 @@ function wsHandleMessage(msg){
         if(stEl){ stEl.innerHTML = typingDotsHTML("печатает"); stEl.className = "chst typ"; }
         clearTimeout(wsTypingTimer);
         wsTypingTimer = setTimeout(() => {
-          if(stEl){ stEl.textContent = "онлайн"; stEl.className = "chst"; }
+          // 5 окт 2026: раньше здесь вписывалось «онлайн» — в том числе тем,
+          // кто скрыл время захода, и в шапку группы. Возвращаем настоящий статус.
+          if(stEl){ stEl.classList.remove("typ"); const cur=S.chats.find(c=>c.id===S.chat); if(cur) renderChatHeaderStatus(cur); }
         }, 3000);
       } else if(ch){
         // Чат сейчас не открыт — показываем "печатает..." прямо в списке чатов
@@ -5757,6 +5867,9 @@ function loginOK(){
   const заметкаСессии=el("auth-session-note"); if(заметкаСессии) заметкаСессии.style.display="none";
   document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on"));
   updateUserUI(); renderChats(); openChat(S.chat||1,{skipMobileSlide:true}); updBal();
+  // 5 окт 2026: свежий вход (пароль, 2FA, код) кладёт в S.user только основное —
+  // настройку «Кто видит онлайн» и VIP берём с сервера сразу, а не при следующем запуске.
+  try{ syncProfileFromServer(); }catch(e){}
   updateLogoText();
   // Стопка сторис — постоянная часть шапки: сразу, иначе название прыгнуло бы
   // на 80 px, когда она появится по таймеру.
@@ -5769,30 +5882,30 @@ function loginOK(){
   setTimeout(()=>{
     // Избранное (Saved Messages) — чат "сам себе", всегда первый служебный
     if(!S.chats.find(c=>c.id===77777)){
-      S.chats.push({id:77777,nm:"Избранное",ini:"",col:2,online:false,prev:"Сохранённые сообщения",time:"",unread:0,type:"personal",pinned:true,muted:false,blocked:false,draft:"",saved:true});
+      S.chats.push({id:77777,nm:"Избранное",ini:"",col:2,online:false,prev:"Сохранённые сообщения",time:"",unread:0,type:"personal",pinned:true,muted:false,blocked:false,saved:true});
       S.messages[77777]=[{id:1,t:"sys",tx:"Это ваше Избранное — сохраняйте сюда важные сообщения, ссылки и заметки. Видите только вы."}];
       saveState(); renderChats();
     }
     if(!S.chats.find(c=>c.id===88888)){
-      S.chats.push({id:88888,nm:"Монохром Официальный",ini:"NO",col:4,online:false,prev:"🎉 Монохром v3.0 — крупное обновление!",time:"сейчас",unread:4,type:"channels",pinned:false,muted:false,blocked:false,draft:"",official:true,verified:true});
+      S.chats.push({id:88888,nm:"Монохром Официальный",ini:"NO",col:4,online:false,prev:"🎉 Монохром v3.0 — крупное обновление!",time:"сейчас",unread:0,type:"channels",pinned:false,muted:false,blocked:false,official:true,verified:true});
       S.messages[88888] = buildOfficialMessages();
       saveState(); renderChats();
     }
     renderStoriesBar();
     if(!S.chats.find(c=>c.id===99999)){
-      const ch={id:99999,nm:"Монохром Поддержка",ini:"NS",col:6,online:true,prev:"Чем могу помочь?",time:now(),unread:1,type:"personal",pinned:false,muted:false,blocked:false,draft:"",verified:true};
+      const ch={id:99999,nm:"Монохром Поддержка",ini:"NS",col:6,online:true,prev:"Чем могу помочь?",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,verified:true};
       S.chats.push(ch);
       S.messages[99999]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NS",col:6,tx:SUPPORT_GREET,time:now(),isSupport:true}];
       saveState(); renderChats();
     }
     if(!S.chats.find(c=>c.id===66666)){
-      const ch={id:66666,nm:"Монохром Боты",ini:"BF",col:5,online:true,prev:"Создавай ботов прямо тут",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:"",verified:true};
+      const ch={id:66666,nm:"Монохром Боты",ini:"BF",col:5,online:true,prev:"Создавай ботов прямо тут",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,verified:true};
       S.chats.push(ch);
       S.messages[66666]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"BF",col:5,tx:BOTFATHER_GREET,time:now(),isSupport:true}];
       saveState(); renderChats();
     }
     if(!S.chats.find(c=>c.id===55555)){
-      const ch={id:55555,nm:"Монохром Верификация",ini:"NV",col:3,online:true,prev:"Подать заявку на верификацию",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:"",verified:true};
+      const ch={id:55555,nm:"Монохром Верификация",ini:"NV",col:3,online:true,prev:"Подать заявку на верификацию",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,verified:true};
       S.chats.push(ch);
       S.messages[55555]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NV",col:3,tx:VERIFY_GREET,time:now(),isSupport:true}];
       saveState(); renderChats();
@@ -6072,12 +6185,170 @@ function hideVerifyTip(){
   if(tip) tip.style.display = "none";
 }
 
+// ── ПРИСУТСТВИЕ («онлайн», время захода) ─────────────────────────────────
+// ⚠️ 5 октября 2026. «В сети» у собеседника было местным флагом ch.online:
+// у чатов из базы — всегда false («был(а) недавно», даже когда человек
+// пишет прямо сейчас), у чата, открытого первым сообщением незнакомца, —
+// навсегда true; после «печатает» в шапку просто вписывалось «онлайн».
+// Теперь источник — сервер (правило 16): собеседник в GET /api/chats,
+// профиль GET /api/users/:id, контакты GET /api/contacts и живые кадры
+// user.presence. Что владелец скрыл (настройка «Кто видит онлайн»,
+// блокировка), сервер вообще не присылает — показываем «был(а) недавно».
+// В localStorage не храним: устаревшее «онлайн» после перезапуска хуже, чем
+// «был(а) недавно» на секунду до ответа сервера.
+var presenceByUser=new Map();
+var presenceWsAt=new Map();   // когда по человеку пришёл последний живой кадр
+// opts.ws — живой кадр; opts.since — когда начался REST-запрос: если после
+// этого уже пришёл живой кадр, снимок старее его и не применяется (иначе
+// «онлайн» из долгого ответа перетирал бы свежее «не в сети»).
+function setPresence(userId, p, opts){
+  if(!userId || !p || typeof p!=="object") return;
+  const uid=String(userId);
+  if(opts && opts.since!=null && (presenceWsAt.get(uid)||0) > opts.since) return;
+  if(opts && opts.ws) presenceWsAt.set(uid, performance.now());
+  presenceByUser.set(uid, {online:p.online===true, lastSeen:p.lastSeen||null, hidden:!!p.hidden});
+}
+// Связь с сервером оборвалась: живые кадры не приходят — «онлайн» больше не
+// подтверждён. Убираем его (точки, шапка), пока после переподключения не
+// придут свежие данные.
+function presenceMarkStale(){
+  for(const [uid,p] of presenceByUser){
+    if(p.online){ presenceByUser.set(uid, {online:false, lastSeen:null, hidden:p.hidden}); applyPresence(uid); }
+  }
+}
+// Собеседник личного чата с людьми (у служебных чатов Монохрома своё «онлайн»).
+function peerOf(ch){ return ch && ch.type==="personal" && ch.withUserId && !isSystemChat(ch.id) ? String(ch.withUserId) : null; }
+function chatPeerOnline(ch){
+  const uid=peerOf(ch);
+  if(!uid) return !!(ch && ch.online && isSystemChat(ch.id));
+  const p=presenceByUser.get(uid);
+  return !!(p && !p.hidden && p.online);
+}
+function pluralRu(n, one, few, many){ const a=n%10, b=n%100; return a===1&&b!==11?one:(a>=2&&a<=4&&(b<12||b>14)?few:many); }
+// Время захода, как в Telegram: только что / N минут назад / сегодня в … /
+// вчера в … / 3 окт. в … / 03.10.25. Не по-русски — без подробностей.
+function formatLastSeen(iso){
+  const t=new Date(iso); if(isNaN(t.getTime())) return T("offline");
+  const сейчас=new Date(), сек=(сейчас-t)/1000;
+  const чм=String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0");
+  if(S.lang && S.lang!=="ru" && S.lang!=="en") return T("offline");
+  if(S.lang==="en"){
+    if(сек<60) return "last seen just now";
+    if(сек<3600){ const m=Math.max(1,Math.floor(сек/60)); return "last seen "+m+(m===1?" minute":" minutes")+" ago"; }
+    const сегодняEn=new Date(сейчас); сегодняEn.setHours(0,0,0,0);
+    if(t>=сегодняEn) return "last seen today at "+чм;
+    const вчераEn=new Date(сегодняEn); вчераEn.setDate(вчераEn.getDate()-1);
+    if(t>=вчераEn) return "last seen yesterday at "+чм;
+    return "last seen "+t.toLocaleDateString("en",{day:"numeric",month:"short",year:t.getFullYear()===сейчас.getFullYear()?undefined:"numeric"});
+  }
+  if(сек<60) return "был(а) только что";
+  if(сек<3600){ const m=Math.max(1,Math.floor(сек/60)); return "был(а) "+m+" "+pluralRu(m,"минуту","минуты","минут")+" назад"; }
+  const сегодня=new Date(сейчас); сегодня.setHours(0,0,0,0);
+  if(t>=сегодня) return "был(а) сегодня в "+чм;
+  const вчера=new Date(сегодня); вчера.setDate(вчера.getDate()-1);
+  if(t>=вчера) return "был(а) вчера в "+чм;
+  const мес=["янв.","фев.","мар.","апр.","мая","июн.","июл.","авг.","сент.","окт.","нояб.","дек."];
+  if(t.getFullYear()===сейчас.getFullYear()) return "был(а) "+t.getDate()+" "+мес[t.getMonth()]+" в "+чм;
+  return "был(а) "+String(t.getDate()).padStart(2,"0")+"."+String(t.getMonth()+1).padStart(2,"0")+"."+String(t.getFullYear()).slice(-2);
+}
+function presenceText(ch){
+  const uid=peerOf(ch);
+  if(!uid) return ch && ch.online ? T("online") : T("offline");
+  const p=presenceByUser.get(uid);
+  if(!p || p.hidden) return T("offline");
+  if(p.online) return T("online");
+  return p.lastSeen ? formatLastSeen(p.lastSeen) : T("offline");
+}
+// Шапка открытого чата и строка статуса в правой панели.
+function renderChatHeaderStatus(ch){
+  if(!ch) return;
+  const st=el("chst");
+  if(st && !st.classList.contains("typ")){
+    if(ch.type==="groups"){ st.textContent=(ch.mbrs||4)+T("members"); st.className="chst off"; }
+    else { st.textContent=presenceText(ch); st.className=chatPeerOnline(ch)?"chst":"chst off"; }
+  }
+  if(el("rpst") && ch.type!=="groups") el("rpst").textContent="● "+presenceText(ch);
+}
+// Пришло новое присутствие человека: шапка, точка «в сети» в списке, контакты.
+function applyPresence(userId){
+  const uid=String(userId);
+  const open=S.chats.find(c=>c.id===S.chat);
+  if(open && peerOf(open)===uid) renderChatHeaderStatus(open);
+  for(const ch of S.chats){
+    if(peerOf(ch)!==uid) continue;
+    const av=document.querySelector(`#clist .ci[data-chat-id="${CSS.escape(String(ch.id))}"] .avwrap`);
+    if(!av) continue;
+    const dot=av.querySelector(".odot"), on=chatPeerOnline(ch);
+    if(on && !dot) av.insertAdjacentHTML("beforeend",'<div class="odot"></div>');
+    else if(!on && dot) dot.remove();
+  }
+  if(el("screen-contacts")?.classList.contains("on") && (S.contacts||[]).some(c=>String(c.id)===uid)) renderContacts(el("contacts-search")?.value||"");
+  // Открытая карточка собеседника
+  if(el("m-user-info")?.classList.contains("on") && open && peerOf(open)===uid && el("ui-status")) el("ui-status").textContent=presenceText(open);
+}
+function contactOnline(c){
+  const p=presenceByUser.get(String(c.id));
+  return p ? (!p.hidden && p.online) : !!c.online;
+}
+// «N минут назад» стареет — раз в минуту освежаем шапку открытого чата.
+setInterval(()=>{ const ch=S.chats && S.chats.find(c=>c.id===S.chat); if(ch && peerOf(ch) && document.visibilityState==="visible") renderChatHeaderStatus(ch); }, 60000);
+
+// ── «Время последнего посещения и статус «онлайн»» ───────────────────────
+// 5 окт 2026. Отдельный экран вместо ссылки в редактирование профиля. Три
+// варианта, выбор хранится на сервере (PATCH /api/users/me/privacy) и
+// действует на всё: шапку, профиль, контакты, API и живые кадры. Ограничить
+// (контакты, никто) — по-прежнему VIP-привилегия; вернуть «Все» можно всегда.
+var LAST_SEEN_LABEL={everyone:"Все", contacts:"Мои контакты", nobody:"Никто"};
+var lastSeenSaving=null;
+function myLastSeenVisibility(){
+  const u=S.user||{};
+  return LAST_SEEN_LABEL[u.lastSeenVisibility] ? u.lastSeenVisibility : (u.hideLastSeen ? "nobody" : "everyone");
+}
+function renderLastSeenPrivacy(){
+  const cur=myLastSeenVisibility(), vip=!!(S.vip && S.vip.active);
+  document.querySelectorAll("#m-lastseen .ls-opt").forEach(o=>{
+    const v=o.dataset.v;
+    o.classList.toggle("on", v===cur);
+    o.classList.toggle("locked", !vip && v!=="everyone" && v!==cur);
+    o.classList.toggle("busy", lastSeenSaving===v);
+  });
+  document.querySelectorAll("#m-lastseen .ls-lock-ico").forEach(x=>{ if(!x.firstChild) x.innerHTML=uiIcon("lock",12); });
+  const vipNote=el("ls-vip"); if(vipNote) vipNote.style.display=vip?"none":"";
+  if(el("priv-lastseen-value")) el("priv-lastseen-value").textContent=LAST_SEEN_LABEL[cur];
+}
+function openLastSeenPrivacy(){
+  renderLastSeenPrivacy(); openM("m-lastseen");
+  // Значение могли поменять на другом устройстве — сверяем с сервером.
+  try{ const p=syncProfileFromServer(); if(p && p.then) p.then(()=>renderLastSeenPrivacy()).catch(()=>{}); }catch(e){}
+}
+async function chooseLastSeen(v){
+  if(lastSeenSaving || !LAST_SEEN_LABEL[v]) return;
+  // То же значение не глушим: местное могло устареть, а сервер повтор примет
+  // без изменений и без рассылки.
+  if(v!=="everyone" && v!==myLastSeenVisibility() && !(S.vip && S.vip.active)){
+    const n=el("ls-vip"); if(n){ n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash"); }
+    showToast("🔒 Скрывать время захода можно с VIP");
+    return;
+  }
+  lastSeenSaving=v; renderLastSeenPrivacy();
+  try{
+    const data=await apiPatch("/api/users/me/privacy", {lastSeenVisibility:v}, true);
+    if(data && data.success){ S.user={...S.user, lastSeenVisibility:v, hideLastSeen:v!=="everyone"}; saveState(); }
+    else if(data && data.code==="vip_required") showToast("🔒 "+data.error);
+    else if(data && data.code==="migration_pending") showToast("⏳ "+data.error);
+    else showToast("❌ "+((data&&data.error)||"Не удалось сохранить"));
+  }catch(e){ showToast("❌ Нет связи с сервером — настройка не сохранена"); }
+  finally{ lastSeenSaving=null; renderLastSeenPrivacy(); }
+}
+
 async function refreshChatPeerInfo(ch){
   if(!ch || ch.type!=="personal" || !ch.withUserId) return;
   try{
+    const presenceSince=performance.now();
     const data=await apiGet("/api/users/"+ch.withUserId);
     const u=data.user;
     if(!u) return;
+    if(u.presence){ setPresence(ch.withUserId, u.presence, {since:presenceSince}); applyPresence(ch.withUserId); }
     let changed=false;
     if(u.name && u.name!==ch.nm){
       ch.nm=u.name;
@@ -6142,6 +6413,7 @@ function buildRealMembers(dbChat, others){
 
 async function loadChatsFromDB(){
   try {
+    const presenceSince=performance.now();
     const data = await apiGet("/api/chats");
     if(!data.chats) return;
     data.chats.forEach(dbChat => {
@@ -6153,6 +6425,7 @@ async function loadChatsFromDB(){
       const others = dbChat.other_members || [];
       const isPersonal = (dbChat.type || "personal") === "personal";
       const otherUser = isPersonal ? others[0] : null;
+      if(otherUser && otherUser.presence) setPresence(otherUser.userId, otherUser.presence, {since:presenceSince});
       const displayName = otherUser?.name || dbChat.name || "Чат";
       // Закреплённые сообщения — раньше не хранились на сервере вообще
       if(!S.pinnedByChat) S.pinnedByChat={};
@@ -6229,7 +6502,7 @@ async function loadChatsFromDB(){
           muted: mutedFromServer,
           archived: !!dbChat.archived,
           blocked: false,
-          draft: "",
+          
           dbId: dbChat.id,
           myRole: dbChat.my_role,
           restrictSendMessages: !!dbChat.restrict_send_messages,
@@ -6247,6 +6520,7 @@ async function loadChatsFromDB(){
       }
     });
     saveState(); renderChats();
+    { const открыт=S.chats.find(c=>c.id===S.chat); if(открыт) renderChatHeaderStatus(открыт); }
     loadBlockedUsers(); // после чатов — нужно сопоставлять по withUserId
     loadInvitesFromServer(); // приглашения — отдельным запросом, см. ниже
   } catch(e){ console.warn("loadChatsFromDB error:", e); }
@@ -6376,6 +6650,7 @@ async function declineInvite(inviteId){
 // При неудаче список возвращается в очередь: раньше сбой молча проглатывался
 // (console.warn), и сервер навсегда считал сообщения непрочитанными.
 async function markChatAsRead(chatId, ids){
+  if(chatId===99999) return markSupportRead(ids);   // у поддержки свой маршрут (99999 — не id чата на сервере)
   try{
     const body = ids && ids.length ? {ids} : {};
     const data=await apiPatch("/api/messages/chat/"+chatId+"/read", body, true);
@@ -6719,7 +6994,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-04 сторис за пальцем, публикация с подтверждением, голосовые и кружки как в Telegram";
+const BUILD_TAG = "2026-10-05 онлайн по настройке, поддержка прочитана, черновик без пустого, тап при перерисовке";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -6737,6 +7012,7 @@ function closeAdmin(){ popNavEntry(); }
 function openSettings(){ rootTabGo("settings"); }
 function renderSettingsScreen(){
   const u=S.user;
+  if(el("priv-lastseen-value")) el("priv-lastseen-value").textContent=LAST_SEEN_LABEL[myLastSeenVisibility()];
   const sav=el("settings-av");
   if(sav){ if(u.avatar)sav.innerHTML=`<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;else{sav.textContent=u.initials||"Я";sav.style.background=COLS[0];} }
   if(el("settings-nm"))el("settings-nm").innerHTML=escHtml(u.name||"—")+(u.verified?verifiedBadgeHTML({verified:true}):"");
@@ -6827,6 +7103,21 @@ function formatChatListTime(ts){
 }
 
 function renderChats(filter=""){
+  // ⚠️ 5 окт 2026. Палец лежит на строке (тап или долгое нажатие ещё решается) —
+  // список не перестраиваем: строка под пальцем не заменяется, ни тап, ни
+  // долгое нажатие не теряются (раньше их ломало любое пришедшее сообщение или
+  // «печатает» в другом чате). Перерисуем сразу после отпускания, а если
+  // касание затянулось или его конец потерялся — не позже чем через 1,2 с.
+  if(chatLp && chatLp.state==="pending" && performance.now()-chatLp.startAt<CHAT_ROW_RENDER_HOLD_MS){
+    chatRenderDeferred=true; chatRenderDeferredFilter=filter;
+    if(!chatRenderFlushTimer) chatRenderFlushTimer=setTimeout(chatRenderFlush, Math.max(0, CHAT_ROW_RENDER_HOLD_MS-(performance.now()-chatLp.startAt)));
+    return;
+  }
+  clearTimeout(chatRenderFlushTimer); chatRenderFlushTimer=null; chatRenderDeferred=false;
+  // Перерисовали всё-таки под пальцем (касание дольше 1,2 с) — строка
+  // заменена, долгое нажатие на ней больше не срабатывает.
+  if(chatLp && chatLp.state==="pending") chatLp.rerendered=true;
+  syncSupportUnread();
   const c=el("clist"); c.innerHTML="";
   let list=S.tab==="all"?[...S.chats]:S.chats.filter(x=>x.type===S.tab);
   list=list.filter(x=>!x.blocked && !x.archived);
@@ -6866,12 +7157,13 @@ function renderChats(filter=""){
 
   list.forEach(ch=>{
     const d=document.createElement("div");
+    d.dataset.chatId=String(ch.id);
     d.className="ci"+(ch.id===S.chat?" on":"")+(ch.pinned?" pinned":"")+(ch.muted?" muted":"")+(S.chatSelectMode&&S.selectedChats.includes(ch.id)?" selected":"");
     // Служебные чаты «Монохрома» получают контурный значок, а не эмодзи и не
     // двухбуквенные инициалы: это элементы интерфейса, а не люди.
     const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`
       :(SYS_CHAT_ICON[ch.id]?uiIcon(SYS_CHAT_ICON[ch.id],19):(ch.ini||"?"));
-    d.innerHTML=`<div class="avwrap"><div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>${ch.online?'<div class="odot"></div>':""}</div>
+    d.innerHTML=`<div class="avwrap"><div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>${chatPeerOnline(ch)?'<div class="odot"></div>':""}</div>
     <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
       ${/* 24 сен 2026: название, превью и черновик чата приходят от другого
            человека и раньше подставлялись в разметку КАК ЕСТЬ. Цепочка была
@@ -6881,7 +7173,7 @@ function renderChats(filter=""){
            списка чатов. Экранируем при выводе — это чинит и те названия,
            которые уже могли попасть в базу. */""}
       <div class="cnm"${safeColor(ch.peerNameColor)?` style="color:${safeColor(ch.peerNameColor)}"`:""}>${escHtml(ch.nm)}${ch.peerVip?` <span title="VIP" style="display:inline-flex;vertical-align:middle;color:var(--am)">${VIP_STAR_SVG}</span>`:""}${ch.peerStatusEmoji?' '+escHtml(ch.peerStatusEmoji):""}${ch.muted?` <span style="display:inline-flex;vertical-align:-2px;opacity:.45">${uiIcon("mute",12)}</span>`:""}${verifiedBadgeHTML(ch)}</div>
-      <div class="cprev">${ch._typing?`<span class="typing-label">${typingDotsHTML("печатает")}</span>`:(ch.draft?'<span class="draft-label">Черновик: </span>'+escHtml(ch.draft):escHtml(ch.prev))}</div>
+      <div class="cprev">${chatPreviewHTML(ch)}</div>
     </div>
     <div class="cmeta">
       <div class="ctime">${ch.pinned?`<span class="pin-ico" title="Закреплено">${uiIcon("pin",12)}</span>`:""}${formatChatListTime(ch.lastTs) ?? ch.time}</div>
@@ -6895,7 +7187,15 @@ function renderChats(filter=""){
       <div class="ci-act ci-act-del" title="Удалить">🗑️</div>
     </div>`;
     d.onclick=()=>{
-      if(suppressNextChatRowClick){ suppressNextChatRowClick=false; return; }
+      // Клик после касания решает запись жеста (см. chatLpFinish): после
+      // долгого нажатия — проглатывается; если строки под пальцем
+      // переставились — открываем тот чат, который тапнули.
+      const guard=chatRowClickGuard; chatRowClickGuard=null; clearTimeout(chatTapFallbackTimer);
+      if(guard && performance.now()<guard.until){
+        if(guard.mode==="suppress") return;
+        if(guard.mode==="open" && String(guard.g.id)!==String(ch.id) && !S.chatSelectMode
+           && S.chats.some(c=>String(c.id)===String(guard.g.id))){ openChat(guard.g.id); return; }
+      }
       if(S.chatSelectMode){ toggleChatSelect(ch.id); return; }
       if(d.classList.contains("swipe-open")){ d.classList.remove("swipe-open"); return; }
       openChat(ch.id);
@@ -6913,6 +7213,7 @@ function renderChats(filter=""){
     d.setAttribute("ontouchstart","chatRowTouchStart(event,this,"+(typeof ch.id==="string"?`'${ch.id}'`:ch.id)+")");
     d.setAttribute("ontouchmove","chatRowTouchMove(event)");
     d.setAttribute("ontouchend","chatRowTouchEnd(event,this)");
+    d.setAttribute("ontouchcancel","chatRowTouchCancel(event)");
     c.appendChild(d);
   });
   updateMobileTabBadge();
@@ -7026,7 +7327,7 @@ async function joinChannelFromSearch(id, nm, uname, col){
     const c=data.chat;
     const ch={id:c.id, nm:c.name||nm, ini:(c.name||nm||"?").slice(0,2).toUpperCase(), col:col||0, online:false,
       prev:"Вы подписались на канал", time:now(), unread:0, type:"channels", pinned:false, muted:false, blocked:false,
-      draft:"", uname:c.username||uname||"", avatar:c.avatar_url||"", myRole:"member", verified:!!c.is_verified};
+      uname:c.username||uname||"", avatar:c.avatar_url||"", myRole:"member", verified:!!c.is_verified};
     S.chats.unshift(ch); saveState(); renderChats(); openChat(ch.id);
   }catch(e){ showToast("❌ Нет связи с сервером"); }
   el("sb-search").value="";
@@ -7052,9 +7353,9 @@ function globalSearch(v){
 // ── OPEN CHAT ──────────────────────────────────────────────────
 function openChat(id,opts){
   if(id!==S.chat) stopChatMedia();
-  // save draft of previous chat
-  const prev=S.chats.find(c=>c.id===S.chat);
-  if(prev){ prev.draft=getInputText(); }
+  // Черновик чата, чей текст сейчас в поле (а не «S.chat» — при запуске поле
+  // ещё пустое и стёрло бы черновик открытого чата).
+  saveComposerDraft();
   // 14 сен 2026: запоминаем, где человек оставил предыдущий чат (см. saveChatPos)
   if(S.chat && S.chat!==id) saveChatPos(S.chat);
 
@@ -7103,10 +7404,8 @@ function openChat(id,opts){
 
   const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
   if(el("chnm"))el("chnm").innerHTML=escHtml(chatDisplayName(ch))+vipBadgeHTML(ch)+verifiedBadgeHTML(ch);
-  const st=el("chst");
-  if(ch.type==="groups"){if(st){st.textContent=(ch.mbrs||4)+T("members");st.className="chst off";}}
-  else if(ch.online){if(st){st.textContent=T("online");st.className="chst";}}
-  else{if(st){st.textContent=T("offline");st.className="chst off";}}
+  { const st=el("chst"); if(st) st.classList.remove("typ"); }
+  renderChatHeaderStatus(ch);   // «онлайн» / время захода — с сервера, с приватностью владельца
 
   // Кнопка "Участники" — для групп и каналов (раньше для каналов не
   // показывалась вообще, из-за этого владелец канала не мог посмотреть
@@ -7154,10 +7453,11 @@ function openChat(id,opts){
 
   const rpav=el("rpav"); if(rpav){rpav.style.background=colBg(ch.col); rpav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
   if(el("rpnm"))el("rpnm").textContent=ch.nm;
-  if(el("rpst"))el("rpst").textContent="● "+(ch.online?T("online"):T("offline"));
+  if(el("rpst"))el("rpst").textContent="● "+presenceText(ch);
 
-  // restore draft
-  const inp=el("minput"); if(inp){setInputText(ch.draft||""); }
+  // Черновик этого чата — в поле; с этой минуты поле принадлежит ему.
+  composerChatId=ch.id;
+  const inp=el("minput"); if(inp){setInputText(hasMeaningfulDraft(ch.draft)?ch.draft:""); }
 
   updateInputPermissionUI(ch);
 
@@ -7196,6 +7496,10 @@ function openChat(id,opts){
 // из popstate (см. бэк-стек ниже), кнопка в разметке зовёт popNavEntry().
 function closeMobileChat(){
   stopChatMedia();
+  // Ушли из чата: черновик — его чату, поле больше ничьё (следующий открытый
+  // чат получит своё, а не остаток этого).
+  saveComposerDraft();
+  if(isMobileLayout()){ composerChatId=null; setInputText(""); }
   const layoutEl=document.querySelector(".layout");
   const wasShown=!!(layoutEl && layoutEl.classList.contains("chat-open"));
   if(layoutEl) layoutEl.classList.remove("chat-open");
@@ -7244,6 +7548,7 @@ let navStack=[];
 // уходит мимо страницы — приложение сворачивается.
 let navLive=0;
 function pushNavEntry(closeFn){
+  if(typeof chatLpAbort==="function") chatLpAbort();   // смена экрана — касание строки больше не долгое нажатие
   navStack.push(closeFn);
   history.pushState({nexusNav:navStack.length},"");
   navLive++;
@@ -7257,7 +7562,7 @@ function pushNavEntry(closeFn){
 // («Новый чат» → «Создать группу»), то к моменту popstate на вершине стека
 // лежит НОВОЕ окно, и «назад» закрыл бы именно его. Поэтому пока «назад» в
 // полёте, открытие откладывается до его приземления (см. openM и popstate).
-let _navBackInFlight=false, _navPendingOpen=null, _navPendingLayer=null, _navPendingSelectExit=false;
+let _navBackInFlight=false, _navPendingOpen=null, _navPendingLayer=null, _navPendingSelectExit=false, _navPendingFn=null;
 function popNavEntry(){
   if(navStack.length===0) return;
   // Своей записи в истории не осталось — уходить «назад» нельзя, это выход из
@@ -7281,6 +7586,9 @@ window.addEventListener("popstate",()=>{
   // теперь его запись ляжет в стек ПОВЕРХ закрытого, а не под него.
   if(_navPendingOpen){ const id=_navPendingOpen; _navPendingOpen=null; openM(id); }
   if(_navPendingLayer){ const p=_navPendingLayer; _navPendingLayer=null; openLayer(p.id, p.closeNow); }
+  // 5 окт 2026: любой экран, открытый, пока «назад» был в полёте (например, VIP
+  // с кнопки на экране «Кто видит онлайн»), — тоже сейчас, поверх.
+  if(_navPendingFn){ const f=_navPendingFn; _navPendingFn=null; f(); }
   if(_rootTabPending){ const t=_rootTabPending; _rootTabPending=null; rootTabGo(t); }
   // Выход из режима выбора, отложенный до приземления «назад» (см.
   // requestExitSelectMode): теперь верхняя запись — наша, и её можно снять.
@@ -7470,45 +7778,164 @@ document.addEventListener("touchend",e=>{
 // touchmove, поэтому распознаются вместе: сдвиг пальца отменяет долгое
 // нажатие (как и для сообщений, см. lpStart/lpEnd), вертикальный сдвиг
 // отменяет свайп (это скролл списка, не жест по строке).
-let chatLpTimer=null, chatSwipeState=null, chatSwipeOpenRow=null, suppressNextChatRowClick=false;
+var chatLpTimer=null, chatSwipeState=null, chatSwipeOpenRow=null;
 const CHAT_SWIPE_THRESHOLD_PX=60, CHAT_SWIPE_MOVE_TOLERANCE_PX=10;
-function chatRowTouchStart(e,rowEl,id){
-  clearTimeout(chatLpTimer);
-  const t=e.touches[0];
-  chatSwipeState={x0:t.clientX,y0:t.clientY,aborted:false};
-  chatLpTimer=setTimeout(()=>{
-    if(!isMobileLayout()) return;
-    chatSwipeState=null;
-    // Флаг на модульном уровне, а не на элементе (rowEl.dataset) — вход в
-    // мультивыбор ниже вызывает renderChats(), который ПЕРЕСОЗДАЁТ все строки
-    // списка заново, включая эту; флаг на старом, уже выброшенном элементе
-    // синтетический click (приходящий уже после touchend, на НОВОЙ строке) не
-    // проглотил бы.
-    suppressNextChatRowClick=true;
-    if(navigator.vibrate) navigator.vibrate(40);
-    if(!S.chatSelectMode) enterChatSelectMode(id); else toggleChatSelect(id);
-  },450);
+// ⚠️ 5 октября 2026. Короткий тап по строке иногда не открывал чат с первого
+// раза, а включал режим выбора (доказано стендом tap-rerender на 90b3ff5 и
+// dabf80d). Таймер долгого нажатия (450 мс) не знал, жив ли ещё жест:
+//  1) пока палец лежал, список перестраивался (пришло сообщение) — строка под
+//     пальцем заменялась, таймер всё равно срабатывал, а при пересортировке
+//     клик попадал в ДРУГУЮ строку;
+//  2) у строки не было touchcancel — отменённое системой касание через 450 мс
+//     включало выбор;
+//  3) если главный поток был занят, отпускание обрабатывалось позже таймера —
+//     тап превращался в долгое нажатие.
+// Теперь у каждого касания своя запись жеста (chatLp):
+//  • перерисовка строки под пальцем отменяет долгое нажатие (renderChats);
+//  • конец касания ловится всеми путями: на самой строке (touchend/touchcancel
+//    доходят и до выброшенного узла), pointerup/pointercancel на window в фазе
+//    захвата по pointerId (они приходят и тогда, когда строку уже заменили),
+//    прокрутка списка, уход приложения в фон, смена экрана;
+//  • таймер сначала пропускает уже пришедший, но не обработанный ввод, и
+//    включает выбор только если строка на месте и жест жив;
+//  • при отпускании сверяется время самого события: отпустили раньше 450 мс
+//    (просто обработали поздно) — это был тап: выбор откатывается, чат
+//    открывается;
+//  • запись «назад» для режима выбора ставится в момент отпускания (это жест
+//    человека — в TWA история из таймера не пишется), а не из таймера;
+//  • клик после касания: после долгого нажатия проглатывается (с истечением —
+//    флаг больше не «залипает»); если строки переставились — открывается тот
+//    чат, который тапнули.
+// Захват указателя (setPointerCapture) на строке не используем: строку
+// постоянно заменяют, удаление узла снимает захват, а события касания он не
+// перенаправляет. Надёжные каналы — сама строка и window в фазе захвата.
+const CHAT_LP_MS=450;
+var chatLp=null, chatLpGen=0, chatRowClickGuard=null, chatLastPointerDown=null, chatSelectNavPushed=false, chatTapFallbackTimer=null;
+var chatRenderDeferred=false, chatRenderDeferredFilter="", chatRenderFlushTimer=null, chatListScrollAt=-1e9;
+var CHAT_ROW_RENDER_HOLD_MS=1200;
+// Отложенная перерисовка списка — сразу, как только касание решилось.
+function chatRenderFlush(){
+  clearTimeout(chatRenderFlushTimer); chatRenderFlushTimer=null;
+  if(!chatRenderDeferred) return;
+  chatRenderDeferred=false;
+  renderChats(chatRenderDeferredFilter);
 }
+function chatRowTouchStart(e,rowEl,id){
+  // Долгое нажатие уже сработало, а это второй палец или новое касание —
+  // фиксируем его (запись «назад» не должна потеряться).
+  if(chatLp && chatLp.state==="fired") chatLpFinish(null,"timeout");
+  clearTimeout(chatLpTimer);
+  if(chatLp) clearTimeout(chatLp.commitTimer);
+  const t=(e.changedTouches&&e.changedTouches[0])||e.touches[0];
+  chatSwipeState={x0:t.clientX,y0:t.clientY,aborted:false};
+  chatRowClickGuard=null;
+  // Второй палец — не тап и не долгое нажатие.
+  if(e.touches && e.touches.length>1){ if(chatLp) chatLp.state="done"; return; }
+  const pd=chatLastPointerDown;
+  chatLp={gen:++chatLpGen, id, rowEl, downTs:e.timeStamp, startAt:performance.now(), x0:t.clientX, y0:t.clientY, state:"pending", rerendered:false,
+    // Тапом остановили прокрутку списка: браузер такой click не строит — и
+    // открывать сами мы тоже не будем.
+    flingStop: performance.now()-chatListScrollAt<150,
+    pointerId: pd && performance.now()-pd.at<500 && Math.abs(pd.x-t.clientX)<24 && Math.abs(pd.y-t.clientY)<24 ? pd.id : null};
+  // В режиме выбора тап и так переключает отметку (onclick) — долгое нажатие не нужно.
+  if(S.chatSelectMode || !isMobileLayout()){ chatLp.state="done"; return; }
+  const gen=chatLp.gen;
+  chatLpTimer=setTimeout(()=>chatLpFire(gen), CHAT_LP_MS);
+}
+function chatLpFire(gen){
+  const g=chatLp; if(!g || g.gen!==gen || g.state!=="pending") return;
+  // Отпускание уже пришло, но ещё не обработано (поток был занят) — пусть пройдёт первым.
+  try{
+    if(navigator.scheduling && navigator.scheduling.isInputPending && navigator.scheduling.isInputPending() && (g.defer=(g.defer||0)+1)<=3){
+      chatLpTimer=setTimeout(()=>chatLpFire(gen),0); return;
+    }
+  }catch(e){}
+  // Строку под пальцем перерисовали, приложение ушло в фон или открыт чат —
+  // жест потерял актуальность: долгого нажатия нет.
+  if(!isMobileLayout() || g.rerendered || !g.rowEl.isConnected || document.visibilityState!=="visible" ||
+     document.querySelector(".layout.chat-open")){ g.state="expired"; return; }
+  g.state="fired";
+  chatSwipeState=null;
+  chatRenderFlush();
+  if(navigator.vibrate) navigator.vibrate(40);
+  enterChatSelectMode(g.id, {deferNav:true});
+  // Отпускание потерялось совсем — через секунду всё равно ставим «назад».
+  g.commitTimer=setTimeout(()=>{ if(chatLp===g && g.state==="fired") chatLpFinish(null,"timeout"); }, 1200);
+}
+// Конец касания из любого канала; повторные вызовы того же жеста ничего не делают.
+// how: "end" (отпустили), "cancel" (отменено/прокрутка/фон), "timeout".
+function chatLpFinish(e, how){
+  const g=chatLp; if(!g || g.state==="done") return;
+  clearTimeout(chatLpTimer); clearTimeout(g.commitTimer);
+  const held = e && typeof e.timeStamp==="number" ? e.timeStamp-g.downTs : Infinity;
+  const было=g.state; g.state="done";
+  chatRenderFlush();
+  // Отпустили раньше порога (по времени САМОГО события, а не его обработки).
+  const короткий = how==="end" && held < CHAT_LP_MS-30;
+  if(было==="pending" || (было==="expired" && короткий)){
+    // Короткий тап: чат откроет click (при перестановке строк — тот, что тапнули).
+    if(how==="end"){ chatRowClickGuard={g, mode:"open", until:performance.now()+1000}; chatArmTapFallback(g, e); }
+    return;
+  }
+  if(было==="expired"){
+    // Держали дольше порога, но строку под пальцем перерисовали — ни выбора, ни открытия.
+    chatRowClickGuard={g, mode:"suppress", until:performance.now()+800};
+    return;
+  }
+  // Было "fired": выбор уже включён предварительно.
+  if(короткий){
+    // Отпустили раньше порога — событие просто обработали поздно. Это тап.
+    exitChatSelectMode();
+    chatRowClickGuard={g, mode:"open", until:performance.now()+1000};
+    chatArmTapFallback(g, e);
+    return;
+  }
+  if(S.chatSelectMode && !chatSelectNavPushed){ chatSelectNavPushed=true; pushNavEntry(exitChatSelectMode); }
+  chatRowClickGuard={g, mode:"suppress", until:performance.now()+800};
+}
+// Короткий тап без сдвига, а click так и не пришёл (под занятым потоком
+// браузер его не всегда строит, а touchend может не прийти вовсе) —
+// открываем тапнутый чат сами; поздний click после этого проглатывается,
+// двойного открытия нет. Тап, закрывающий панель свайпа, — не открытие.
+function chatArmTapFallback(g, e){
+  const p = e && ((e.changedTouches && e.changedTouches[0]) || e);
+  if(!p || typeof p.clientX!=="number") return;
+  if(Math.abs(p.clientX-g.x0)>=CHAT_SWIPE_MOVE_TOLERANCE_PX || Math.abs(p.clientY-g.y0)>=CHAT_SWIPE_MOVE_TOLERANCE_PX) return;
+  if(g.rowEl && g.rowEl.classList.contains("swipe-open")) return;
+  if(g.flingStop) return;
+  const guard=chatRowClickGuard;
+  clearTimeout(chatTapFallbackTimer);
+  chatTapFallbackTimer=setTimeout(()=>{
+    if(chatRowClickGuard!==guard || S.chatSelectMode || document.querySelector(".layout.chat-open")) return;
+    chatRowClickGuard={g, mode:"suppress", until:performance.now()+800};
+    if(S.chats.some(c=>String(c.id)===String(g.id))) openChat(g.id);
+  }, 350);
+}
+// Жест прервали снаружи (прокрутка, фон, смена экрана): ждущее долгое нажатие отменяется.
+function chatLpAbort(){
+  if(chatLp && chatLp.state==="pending"){ chatLp.state="done"; clearTimeout(chatLpTimer); chatRenderFlush(); }
+}
+window.addEventListener("pointerdown",e=>{ if(e.pointerType!=="mouse") chatLastPointerDown={id:e.pointerId,x:e.clientX,y:e.clientY,at:performance.now()}; },true);
+window.addEventListener("pointerup",e=>{ if(chatLp && chatLp.state!=="done" && (chatLp.pointerId==null || chatLp.pointerId===e.pointerId)) chatLpFinish(e,"end"); },true);
+window.addEventListener("pointercancel",e=>{ if(chatLp && chatLp.state!=="done" && (chatLp.pointerId==null || chatLp.pointerId===e.pointerId)) chatLpFinish(e,"cancel"); },true);
+// Захват касания снят, потому что исходная строка выпала из документа.
+document.addEventListener("lostpointercapture",e=>{ if(chatLp && chatLp.state==="pending" && e.target===document) chatLp.rerendered=true; },true);
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="hidden") chatLpAbort(); });
+document.addEventListener("scroll",e=>{ if(e.target && e.target.id==="clist"){ chatListScrollAt=performance.now(); chatLpAbort(); } },true);
+// Браузер построил click (куда угодно — строка, «Архив», приглашение) — страховка не нужна.
+document.addEventListener("click",()=>clearTimeout(chatTapFallbackTimer),true);
 function chatRowTouchMove(e){
   if(!chatSwipeState) return;
   const t=e.touches[0];
   const dx=t.clientX-chatSwipeState.x0, dy=t.clientY-chatSwipeState.y0;
   // 23 сен 2026: проверку "палец ушёл слишком далеко" держим ВЫШЕ выхода по
-  // aborted. Раньше выход стоял первой строкой, а первая же вертикальная
-  // подвижка на 1-3 px выставляла aborted (|dy|>|dx| при почти нулевом dx) —
-  // и clearTimeout ниже не выполнялся уже никогда. При МЕДЛЕННОМ потягивании
-  // списка вниз таймер долгого нажатия досчитывал до конца прямо посреди
-  // жеста: вибрация, вход в режим выбора чатов, renderChats() перерисовывал
-  // строку под пальцем, а suppressNextChatRowClick съедал следующий тап по
-  // чату — симптом "чат не открывается с первого раза" (жалоба 28 июля).
-  // Быстрый рывок этим не страдал: там первое же событие даёт |dy|>10 и гасит
-  // таймер ДО того, как выставится aborted.
-  if(Math.abs(dx)>CHAT_SWIPE_MOVE_TOLERANCE_PX||Math.abs(dy)>CHAT_SWIPE_MOVE_TOLERANCE_PX) clearTimeout(chatLpTimer);
+  // aborted (иначе при медленном потягивании таймер досчитывал до конца).
+  if(Math.abs(dx)>CHAT_SWIPE_MOVE_TOLERANCE_PX||Math.abs(dy)>CHAT_SWIPE_MOVE_TOLERANCE_PX) chatLpAbort();
   if(chatSwipeState.aborted) return;
   if(Math.abs(dy)>Math.abs(dx)) chatSwipeState.aborted=true;
 }
 function chatRowTouchEnd(e,rowEl){
-  clearTimeout(chatLpTimer);
+  chatLpFinish(e,"end");
   const state=chatSwipeState; chatSwipeState=null;
   if(!isMobileLayout()||S.chatSelectMode) return; // в режиме мультивыбора тап уже обработан onclick→toggleChatSelect
   if(!state||state.aborted) return;
@@ -7524,34 +7951,36 @@ function chatRowTouchEnd(e,rowEl){
     chatSwipeOpenRow=null;
   }
 }
+function chatRowTouchCancel(e){
+  chatLpFinish(e,"cancel");
+  chatSwipeState=null;
+}
 
-function enterChatSelectMode(id){
+// opts.deferNav — запись «назад» поставит отпускание пальца (chatLpFinish).
+function enterChatSelectMode(id, opts){
   S.chatSelectMode=true; S.selectedChats=[];
   document.body.classList.add("chat-select-mode");
   el("chat-select-bar")?.classList.add("on");
   // 30 июля 2026: раньше вход в выбор чатов вообще не регистрировался в
-  // общем бэк-стеке (см. pushNavEntry ниже по файлу) — аппаратная кнопка
-  // "назад" на Android поэтому не находила НИЧЕГО в navStack и проваливалась
-  // мимо приложения целиком (реально закрывала/выкидывала из мессенджера),
-  // вместо того чтобы просто снять выделение чатов, как должна.
-  pushNavEntry(exitChatSelectMode);
+  // общем бэк-стеке — аппаратная кнопка "назад" на Android проваливалась
+  // мимо приложения целиком вместо того, чтобы снять выделение чатов.
+  chatSelectNavPushed=false;
+  if(!(opts && opts.deferNav)){ chatSelectNavPushed=true; pushNavEntry(exitChatSelectMode); }
   toggleChatSelect(id);
 }
 function exitChatSelectMode(){
   S.chatSelectMode=false; S.selectedChats=[];
+  chatSelectNavPushed=false;
   document.body.classList.remove("chat-select-mode");
   el("chat-select-bar")?.classList.remove("on");
   renderChats();
 }
 // Обычные способы выйти из выбора чатов (крестик, снять последнее выделение,
-// массовое действие) теперь тоже идут через бэк-стек, а не зовут
-// exitChatSelectMode() напрямую — иначе в navStack осталась бы ЛИШНЯЯ,
-// никогда не снятая запись (та, что запушена в enterChatSelectMode выше), и
-// следующее нажатие "назад" закрывало бы уже что-то другое, не то, что
-// видит пользователь (тот же класс бага, что и у контекстного меню
-// сообщения, см. closeCtxViaBackStack).
+// массовое действие) идут через бэк-стек — иначе в navStack осталась бы
+// лишняя запись. Если запись ещё не поставлена (палец не отпущен) — выходим сразу.
 function requestExitChatSelectMode(){
-  if(S.chatSelectMode) popNavEntry();
+  if(!S.chatSelectMode) return;
+  if(chatSelectNavPushed) popNavEntry(); else exitChatSelectMode();
 }
 function toggleChatSelect(id){
   const idx=S.selectedChats.indexOf(id);
@@ -7560,6 +7989,7 @@ function toggleChatSelect(id){
   if(!S.selectedChats.length){ requestExitChatSelectMode(); return; }
   renderChats();
 }
+
 function chatSelectPin(){
   const n=S.selectedChats.length;
   S.selectedChats.forEach(id=>pinChat(id,true));
@@ -8801,11 +9231,14 @@ function msgsTrackDwell(c, chat){
     const b=r.getBoundingClientRect();
     if(b.bottom<=ctop+1 || b.top>=cbot-1) continue;      // строка не на экране
     const m=list.find(x=>String(x.id)===r.dataset.msgId);
-    if(!m || msgIsOut(m) || !m.dbId) continue;            // своё и неподтверждённое не считаем
+    // Поддержка (99999): серверные сообщения — по serverId, только ещё не
+    // прочитанные и только когда сервер хранит прочтение (после миграции).
+    const readKey = chat===99999 ? (m && m.serverId && !m.readAt && S.supportReadKnown ? m.serverId : null) : (m && m.dbId);
+    if(!m || msgIsOut(m) || !readKey) continue;            // своё и неподтверждённое не считаем
     const k=msgKeyOf(m); visible.add(k);
     const t=_dwellSince.get(k);
     if(t==null){ _dwellSince.set(k, now); continue; }
-    if(now-t>=MSGS_DWELL_MS){ (ready||(ready=[])).push(m.dbId); }
+    if(now-t>=MSGS_DWELL_MS){ (ready||(ready=[])).push(readKey); }
   }
   // Строка ушла с экрана, не выстояв выдержку — забываем, чтобы «промелькнуло»
   // не накапливалось по кусочкам за несколько прокруток.
@@ -8861,7 +9294,7 @@ function msgsAdvanceSeen(c, shown){
   // стоит: иначе уход из чата в эти секунды объявлял прочитанным всё, что
   // лежит в памяти (пятнадцатый круг, races F1). Потолок тот же, что у
   // удержания разделителя.
-  if(_pendingUnread && _pendingUnread.chat===chat && performance.now()-_pendingUnread.openedAt<MSGS_WAIT_MAX) return;
+  if(_pendingUnread && _pendingUnread.chat===chat && chat!==99999 && performance.now()-_pendingUnread.openedAt<MSGS_WAIT_MAX) return;
   if(!shown && !msgsFeedVisible()) return;
   const list=msgsVisibleList(chat); if(!list.length) return;
   // О3: отслеживание выдержки на экране идёт ДО всех ранних выходов ниже — оно
@@ -9705,6 +10138,12 @@ function renderMsgs(){
   _renderTail=visList.length ? {chat:S.chat, key:msgKeyOf(visList[visList.length-1])} : null;
   _lastRenderedChat=S.chat;
   if(curCh?.type==="channels") countChannelViews(curCh);
+  // 5 окт 2026: кнопки быстрых вопросов — единственный ввод в поддержке и
+  // верификации (строка ввода там скрыта), а лента при перерисовке их стирала
+  // (innerHTML=""). Теперь ресинхронизация поддержки перерисовывает ленту чаще —
+  // возвращаем кнопки при каждой перерисовке.
+  if(S.chat===99999 && typeof renderSupportQuick==="function") renderSupportQuick();
+  else if(S.chat===55555 && typeof renderVerifyQuick==="function") renderVerifyQuick();
 }
 // 15 сен 2026: переход к сообщению, который запускает сам человек (поиск в
 // чате, стрелки по результатам, закреплённое). Для страховок и догрузки фото
@@ -10164,7 +10603,7 @@ async function doJoinByLink(codeOverride){
       ch={id:chat.id, nm:chat.name||"Чат", ini:(chat.name||"Ч").slice(0,2).toUpperCase(),
         col:colorFromId(chat.id), online:false, prev:"Вы вступили в чат", time:now(), lastTs:Date.now(),
         unread:0, type:chat.type, mbrs:2, myRole:"member", mine:false, inviteLink:chat.invite_link,
-        pinned:false, muted:false, blocked:false, draft:""};
+        pinned:false, muted:false, blocked:false};
       S.chats.unshift(ch);
     }
     renderChats(); openChat(ch.id); saveState();
@@ -10720,6 +11159,19 @@ async function sendMsg(){
     sendWithAttachment(txt);
     return;
   }
+  // 5 окт 2026: правка завершается в ЛЮБОМ чате — раньше в «Избранном» и
+  // чатах ботов Enter отправлял новое сообщение, а режим правки оставался.
+  if(S.editingId){
+    // EDIT mode
+    const ms=S.messages[S.chat]||[]; const m=ms.find(x=>x.id===S.editingId);
+    // Время правки запоминаем настоящее, а не выдумываем его при показе.
+    // ⚠️ На сервер правка пока не уходит вовсе (отдельная задача, F16),
+    // поэтому здесь местное время правки; из истории берётся серверное
+    // edited_at (см. загрузку сообщений, поле editedAt).
+    if(m){m.tx=txt;m.edited=true;m.editedAt=new Date().toISOString();}
+    cancelEdit(); aResize(inp); renderMsgs(); saveState(); return;   // cancelEdit вернёт отложенный черновик
+  }
+
   // ── Избранное (Saved Messages) — просто сохраняем, без ответов ──
   if(S.chat === 77777){
     if(!S.messages[77777]) S.messages[77777]=[];
@@ -10741,7 +11193,7 @@ async function sendMsg(){
     const st=el("chst");
     if(st){st.innerHTML=typingDotsHTML("печатает");st.className="chst typ";}
     setTimeout(()=>{
-      if(st){st.textContent=T("online");st.className="chst";}
+      if(st){ st.classList.remove("typ"); const cur=S.chats.find(c=>c.id===S.chat); if(cur) renderChatHeaderStatus(cur); }
       const ans=getSupportAnswer(txt);
       S.messages[99999].push({id:nextId(),t:"in",fr:"NS",col:6,tx:ans,time:now()});
       if(sch){sch.prev=ans.slice(0,50);sch.time=now();sch.lastTs=Date.now();}
@@ -10760,7 +11212,7 @@ async function sendMsg(){
     const st=el("chst");
     if(st){st.innerHTML=typingDotsHTML("печатает");st.className="chst typ";}
     setTimeout(async ()=>{
-      if(st){st.textContent=T("online");st.className="chst";}
+      if(st){ st.classList.remove("typ"); const cur=S.chats.find(c=>c.id===S.chat); if(cur) renderChatHeaderStatus(cur); }
       const ans=await getBotFatherReply(txt);
       S.messages[66666].push({id:nextId(),t:"in",fr:"BF",col:5,tx:ans,time:now()});
       if(sch){sch.prev=ans.slice(0,50);sch.time=now();sch.lastTs=Date.now();}
@@ -10807,16 +11259,6 @@ async function sendMsg(){
   if(!S.messages[S.chat])S.messages[S.chat]=[];
   const tm=now();
 
-  if(S.editingId){
-    // EDIT mode
-    const ms=S.messages[S.chat]; const m=ms.find(x=>x.id===S.editingId);
-    // Время правки запоминаем настоящее, а не выдумываем его при показе.
-    // ⚠️ На сервер правка пока не уходит вовсе (отдельная задача, F16),
-    // поэтому здесь местное время правки; из истории берётся серверное
-    // edited_at (см. загрузку сообщений, поле editedAt).
-    if(m){m.tx=txt;m.edited=true;m.editedAt=new Date().toISOString();}
-    cancelEdit(); setInputText(""); aResize(inp); renderMsgs(); saveState(); return;
-  }
 
   const msg={id:nextId(),clientMsgId:genClientMsgId(),t:"out",tx:txt,time:tm,ts:Date.now(),read:false};
   // Если пишем от имени канала — помечаем
@@ -10829,7 +11271,7 @@ async function sendMsg(){
   if(S.reply){msg.reply={fr:S.reply.fr,tx:S.reply.tx};cancelReply();}
   S.messages[S.chat].push(msg);
   const ch=S.chats.find(c=>c.id===S.chat);
-  if(ch){ch.prev=txt;ch.time=tm;ch.lastTs=Date.now();ch.draft="";}
+  if(ch){ch.prev=txt;ch.time=tm;ch.lastTs=Date.now();delete ch.draft;}
   setInputText(""); aResize(inp); renderMsgs(); renderChats(); saveState();
 
   // Сохраняем сообщение в БД (получаем настоящий id) и уже с ним рассылаем через WebSocket
@@ -10947,14 +11389,14 @@ async function confirmScheduleSend(){
   if(!(when>new Date())){ showToast("Выберите время в будущем"); return; }
   if(pendingAttach){ await scheduleAttachmentSend(when); return; }
   const txt=getInputText();
-  if(!txt) return;
+  if(!hasRealText(txt)) return;
   const chatId=S.chat;
   closeM("m-schedule");
   setInputText(""); aResize(el("minput"));
   const d=await apiPost("/api/messages", {chatId, text:txt, type:"text", scheduledAt: when.toISOString(), clientMsgId: genClientMsgId()}, true);
   if(!d || !d.success){
     showToast("❌ "+(d&&d.error||"Не удалось запланировать"));
-    setInputText(txt); aResize(el("minput")); // возвращаем текст, чтобы не потерялся
+    restoreComposerText(chatId, txt); // возвращаем текст своему чату, чтобы не потерялся
     return;
   }
   showToast("🕓 Запланировано на "+when.toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}));
@@ -10981,15 +11423,41 @@ async function scheduleAttachmentSend(when){
     const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:upData.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,scheduledAt:when.toISOString(),clientMsgId:genClientMsgId()},true);
     if(!d || !d.success){
       showToast("❌ "+(d&&d.error||"Не удалось запланировать"));
-      pendingAttach=att; renderAttachPreview(); setInputText(caption); aResize(el("minput"));
+      if(restoreComposerText(chatId, caption)){ pendingAttach=att; renderAttachPreview(); }
       return;
     }
     showToast("🕓 Запланировано на "+when.toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}));
     if(S.scheduledModalChatId===chatId) renderScheduledList();
   }catch(e){
     showToast("❌ Нет связи с сервером");
-    pendingAttach=att; renderAttachPreview(); setInputText(caption); aResize(el("minput"));
+    if(restoreComposerText(chatId, caption)){ pendingAttach=att; renderAttachPreview(); }
   }
+}
+// ⚠️ 5 окт 2026. Текст возвращается после await — человек мог уже уйти в
+// другой чат. Тогда текст остаётся черновиком СВОЕГО чата, а не попадает в
+// поле чужого (раньше попадал и становился его черновиком). true — поле
+// всё ещё у этого чата, текст возвращён в поле.
+function restoreComposerText(chatId, text){
+  const своё = String(composerChatId)===String(chatId);
+  // Нечего возвращать (подписи не было) — ничего и не трогаем.
+  if(!hasMeaningfulDraft(text)) return своё && !S.editingId;
+  // Поле у этого чата и свободно: возвращаем текст, не теряя набранного за время запроса.
+  if(своё && !S.editingId){
+    const cur=getInputText();
+    setInputText(hasMeaningfulDraft(cur) ? text+"\n"+cur : text); aResize(el("minput"));
+    return true;
+  }
+  // Поле занято правкой сообщения этого чата — текст ложится в отложенный черновик.
+  if(своё && S.editingId && draftStash && String(draftStash.chatId)===String(chatId)){
+    draftStash={chatId, text: hasMeaningfulDraft(draftStash.text) ? text+"\n"+draftStash.text : text};
+    setChatDraft(chatId, draftStash.text);
+    return false;
+  }
+  // Ушли в другой чат — в черновик своего чата, вместе с тем, что там уже есть.
+  const ch=S.chats.find(c=>String(c.id)===String(chatId));
+  const было=ch && hasMeaningfulDraft(ch.draft) ? ch.draft : "";
+  setChatDraft(chatId, было ? text+"\n"+было : text);
+  return false;
 }
 async function openScheduledMessages(){
   S.scheduledModalChatId=S.chat;
@@ -11063,13 +11531,14 @@ function hKey(e){
   sendMsg();
 }
 function onInput(elm){
+  normalizeEmptyComposer();
   aResize(elm);
   cleanupEmptyFormatSpans();
-  if(wsConnected) wsSendTyping();
-  const txt=getInputText();
+  if(wsConnected && !isInputEmpty()) wsSendTyping();
   syncComposerState();
-  // save draft
-  const ch=S.chats.find(c=>c.id===S.chat); if(ch)ch.draft=txt;
+  // Черновик — сразу и только своему чату (без отложенного сохранения: нет
+  // таймера, который мог бы вернуть уже стёртый текст после выхода из чата).
+  saveComposerDraft();
 }
 function aResize(e){ e.style.height="auto"; e.style.height=Math.min(e.scrollHeight,100)+"px"; }
 
@@ -12770,7 +13239,7 @@ async function sendWithAttachment(caption){
   S.messages[chatId].push(msg);
   const ch=S.chats.find(c=>c.id===chatId);
   const label=att.kind==="image"?"📷 Фото":(att.kind==="video"?"🎥 Видео":(att.kind==="videoCircle"?"⭕ Видео-кружочек":(att.kind==="voice"?"🎤 Голосовое":(att.kind==="audio"?"🎵 "+att.file.name:"📎 "+att.file.name))));
-  if(ch){ch.prev=caption?label+" · "+caption:label;ch.time=tm;ch.lastTs=Date.now();ch.draft="";}
+  if(ch){ch.prev=caption?label+" · "+caption:label;ch.time=tm;ch.lastTs=Date.now();delete ch.draft;}
   renderMsgs(); renderChats(); saveState();
 
   const curChat=S.chats.find(c=>c.id===chatId);
@@ -12808,7 +13277,7 @@ async function sendImageGroup(caption){
   });
   if(S.reply){ msgs[0].reply={fr:S.reply.fr,tx:S.reply.tx}; cancelReply(); }
   S.messages[chatId].push(...msgs);
-  if(ch){ ch.prev=caption?("🖼 "+items.length+" фото · "+caption):("🖼 "+items.length+" фото"); ch.time=tm; ch.lastTs=Date.now(); ch.draft=""; }
+  if(ch){ ch.prev=caption?("🖼 "+items.length+" фото · "+caption):("🖼 "+items.length+" фото"); ch.time=tm; ch.lastTs=Date.now(); delete ch.draft; }
   renderMsgs(); renderChats(); saveState();
 
   const curChat=S.chats.find(c=>c.id===chatId);
@@ -12833,7 +13302,7 @@ async function sendFeedbackAttachment(caption){
   S.messages[FEEDBACK_CHAT_ID].push(fbMsg);
   setInputText(""); aResize(el("minput"));
   const sch=S.chats.find(c=>c.id===FEEDBACK_CHAT_ID);
-  if(sch){sch.prev=caption?label+" · "+caption:label;sch.time=now();sch.lastTs=Date.now();sch.draft="";}
+  if(sch){sch.prev=caption?label+" · "+caption:label;sch.time=now();sch.lastTs=Date.now();delete sch.draft;}
   renderMsgs(); renderChats(); saveState();
   try{
     const fd=new FormData();
@@ -12888,7 +13357,7 @@ async function sendLocalBotAttachment(caption){
   S.messages[chatId].push(msg);
   setInputText(""); aResize(el("minput"));
   const sch=S.chats.find(c=>c.id===chatId);
-  if(sch){sch.prev=caption?label+" · "+caption:label;sch.time=now();sch.lastTs=Date.now();sch.draft="";}
+  if(sch){sch.prev=caption?label+" · "+caption:label;sch.time=now();sch.lastTs=Date.now();delete sch.draft;}
   renderMsgs(); renderChats(); saveState();
   try{
     const fd=new FormData();
@@ -12998,8 +13467,21 @@ function insEmoji(e){
 // ── REPLY / EDIT ──────────────────────────────────────────────
 function setReply(id){ const m=(S.messages[S.chat]||[]).find(x=>x.id===id);if(!m||m.t==="date"||m.t==="sys")return; S.reply={id,fr:m.frName||m.fr||"Вы",tx:m.tx||"🎙"}; el("rsnm").textContent=S.reply.fr; el("rstx").textContent=S.reply.tx; el("rstrip").classList.add("on"); el("minput").focus(); }
 function cancelReply(){ S.reply=null; el("rstrip").classList.remove("on"); }
-function startEdit(id){ const m=(S.messages[S.chat]||[]).find(x=>x.id===id);if(!m||m.t!=="out")return; S.editingId=id; setInputText(m.tx||""); el("estrip").classList.add("on"); el("minput").focus(); }
-function cancelEdit(){ S.editingId=null; el("estrip").classList.remove("on"); }
+// Правка сообщения временно занимает поле ввода: черновик откладывается и
+// возвращается после правки (раньше текст правки становился черновиком, а
+// настоящий черновик терялся).
+function startEdit(id){ const m=(S.messages[S.chat]||[]).find(x=>x.id===id);if(!m||m.t!=="out")return;
+  if(!S.editingId) draftStash={chatId:composerChatId, text:getInputText()};
+  S.editingId=id; setInputText(m.tx||""); el("estrip").classList.add("on"); el("minput").focus(); }
+function cancelEdit(){
+  const былаПравка=!!S.editingId;
+  S.editingId=null; el("estrip").classList.remove("on");
+  if(!былаПравка) return;
+  const отложено=draftStash; draftStash=null;
+  // Поле всё ещё у того же чата — возвращаем его черновик (или пусто).
+  if(отложено && String(отложено.chatId)===String(composerChatId)) setInputText(отложено.text);
+  else { const ch=S.chats.find(c=>String(c.id)===String(composerChatId)); setInputText(ch && hasMeaningfulDraft(ch.draft) ? ch.draft : ""); }
+}
 
 // ── CTX MENU ──────────────────────────────────────────────────
 function showCtx(e,id){
@@ -13407,6 +13889,8 @@ document.addEventListener("click",e=>{ closeCtxViaBackStack(); closeRxnPicker();
 document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="visible"){
     _lastGeomChangeAt=performance.now();
+    // Вернулись в приложение: поддержку могли прочитать на другом устройстве.
+    if(S.loggedIn && Date.now()-_supportLoadAt>3000) loadSupportMessages();
     // Итерация 7: вернулись — что на экране (в том числе пришедшее в фоне и
     // прижатое к низу), то и увидено; число на кнопке «вниз» — по этой границе.
     requestAnimationFrame(()=>{
@@ -13415,8 +13899,7 @@ document.addEventListener("visibilitychange",()=>{
     });
   }
   if(document.visibilityState==="hidden"){
-    const ch=S.chats.find(c=>c.id===S.chat);
-    if(ch) ch.draft=getInputText();
+    saveComposerDraft();
     // 14 сен 2026: место в чате переживает закрытие приложения. Страница уже
     // скрыта, поэтому «показана ли лента» решаем по раскладке: на телефоне —
     // только если чат был открыт поверх списка.
@@ -13985,9 +14468,63 @@ function getInputText(){
   const inp=el("minput"); if(!inp) return "";
   return serializeNode(inp).replace(/\u200B/g,"");
 }
-// "\u0412 \u0442\u0435\u043A\u0441\u0442\u0435 \u0435\u0441\u0442\u044C \u0445\u043E\u0442\u044C \u0447\u0442\u043E-\u0442\u043E, \u043A\u0440\u043E\u043C\u0435 \u043F\u0440\u043E\u0431\u0435\u043B\u043E\u0432 \u0438 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u043E\u0432" \u2014 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E \u043E\u0442 \u0441\u0430\u043C\u043E\u0433\u043E
-// \u0442\u0435\u043A\u0441\u0442\u0430, \u0447\u0442\u043E\u0431\u044B \u043D\u0435 \u0442\u0440\u043E\u0433\u0430\u0442\u044C \u0435\u0433\u043E \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435.
-function hasRealText(s){ return !!s && s.trim().length>0; }
+// \u2500\u2500 \u0427\u0415\u0420\u041D\u041E\u0412\u0418\u041A\u0418 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// \u26A0\uFE0F 5 \u043E\u043A\u0442\u044F\u0431\u0440\u044F 2026. \u041D\u0430 \u0441\u043A\u0440\u0438\u043D\u0448\u043E\u0442\u0430\u0445 \u0410\u043B\u0435\u043A\u0441\u0430\u043D\u0434\u0440\u044B \u043F\u043E\u043B\u0435 \u0432\u0432\u043E\u0434\u0430 \u0431\u044B\u043B\u043E \u043F\u0443\u0441\u0442\u044B\u043C, \u0430 \u0432
+// \u0441\u043F\u0438\u0441\u043A\u0435 \u0441\u0442\u043E\u044F\u043B\u043E \u00AB\u0427\u0435\u0440\u043D\u043E\u0432\u0438\u043A:\u00BB \u0431\u0435\u0437 \u0442\u0435\u043A\u0441\u0442\u0430 (\u043D\u0430 \u0441\u0431\u043E\u0440\u043A\u0430\u0445 \u0434\u043E dabf80d \u0435\u0449\u0451 \u0438 \u00AB1\u00BB
+// \u0441\u043F\u0440\u0430\u0432\u0430 \u043E\u0442 \u043F\u043E\u043B\u044F \u2014 \u0441\u0442\u0430\u0440\u044B\u0439 \u0441\u0447\u0451\u0442\u0447\u0438\u043A \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432). \u041F\u0440\u0438\u0447\u0438\u043D\u0430: \u043F\u043E\u0441\u043B\u0435 W2 getInputText()
+// \u043D\u0435 \u043E\u0431\u0440\u0435\u0437\u0430\u0435\u0442 \u043A\u043E\u043D\u0446\u044B, \u0438 \u043D\u0435\u0432\u0438\u0434\u0438\u043C\u044B\u0439 \u043E\u0441\u0442\u0430\u0442\u043E\u043A \u0432 \u043F\u043E\u043B\u0435 (<br> \u043F\u043E\u0441\u043B\u0435 \u0441\u0442\u0438\u0440\u0430\u043D\u0438\u044F, \u043F\u0435\u0440\u0435\u0432\u043E\u0434
+// \u0441\u0442\u0440\u043E\u043A\u0438 Enter \u043D\u0430 \u0442\u0435\u043B\u0435\u0444\u043E\u043D\u0435, NBSP) \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u043B\u0441\u044F \u043A\u0430\u043A \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A "\n". \u0422\u0435\u043F\u0435\u0440\u044C
+// \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u0435\u0441\u0442\u044C, \u0442\u043E\u043B\u044C\u043A\u043E \u0435\u0441\u043B\u0438 \u0432 \u0442\u0435\u043A\u0441\u0442\u0435 \u0435\u0441\u0442\u044C \u0445\u043E\u0442\u044C \u043E\u0434\u0438\u043D \u0412\u0418\u0414\u0418\u041C\u042B\u0419 \u0437\u043D\u0430\u043A: \u0431\u0443\u043A\u0432\u0430,
+// \u0446\u0438\u0444\u0440\u0430, \u0437\u043D\u0430\u043A \u043F\u0440\u0435\u043F\u0438\u043D\u0430\u043D\u0438\u044F, \u044D\u043C\u043E\u0434\u0437\u0438 (\u0432 \u0442\u043E\u043C \u0447\u0438\u0441\u043B\u0435 \u0441\u043E\u0441\u0442\u0430\u0432\u043D\u043E\u0439 \u2014 \u0432 \u043D\u0451\u043C ZWJ, \u043D\u043E \u0435\u0441\u0442\u044C
+// \u0438 \u0432\u0438\u0434\u0438\u043C\u044B\u0435 \u0437\u043D\u0430\u043A\u0438). \u041F\u0440\u043E\u0431\u0435\u043B\u044B \u043B\u044E\u0431\u043E\u0433\u043E \u0432\u0438\u0434\u0430, \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u044B, \u0442\u0430\u0431\u044B \u0438 \u043D\u0435\u0432\u0438\u0434\u0438\u043C\u044B\u0435 \u0441\u043B\u0443\u0436\u0435\u0431\u043D\u044B\u0435
+// \u0441\u0438\u043C\u0432\u043E\u043B\u044B (ZWSP, WJ, ZWJ \u0441\u0430\u043C \u043F\u043E \u0441\u0435\u0431\u0435, BOM, \u043C\u044F\u0433\u043A\u0438\u0439 \u043F\u0435\u0440\u0435\u043D\u043E\u0441, \u0432\u0430\u0440\u0438\u0430\u0446\u0438\u043E\u043D\u043D\u044B\u0435
+// \u0441\u0435\u043B\u0435\u043A\u0442\u043E\u0440\u044B, \u0445\u0430\u043D\u0433\u044B\u043B\u044C-\u0437\u0430\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0438) \u2014 \u043D\u0435 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A. \u0422\u0435\u043A\u0441\u0442 \u043F\u0440\u0438 \u044D\u0442\u043E\u043C \u043D\u0435 \u043C\u0435\u043D\u044F\u0435\u0442\u0441\u044F:
+// \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u0442\u043E\u043B\u044C\u043A\u043E \u0447\u0438\u0442\u0430\u0435\u0442 \u0435\u0433\u043E.
+function hasMeaningfulDraft(text){
+  return typeof text==="string" &&
+    text.replace(/[\p{White_Space}\p{Cc}\p{Cf}\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180F\u3164\uFE00-\uFE0F\uFFA0\u{E0000}-\u{E0FFF}]/gu,"").length>0;
+}
+// \u0421\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435 \u0438\u0437 \u043E\u0434\u043D\u0438\u0445 \u043F\u0440\u043E\u0431\u0435\u043B\u043E\u0432 \u0438 \u043D\u0435\u0432\u0438\u0434\u0438\u043C\u044B\u0445 \u0437\u043D\u0430\u043A\u043E\u0432 \u043D\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u2014 \u0442\u0430 \u0436\u0435 \u043C\u0435\u0440\u043A\u0430.
+function hasRealText(s){ return hasMeaningfulDraft(s); }
+// \u0427\u0435\u0439 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u0441\u0435\u0439\u0447\u0430\u0441 \u0432 \u043F\u043E\u043B\u0435 \u0432\u0432\u043E\u0434\u0430. \u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435 \u0438\u0434\u0451\u0442 \u0422\u041E\u041B\u042C\u041A\u041E \u044D\u0442\u043E\u043C\u0443 \u0447\u0430\u0442\u0443, \u0430 \u043D\u0435
+// \u00AB\u0442\u0435\u043A\u0443\u0449\u0435\u043C\u0443 S.chat\u00BB: \u043F\u0440\u0438 \u0437\u0430\u043F\u0443\u0441\u043A\u0435 \u0441 \u043E\u0442\u043A\u0440\u044B\u0442\u044B\u043C \u0447\u0430\u0442\u043E\u043C \u043F\u043E\u043B\u0435 \u0435\u0449\u0451 \u043F\u0443\u0441\u0442\u043E\u0435, \u0438 \u0440\u0430\u043D\u044C\u0448\u0435
+// openChat \u0437\u0430\u043F\u0438\u0441\u044B\u0432\u0430\u043B \u044D\u0442\u0443 \u043F\u0443\u0441\u0442\u043E\u0442\u0443 \u0432 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u043E\u0442\u043A\u0440\u044B\u0442\u043E\u0433\u043E \u0447\u0430\u0442\u0430 (\u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A
+// \u043F\u0440\u043E\u043F\u0430\u0434\u0430\u043B); \u043F\u0440\u0438 \u0430\u0441\u0438\u043D\u0445\u0440\u043E\u043D\u043D\u044B\u0445 \u0432\u043E\u0437\u0432\u0440\u0430\u0442\u0430\u0445 \u0442\u0435\u043A\u0441\u0442\u0430 \u043E\u043D \u043C\u043E\u0433 \u043F\u043E\u043F\u0430\u0441\u0442\u044C \u0432 \u0447\u0443\u0436\u043E\u0439 \u0447\u0430\u0442.
+let composerChatId=null;
+let composerComposing=false;      // \u0438\u0434\u0451\u0442 \u043D\u0430\u0431\u043E\u0440 \u0447\u0435\u0440\u0435\u0437 IME/\u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438 \u043A\u043B\u0430\u0432\u0438\u0430\u0442\u0443\u0440\u044B
+let draftStash=null;              // \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A, \u043E\u0442\u043B\u043E\u0436\u0435\u043D\u043D\u044B\u0439 \u043D\u0430 \u0432\u0440\u0435\u043C\u044F \u043F\u0440\u0430\u0432\u043A\u0438 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F
+// \u0417\u0430\u043F\u0438\u0441\u0430\u0442\u044C \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u0447\u0430\u0442\u0430: \u0435\u0441\u0442\u044C \u0432\u0438\u0434\u0438\u043C\u044B\u0439 \u0442\u0435\u043A\u0441\u0442 \u2014 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u043C, \u043D\u0435\u0442 \u2014 \u0443\u0434\u0430\u043B\u044F\u0435\u043C \u0441\u0430\u043C
+// \u043A\u043B\u044E\u0447 (\u043D\u0435 \u043F\u0443\u0441\u0442\u0443\u044E \u0441\u0442\u0440\u043E\u043A\u0443). \u0421\u0442\u0440\u043E\u043A\u0430 \u0441\u043F\u0438\u0441\u043A\u0430 \u043E\u0431\u043D\u043E\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u0441\u0440\u0430\u0437\u0443, \u0431\u0435\u0437 \u043F\u0435\u0440\u0435\u0440\u0438\u0441\u043E\u0432\u043A\u0438.
+function setChatDraft(chatId, text){
+  const ch=S.chats.find(c=>String(c.id)===String(chatId)); if(!ch) return;
+  const \u0431\u044B\u043B\u043E=hasMeaningfulDraft(ch.draft) ? ch.draft : null;
+  if(hasMeaningfulDraft(text)) ch.draft=text; else delete ch.draft;
+  const \u0441\u0442\u0430\u043B\u043E=hasMeaningfulDraft(ch.draft) ? ch.draft : null;
+  if(\u0431\u044B\u043B\u043E!==\u0441\u0442\u0430\u043B\u043E) updateChatRowPreview(ch);
+}
+function saveComposerDraft(){
+  if(composerChatId==null || S.editingId) return;    // \u043F\u0440\u0430\u0432\u043A\u0430 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u2014 \u043D\u0435 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A
+  setChatDraft(composerChatId, getInputText());
+}
+// \u041F\u0440\u0435\u0432\u044C\u044E \u0441\u0442\u0440\u043E\u043A\u0438 \u0447\u0430\u0442\u0430: \u00AB\u043F\u0435\u0447\u0430\u0442\u0430\u0435\u0442\u00BB, \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u0438\u043B\u0438 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0435\u0435 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435.
+function chatPreviewHTML(ch){
+  if(ch._typing) return `<span class="typing-label">${typingDotsHTML("\u043F\u0435\u0447\u0430\u0442\u0430\u0435\u0442")}</span>`;
+  return hasMeaningfulDraft(ch.draft) ? '<span class="draft-label">\u0427\u0435\u0440\u043D\u043E\u0432\u0438\u043A: </span>'+escHtml(ch.draft) : escHtml(ch.prev);
+}
+function updateChatRowPreview(ch){
+  const row=document.querySelector(`#clist .ci[data-chat-id="${CSS.escape(String(ch.id))}"] .cprev`);
+  if(row) row.innerHTML=chatPreviewHTML(ch);
+}
+// \u0412 \u043F\u043E\u043B\u0435 \u043E\u0441\u0442\u0430\u043B\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u043D\u0435\u0432\u0438\u0434\u0438\u043C\u044B\u0439 \u043C\u0443\u0441\u043E\u0440 (<br> \u043F\u043E\u0441\u043B\u0435 \u0441\u0442\u0438\u0440\u0430\u043D\u0438\u044F, \u043F\u0435\u0440\u0435\u0432\u043E\u0434 \u0441\u0442\u0440\u043E\u043A\u0438,
+// \u043F\u0440\u043E\u0431\u0435\u043B\u044B) \u2014 \u043E\u0447\u0438\u0449\u0430\u0435\u043C \u043F\u043E\u043B\u0435 \u0446\u0435\u043B\u0438\u043A\u043E\u043C: \u0432\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442\u0441\u044F \u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0430 \u00AB\u0421\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435\u00BB, \u0430 \u043D\u0435
+// \u043F\u0443\u0441\u0442\u043E\u0435 \u043F\u043E\u043B\u0435 \u0431\u0435\u0437 \u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438. \u0412\u043E \u0432\u0440\u0435\u043C\u044F \u043D\u0430\u0431\u043E\u0440\u0430 \u0447\u0435\u0440\u0435\u0437 IME \u043D\u0435 \u0442\u0440\u043E\u0433\u0430\u0435\u043C.
+function normalizeEmptyComposer(){
+  const inp=el("minput"); if(!inp || composerComposing) return;
+  if(inp.querySelector("img")) return;
+  if(inp.innerHTML!=="" && !hasMeaningfulDraft(inp.textContent)) inp.innerHTML="";
+}
+document.addEventListener("compositionstart",e=>{ if(e.target && e.target.id==="minput") composerComposing=true; },true);
+document.addEventListener("compositionend",e=>{ if(e.target && e.target.id==="minput"){ composerComposing=false; onInput(e.target); } },true);
 function serializeNode(node){
   let out="";
   node.childNodes.forEach(n=>{
@@ -14018,13 +14555,16 @@ function serializeNode(node){
 function setInputText(txt){
   const inp=el("minput"); if(!inp) return;
   inp.innerHTML="";
-  if(txt) inp.appendChild(document.createTextNode(txt));
+  if(hasMeaningfulDraft(txt)) inp.appendChild(document.createTextNode(txt));
   aResize(inp);
   syncComposerEmptyClass();
+  // \u041F\u043E\u043B\u0435 \u2014 \u0437\u0435\u0440\u043A\u0430\u043B\u043E \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A\u0430 \u0441\u0432\u043E\u0435\u0433\u043E \u0447\u0430\u0442\u0430: \u043E\u0447\u0438\u0441\u0442\u0438\u043B\u0438 \u043F\u043E\u0441\u043B\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0438 \u2014 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A\u0430
+  // \u043D\u0435\u0442, \u0432\u0435\u0440\u043D\u0443\u043B\u0438 \u0442\u0435\u043A\u0441\u0442 \u2014 \u043E\u043D \u0438 \u0435\u0441\u0442\u044C \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A (\u043A\u0440\u043E\u043C\u0435 \u0440\u0435\u0436\u0438\u043C\u0430 \u043F\u0440\u0430\u0432\u043A\u0438 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F).
+  saveComposerDraft();
 }
 function isInputEmpty(){
   const inp=el("minput"); if(!inp) return true;
-  return inp.textContent.replace(/\u200B/g,"").trim()==="" && !inp.querySelector("img");
+  return !hasMeaningfulDraft(inp.textContent) && !inp.querySelector("img");
 }
 // \u26A0\uFE0F 29 \u0438\u044E\u043B\u044F 2026: \u043A\u043D\u043E\u043F\u043A\u0430 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0438 \u0441\u043A\u0440\u044B\u0432\u0430\u043B\u0430\u0441\u044C (\u0443\u0441\u0442\u0443\u043F\u0430\u044F \u043C\u0435\u0441\u0442\u043E \u043C\u0438\u043A\u0440\u043E\u0444\u043E\u043D\u0443),
 // \u0435\u0441\u043B\u0438 \u0422\u0415\u041A\u0421\u0422 \u043F\u0443\u0441\u0442 \u2014 \u0434\u0430\u0436\u0435 \u043A\u043E\u0433\u0434\u0430 \u0440\u0435\u0430\u043B\u044C\u043D\u043E \u0433\u043E\u0442\u043E\u0432\u043E \u043A \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0435 \u0444\u043E\u0442\u043E/\u0430\u043B\u044C\u0431\u043E\u043C \u0431\u0435\u0437
@@ -14121,6 +14661,7 @@ function applyFormat(type){
 
   el("format-bar").classList.remove("on");
   inp.focus(); aResize(inp);
+  saveComposerDraft();   // форматирование не вызывает input — черновик обновляем сами
 }
 
 // ── ССЫЛКИ ──────────────────────────────────────────────────
@@ -14162,6 +14703,7 @@ function confirmLink(){
   sel2.removeAllRanges(); sel2.addRange(newRange);
   closeM("m-linkinsert");
   inp.focus(); aResize(inp);
+  saveComposerDraft();
 }
 
 // Вставка обычного текста при paste (без форматирования сторонних сайтов)
@@ -15551,7 +16093,7 @@ function openChatInfo(){
   const isSystem=isSystemChat(ch.id);
 
   if(ch.type==="personal"){
-    el("ui-status").textContent = ch.online ? "в сети" : "был(а) недавно";
+    el("ui-status").textContent = presenceText(ch);
     el("ui-uname").textContent = ch.uname ? "@"+ch.uname : "";
     if(ch.uname) el("ui-uname-row").style.display="block";
 
@@ -15564,7 +16106,9 @@ function openChatInfo(){
     if(!isSystem && !ch.isContact) el("ui-add-contact-row").style.display="block";
 
     if(ch.withUserId){
+      const presenceSince=performance.now();
       apiGet("/api/users/"+ch.withUserId).then(d=>{
+        if(d && d.user && d.user.presence){ setPresence(ch.withUserId, d.user.presence, {since:presenceSince}); applyPresence(ch.withUserId); }
         // ⚠️ Username раньше брался ТОЛЬКО из локального кэша чата (ch.uname) —
         // если он не был сохранён локально (старый чат, не было ресинка), строка
         // так и оставалась скрытой, хотя сервер username отдаёт всегда без
@@ -15664,9 +16208,6 @@ function openEditProfile(){
   if(el("prof-status-emoji")) el("prof-status-emoji").disabled=!isVip;
   if(el("prof-name-color")) el("prof-name-color").disabled=!isVip;
   if(el("prof-vip-perks-row")) el("prof-vip-perks-row").style.opacity=isVip?"1":".45";
-  if(el("prof-hide-lastseen")) el("prof-hide-lastseen").checked=!!u.hideLastSeen;
-  if(el("prof-hide-lastseen")) el("prof-hide-lastseen").disabled=!isVip;
-  if(el("prof-hide-lastseen-row")) el("prof-hide-lastseen-row").style.opacity=isVip?"1":".45";
   if(el("prof-hide-phone")) el("prof-hide-phone").checked=!!u.hidePhone;
   if(el("prof-hide-phone")) el("prof-hide-phone").disabled=!isVip;
   if(el("prof-hide-phone-row")) el("prof-hide-phone-row").style.opacity=isVip?"1":".45";
@@ -15695,7 +16236,7 @@ function validateUsername(raw){
 
 // Сохраняются сразу при переключении (не ждут общей кнопки "Сохранить") —
 // как и остальные тумблеры в приложении
-const PRIVACY_FIELD_CHECKBOX_IDS={hideLastSeen:"prof-hide-lastseen",hidePhone:"prof-hide-phone",blockVoiceVideo:"prof-block-vv"};
+const PRIVACY_FIELD_CHECKBOX_IDS={hidePhone:"prof-hide-phone",blockVoiceVideo:"prof-block-vv"};
 async function toggleProfilePrivacy(field, value){
   try{
     const data=await apiPatch("/api/users/me", {[field]:value}, true);
@@ -16390,7 +16931,7 @@ function renderContacts(filter=""){
   const list=S.contacts.filter(c=>!filter||c.nm.toLowerCase().includes(filter.toLowerCase())||("@"+(c.uname||"")).includes(filter.toLowerCase()));
   list.sort((a,b)=>a.nm.localeCompare(b.nm));
   let html=""; let lastL="";
-  list.forEach(c=>{ const l=c.nm[0].toUpperCase(); if(l!==lastL){html+=`<div class="alpha-idx">${l}</div>`;lastL=l;} html+=`<div class="contact-item"><div style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer" onclick="startChatWith('${c.id}')"><div class="contact-av" style="background:${colBg(c.col)}">${c.nm[0]}</div><div style="flex:1"><div class="contact-nm">${c.nm}</div><div class="contact-ph">@${c.uname||"—"} · ${c.phone||""}</div></div><div class="contact-online">${c.online?"● онлайн":""}</div></div><button class="xbtn sec" style="padding:4px 8px;font-size:10px;flex-shrink:0" onclick="event.stopPropagation();removeFromContacts('${c.id}')">✕</button></div>`; });
+  list.forEach(c=>{ const l=c.nm[0].toUpperCase(); if(l!==lastL){html+=`<div class="alpha-idx">${l}</div>`;lastL=l;} html+=`<div class="contact-item"><div style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer" onclick="startChatWith('${c.id}')"><div class="contact-av" style="background:${colBg(c.col)}">${c.nm[0]}</div><div style="flex:1"><div class="contact-nm">${c.nm}</div><div class="contact-ph">@${c.uname||"—"} · ${c.phone||""}</div></div><div class="contact-online">${contactOnline(c)?"● онлайн":""}</div></div><button class="xbtn sec" style="padding:4px 8px;font-size:10px;flex-shrink:0" onclick="event.stopPropagation();removeFromContacts('${c.id}')">✕</button></div>`; });
   if(!list.length)html=`<div style="text-align:center;color:var(--tx3);padding:24px">Не найдено</div>`;
   el("contacts-list").innerHTML=html;
 }
@@ -16402,7 +16943,7 @@ function startChatWith(contactId){
     startChatWithUser(c.id, c.nm, c.col||0); return;
   }
   let ch=S.chats.find(x=>x.nm===c.nm);
-  if(!ch){ ch={id:nextId(),nm:c.nm,ini:c.nm.slice(0,2).toUpperCase(),col:c.col,online:c.online,prev:"",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:""}; S.chats.push(ch); }
+  if(!ch){ ch={id:nextId(),nm:c.nm,ini:c.nm.slice(0,2).toUpperCase(),col:c.col,online:c.online,prev:"",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false}; S.chats.push(ch); }
   openChat(ch.id); renderChats(); saveState();
 }
 
@@ -16418,7 +16959,7 @@ async function startChatWithUser(userId, userName, col){
       }
       // lastTs ставим сразу: пока в чате нет ни одного сообщения, список
       // сортируется по нему, и без этого новый чат оказывался в самом низу.
-      const ch = {id:data.chat.id,nm:userName,ini:userName.slice(0,2).toUpperCase(),col:col||0,online:false,prev:"",time:now(),lastTs:Date.now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,draft:"",withUserId:userId,myRole:"member"};
+      const ch = {id:data.chat.id,nm:userName,ini:userName.slice(0,2).toUpperCase(),col:col||0,online:false,prev:"",time:now(),lastTs:Date.now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,withUserId:userId,myRole:"member"};
       S.chats.unshift(ch); saveState(); renderChats(); openChat(ch.id);
     }
   } catch(e){ showToast("❌ Не удалось создать чат"); }
@@ -16533,7 +17074,7 @@ async function doCreateGroup(){
   const localMemberIds = invitesMode ? [] : memberIds;
   const sentInvites = invitesMode ? (data.pendingInvites||[]).length : 0;
 
-  const newChat={id:newChatId,nm:nm,ini:nm.slice(0,2).toUpperCase(),col:colorFromId(newChatId),online:false,prev:isChannel?"Канал создан":"Группа создана",time:now(),lastTs:Date.now(),unread:0,type:isChannel?"channels":"groups",mbrs:localMembers.length,members:localMembers,memberIds:localMemberIds,myRole:"owner",mine:isChannel,pinned:false,muted:false,blocked:false,draft:"",inviteLink:serverInviteLink,isPrivate:false};
+  const newChat={id:newChatId,nm:nm,ini:nm.slice(0,2).toUpperCase(),col:colorFromId(newChatId),online:false,prev:isChannel?"Канал создан":"Группа создана",time:now(),lastTs:Date.now(),unread:0,type:isChannel?"channels":"groups",mbrs:localMembers.length,members:localMembers,memberIds:localMemberIds,myRole:"owner",mine:isChannel,pinned:false,muted:false,blocked:false,inviteLink:serverInviteLink,isPrivate:false};
   S.chats.unshift(newChat);
   if(!S.messages[newChat.id]){
     const opening=[{id:nextId(),t:"sys",tx:isChannel?"Вы создали канал «"+nm+"»":"Вы создали группу «"+nm+"»"}];
@@ -17997,12 +18538,14 @@ async function loadGiftsCatalog(){
 // контактов показывал "Не найдено" в принципе всегда, ничего не грузилось
 async function loadContacts(){
   try{
+    const presenceSince=performance.now();
     const data=await apiGet("/api/contacts");
     const rows=(data && data.contacts)||[];
     S.contacts=rows.map(u=>({
       id:u.id, nm:u.name||"?", uname:u.username||"", phone:u.phone||"",
       avatar:u.avatar_url||"", col:colorFromId(u.id), online:!!u.online,
     }));
+    rows.forEach(u=>{ if(u.presence) setPresence(u.id, u.presence, {since:presenceSince}); });
     saveState();
     if(el("contacts-list")) renderContacts();
   }catch(e){ /* не удалось — останется пустым */ }
@@ -18322,7 +18865,8 @@ function syncProfileFromServer(){
       .then(resp=>{
         const data = resp && resp.user; // GET /api/users/me отдаёт { user: {...} }, не плоский объект
         if(!data||!data.id) return;
-        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region,statusEmoji:data.status_emoji||S.user.statusEmoji,nameColor:data.name_color||S.user.nameColor,hidePhone:!!data.hide_phone,hideLastSeen:!!data.hide_last_seen,blockVoiceVideo:!!data.block_voice_video,pendingPhoneChange:data.pending_phone_change||null,pendingPhoneChangeAt:data.pending_phone_change_at||null,verified:!!data.is_verified}};
+        S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region,statusEmoji:data.status_emoji||S.user.statusEmoji,nameColor:data.name_color||S.user.nameColor,hidePhone:!!data.hide_phone,hideLastSeen:!!data.hide_last_seen,lastSeenVisibility:(["everyone","contacts","nobody"].includes(data.last_seen_visibility)?data.last_seen_visibility:(data.hide_last_seen?"nobody":"everyone")),blockVoiceVideo:!!data.block_voice_video,pendingPhoneChange:data.pending_phone_change||null,pendingPhoneChangeAt:data.pending_phone_change_at||null,verified:!!data.is_verified}};
+        renderLastSeenPrivacy();
         // Зарубежным пользователям (не +7) незачем видеть цены в рублях —
         // переключаем на доллар автоматически, но только если валюта ещё
         // стоит на дефолтной RUB (не трогаем, если человек сам её менял —
@@ -18360,7 +18904,7 @@ if(S.loggedIn){
   el("rp")?.classList.remove("mobile-open");
   // Создаём Избранное если его ещё нет (для тех кто уже залогинен)
   if(!S.chats.find(c=>c.id===77777)){
-    S.chats.push({id:77777,nm:"Избранное",ini:"",col:2,online:false,prev:"Сохранённые сообщения",time:"",unread:0,type:"personal",pinned:true,muted:false,blocked:false,draft:"",saved:true});
+    S.chats.push({id:77777,nm:"Избранное",ini:"",col:2,online:false,prev:"Сохранённые сообщения",time:"",unread:0,type:"personal",pinned:true,muted:false,blocked:false,saved:true});
     if(!S.messages[77777]) S.messages[77777]=[{id:1,t:"sys",tx:"Это ваше Избранное — сохраняйте сюда важные сообщения, ссылки и заметки. Видите только вы."}];
     saveState();
   }
@@ -18477,6 +19021,7 @@ const VIP_PERKS = [
 ];
 
 function openVIP(){
+  if(_navBackInFlight){ _navPendingFn=openVIP; return; }   // иначе «назад» закрывающегося окна снимет и этот экран
   renderVIPScreen();
   el("screen-vip").classList.add("on");
   pushNavEntry(()=>closeScreen("screen-vip"));
@@ -18988,26 +19533,98 @@ async function getBotFatherReply(txt){
 // Подтягивает реальные системные уведомления (о покупках и т.п.) с сервера
 // и подмешивает их в локальный чат 99999 — на случай, если они пришли,
 // пока приложение было закрыто (WS-пуш их бы тогда не доставил).
+// ── ПОДДЕРЖКА: непрочитанное хранится на сервере ───────────────────────
+// ⚠️ 5 октября 2026. На Android: пришло сообщение от «Монохром Поддержка» —
+// «1» у чата и над вкладкой «Чаты»; открыла, посмотрела, вернулась — «1»
+// осталась навсегда. Прочтение уходило в маршрут обычных чатов
+// (PATCH /api/messages/chat/99999/read), сервер его отвергал (99999 — не id
+// чата), а счётчик местами был просто вписан (unread:1). Теперь:
+//  • сообщения поддержки — с сервера (serverId) с их отметкой прочтения
+//    (read_at); счётчик = число непрочитанных, он ВЫЧИСЛЯЕТСЯ, а не
+//    прибавляется/вычитается — ни минуса, ни двойного уменьшения;
+//  • прочитанным сообщение становится после показа на экране (та же
+//    выдержка, что в обычных чатах) — PATCH /api/support/messages/read;
+//  • другое устройство узнаёт о прочтении кадром support.read, при
+//    переподключении и при возвращении приложения на экран;
+//  • приветствие и ответы FAQ — локальные, без serverId: счётчик не трогают;
+//  • до миграции на сервере (unread=null) счётчика у поддержки нет вовсе —
+//    хранить прочтение негде, а местный флаг не годится (правило 16).
+function syncSupportUnread(){
+  const sch=S.chats && S.chats.find(c=>c.id===99999); if(!sch) return;
+  // Открытую на экране поддержку счётчиком не помечаем (как в Telegram) —
+  // её непрочитанное станет прочитанным после выдержки.
+  const открыта = S.chat===99999 && document.visibilityState==="visible" &&
+    (!isMobileLayout() || !!document.querySelector(".layout.chat-open"));
+  const непрочитанные=(S.messages[99999]||[]).filter(m=>m.serverId && !m.readAt);
+  // Удалённое у себя («Очистить историю», «Удалить у себя») на экране не
+  // покажется никогда и выдержку не пройдёт — отмечаем прочитанным на сервере,
+  // иначе «1» висела бы вечно.
+  const удалённые=непрочитанные.filter(m=>m._deletedForMe || m._deletedForAll);
+  if(удалённые.length && S.supportReadKnown) markSupportRead(удалённые.map(m=>m.serverId));
+  sch.unread = (!S.supportReadKnown || открыта) ? 0
+    : непрочитанные.length-удалённые.length;
+}
+// var, а не let/const: функции ниже зовутся при запуске раньше, чем выполнится
+// эта строка файла (иначе — ReferenceError из временной мёртвой зоны).
+var supportReadInFlight=new Set();
+async function markSupportRead(ids){
+  if(!supportReadInFlight) supportReadInFlight=new Set();   // зовут и при запуске, до строки объявления ниже
+  const список=(ids||[]).map(String).filter(id=>!supportReadInFlight.has(id));
+  if(!список.length || !S.supportReadKnown) return true;
+  список.forEach(id=>supportReadInFlight.add(id));
+  try{
+    const data=await apiPatch("/api/support/messages/read", {ids:список}, true);
+    if(!data || data.success!==true) throw new Error((data&&data.error)||"read not confirmed");
+    // Не вернулись в readIds — значит, на сервере они уже прочитаны (например,
+    // на другом устройстве): помечаем все запрошенные, иначе выдержка слала бы
+    // их снова и снова.
+    const ok=new Set(список);
+    (S.messages[99999]||[]).forEach(m=>{ if(m.serverId && ok.has(String(m.serverId)) && !m.readAt) m.readAt=new Date().toISOString(); });
+    renderChats(); saveState();
+    return true;
+  }catch(e){ console.warn("support read error:", e); return false; }
+  finally{ список.forEach(id=>supportReadInFlight.delete(id)); }
+}
+var _supportLoadAt=0;
 async function loadSupportMessages(){
   if(!getToken()) return;
+  _supportLoadAt=Date.now();
   try{
     const data = await apiGet("/api/support/messages");
-    const serverMsgs = (data && data.messages) || [];
-    if(!serverMsgs.length) return;
-    if(!S.messages[99999]) S.messages[99999]=[];
-    const existingIds = new Set(S.messages[99999].filter(m=>m.serverId).map(m=>m.serverId));
+    if(!data || !Array.isArray(data.messages)) return;
+    const known = typeof data.unread==="number";
+    S.supportReadKnown = known;
+    const поСерверу=new Map(data.messages.map(sm=>[String(sm.id), sm]));
+    // Серверные строки другого аккаунта (на этом устройстве раньше входил
+    // другой) убираем — один раз, при смене владельца. В остальное время
+    // строки, которых нет в ответе, оставляем: это может быть свежее сообщение,
+    // пришедшее живым кадром, пока шёл запрос, или старше последних 200.
+    const владелец=String((S.user&&S.user.id)||"");
+    const чужие = !S.supportOwner || S.supportOwner!==владелец;
+    const список=(S.messages[99999]||[]).filter(m=>!m.serverId || !чужие || поСерверу.has(String(m.serverId)));
+    S.supportOwner=владелец;
+    const есть=new Map(список.filter(m=>m.serverId).map(m=>[String(m.serverId), m]));
     let added=false;
-    serverMsgs.forEach(sm=>{
-      if(existingIds.has(sm.id)) return;
+    for(const sm of data.messages){
+      const readAt = known ? (sm.read_at||null) : null;
+      const m=есть.get(String(sm.id));
+      // Прочтение только вперёд: устаревший ответ не отменяет только что
+      // подтверждённую отметку (сервер переводит read_at лишь из NULL в время).
+      if(m){ if(known && readAt && !m.readAt) m.readAt=readAt; continue; }
       const d=new Date(sm.created_at);
-      S.messages[99999].push({id:nextId(), serverId:sm.id, t:"in", fr:"NS", col:6, tx:sm.text, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), isSupport:true});
+      список.push({id:nextId(), serverId:sm.id, t:"in", fr:"NS", col:6, tx:sm.text, time:d.getHours()+":"+String(d.getMinutes()).padStart(2,"0"), ts:d.getTime(), isSupport:true, readAt});
       added=true;
-    });
-    if(added){
-      S.messages[99999].sort((a,b)=>(a.ts||0)-(b.ts||0));
-      saveState();
-      if(S.chat===99999) renderMsgs();
     }
+    if(added) список.sort((a,b)=>(a.ts||0)-(b.ts||0));
+    const былоСтрок=(S.messages[99999]||[]).length;
+    S.messages[99999]=список;
+    // Пришедшее, пока приложение было закрыто, — в превью и порядке списка.
+    const посл=data.messages[data.messages.length-1];
+    const sch=S.chats.find(c=>c.id===99999);
+    if(sch && посл){ const t=new Date(посл.created_at).getTime(); if(t>(sch.lastTs||0)){ sch.lastTs=t; sch.prev=посл.text; sch.time=new Date(t).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}); } }
+    saveState();
+    renderChats();
+    if(S.chat===99999 && (added || список.length!==былоСтрок)) renderMsgs();
   }catch(e){ /* тихо игнорируем — не критично для остальной работы приложения */ }
 }
 
@@ -19047,7 +19664,7 @@ async function syncFeedbackBotStatus(){
     const show = !!(data && data.show);
     const exists = !!S.chats.find(c=>c.id===FEEDBACK_CHAT_ID);
     if(show && !exists){
-      const ch={id:FEEDBACK_CHAT_ID,nm:"Монохром Отзывы",ini:"NF",col:1,online:true,prev:"Сообщите разработчику о багах и идеях",time:now(),unread:1,type:"personal",pinned:true,muted:false,blocked:false,draft:"",verified:true};
+      const ch={id:FEEDBACK_CHAT_ID,nm:"Монохром Отзывы",ini:"NF",col:1,online:true,prev:"Сообщите разработчику о багах и идеях",time:now(),unread:0,type:"personal",pinned:true,muted:false,blocked:false,verified:true};
       S.chats.push(ch);
       S.messages[FEEDBACK_CHAT_ID]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NF",col:1,tx:FEEDBACK_GREET,time:now(),isSupport:true}];
       saveState(); renderChats();
@@ -19093,11 +19710,16 @@ async function loadFeedbackMessages(){
 }
 
 function openSupport(){
-  // find or create support chat
-  let ch = S.chats.find(c=>c.nm==="Монохром Поддержка");
+  // ⚠️ 5 окт 2026: ищем по id, а не по имени. Раньше на устройствах с прежним
+  // именем («AngieSupport 🤖») чат не находился, заводился второй 99999 с
+  // жёстким unread:1, а история перезаписывалась приветствием.
+  let ch = S.chats.find(c=>c.id===99999);
   if(!ch){
-    ch = {id:99999, nm:"Монохром Поддержка", ini:"NS", col:6, online:true, prev:"Напишите нам!", time:now(), unread:1, type:"personal", pinned:true, muted:false, blocked:false, draft:"", verified:true};
+    ch = {id:99999, nm:"Монохром Поддержка", ini:"NS", col:6, online:true, prev:"Напишите нам!", time:now(), unread:0, type:"personal", pinned:true, muted:false, blocked:false, verified:true};
     S.chats.unshift(ch);
+    saveState();
+  }
+  if(!(S.messages[99999]||[]).length){
     S.messages[99999] = [
       {id:1, t:"date", tx:"Сегодня", ts:Date.now()},
       {id:2, t:"in", fr:"NS", col:6, tx:SUPPORT_GREET, time:now(), isSupport:true},
@@ -19436,7 +20058,7 @@ if(S.loggedIn){
   setTimeout(()=>{
     renderStoriesBar();
     if(!S.chats.find(c=>c.id===99999)){
-      const ch = {id:99999,nm:"Монохром Поддержка",ini:"NS",col:6,online:true,prev:"Чем могу помочь?",time:now(),unread:1,type:"personal",pinned:false,muted:false,blocked:false,draft:"",verified:true};
+      const ch = {id:99999,nm:"Монохром Поддержка",ini:"NS",col:6,online:true,prev:"Чем могу помочь?",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,verified:true};
       S.chats.push(ch);
       S.messages[99999]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NS",col:6,tx:SUPPORT_GREET,time:now(),isSupport:true}];
       saveState(); renderChats();
