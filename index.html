@@ -199,9 +199,12 @@ button,input,textarea,select{font-family:inherit}
 .sb-toolbar input:focus{border-color:var(--acc)}
 .new-chat-btn{width:30px;height:30px;background:linear-gradient(135deg,var(--acc),var(--acc2));border:none;border-radius:8px;
   cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;font-size:18px;
-  transition:all .15s;box-shadow:0 2px 8px rgba(var(--acc-rgb),.4)}
+  transition:background .15s,box-shadow .15s,transform .15s,color .15s,opacity .15s,border-color .15s;box-shadow:0 2px 8px rgba(var(--acc-rgb),.4)}
 .new-chat-btn:hover{transform:scale(1.07)}
 .clist{flex:1;overflow-y:auto;padding:5px 0;scrollbar-width:thin;scrollbar-color:transparent transparent}
+/* 4 окт 2026: перетяжка вниз от верха — жест сторис, а не системный
+   overscroll или pull-to-refresh страницы. */
+#clist{overscroll-behavior-y:contain}
 .clist::-webkit-scrollbar{width:6px}
 .clist::-webkit-scrollbar-track{background:transparent}
 .clist::-webkit-scrollbar-thumb{background:transparent;border-radius:10px}
@@ -223,13 +226,6 @@ button,input,textarea,select{font-family:inherit}
 .mic-btn:hover{background:var(--bg4);color:var(--acc2)}
 .mic-btn.recording{background:var(--rd);color:#fff;border-color:var(--rd);animation:micPulse 1.2s ease-in-out infinite}
 @keyframes micPulse{0%,100%{opacity:1}50%{opacity:.6}}
-.recording-bar{display:none;align-items:center;gap:10px;padding:9px 13px;background:var(--bg2)}
-.recording-bar.on{display:flex}
-.rec-dot{width:10px;height:10px;border-radius:50%;background:var(--rd);flex-shrink:0;animation:micPulse 1.2s ease-in-out infinite}
-.rec-timer{font-size:13px;font-weight:600;color:var(--tx1);font-variant-numeric:tabular-nums}
-.rec-hint{flex:1;font-size:12.5px;color:var(--tx3)}
-.rec-btn{width:30px;height:30px;border-radius:50%;border:none;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;background:var(--bg3);color:var(--tx2)}
-.rec-btn-ok{background:var(--acc);color:#fff}
 .voice-msg{display:flex;align-items:center;gap:10px;min-width:250px;padding:2px 0;position:relative}
 .voice-play-btn{width:34px;height:34px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:13px;position:relative}
 .voice-speed-btn{flex-shrink:0;font-size:11px;font-weight:700;color:var(--tx2);background:var(--bg4);border-radius:10px;padding:3px 7px;cursor:pointer;user-select:none}
@@ -244,23 +240,186 @@ button,input,textarea,select{font-family:inherit}
 .voice-wave-progress{color:#fff}
 .mrow.in .voice-wave-progress{color:var(--acc)}
 .voice-dur{font-size:11px;opacity:.75}
-.vc-recorder{display:flex;flex-direction:column;align-items:center;gap:18px;padding:24px}
-#vc-preview{width:260px;height:260px;border-radius:50%;object-fit:cover;background:#000;transform:scaleX(-1)}
-.vc-timer{font-size:16px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums}
-.vc-actions{display:flex;gap:22px;align-items:center}
-.vc-btn{width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;background:var(--bg3);color:var(--tx1)}
-.vc-btn-rec{background:var(--rd);color:#fff;width:66px;height:66px;font-size:24px}
-.vc-btn-rec.recording{animation:micPulse 1.2s ease-in-out infinite}
-.vc-btn-ok{background:var(--acc);color:#fff}
-.video-circle-wrap{position:relative;width:200px;height:200px;border-radius:50%;overflow:visible;cursor:pointer;background:#000}
+/* ══ ЗАПИСЬ ГОЛОСОВЫХ И ВИДЕОКРУЖКОВ (4 октября 2026) ══════════════════════
+   Модель Telegram, материалы «Монохрома». Геометрия во время удержания —
+   из прогрессов жеста (стили пишет один requestAnimationFrame: transform и
+   opacity), поэтому на этих элементах нет CSS-переходов по transform: палец
+   не должен догонять анимацию. Переходы по времени — только у смены
+   состояний (значки, появление «Отмена», выход). Геометрия одна для всех
+   тем; тема меняет цвет кнопки и материал. */
+#mic-btn{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;position:relative}
+#mic-btn .mic-ic{display:block;transition:opacity .16s var(--e-out,ease),transform .16s var(--e-out,ease)}
+#mic-btn .mic-ic-video{position:absolute;left:50%;top:50%;opacity:0;transform:translate(-50%,-50%) scale(.55) rotate(-30deg)}
+body.micvid-video #mic-btn .mic-ic-voice{opacity:0;transform:scale(.55) rotate(30deg)}
+body.micvid-video #mic-btn .mic-ic-video{opacity:1;transform:translate(-50%,-50%)}
+#mic-btn.blocked{opacity:.35;cursor:not-allowed}
+.iwrap{position:relative}
+/* Строка ввода превращается в панель записи: содержимое капсулы уходит,
+   капсула (её материал) остаётся — высота ленты не меняется. */
+.iwrap.rec-on>:not(.rec-panel){opacity:0;transition:opacity .12s var(--e-out,ease)}
+/* Кнопка записи держит захват указателя — её не выключаем, остальное — да. */
+.iwrap.rec-on>:not(.rec-panel):not(#mic-btn){pointer-events:none}
+.rec-panel{position:absolute;inset:0;border-radius:inherit;z-index:3;display:flex;align-items:center;gap:10px;
+  padding:0 70px 0 14px;opacity:0;visibility:hidden;pointer-events:none;color:var(--tx);
+  transition:opacity .14s var(--e-out,ease),visibility 0s linear .14s}
+.rec-panel.on{opacity:calc(var(--ren,1) * 1);visibility:visible;pointer-events:auto;transition:opacity .14s var(--e-out,ease)}
+.rec-l{display:flex;align-items:center;gap:8px;flex-shrink:0;min-width:70px}
+.rec-dot{width:9px;height:9px;border-radius:50%;background:var(--rd);flex-shrink:0;box-shadow:0 0 0 3px rgba(248,113,113,.16)}
+.rec-panel.on:not(.paused) .rec-dot{animation:recDotBlink 1.1s ease-in-out infinite}
+@keyframes recDotBlink{0%,100%{opacity:1}50%{opacity:.35}}
+.rec-time{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.01em;color:var(--tx)}
+.rec-trash{display:none;width:34px;height:34px;border:0;border-radius:50%;background:transparent;color:var(--rd);cursor:pointer;align-items:center;justify-content:center;padding:0}
+.rec-c{flex:1;min-width:0;height:100%;display:flex;align-items:center;justify-content:center;position:relative}
+.rec-slide{display:flex;align-items:center;gap:3px;color:var(--tx2);font-size:14px;white-space:nowrap;
+  transform:translateX(var(--rdx,0px));opacity:calc(1 - var(--rc,0) * .45)}
+.rec-panel.armed .rec-slide{color:var(--rd)}
+.rec-cancel{display:none;border:0;background:transparent;color:var(--tx);font:inherit;font-size:13px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;padding:9px 14px;border-radius:12px;cursor:pointer;animation:recIn .2s var(--e-out,ease)}
+.rec-review{display:none;align-items:center;gap:9px;width:100%;min-width:0;animation:recIn .2s var(--e-out,ease)}
+.rec-play{width:30px;height:30px;flex-shrink:0;border:0;border-radius:50%;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  background:var(--rec-fab-bg);color:var(--rec-fab-fg)}
+.rec-play .ic-pause{display:none}.rec-play.playing .ic-play{display:none}.rec-play.playing .ic-pause{display:block}
+.rec-wave{flex:1;min-width:0;height:22px;display:flex;align-items:center;gap:2px;color:var(--tx2)}
+.rec-wave span{flex:1;max-width:3px;border-radius:2px;background:currentColor;display:block}
+.rec-review-dur{font-size:12px;color:var(--tx2);font-variant-numeric:tabular-nums;flex-shrink:0}
+.rec-panel.locked .rec-slide,.rec-panel.locked .rec-slide-in{display:none}
+.rec-panel.locked .rec-cancel{display:block}
+.rec-panel.paused .rec-dot,.rec-panel.paused .rec-time{display:none}
+.rec-panel.paused .rec-trash{display:flex}
+/* Видео после стопа: записанное — в круге, в строке — время и «Отмена». */
+.rec-panel.m-video.paused .rec-review,.rec-panel.m-video.paused .rec-trash,.rec-panel.m-video.paused .rec-dot{display:none}
+.rec-panel.m-video.paused .rec-time{display:inline}
+.rec-panel.m-video.paused .rec-cancel{display:block}
+.rec-panel.paused .rec-cancel{display:none}
+.rec-panel.paused .rec-review{display:flex}
+@keyframes recIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
+@keyframes recInL{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+@keyframes recFadeIn{from{opacity:0}to{opacity:1}}
+.rec-panel.on .rec-l{animation:recInL .18s var(--e-out,ease) both}
+.rec-panel.on .rec-slide-in{animation:recFadeIn .2s var(--e-out,ease) .07s both}
+/* Замок защёлкивается: дужка опускается, когда запись зафиксирована. */
+.rec-lock .lk-shackle{transition:transform .14s var(--e-out,ease);transform-box:fill-box}
+.rec-layer.locked .rec-lock .lk-shackle{transform:translateY(2.5px)}
+/* Слой над перепиской: кнопка записи, ореол, замок, пауза, сцена кружка. */
+.rec-layer{position:fixed;inset:0;pointer-events:none;z-index:850;--rec-cx:-200px;--rec-cy:-200px}
+.rec-fab,.rec-halo,.rec-lock,.rec-pause{position:fixed;left:var(--rec-cx);top:var(--rec-cy);opacity:0;will-change:transform,opacity}
+.rec-layer:not(.on) .rec-fab,.rec-layer:not(.on) .rec-halo,.rec-layer:not(.on) .rec-lock,.rec-layer:not(.on) .rec-pause{visibility:hidden}
+.rec-fab,.rec-pause{transition:none}
+.rec-fab{width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;border:0;padding:0;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  background-color:var(--rec-fab-bg);background-image:linear-gradient(160deg,rgba(255,255,255,.22),rgba(255,255,255,0) 55%);
+  color:var(--rec-fab-fg);box-shadow:0 6px 18px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.28);
+  transform-origin:50% 50%}
+.rec-fab svg{position:absolute;transition:opacity .18s var(--e-out,ease),transform .18s var(--e-out,ease)}
+.rec-fab .fab-send{opacity:0;transform:scale(.5) rotate(-40deg)}
+.rec-fab .fab-video{opacity:0}
+.rec-layer.m-video .rec-fab .fab-voice{opacity:0}
+.rec-layer.m-video .rec-fab .fab-video{opacity:1}
+.rec-layer.locked .rec-fab .fab-voice,.rec-layer.locked .rec-fab .fab-video{opacity:0;transform:scale(.5) rotate(40deg)}
+.rec-layer.locked .rec-fab .fab-send{opacity:1;transform:none}
+.rec-layer.locked .rec-fab,.rec-layer.locked .rec-pause{pointer-events:auto}
+.rec-layer.sending .rec-fab,.rec-layer.leaving .rec-fab,.rec-layer.sending .rec-pause,.rec-layer.leaving .rec-pause{pointer-events:none}
+.rec-halo{width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:var(--rec-halo)}
+.rec-lock{width:38px;height:62px;margin:0 0 0 -19px;border-radius:19px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  padding:9px 0 8px;color:var(--tx2);background-color:var(--mat-tint,var(--bg3));background-image:var(--mat-fill,none);
+  border:1px solid var(--mat-brd,var(--brd));box-shadow:0 4px 14px rgba(0,0,0,.22);transform-origin:50% 100%}
+.rec-pause{width:40px;height:40px;margin:0 0 0 -20px;border-radius:50%;border:1px solid var(--mat-brd,var(--brd));padding:0;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;color:var(--tx);
+  background-color:var(--mat-tint,var(--bg3));background-image:var(--mat-fill,none);box-shadow:0 4px 14px rgba(0,0,0,.22);transform-origin:50% 100%}
+.rec-pause .ic-stop,.rec-pause .ic-resume{display:none}
+.rec-pause.is-stop .ic-pause{display:none}.rec-pause.is-stop .ic-stop{display:block}
+.rec-layer.paused .rec-pause .ic-pause{display:none}.rec-layer.paused .rec-pause .ic-resume{display:block}
+.rec-tip{position:fixed;max-width:260px;padding:9px 12px;border-radius:12px;font-size:12.5px;line-height:1.35;color:var(--tx);
+  background-color:var(--mat-tint,var(--bg3));background-image:var(--mat-fill,none);border:1px solid var(--mat-brd,var(--brd));
+  box-shadow:0 8px 24px rgba(0,0,0,.28);opacity:0;transform:translateY(6px);pointer-events:none;z-index:860;
+  transition:opacity .18s var(--e-out,ease),transform .18s var(--e-out,ease)}
+.rec-tip.on{opacity:1;transform:none}
+/* Сцена кружка: затемнение и круг камеры над перепиской. */
+.vc-stage{position:fixed;inset:0;visibility:hidden}
+.vc-stage.on{visibility:visible}
+.vc-dim{position:absolute;inset:0;background:rgba(0,0,0,1);opacity:0}
+/* Пока идёт кружок, лента под затемнением не нажимается (звук её сообщений
+   попал бы в запись); строка ввода с панелью записи — не затемнена. */
+.vc-stage.on .vc-dim{pointer-events:auto;touch-action:none}
+.vc-circle{position:fixed;border-radius:50%;overflow:hidden;opacity:0;transform-origin:50% 50%;will-change:transform,opacity;
+  box-shadow:0 18px 50px rgba(0,0,0,.45);background:#000}
+.vc-circle video,.vc-circle canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%}
+#vc-live{transform:scaleX(-1)}
+.vc-circle.rear #vc-live{transform:none}
+/* Пока камера просыпается — мягкое размытие, а не чёрный квадрат. */
+.vc-warm{position:absolute;inset:-12%;border-radius:50%;z-index:2;
+  background:radial-gradient(circle at 38% 32%,rgba(255,255,255,.34),rgba(255,255,255,.06) 45%,rgba(0,0,0,.2) 75%),var(--rec-warm,#3a4048);
+  filter:blur(14px);transition:opacity .32s var(--e-out,ease)}
+.vc-circle.live .vc-warm{opacity:0}
+#vc-still,#vc-review{opacity:0;z-index:3}
+.vc-circle.still #vc-still{opacity:1}
+.vc-circle.review #vc-review{opacity:1}
+.vc-rec-ring{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);transform:rotate(-90deg);z-index:4;pointer-events:none}
+.vc-rec-ring circle{fill:none;stroke-width:1.6}
+.vc-rec-ring-bg{stroke:rgba(255,255,255,.18)}
+.vc-rec-ring-fg{stroke:rgba(255,255,255,.92);stroke-linecap:round;stroke-dasharray:301.6;stroke-dashoffset:301.6}
+.vc-tools{position:fixed;display:flex;gap:10px;opacity:0}
+.vc-tools button{width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.12);color:#fff;
+  display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;pointer-events:auto;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.vc-tools button[hidden]{display:none}
+.vc-tools button.on{background:rgba(255,236,170,.9);color:#2a2410}
+.rec-layer:not(.on) .vc-tools button{pointer-events:none}
+/* Под окном, экраном или правой панелью слой записи прячется. Не через
+   body:has(...): такое правило перепроверяется при любой перестройке DOM, и
+   открытие чата дорожало на ~130 мс с рывком посреди въезда. Класс .covered
+   ставит recSyncCovered — только пока слой записи показан. */
+body.select-mode .rec-layer,.rec-layer.covered{opacity:0}
+body.select-mode .rec-layer *,.rec-layer.covered *{pointer-events:none !important}
+@media (prefers-reduced-motion:reduce){
+  .rec-panel.on:not(.paused) .rec-dot{animation:none}
+  .rec-cancel,.rec-review,.rec-panel.on .rec-l,.rec-panel.on .rec-slide-in{animation:none}
+}
+/* ── Загрузка записи: прогресс и отмена на самом сообщении ─────────────── */
+.up-ring-bg{fill:none;stroke:rgba(255,255,255,.22);stroke-width:2.4}
+.up-ring-fg{fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;transition:stroke-dashoffset .2s linear}
+.voice-play-btn.up{padding:0;border:0;cursor:pointer}
+.voice-play-btn.up svg.up-ring{position:absolute;inset:-3px;width:40px;height:40px;transform:rotate(-90deg);color:#fff}
+.voice-play-btn.up .up-x{position:relative;display:flex}
+.vc-up-ring{position:absolute;inset:-3px;width:calc(100% + 6px);height:calc(100% + 6px);transform:rotate(-90deg);pointer-events:none;color:#fff;z-index:3}
+.vc-up-x{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;border:0;padding:0;z-index:4;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;color:#fff;background:rgba(0,0,0,.42);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+/* ── Кружок в ленте: никакого фона вокруг окружности ───────────────────────
+   Пузырь, его тень, рамка, размытие и псевдоэлементы для кружка выключены во
+   всех темах; чёрный — только внутри круглой маски до первого кадра. */
+/* #msgs — чтобы перебить правила тем вида html[data-theme="mono"] .mrow.in .bub
+   (тот же вес с !important, но ниже по файлу): иначе вокруг круга оставался
+   прямоугольник пузыря. */
+#msgs .mrow .bub.vc-bub,.bub.vc-bub{background:none !important;background-color:transparent !important;
+  background-image:none !important;box-shadow:none !important;border:0 !important;padding:0 !important;
+  -webkit-backdrop-filter:none !important;backdrop-filter:none !important;outline:0}
+#msgs .bub.vc-bub::before,#msgs .bub.vc-bub::after,.bub.vc-bub::before,.bub.vc-bub::after{content:none !important;display:none !important}
+.video-circle-wrap{position:relative;width:200px;height:200px;border-radius:50%;overflow:visible;cursor:pointer;background:transparent}
+.vc-clip{position:absolute;inset:0;border-radius:50%;overflow:hidden;background:#000;-webkit-mask-image:-webkit-radial-gradient(white,black)}
 .video-circle{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
-.vc-ring{position:absolute;inset:-3px;width:calc(100% + 6px);height:calc(100% + 6px);transform:rotate(-90deg);pointer-events:none}
+.vc-ring{position:absolute;inset:-3px;width:calc(100% + 6px);height:calc(100% + 6px);transform:rotate(-90deg);pointer-events:none;opacity:0;transition:opacity .2s}
+.video-circle-wrap.vc-sound .vc-ring{opacity:1}
 .vc-ring circle{fill:none;pointer-events:stroke}
+.video-circle-wrap:not(.vc-sound) .vc-ring circle{pointer-events:none}
 .vc-ring-bg{stroke:rgba(255,255,255,.2);stroke-width:2.5}
 .vc-ring-progress{stroke:#fff;stroke-width:2.5;stroke-linecap:round;stroke-dasharray:295.3;stroke-dashoffset:295.3}
-.vc-play-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;background:rgba(0,0,0,.25);text-shadow:0 2px 6px rgba(0,0,0,.5);border-radius:50%;pointer-events:none}
-.vc-play-overlay.hidden{display:none}
-.vc-dur-badge{position:absolute;bottom:10px;right:14px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:2px 7px;border-radius:20px;pointer-events:none}
+/* ▶ — только когда человек сам поставил кружок со звуком на паузу; поверх
+   беззвучного предпросмотра постоянной кнопки нет. */
+.vc-play-overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#fff;
+  background:rgba(0,0,0,.22);border-radius:50%;pointer-events:none;z-index:2}
+.video-circle-wrap.vc-paused .vc-play-overlay{display:flex}
+.vc-mute{position:absolute;left:50%;bottom:10px;width:24px;height:24px;margin-left:-12px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  color:#fff;background:rgba(0,0,0,.42);pointer-events:none;z-index:2;transition:opacity .2s}
+.video-circle-wrap.vc-sound .vc-mute,.video-circle-wrap.uploading .vc-mute{opacity:0}
+.vc-dur-badge{position:absolute;bottom:22px;left:26px;background:rgba(0,0,0,.45);color:#fff;font-size:11px;padding:2px 7px;border-radius:20px;pointer-events:none;z-index:2;font-variant-numeric:tabular-nums}
+.vc-dur-badge[hidden]{display:none}
+.video-circle-wrap .vc-speed-btn{bottom:20px;right:24px}
+.video-circle-wrap:not(.vc-sound) .vc-speed-btn{display:none}
+.mrow.out .vc-bub .mt{margin-left:auto}
+.vc-bub .mt{position:static;margin-top:4px;display:flex;width:fit-content;background:var(--dsep-bg,rgba(0,0,0,.35));
+  border-radius:10px;padding:1px 7px;color:var(--tx2)}
+.video-circle-wrap .msg-media-loading{border-radius:50%;z-index:3}
+
 .ci{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-radius:8px;margin:1px 5px;transition:background .15s;position:relative;user-select:none;-webkit-touch-callout:none}
 .ci:hover{background:var(--bg3)}
 .ci.on{background:var(--bg4)}
@@ -582,7 +741,7 @@ body.select-mode .msel-check{display:flex}
 .rprevtx{font-size:11px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px}
 .sysmsg{align-self:center;font-size:11px;color:var(--tx3);background:var(--bg3);border:1px solid var(--brd);padding:3px 11px;border-radius:999px;margin:3px 0}
 .skbub{font-size:68px;line-height:1;padding:3px;background:transparent !important;display:block}
-.vc-bub{padding:0 !important;background:transparent !important;box-shadow:none !important}
+/* .vc-bub — см. «Кружок в ленте: никакого фона вокруг окружности» */
 .vbub{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:16px;border-bottom-left-radius:3px;background:var(--in)}
 .mrow.out .vbub{background:var(--out);border-bottom-right-radius:3px;border-bottom-left-radius:16px}
 .pbtn{width:28px;height:28px;background:var(--acc);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
@@ -661,26 +820,11 @@ body.mobile-mode .ibar{padding-bottom:calc(5px + env(safe-area-inset-bottom,0px)
    в onInput(), просто раньше нигде не использовался. */
 .ibar:has(#minput.empty) .sndbtn{display:none}
 .ibar:not(:has(#minput.empty)) #mic-btn{display:none}
-.ibar:not(:has(#minput.empty)) #vc-btn{display:none}
-/* Мобильный режим: одна кнопка микрофон/видео-кружок вместо двух сразу,
-   как в Telegram — короткий тап переключает режим (setMicVideoMode() в
-   скрипте), удержание сразу начинает запись текущего режима. На десктопе
-   ничего не меняется — там обе кнопки остаются как были (правила выше). */
-body.mobile-mode .ibar:has(#minput.empty) #vc-btn{display:none}
-body.mobile-mode.micvid-video .ibar:has(#minput.empty) #mic-btn{display:none}
-body.mobile-mode.micvid-video .ibar:has(#minput.empty) #vc-btn{display:flex}
+/* 4 окт 2026: одна кнопка записи — микрофон или камера (#mic-btn с двумя
+   значками), на телефоне и на ПК; короткий тап меняет режим. */
 .sndbtn:hover{transform:scale(1.07)}
 .sndbtn:active{transform:scale(.97)}
-.char-count{font-size:10px;color:var(--tx3);align-self:center;min-width:28px;text-align:right}
-/* 29 июля 2026: min-width:28px у счётчика символов резервировал место в
-   flex-строке .ibar ДАЖЕ когда поле пустое и счётчик показывает пустую
-   строку (см. onInput — текст ставится только когда len>0) — из-за этого
-   пилюля .iwrap (и все иконки внутри неё) стабильно не дотягивала до
-   правого края на ~30px, хотя должна занимать всё доступное место (flex:1).
-   Именно этот пустой хвост Александра замазала на скриншоте. Схлопываем
-   резерв, когда поле пустое — как только появляется текст, ширина
-   возвращается, чтобы цифры не прыгали при вводе. */
-.ibar:has(#minput.empty) .char-count{min-width:0}
+/* 4 окт 2026: счётчик символов убран целиком (и место под него). */
 
 /* Отклик на нажатие — раньше был только у .abtn и .sndbtn, из ~22 кнопок в
    приложении. Централизованно: настоящие <button> ловятся автоматически,
@@ -994,6 +1138,8 @@ html[data-theme="mono"]{
   --st-slot-img:linear-gradient(145deg,rgba(255,255,255,.10),rgba(255,255,255,.02));
   --st-slot-hi:rgba(255,255,255,.10); --st-slot-ink:rgba(236,240,244,.74);
   --st-badge-bg:#d6dce2; --st-badge-ink:#101418; --st-badge-sep:#161b21;
+  /* Запись голосовых и кружков: светлое серебряное стекло, не синий. */
+  --rec-fab-bg:#dfe4e9; --rec-fab-fg:#11161b; --rec-halo:rgba(223,228,233,.24); --rec-warm:#2f363e;
   /* фон: несколько слоёв, чтобы стеклу было что преломлять */
   --app-bg:
     radial-gradient(1180px 720px at 6% -6%, rgba(150,190,230,.26), transparent 56%),
@@ -1098,6 +1244,7 @@ html[data-theme="light"]{
   --st-slot-img:linear-gradient(145deg,rgba(255,255,255,.80),rgba(255,255,255,.15));
   --st-slot-hi:rgba(255,255,255,.75); --st-slot-ink:rgba(36,38,47,.62);
   --st-badge-bg:var(--acc); --st-badge-ink:#fff; --st-badge-sep:#f4f5f9;
+  --rec-fab-bg:var(--acc); --rec-fab-fg:#fff; --rec-halo:rgba(var(--acc-rgb),.18); --rec-warm:#c9ccd8;
   /* светлое матовое стекло: мягкий светлый фон с едва заметными пятнами акцента */
   --app-bg:
     radial-gradient(1180px 720px at 6% -6%, rgba(108,99,255,.10), transparent 56%),
@@ -1190,6 +1337,7 @@ html[data-theme="amoled"]{
   --st-slot-img:linear-gradient(145deg,rgba(255,255,255,.08),rgba(255,255,255,.015));
   --st-slot-hi:rgba(255,255,255,.08); --st-slot-ink:rgba(238,240,246,.68);
   --st-badge-bg:var(--acc); --st-badge-ink:#fff; --st-badge-sep:#171b28;
+  --rec-fab-bg:var(--acc); --rec-fab-fg:#fff; --rec-halo:rgba(var(--acc-rgb),.22); --rec-warm:#2a2f40;
   /* глубокое тёмное стекло: тёмно-синий графит и мягкие пятна акцента */
   --app-bg:
     radial-gradient(1180px 720px at 6% -6%, rgba(108,99,255,.20), transparent 56%),
@@ -2345,7 +2493,7 @@ body.mobile-mode.rp-open .sb{visibility:hidden}
 .mobile-mode .ibar{padding:5px 2px}
 .mobile-mode .iwrap{padding:5px 12px}
 .mobile-mode .attb svg{width:23px;height:23px}
-.mobile-mode #mic-btn svg,.mobile-mode #vc-btn svg{width:23px;height:23px}
+.mobile-mode #mic-btn svg{width:23px;height:23px}
 
 /* ══ 2 октября 2026: пропорции мобильной строки ввода ══
    Александра сравнила кадры с Telegram на 1080×2400: у Энджи строка ввода
@@ -2805,8 +2953,8 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       <div class="clist" id="clist"
         ontouchstart="chatListTouchActive=true; pullArchiveStart(event); chatListTouchWatch(event)"
         ontouchmove="pullArchiveMove(event)"
-        ontouchend="chatListTouchActive=false; pullArchiveEnd()"
-        ontouchcancel="chatListTouchActive=false; pullArchiveEnd()"></div>
+        ontouchend="chatListTouchActive=false; pullArchiveEnd(event)"
+        ontouchcancel="chatListTouchActive=false; pullArchiveEnd(event)"></div>
       <div class="clist" id="global-search-results"></div>
     </div>
 
@@ -2885,14 +3033,6 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 
       <div class="unknown-bar" id="unknown-bar"></div>
 
-      <div class="recording-bar" id="recording-bar">
-        <div class="rec-dot"></div>
-        <div class="rec-timer" id="rec-timer">0:00</div>
-        <div class="rec-hint" id="rec-hint">Запись голосового…</div>
-        <button class="rec-btn" onclick="cancelVoiceRecording()" title="Отменить">🗑️</button>
-        <button class="rec-btn rec-btn-ok" onclick="stopVoiceRecording()" title="Готово">✓</button>
-      </div>
-
       <div class="send-as-row" id="send-as-row" style="display:none">
         <button class="send-as-btn" id="send-as-btn" onclick="toggleSendAs()" style="display:none"></button>
       </div>
@@ -2931,15 +3071,31 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
           <button class="mic-btn" id="bot-menu-btn" onclick="openBotCommandMenu()" title="Команды бота" style="display:none">
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
           </button>
-          <button class="mic-btn" id="mic-btn" onclick="onMicBtnClick(event)" ontouchstart="micTouchStart(event)" ontouchmove="micTouchMove(event)" ontouchend="micTouchEnd(event)" title="Голосовое сообщение">
-            <svg width="21" height="21" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
+          <!-- 4 окт 2026: одна кнопка записи — микрофон или камера. Жест —
+               Pointer Events (recInitButton), без inline-обработчиков. -->
+          <button type="button" class="mic-btn" id="mic-btn" title="Голосовое: удерживайте для записи" aria-label="Голосовое: удерживайте для записи">
+            <svg class="mic-ic mic-ic-voice" width="21" height="21" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5a3 3 0 0 0-3 3v6.5a3 3 0 0 0 6 0V5.5a3 3 0 0 0-3-3z"/><path d="M18.5 10.5v1.5a6.5 6.5 0 0 1-13 0v-1.5M12 18.5v3"/></svg>
+            <svg class="mic-ic mic-ic-video" width="23" height="23" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9.2"/><circle cx="12" cy="12" r="3.4"/></svg>
           </button>
-          <button class="mic-btn" id="vc-btn" onclick="onVcBtnClick(event)" ontouchstart="micTouchStart(event)" ontouchmove="micTouchMove(event)" ontouchend="micTouchEnd(event)" title="Видео-кружочек">
-            <svg width="21" height="21" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m10 9 5 3-5 3z"/></svg>
-          </button>
+          <!-- Панель записи: на время записи заменяет содержимое капсулы. -->
+          <div class="rec-panel" id="rec-panel">
+            <div class="rec-l">
+              <span class="rec-dot" aria-hidden="true"></span><span class="rec-time" id="rec-time">0:00,0</span>
+              <button type="button" class="rec-trash" id="rec-trash" aria-label="Удалить запись" onclick="recCancelButton()"><svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v6M14 11v6"/></svg></button>
+            </div>
+            <div class="rec-c">
+              <div class="rec-slide-in"><div class="rec-slide" id="rec-slide"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg><span id="rec-slide-text">Влево — отмена</span></div></div>
+              <button type="button" class="rec-cancel" id="rec-cancel" onclick="recCancelButton()">Отмена</button>
+              <div class="rec-review" id="rec-review">
+                <button type="button" class="rec-play" id="rec-play" aria-label="Прослушать запись" onclick="recReviewPlay()"><svg class="ic-play" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12.5-7.5z"/></svg><svg class="ic-pause" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/></svg></button>
+                <div class="rec-wave" id="rec-wave"></div>
+                <span class="rec-review-dur" id="rec-review-dur">0:00</span>
+                <audio id="rec-audio" preload="auto"></audio>
+              </div>
+            </div>
+          </div>
         </div>
         <input type="file" id="file-inp" style="display:none" onchange="attachFile(this)">
-        <span class="char-count" id="char-count"></span>
         <div class="format-bar" id="send-opts-menu" style="left:auto;right:0">
           <div class="fmt-btn" onclick="closeSendOptionsMenu();sendMsg();"><span class="fmt-ic">📤</span><span>Отправить сейчас</span></div>
           <div class="fmt-btn" id="send-opt-schedule" onclick="closeSendOptionsMenu();openScheduleTimePicker();"><span class="fmt-ic">🕒</span><span>Отправить по расписанию</span></div>
@@ -4732,8 +4888,8 @@ function wsHandleMessage(msg){
         if(mediaType==="image"){ newMsg.img = mediaUrl; if(spoiler) newMsg.spoiler=true; }
         else if(mediaType==="video"){ newMsg.video = mediaUrl; if(spoiler) newMsg.spoiler=true; }
         else if(mediaType==="audio") newMsg.audio = { url: mediaUrl, name: fileName||"Аудио" };
-        else if(mediaType==="voice") newMsg.voice = { url: mediaUrl, duration: 0, waveform: waveform||null, size: fileSize||0 };
-        else if(mediaType==="videoCircle") newMsg.videoCircle = { url: mediaUrl, duration: 0 };
+        else if(mediaType==="voice") newMsg.voice = { url: mediaUrl, duration: recDurationFromName(fileName), waveform: waveform||null, size: fileSize||0 };
+        else if(mediaType==="videoCircle") newMsg.videoCircle = { url: mediaUrl, duration: recDurationFromName(fileName) };
         else newMsg.file = { name: fileName||"Файл", url: mediaUrl };
       } else if(poll){
         newMsg.poll = { ...poll, myVotes: [] };
@@ -4790,8 +4946,8 @@ function wsHandleMessage(msg){
         if(mediaType==="image"){ newMsg.img=mediaUrl; if(spoiler) newMsg.spoiler=true; }
         else if(mediaType==="video"){ newMsg.video=mediaUrl; if(spoiler) newMsg.spoiler=true; }
         else if(mediaType==="audio") newMsg.audio={ url:mediaUrl, name:fileName||"Аудио" };
-        else if(mediaType==="voice") newMsg.voice={ url:mediaUrl, duration:0, waveform:waveform||null, size:fileSize||0 };
-        else if(mediaType==="videoCircle") newMsg.videoCircle={ url:mediaUrl, duration:0 };
+        else if(mediaType==="voice") newMsg.voice={ url:mediaUrl, duration:recDurationFromName(fileName), waveform:waveform||null, size:fileSize||0 };
+        else if(mediaType==="videoCircle") newMsg.videoCircle={ url:mediaUrl, duration:recDurationFromName(fileName) };
         else newMsg.file={ name:fileName||"Файл", url:mediaUrl };
       }
       if(!msgIsOut(newMsg)) newMsg._nv=1;   // итерация 11: ещё не показано человеку
@@ -5745,22 +5901,16 @@ function fillBotCommand(command){
 // голосовые/видео (VIP-привилегия) — там кнопка уместна, просто недоступна,
 // это другая ситуация, не то же самое, что "здесь такой функции вообще нет".
 function applyVoiceVideoRestriction(ch){
-  const micBtn=el("mic-btn"), vcBtn=el("vc-btn");
-  const hideEntirely = isOfficialBotChat(ch?.id);
-  const blocked = !!ch?.peerBlockVoiceVideo;
-  [micBtn, vcBtn].forEach(btn=>{
-    if(!btn) return;
-    if(hideEntirely){
-      btn.style.display="none";
-      return;
-    }
-    btn.style.display="";
-    btn.disabled=blocked;
-    btn.style.opacity=blocked?".35":"";
-    btn.style.cursor=blocked?"not-allowed":"";
-    btn.title=blocked?"Собеседник запретил голосовые и видео-сообщения":(btn===micBtn?"Голосовое сообщение":"Видео-кружочек");
-    btn.onclick=blocked?(()=>showToast("🔒 Собеседник запретил голосовые и видео-сообщения")):(btn===micBtn?onMicBtnClick:onVcBtnClick);
-  });
+  const btn=el("mic-btn"); if(!btn) return;
+  if(isOfficialBotChat(ch?.id)){ btn.style.display="none"; return; }
+  btn.style.display="";
+  // Не disabled: такой кнопке браузер не отдаёт нажатия, и объяснение
+  // (тост по нажатию в recHoldFired) не показалось бы.
+  const blocked=!!ch?.peerBlockVoiceVideo;
+  btn.classList.toggle("blocked", blocked);
+  btn.setAttribute("aria-disabled", blocked ? "true" : "false");
+  if(blocked){ btn.title="Собеседник запретил голосовые и видео-сообщения"; btn.setAttribute("aria-label", btn.title); }
+  else setMicVideoMode(micVideoMode);
 }
 
 // Отложенная отправка — как и в настоящем Telegram, недоступна в секретных
@@ -6417,8 +6567,8 @@ async function loadMessagesFromDB(chatId){
         if(dbMsg.media_type==="image"){ m.img=dbMsg.media_url; if(dbMsg.spoiler) m.spoiler=true; }
         else if(dbMsg.media_type==="video"){ m.video=dbMsg.media_url; if(dbMsg.spoiler) m.spoiler=true; }
         else if(dbMsg.media_type==="audio") m.audio={url:dbMsg.media_url,name:dbMsg.file_name||"Аудио"};
-        else if(dbMsg.media_type==="voice") m.voice={url:dbMsg.media_url,duration:0,waveform:dbMsg.waveform||null,size:dbMsg.file_size||0};
-        else if(dbMsg.media_type==="videoCircle") m.videoCircle={url:dbMsg.media_url,duration:0};
+        else if(dbMsg.media_type==="voice") m.voice={url:dbMsg.media_url,duration:recDurationFromName(dbMsg.file_name),waveform:dbMsg.waveform||null,size:dbMsg.file_size||0};
+        else if(dbMsg.media_type==="videoCircle") m.videoCircle={url:dbMsg.media_url,duration:recDurationFromName(dbMsg.file_name)};
         else m.file={name:dbMsg.file_name||"Файл",url:dbMsg.media_url};
       }
       // ⚠️ Раньше здесь было жёстко myVotes:[] — при каждой перезагрузке
@@ -6569,7 +6719,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-04 сторис: постоянная стопка из трёх слотов, клик на ПК, вход в создание";
+const BUILD_TAG = "2026-10-04 сторис за пальцем, публикация с подтверждением, голосовые и кружки как в Telegram";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -6901,6 +7051,7 @@ function globalSearch(v){
 
 // ── OPEN CHAT ──────────────────────────────────────────────────
 function openChat(id,opts){
+  if(id!==S.chat) stopChatMedia();
   // save draft of previous chat
   const prev=S.chats.find(c=>c.id===S.chat);
   if(prev){ prev.draft=getInputText(); }
@@ -7044,6 +7195,7 @@ function openChat(id,opts){
 // РЕАЛЬНЫЙ закрыватель — регистрируется в pushNavEntry() выше и вызывается
 // из popstate (см. бэк-стек ниже), кнопка в разметке зовёт popNavEntry().
 function closeMobileChat(){
+  stopChatMedia();
   const layoutEl=document.querySelector(".layout");
   const wasShown=!!(layoutEl && layoutEl.classList.contains("chat-open"));
   if(layoutEl) layoutEl.classList.remove("chat-open");
@@ -7607,7 +7759,10 @@ function watchTabbarSurfaces(){
   const узлы=[...document.querySelectorAll(".screen"),
               document.querySelector("#screen-main .layout"),
               el("rp")].filter(Boolean);
-  const наблюдатель=new MutationObserver(()=>updateTabbarVisibility());
+  // 4 окт 2026: те же слои решают, играют ли кружки в ленте.
+  // Кружки — после кадра смены слоя, а не в нём (не задерживать анимацию открытия).
+  let кружкиТ=0;
+  const наблюдатель=new MutationObserver(()=>{ updateTabbarVisibility(); if(typeof vcPickAutoplay==="function" && !кружкиТ) кружкиТ=setTimeout(()=>{ кружкиТ=0; vcPickAutoplay(); }, 120); });
   узлы.forEach(n=>наблюдатель.observe(n,{attributes:true,attributeFilter:["class"]}));
   updateTabbarVisibility();
 }
@@ -7709,14 +7864,18 @@ function retryFailedMsg(msgId){
 const AUTO_RETRY_DELAYS=[1500, 3000, 6000];
 async function attemptWithAutoRetry(m, doAttempt){
   for(let i=0;i<=AUTO_RETRY_DELAYS.length;i++){
+    if(m._cancelled) return false;           // отправку отменили с самого сообщения
     try{
       const ok=await doAttempt();
       if(ok) return true;
     }catch(e){ console.warn("send attempt failed:",e); }
+    if(m._cancelled) return false;
     if(i<AUTO_RETRY_DELAYS.length){
       await new Promise(r=>setTimeout(r, AUTO_RETRY_DELAYS[i]));
     }
   }
+  if(m._cancelled) return false;
+  m.uploading=false;   // не оставлять кольцо загрузки и ✕ у неудачного вложения
   m.failed=true; renderMsgs(); saveState();
   return false;
 }
@@ -7746,16 +7905,31 @@ async function retrySimpleMsg(m, chatId, ch, memberIds, postBody, wsExtra){
 // пробуем загрузить и отправить с тем же файлом и подписью
 async function retryAttachmentMsg(m, chatId, ch, memberIds){
   const att=m._retryAtt, caption=m._retryCaption;
+  // Имя и размер файла — отдельными полями: после перезагрузки File в
+  // сохранённом состоянии пустой, а имя несёт длительность записи.
+  if(att.file instanceof Blob){ att.fileName=att.file.name; att.fileSize=att.file.size||0; }
+  const имяФайла=att.fileName || (att.file && att.file.name) || undefined;
+  const размерФайла=att.fileSize || (att.file && att.file.size) || 0;
   m.uploading=true; m.failed=false;
   if(!m.clientMsgId) m.clientMsgId=genClientMsgId();
   renderMsgs(); saveState();
-  await attemptWithAutoRetry(m, async ()=>{
-    const fd=new FormData();
-    fd.append("file",att.file);
-    const t=getToken();
-    const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
-    const data=await res.json().catch(()=>({}));
-    if(!res.ok||!data.success) throw new Error(data.error||"Не удалось загрузить файл");
+  // Голосовые и кружки грузятся с прогрессом и отменой на самом сообщении;
+  // уже загруженный файл при повторе сообщения второй раз не грузится.
+  const сПрогрессом = att.kind==="voice" || att.kind==="videoCircle";
+  const ok=await attemptWithAutoRetry(m, async ()=>{
+    let data;
+    if(m._uploadedUrl) data={success:true, url:m._uploadedUrl};
+    else if(сПрогрессом) data=await uploadWithProgress(att.file, m);
+    else {
+      const fd=new FormData();
+      fd.append("file",att.file);
+      const t=getToken();
+      const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
+      data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.success) throw new Error(data.error||"Не удалось загрузить файл");
+    }
+    if(m._cancelled) return false;
+    m._uploadedUrl=data.url;
 
     m.uploading=false;
     if(att.kind==="image") m.img=data.url;
@@ -7770,14 +7944,17 @@ async function retryAttachmentMsg(m, chatId, ch, memberIds){
     // одиночных вложений m.groupId всегда undefined, apiPost/wsSend просто
     // не понесут это поле вообще, ничего не меняется для существующих
     // одиночных фото/видео/аудио/файлов/голосовых/видео-кружочков.
-    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,groupId:m.groupId||undefined,clientMsgId:m.clientMsgId},true);
+    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:имяФайла,fileSize:размерФайла,spoiler:!!att.spoiler,waveform:att.waveform||null,groupId:m.groupId||undefined,clientMsgId:m.clientMsgId},true);
     if(!d || !d.success) return false;
     const dbId=d?.message?.id||null;
     if(dbId){ m.dbId=dbId; saveState(); }
+    applyServerTime(m, d?.message?.created_at, ch);   // время — серверное (правило 16)
     const wsMemberIds = d.blockedFromRecipientId ? memberIds.filter(id=>id!==d.blockedFromRecipientId) : memberIds;
-    wsSend({type:"message.send",payload:{chatId,text:caption||"",memberIds:wsMemberIds,mediaUrl:data.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,groupId:m.groupId||undefined,id:dbId,senderName:S.user?.name||"", senderAvatar:S.user?.avatar||"", senderStatusEmoji:S.user?.statusEmoji||"", senderNameColor:S.user?.nameColor||""}});
+    if(сПрогрессом && att.previewUrl && String(att.previewUrl).startsWith("blob:")){ const u=att.previewUrl; setTimeout(()=>URL.revokeObjectURL(u), 4000); }
+    wsSend({type:"message.send",payload:{chatId,text:caption||"",memberIds:wsMemberIds,mediaUrl:data.url,mediaType:att.kind,fileName:имяФайла,fileSize:размерФайла,spoiler:!!att.spoiler,waveform:att.waveform||null,groupId:m.groupId||undefined,id:dbId,senderName:S.user?.name||"", senderAvatar:S.user?.avatar||"", senderStatusEmoji:S.user?.statusEmoji||"", senderNameColor:S.user?.nameColor||""}});
     return true;
   });
+  void ok;
   m.uploading=false;
 }
 
@@ -9084,6 +9261,8 @@ function renderMsgs(){
   // переезда к непрочитанным останавливала ленту на полпути).
   const useTarget=!switchedChat && !wasAtBottom && !!_unreadTarget && _unreadTarget.chat===S.chat && !_userScrollActive;
   const anchorBefore = (!switchedChat && !wasAtBottom) ? (useTarget ? _unreadTarget : msgsCurrentAnchor(c)) : null;
+  // 4 окт 2026: играющие голосовые и кружки переживают перерисовку.
+  const живыеМедиа = switchedChat ? null : mediaStashBeforeRender(c);
   c.innerHTML="";
   const curCh=S.chats.find(x=>x.id===S.chat);
   renderUnknownBar(curCh);
@@ -9281,25 +9460,29 @@ function renderMsgs(){
       }
       if(m.voice){
         if(m.uploading){
-          bc+=`<div class="voice-msg"><div class="voice-play-btn">🎤</div><div class="voice-track"><div class="voice-wave-wrap"><div class="voice-wave-bars">${renderWaveBars(m.voice.waveform)}</div></div><div class="voice-dur">загрузка…</div></div></div>`;
+          // Отправляется: кольцо загрузки и ✕ — отмена отправки.
+          bc+=`<div class="voice-msg uploading" data-msg-id="${m.id}"><button type="button" class="voice-play-btn up" onclick="cancelUpload(event,${m.id})" aria-label="Отменить отправку"><svg class="up-ring" viewBox="0 0 36 36">${upRingHTML(m,15,94.25)}</svg><span class="up-x"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span></button><div class="voice-track"><div class="voice-wave-wrap"><div class="voice-wave-bars">${renderWaveBars(m.voice.waveform)}</div></div><div class="voice-dur">${formatDur(m.voice.duration)}</div></div></div>`;
         } else {
           const barsHTML=renderWaveBars(m.voice.waveform);
           const isUnplayed = m.t!=="out" && !m.voicePlayed;
-          bc+=`<div class="voice-msg" onclick="toggleVoicePlay(this,'${m.voice.url}')" data-msg-id="${m.id}"><div class="voice-play-btn">▶${isUnplayed?'<div class="voice-unplayed-dot"></div>':''}</div><div class="voice-track"><div class="voice-wave-wrap" onmousedown="seekVoice(event,this.closest('.voice-msg'))" ontouchstart="seekVoice(event,this.closest('.voice-msg'))"><div class="voice-wave-bars">${barsHTML}</div><div class="voice-wave-bars voice-wave-progress" style="clip-path:inset(0 100% 0 0)">${barsHTML}</div></div><div class="voice-dur">${formatDur(m.voice.duration)}${m.voice.size?" · "+formatFileSize(m.voice.size):""}</div></div><div class="voice-speed-btn" onclick="cycleSpeed(event,this,this.closest('.voice-msg').querySelector('audio'))">${(S.playbackSpeed||1)}x</div><audio preload="metadata"></audio></div>`;
+          bc+=`<div class="voice-msg" onclick="toggleVoicePlay(this,'${m.voice.url}')" data-msg-id="${m.id}"><div class="voice-play-btn">▶${isUnplayed?'<div class="voice-unplayed-dot"></div>':''}</div><div class="voice-track"><div class="voice-wave-wrap" onmousedown="seekVoice(event,this.closest('.voice-msg'))" ontouchstart="seekVoice(event,this.closest('.voice-msg'))"><div class="voice-wave-bars">${barsHTML}</div><div class="voice-wave-bars voice-wave-progress" style="clip-path:inset(0 100% 0 0)">${barsHTML}</div></div><div class="voice-dur">${formatDur(m.voice.duration)}${m.voice.size?" · "+formatFileSize(m.voice.size):""}</div></div><div class="voice-speed-btn" onclick="cycleSpeed(event,this,this.closest('.voice-msg').querySelector('audio'))">${(S.playbackSpeed||1)}x</div><audio preload="metadata" data-src="${escHtml(m.voice.url||"")}"></audio></div>`;
         }
       }
       if(m.videoCircle){
+        const длит=m.videoCircle.duration||0;
+        const адрес=escHtml(m.videoCircle.url||"");
         if(m.uploading){
-          bc+=`<div class="video-circle-wrap"><video class="video-circle" src="${m.videoCircle.url}" muted playsinline></video><div class="vc-play-overlay">⏳</div></div>`;
+          bc+=`<div class="video-circle-wrap uploading" data-msg-id="${m.id}" data-dur="${длит}"><div class="vc-clip"><video class="video-circle" src="${адрес}" muted loop playsinline preload="auto"></video></div><svg class="vc-up-ring" viewBox="0 0 106 106">${upRingHTML(m,50,314.16)}</svg><button type="button" class="vc-up-x" onclick="cancelUpload(event,${m.id})" aria-label="Отменить отправку"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>${длит?`<div class="vc-dur-badge">${formatDur(длит)}</div>`:""}</div>`;
         } else {
-          bc+=`<div class="video-circle-wrap" onclick="toggleVideoCirclePlay(this)">
-            <video class="video-circle" src="${m.videoCircle.url}" playsinline muted onloadstart="showMediaLoading(this)" onloadeddata="hideMediaLoading(this)" oncanplay="hideMediaLoading(this)" onplaying="hideMediaLoading(this)" onwaiting="showMediaLoading(this)" onstalled="showMediaLoading(this)" onerror="failMediaLoading(this)"></video>
+          bc+=`<div class="video-circle-wrap" data-msg-id="${m.id}" data-dur="${длит}" onclick="vcTap(event,this)">
+            <div class="vc-clip"><video class="video-circle" src="${адрес}" muted loop playsinline preload="metadata" onloadstart="showMediaLoading(this)" onloadeddata="hideMediaLoading(this)" oncanplay="hideMediaLoading(this)" onplaying="hideMediaLoading(this)" onwaiting="showMediaLoading(this)" onstalled="showMediaLoading(this)" onerror="failMediaLoading(this)"></video></div>
             <svg class="vc-ring" viewBox="0 0 100 100" onmousedown="seekVideoCircle(event,this.closest('.video-circle-wrap'))" ontouchstart="seekVideoCircle(event,this.closest('.video-circle-wrap'))">
               <circle class="vc-ring-bg" cx="50" cy="50" r="47"></circle>
               <circle class="vc-ring-progress" cx="50" cy="50" r="47"></circle>
             </svg>
-            <div class="vc-play-overlay">▶</div>
-            <div class="vc-dur-badge">${formatDur(m.videoCircle.duration)}</div>
+            <div class="vc-play-overlay"><svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>
+            <div class="vc-mute" aria-hidden="true"><svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg></div>
+            ${длит?`<div class="vc-dur-badge">${formatDur(длит)}</div>`:`<div class="vc-dur-badge" hidden></div>`}
             <div class="voice-speed-btn vc-speed-btn" onclick="cycleSpeed(event,this,this.closest('.video-circle-wrap').querySelector('video'))">${(S.playbackSpeed||1)}x</div>
             ${MEDIA_LOADING_HTML}
           </div>`;
@@ -9355,6 +9538,8 @@ function renderMsgs(){
     row.innerHTML=h; c.appendChild(row);
   });
   emojifyEl(c);
+  mediaRestoreAfterRender(c, живыеМедиа);
+  vcAfterRender();
   msgsDwellKick();   // О3: лента перерисована — запускаем отсчёт выдержки на экране
   const renderAt=performance.now();
   _lastGeomChangeAt=_lastRenderAt=renderAt;   // пересборка: сдвиги от неё — не человек
@@ -10518,7 +10703,6 @@ async function sendMsg(){
       return;
     }
     setInputText(""); aResize(inp);
-    if(el("char-count"))el("char-count").textContent="";
     sendImageGroup(txt);
     return;
   }
@@ -10533,7 +10717,6 @@ async function sendMsg(){
     if(S.chat===FEEDBACK_CHAT_ID){ await sendFeedbackAttachment(txt); return; }
     if(S.chat===99999||S.chat===66666||S.chat===55555){ sendLocalBotAttachment(txt); return; }
     setInputText(""); aResize(inp);
-    if(el("char-count"))el("char-count").textContent="";
     sendWithAttachment(txt);
     return;
   }
@@ -10545,7 +10728,6 @@ async function sendMsg(){
     const sch=S.chats.find(c=>c.id===77777);
     if(sch){sch.prev=txt;sch.time=now();sch.lastTs=Date.now();}
     renderMsgs(); renderChats(); saveState();
-    if(el("char-count"))el("char-count").textContent="";
     return;
   }
   // ── Support bot interception ──
@@ -10649,7 +10831,6 @@ async function sendMsg(){
   const ch=S.chats.find(c=>c.id===S.chat);
   if(ch){ch.prev=txt;ch.time=tm;ch.lastTs=Date.now();ch.draft="";}
   setInputText(""); aResize(inp); renderMsgs(); renderChats(); saveState();
-  if(el("char-count"))el("char-count").textContent="";
 
   // Сохраняем сообщение в БД (получаем настоящий id) и уже с ним рассылаем через WebSocket
   const chatId=S.chat;
@@ -10770,7 +10951,6 @@ async function confirmScheduleSend(){
   const chatId=S.chat;
   closeM("m-schedule");
   setInputText(""); aResize(el("minput"));
-  if(el("char-count"))el("char-count").textContent="";
   const d=await apiPost("/api/messages", {chatId, text:txt, type:"text", scheduledAt: when.toISOString(), clientMsgId: genClientMsgId()}, true);
   if(!d || !d.success){
     showToast("❌ "+(d&&d.error||"Не удалось запланировать"));
@@ -10790,7 +10970,6 @@ async function scheduleAttachmentSend(when){
   closeM("m-schedule");
   pendingAttach=null; renderAttachPreview();
   setInputText(""); aResize(el("minput"));
-  if(el("char-count"))el("char-count").textContent="";
   showToast("⏳ Загружаем файл…");
   try{
     const fd=new FormData();
@@ -10888,9 +11067,7 @@ function onInput(elm){
   cleanupEmptyFormatSpans();
   if(wsConnected) wsSendTyping();
   const txt=getInputText();
-  const len=txt.length;
-  if(el("char-count"))el("char-count").textContent=len>0?len:"";
-  syncComposerEmptyClass();
+  syncComposerState();
   // save draft
   const ch=S.chats.find(c=>c.id===S.chat); if(ch)ch.draft=txt;
 }
@@ -11282,7 +11459,6 @@ function renderWaveBars(waveform){
   return bars.map(v=>`<span style="height:${Math.round(Math.max(8,v*100))}%"></span>`).join("");
 }
 
-let voiceRecorder=null, voiceChunks=[], voiceStream=null, voiceStartTs=0, voiceTimerInt=null;
 
 // Считаем "форму волны" записи — как в Telegram, чтобы сразу на глаз было видно,
 // что запись не пустая, а не просто плоская полоска
@@ -11310,199 +11486,985 @@ async function computeWaveform(blob, barsCount=40){
   }
 }
 
-async function toggleVoiceRecording(){
-  if(voiceRecorder && voiceRecorder.state==="recording"){ stopVoiceRecording(); return; }
-  if(isOfficialBotChat(S.chat)){ showToast("🎤 Голосовые здесь недоступны"); return; }
-  const vch=S.chats.find(c=>c.id===S.chat);
-  if(vch?.peerBlockVoiceVideo){ showToast("🔒 Собеседник запретил голосовые и видео-сообщения"); return; }
-  try{
-    voiceStream=await navigator.mediaDevices.getUserMedia({audio:true});
-  }catch(e){
-    showToast("❌ Нет доступа к микрофону — разреши в настройках браузера");
-    return;
-  }
-  voiceChunks=[];
-  const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
-  voiceRecorder = mime ? new MediaRecorder(voiceStream,{mimeType:mime}) : new MediaRecorder(voiceStream);
-  voiceRecorder.ondataavailable=e=>{ if(e.data && e.data.size>0) voiceChunks.push(e.data); };
-  voiceRecorder.start();
-  voiceStartTs=Date.now();
-  el("mic-btn")?.classList.add("recording");
-  el("recording-bar")?.classList.add("on");
-  el("rec-timer").textContent="0:00";
-  voiceTimerInt=setInterval(()=>{
-    el("rec-timer").textContent=formatDur((Date.now()-voiceStartTs)/1000);
-  },200);
-}
+// ══════════════════════════════════════════════════════════════════════════
+//  ЗАПИСЬ ГОЛОСОВЫХ И ВИДЕОКРУЖКОВ (4 октября 2026)
+// ══════════════════════════════════════════════════════════════════════════
+// Одна машина состояний для обеих записей — модель взаимодействия Telegram,
+// материалы трёх тем «Монохрома»:
+//   • в пустой строке ввода справа одна кнопка — микрофон или камера.
+//     Короткий тап меняет режим; запись и запрос разрешений он не трогает;
+//   • удержание ~200 мс начинает запись выбранного режима: строка ввода
+//     становится панелью записи (точка, таймер, «Влево — отмена»), кнопка
+//     растёт, над ней — замок; для видео из кнопки вырастает круг камеры;
+//   • пока палец на экране, всё следует за ним: влево — к отмене (возврат
+//     вправо разоружает), вверх — к фиксации (возврат вниз уменьшает).
+//     После мёртвой зоны выбирается одно направление — дрожание не
+//     включает обе ветки. Геометрия — из двух прогрессов (cancelProgress,
+//     lockProgress) в одном requestAnimationFrame на жест;
+//   • отпустил без фиксации — запись сразу отправляется: без вложения,
+//     подписи и клавиатуры; отпустил в зоне отмены — удаляется;
+//   • после фиксации палец свободен: «Отмена», пауза (голос) или стоп
+//     (видео), стрелка отправки. Подписи к свежей записи нет;
+//   • отправка — тем же путём, что все вложения (clientMsgId, автоповторы,
+//     живая доставка), с прогрессом загрузки и отменой на самом сообщении.
+// Анимации по времени — только после отпускания и смены состояния
+// (появление, фиксация, отмена, отправка); положение во время удержания
+// задаёт палец.
+const REC_HOLD_MS=200, REC_DEAD_ZONE=8, REC_CANCEL_DIST=110, REC_LOCK_DIST=90, REC_MIN_SEC=0.7;
+const VC_MAX_SEC=60; // как в Telegram — максимум минута
+const REC_ENTER_MS=200, REC_LOCK_MS=200, REC_EXIT_MS=220, VC_APPEAR_MS=280, REC_FLY_MS=300;
+let micVideoMode="voice";
+let rec=null, recGen=0;
+const recClamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const recEase=(t)=>1-Math.pow(1-recClamp(t,0,1),3);
+const recReduced=()=>!!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+const recDur=(ms)=>recReduced() ? Math.round(ms*0.4) : ms;
+const recVibrate=(ms)=>{ try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){} };
 
-function stopVoiceRecordingInternal(){
-  clearInterval(voiceTimerInt);
-  el("mic-btn")?.classList.remove("recording");
-  el("recording-bar")?.classList.remove("on");
-  if(voiceStream){ voiceStream.getTracks().forEach(t=>t.stop()); voiceStream=null; }
-}
-
-function cancelVoiceRecording(){
-  if(!voiceRecorder) return;
-  voiceRecorder.onstop=null;
-  if(voiceRecorder.state==="recording") voiceRecorder.stop();
-  stopVoiceRecordingInternal();
-  voiceRecorder=null; voiceChunks=[];
-  showToast("🗑️ Запись отменена");
-}
-
-function stopVoiceRecording(){
-  if(!voiceRecorder || voiceRecorder.state!=="recording") return;
-  const durationSec=(Date.now()-voiceStartTs)/1000;
-  voiceRecorder.onstop=async ()=>{
-    stopVoiceRecordingInternal();
-    if(durationSec<1){ showToast("❌ Слишком короткая запись"); voiceRecorder=null; voiceChunks=[]; return; }
-    const blob=new Blob(voiceChunks, {type: voiceRecorder.mimeType||"audio/webm"});
-    const ext=(blob.type.split("/")[1]||"webm").split(";")[0];
-    const file=new File([blob], "voice_"+Date.now()+"."+ext, {type: blob.type});
-    const previewUrl=URL.createObjectURL(blob);
-    if(pendingAttach && (pendingAttach.kind==="video"||pendingAttach.kind==="audio"||pendingAttach.kind==="voice") && pendingAttach.previewUrl){
-      URL.revokeObjectURL(pendingAttach.previewUrl);
-    }
-    pendingAttach={file, kind:"voice", previewUrl, spoiler:false, duration:durationSec, waveform:null};
-    renderAttachPreview();
-    voiceRecorder=null; voiceChunks=[];
-    // Волну считаем в фоне — не блокируем показ превью, подтягивается чуть позже
-    const wf=await computeWaveform(blob);
-    if(pendingAttach && pendingAttach.previewUrl===previewUrl) pendingAttach.waveform=wf;
-  };
-  voiceRecorder.stop();
-}
-
-// ══════════════════════════════════════════════════
-//  ЗАПИСЬ ГОЛОСОВЫХ — HOLD / SLIDE-CANCEL / SLIDE-LOCK (этап 12 дорожной карты)
-// ══════════════════════════════════════════════════
-// РИСК ВЫСОКИЙ — единственная фича дорожной карты, задевающая рабочую
-// основную функцию (запись голосовых), а не просто добавляющая новое.
-// Поэтому ничего в существующем пайплайне не переписано: toggleVoiceRecording()/
-// stopVoiceRecording()/cancelVoiceRecording() вызываются как есть, в нужные
-// моменты — это только новый слой жестов поверх кнопки микрофона. Десктоп
-// (клик по иконке — старт, клик по "✓"/"🗑️" в баре — стоп/отмена) не
-// тронут вообще: жест включается только когда реальный touchstart
-// подтверждён на мобильной раскладке (isMobileLayout()), иначе onclick
-// работает как раньше.
-// Обновление (единая кнопка микрофон/видео, как в Telegram): видео-кружочки
-// теперь ТОЖЕ запускаются этим же удержанием — короткий тап меняет режим
-// (см. setMicVideoMode), удержание вызывает openVideoCircleRecorder()+
-// toggleVideoCircleRecording() напрямую. Слайд-блокировка для видео оставляет
-// существующую модалку открытой (её ручная кнопка "⏹" продолжает работать
-// как раньше) — слайд-отмена для видео есть, а вот полноэкранного превью
-// прямо во время удержания (как в настоящем Telegram) нет, это осталось
-// отдельной, более крупной задачей на будущее.
-const MIC_CANCEL_THRESHOLD_PX=80, MIC_LOCK_THRESHOLD_PX=50, MIC_HOLD_MS=180;
-let micGestureState=null, justHandledMicTouch=false, micVideoMode="voice";
-
-// Единая кнопка микрофон/видео-кружок на мобильном (как в Telegram): короткий
-// тап без удержания — просто переключает режим (см. setMicVideoMode), сама
-// запись не начинается. Удержание дольше MIC_HOLD_MS — запускает запись
-// текущего режима. Десктоп это не затрагивает: #vc-btn там остаётся отдельной
-// видимой кнопкой ("body.mobile-mode" гейтит все CSS-правила выше), клик по
-// ней там идёт напрямую через openVideoCircleRecorder(), как и раньше.
+// ── Режим кнопки и подсказка ───────────────────────────────────────────────
 function setMicVideoMode(mode){
-  if(micVideoMode===mode) return;
-  micVideoMode=mode;
-  document.body.classList.toggle("micvid-video", mode==="video");
+  micVideoMode=mode==="video" ? "video" : "voice";
+  document.body.classList.toggle("micvid-video", micVideoMode==="video");
+  const b=el("mic-btn");
+  if(b && !b.classList.contains("blocked")){
+    const t=micVideoMode==="video" ? "Видеокружок: удерживайте для записи" : "Голосовое: удерживайте для записи";
+    b.title=t; b.setAttribute("aria-label", t);
+  }
+}
+function recTip(text, ms){
+  const t=el("rec-tip"), b=el("mic-btn"); if(!t || !b) return;
+  const r=b.getBoundingClientRect();
+  t.textContent=text;
+  t.style.right=Math.max(8, window.innerWidth-r.right-6)+"px";
+  t.style.bottom=Math.max(8, window.innerHeight-r.top+10)+"px";
+  t.classList.add("on");
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("on"), ms||2800);
+}
+function recTapToggle(){
+  setMicVideoMode(micVideoMode==="voice" ? "video" : "voice");
+  // Одноразовая подсказка: при первом использовании объясняем, что тап
+  // переключает, а удержание записывает.
+  if(!S.recHintShown){
+    S.recHintShown=true; saveState();
+    recTip(micVideoMode==="video"
+      ? "Удерживайте для записи видео. Нажмите для переключения на аудио"
+      : "Удерживайте для записи аудио. Нажмите для переключения на видео");
+  }
+}
+function recUnavailableReason(){
+  const id=S.chat;
+  if(isOfficialBotChat(id)) return "🎤 Голосовые здесь недоступны";
+  if(!(typeof id==="string" && id.length>10)) return "🎤 Здесь голосовые и кружки пока недоступны";
+  const ch=S.chats.find(c=>c.id===id);
+  if(ch?.peerBlockVoiceVideo) return "🔒 Собеседник запретил голосовые и видео-сообщения";
+  if(!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return "❌ Этот браузер не умеет записывать звук и видео";
+  return null;
 }
 
-function micTouchStart(e){
-  if(!isMobileLayout()) return; // десктоп — обычное поведение через onMicBtnClick/onclick
-  if((voiceRecorder && voiceRecorder.state==="recording") || vcRecording) return; // уже пишем (например, после lock) — не новый жест
-  const t=e.touches[0];
-  const state={x0:t.clientX,y0:t.clientY,cancelled:false,locked:false,started:false};
-  micGestureState=state;
-  state.holdTimer=setTimeout(()=>{
-    if(micGestureState!==state) return;
-    state.started=true;
-    if(navigator.vibrate) navigator.vibrate(15);
-    if(micVideoMode==="video"){
-      openVideoCircleRecorder().then(()=>{
-        const modalOpen=el("m-videocircle")?.classList.contains("on");
-        if(!modalOpen) return; // не дали доступ к камере — тост об ошибке уже показан
-        if(micGestureState===state && state.started) toggleVideoCircleRecording();
-        else cancelVideoCircle(); // палец отпустили раньше, чем открылась камера — закрываем без записи
-      });
+// ── Жест на кнопке: Pointer Events с захватом указателя ───────────────────
+function recPointerDown(e){
+  if(e.pointerType==="mouse" && e.button!==0) return;
+  if(rec) return;                                  // запись уже идёт (после фиксации) — не новый жест
+  if(!isComposerEmpty()) return;                   // видна отправка, а не запись
+  e.preventDefault();                              // фокус и клавиатура остаются как были
+  if(e.currentTarget.classList.contains("blocked")){ showToast("🔒 Собеседник запретил голосовые и видео-сообщения"); return; }
+  const b=e.currentTarget;
+  try{ b.setPointerCapture(e.pointerId); }catch(_){}
+  const r={gen:++recGen, phase:"arming", mode:micVideoMode, pointerId:e.pointerId, pointerType:e.pointerType,
+    x0:e.clientX, y0:e.clientY, dx:0, dy:0, axis:null, cancelP:0, lockP:0,
+    levels:[], level:0, chunks:[], pausedTotal:0};
+  rec=r;
+  r.holdTimer=setTimeout(()=>recHoldFired(r), REC_HOLD_MS);
+}
+function recPointerMove(e){
+  const r=rec; if(!r || e.pointerId!==r.pointerId) return;
+  r.dx=e.clientX-r.x0; r.dy=e.clientY-r.y0;
+  if(r.phase!=="recording") return;
+  const ax=Math.abs(r.dx), ay=Math.abs(r.dy);
+  // Ось выбирается после мёртвой зоны; вернулся к началу — выбор сбрасывается.
+  if(ax<REC_DEAD_ZONE && ay<REC_DEAD_ZONE) r.axis=null;
+  else if(!r.axis) r.axis = ax>=ay ? "x" : "y";
+  r.cancelP = r.axis==="x" ? recClamp(-r.dx/REC_CANCEL_DIST, 0, 1) : 0;
+  r.lockP   = r.axis==="y" ? recClamp(-r.dy/REC_LOCK_DIST, 0, 1) : 0;
+  if(r.lockP>=1){ recLock(r); return; }
+  const армирована=r.cancelP>=1;
+  if(армирована!==!!r.armed){
+    r.armed=армирована; if(армирована) recVibrate(12);
+    el("rec-panel")?.classList.toggle("armed", армирована);
+    const подпись=el("rec-slide-text"); if(подпись) подпись.textContent = армирована ? "Отпустите — удалить" : "Влево — отмена";
+  }
+  recKick();
+}
+function recPointerUp(e){
+  const r=rec; if(!r || e.pointerId!==r.pointerId) return;
+  r.fingerUp=true;
+  if(r.phase==="arming"){ clearTimeout(r.holdTimer); rec=null; recTapToggle(); return; }
+  if(r.phase==="recording"){ if(r.cancelP>=1) recCancel(r, "slide"); else recFinish(r); return; }
+  // Зафиксировано: палец свободен, запись идёт. Отпускание — действие
+  // пользователя, поэтому именно здесь запись «назад» отменяет запись.
+  if(r.phase==="locked" && !r.navFn) recPushNav(r);
+}
+function recPointerCancel(e){
+  const r=rec; if(!r || e.pointerId!==r.pointerId) return;
+  if(r.phase==="arming"){ clearTimeout(r.holdTimer); rec=null; return; }
+  if(r.phase==="recording") recCancel(r, "pointercancel");
+}
+function recInitButton(){
+  const b=el("mic-btn"); if(!b || b._recWired) return;
+  b._recWired=true;
+  b.addEventListener("pointerdown", recPointerDown);
+  b.addEventListener("pointermove", recPointerMove);
+  b.addEventListener("pointerup", recPointerUp);
+  b.addEventListener("pointercancel", recPointerCancel);
+  b.addEventListener("lostpointercapture", (e)=>{ const r=rec; if(r && r.phase==="recording" && e.pointerId===r.pointerId && !r.fingerUp) recCancel(r, "pointercancel"); });
+  b.addEventListener("contextmenu", (e)=>e.preventDefault());
+  // Клавиатура: короткое нажатие Enter/пробела — как тап (смена режима);
+  // удержание клавиши — запись, после отпускания сразу «без рук»
+  // (перетащить к замку клавиатурой нельзя): «Отмена» и отправка — Tab.
+  b.addEventListener("keydown", (e)=>{
+    if(e.key!=="Enter" && e.key!==" ") return;
+    e.preventDefault();
+    if(e.repeat || rec) return;
+    if(!isComposerEmpty()) return;
+    if(b.classList.contains("blocked")){ showToast("🔒 Собеседник запретил голосовые и видео-сообщения"); return; }
+    const r={gen:++recGen, phase:"arming", mode:micVideoMode, pointerId:"kbd", pointerType:"keyboard", kbdKey:e.key,
+      x0:0, y0:0, dx:0, dy:0, axis:null, cancelP:0, lockP:0, levels:[], level:0, chunks:[], pausedTotal:0};
+    rec=r;
+    r.holdTimer=setTimeout(()=>recHoldFired(r), REC_HOLD_MS);
+  });
+  // Отпускание клавиши — на уровне документа: фокус мог уйти с кнопки.
+  document.addEventListener("keyup", (e)=>{
+    const r=rec; if(!r || r.pointerType!=="keyboard" || e.key!==r.kbdKey) return;
+    e.preventDefault();
+    if(r.phase==="arming"){ clearTimeout(r.holdTimer); rec=null; recTapToggle(); return; }
+    if(r.phase==="recording"){ recLock(r); if(!r.navFn) recPushNav(r); setTimeout(()=>el("rec-fab")?.focus(), 60); }
+  });
+}
+
+// ── Начало записи ─────────────────────────────────────────────────────────
+async function recHoldFired(r){
+  if(rec!==r || r.phase!=="arming") return;
+  const причина=recUnavailableReason();
+  if(причина){ rec=null; showToast(причина); return; }
+  r.phase="recording"; r.holdAt=performance.now();
+  recVibrate(10);
+  vcStopOthers(null);   // играющие голосовые и кружки со звуком — на паузу
+  // Экранная клавиатура не нужна: фокус снимаем только с поля ввода текста.
+  // Саму кнопку записи не трогаем — с клавиатуры ПК отпускание клавиши
+  // должно прийти по назначению.
+  const ae=document.activeElement;
+  if(ae && ae.blur && (ae.isContentEditable || /^(INPUT|TEXTAREA)$/.test(ae.tagName))) ae.blur();
+  recUiEnter(r);
+  try{ await recOpenMedia(r); }
+  catch(err){
+    recReleaseMedia(r);
+    if(rec===r) recCancel(r, "media");
+    showToast(r.mode==="video" ? "❌ Нет доступа к камере — разрешите её в настройках" : "❌ Нет доступа к микрофону — разрешите его в настройках");
+    return;
+  }
+  // Пока ждали разрешения, запись отменили, отпустили или уже остановили —
+  // устройства сразу освобождаем.
+  if(rec!==r || (r.phase!=="recording" && r.phase!=="locked") || r.stoppedAt!=null){ recReleaseMedia(r); return; }
+  recStartRecorder(r);
+}
+function recAudioConstraints(){ return {echoCancellation:true, noiseSuppression:true, autoGainControl:true}; }
+async function recOpenMedia(r){
+  if(r.mode==="voice"){
+    r.stream=await navigator.mediaDevices.getUserMedia({audio:recAudioConstraints()});
+  } else {
+    r.facing="user";
+    r.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user", width:{ideal:640}, height:{ideal:640}}, audio:recAudioConstraints()});
+    const live=el("vc-live");
+    if(live){
+      live.srcObject=r.stream;
+      const готов=()=>{ if(rec===r && live.videoWidth>0) el("vc-circle")?.classList.add("live"); };
+      live.onloadeddata=готов; live.onplaying=готов;
+      live.play().catch(()=>{});
+    }
+    recVideoToolsCheck(r);
+  }
+  r.stream.getTracks().forEach(t=>t.addEventListener("ended", ()=>{ if(!t._flip) recTrackEnded(r); }));
+  // Уровень громкости — для ореола и формы волны голосового.
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(AC && r.stream.getAudioTracks().length){
+      r.audioCtx=new AC();
+      const src=r.audioCtx.createMediaStreamSource(new MediaStream(r.stream.getAudioTracks()));
+      r.analyser=r.audioCtx.createAnalyser(); r.analyser.fftSize=1024;
+      src.connect(r.analyser);
+      r.levelBuf=new Uint8Array(r.analyser.fftSize);
+    }
+  }catch(e){ r.analyser=null; }
+}
+function recPickMime(kind){
+  const список = kind==="voice"
+    ? ["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg;codecs=opus"]
+    : ["video/webm;codecs=vp8,opus","video/webm;codecs=vp9,opus","video/webm","video/mp4"];
+  for(const m of список){ try{ if(MediaRecorder.isTypeSupported(m)) return m; }catch(e){} }
+  return "";
+}
+function recStartRecorder(r){
+  let поток=r.stream;
+  if(r.mode==="video"){
+    // Пишем квадрат с холста: так смена камеры не обрывает запись, а кадр
+    // уже обрезан под круг (и отзеркален для фронтальной камеры).
+    const c=el("vc-rec-canvas") || document.createElement("canvas");
+    c.width=384; c.height=384; r.canvas=c; r.ctx2d=c.getContext("2d");
+    const холст=c.captureStream ? c.captureStream(30) : null;
+    поток=new MediaStream([...(холст ? холст.getVideoTracks() : r.stream.getVideoTracks()), ...r.stream.getAudioTracks()]);
+    r.canvasStream=холст;
+  }
+  r.mime=recPickMime(r.mode);
+  try{
+    r.recorder=r.mime ? new MediaRecorder(поток, {mimeType:r.mime, audioBitsPerSecond:48000, videoBitsPerSecond:700000}) : new MediaRecorder(поток);
+  }catch(e){
+    r.recorder=new MediaRecorder(поток);
+  }
+  r.recorder.ondataavailable=(ev)=>{ if(ev.data && ev.data.size>0) r.chunks.push(ev.data); };
+  r.recorder.onerror=()=>{ if(rec===r) recCancel(r, "error"); };
+  r.recorder.start(250);
+  r.recStart=performance.now();
+  r.lastLevelAt=r.recStart;
+  recKick();
+}
+function recElapsed(r){
+  if(!r || !r.recStart) return 0;
+  const конец=r.pausedAt!=null ? r.pausedAt : (r.stoppedAt!=null ? r.stoppedAt : performance.now());
+  return Math.max(0, (конец-r.recStart-r.pausedTotal)/1000);
+}
+function recTimeText(sec){
+  const m=Math.floor(sec/60), s=Math.floor(sec%60), d=Math.floor((sec*10)%10);
+  return m+":"+String(s).padStart(2,"0")+","+d;
+}
+
+// ── Один кадр на жест: громкость, таймер, видео в холст, геометрия ────────
+function recKick(r){ r=r||rec; if(r && !r.raf) r.raf=requestAnimationFrame(()=>recFrame(r)); }
+function recFrame(r){
+  if(!r) return;
+  r.raf=0;
+  if(rec && rec!==r) return;                 // уже идёт новая запись — старая не рисует
+  if(rec!==r && !r.exitAt && !r.fly) return;
+  const t=performance.now();
+  // Громкость: среднеквадратичное по форме сигнала, сглаженное.
+  if(r.analyser && r.phase!=="paused" && !r.stoppedAt){
+    r.analyser.getByteTimeDomainData(r.levelBuf);
+    let s=0; for(let i=0;i<r.levelBuf.length;i++){ const v=(r.levelBuf[i]-128)/128; s+=v*v; }
+    const rms=Math.sqrt(s/r.levelBuf.length);
+    r.level=r.level*0.75 + Math.min(1, rms*4.5)*0.25;
+    if(r.recStart && t-r.lastLevelAt>=60){ r.levels.push(Math.min(1, rms*4.5)); r.lastLevelAt=t; }
+  }
+  // Видео: кадр камеры — в квадрат холста (центр, по меньшей стороне).
+  if(r.mode==="video" && r.ctx2d && !r.stoppedAt){
+    const v=el("vc-live");
+    if(v && v.videoWidth){
+      const w=v.videoWidth, h=v.videoHeight, k=Math.min(w,h);
+      const g=r.ctx2d; g.save();
+      if(r.facing!=="environment"){ g.translate(384,0); g.scale(-1,1); }
+      g.drawImage(v, (w-k)/2, (h-k)/2, k, k, 0, 0, 384, 384);
+      g.restore();
+    }
+  }
+  const сек=recElapsed(r);
+  if(r.recStart && t-(r.lastTimeText||0)>=90){ r.lastTimeText=t; const tt=el("rec-time"); if(tt) tt.textContent=recTimeText(сек); }
+  if(r.mode==="video" && r.recStart){
+    const кольцо=el("vc-rec-ring-fg");
+    if(кольцо) кольцо.style.strokeDashoffset=String(301.6*(1-Math.min(1, сек/VC_MAX_SEC)));
+    if(сек>=VC_MAX_SEC && !r.limitHit && (r.phase==="recording"||r.phase==="locked")){
+      r.limitHit=true;
+      if(r.phase==="recording") recFinish(r); else recStopToReview(r);
+    }
+  }
+  recPaint(r, t);
+  // Кадры нужны, пока идёт запись или доигрывает переход; на паузе — нет.
+  const переход = (r.holdAt && t-r.holdAt<recDur(REC_ENTER_MS)+40) || (r.lockedAt && t-r.lockedAt<recDur(REC_LOCK_MS)+40) || (r.appearAt && t-r.appearAt<recDur(VC_APPEAR_MS)+40);
+  const идёт = rec===r && (r.phase==="recording" || r.phase==="locked" || r.phase==="finishing" || переход);
+  const выход = r.exitAt && t-r.exitAt<recDur(REC_EXIT_MS)+20;
+  if((идёт || выход) && !r.raf) r.raf=requestAnimationFrame(()=>recFrame(r));
+  else if(r.exitAt && !r.torn) recTeardownUi(r);
+}
+// Геометрия из прогрессов. Палец — прямо (cancelP, lockP, dx); время — только
+// у появления, фиксации и выхода (enter, lockMorph, exit).
+function recPaint(r, t){
+  const слой=el("rec-layer"), панель=el("rec-panel");
+  if(!слой || !панель) return;
+  const enter=r.holdAt ? recEase((t-r.holdAt)/recDur(REC_ENTER_MS)) : 0;
+  const exit=r.exitAt ? recEase((t-r.exitAt)/recDur(REC_EXIT_MS)) : 0;
+  const lockM=r.lockedAt ? recEase((t-r.lockedAt)/recDur(REC_LOCK_MS)) : 0;
+  const жест = r.phase==="recording";
+  const cancelP = жест ? r.cancelP : (r.exitWhy==="slide" ? 1 : 0);
+  const lockP = r.lockedAt ? 1 : (жест ? r.lockP : 0);
+  // Увеличенная кнопка садится чуть выше и левее исходной — не уходит за край экрана.
+  const сдвиг=(1-exit)*enter;
+  const fx = (жест && r.axis==="x" ? recClamp(r.dx, -REC_CANCEL_DIST*1.25, 0)*0.85 : (r.exitWhy==="slide" ? -REC_CANCEL_DIST*0.85*(1-exit) : 0)) - 6*сдвиг;
+  const fy = (r.lockedAt ? 0 : (жест && r.axis==="y" ? recClamp(r.dy, -REC_LOCK_DIST, 0)*0.55 : 0)) - 12*сдвиг;
+  const big = 1+0.8*enter;
+  const fs = (big - (big-1)*exit) * (1 - 0.12*cancelP*(1-exit));
+  const fo = (r.exitAt ? 1-exit : 1) * (enter>0 ? 1 : 0);
+  слой.style.setProperty("--rc", cancelP.toFixed(3));
+  слой.style.setProperty("--rl", lockP.toFixed(3));
+  слой.style.setProperty("--rlev", (r.level||0).toFixed(3));
+  слой.style.setProperty("--ren", (enter*(1-exit)).toFixed(3));
+  слой.style.setProperty("--rlm", lockM.toFixed(3));
+  панель.style.setProperty("--rdx", (жест && r.axis==="x" ? Math.min(0, r.dx) : 0).toFixed(1)+"px");
+  панель.style.setProperty("--rc", cancelP.toFixed(3));
+  панель.style.setProperty("--ren", (enter*(1-exit)).toFixed(3));
+  const fab=el("rec-fab"), halo=el("rec-halo"), lock=el("rec-lock"), пауза=el("rec-pause");
+  if(fab){ fab.style.transform=`translate(${fx.toFixed(1)}px,${fy.toFixed(1)}px) scale(${fs.toFixed(4)})`; fab.style.opacity=fo.toFixed(3); }
+  if(halo){
+    const ореол = r.phase==="paused"||r.stoppedAt ? 0 : (0.16+0.5*(r.level||0));
+    halo.style.transform=`translate(${fx.toFixed(1)}px,${fy.toFixed(1)}px) scale(${(fs*(1.12+(recReduced()?0:0.6*(r.level||0)))).toFixed(4)})`;
+    halo.style.opacity=(ореол*enter*(1-exit)).toFixed(3);
+  }
+  if(lock){
+    // Замок над кнопкой: поднимается за пальцем и сжимается к фиксации;
+    // после фиксации его место занимает кнопка паузы.
+    const над = -(24*fs + 72 + lockP*26) - 12*сдвиг;
+    lock.style.transform=`translateY(${над.toFixed(1)}px) scale(${(1-0.18*lockP).toFixed(3)})`;
+    lock.style.opacity=(enter*(1-cancelP)*(1-lockM)*(1-exit)).toFixed(3);
+  }
+  if(пауза){
+    пауза.style.transform=`translateY(${(-(24*fs+56)-12*сдвиг).toFixed(1)}px) scale(${(0.6+0.4*lockM).toFixed(3)})`;
+    пауза.style.opacity=(lockM*(1-exit)*(r.hidePause?0:1)).toFixed(3);
+  }
+  if(r.mode==="video") recPaintStage(r, t, enter, exit, cancelP);
+}
+function recPaintStage(r, t, enter, exit, cancelP){
+  const круг=el("vc-circle"), тень=el("vc-dim"), инстр=el("vc-tools");
+  if(!круг || !r.stage) return;
+  const a=r.appearAt ? recEase((t-r.appearAt)/recDur(VC_APPEAR_MS)) : 0;
+  const полёт=r.fly;
+  if(полёт){
+    const p=recEase((t-полёт.t0)/recDur(REC_FLY_MS));
+    const g=r.stage;
+    const s=полёт.size/g.size, cx=полёт.cx-(g.x+g.size/2), cy=полёт.cy-(g.y+g.size/2);
+    круг.style.transform=`translate(${(cx*p).toFixed(1)}px,${(cy*p).toFixed(1)}px) scale(${(1+(s-1)*p).toFixed(4)})`;
+    круг.style.opacity="1";
+    if(тень) тень.style.opacity=(0.62*(1-p)).toFixed(3);
+    if(инстр) инстр.style.opacity="0";
+    if(p>=1 && !полёт.done){ полёт.done=true; полёт.onDone && полёт.onDone(); }
+    return;
+  }
+  const g=r.stage, fc=r.fabCenter;
+  const видно=a*(1-exit);
+  const s=(0.18+0.82*видно)*(1-0.14*cancelP);
+  const tx=(fc.x-(g.x+g.size/2))*(1-видно), ty=(fc.y-(g.y+g.size/2))*(1-видно);
+  круг.style.transform=`translate(${tx.toFixed(1)}px,${ty.toFixed(1)}px) scale(${s.toFixed(4)})`;
+  круг.style.opacity=(Math.min(1, видно*1.6)*(1-0.45*cancelP)).toFixed(3);
+  if(тень) тень.style.opacity=(0.62*видно*(1-0.35*cancelP)).toFixed(3);
+  if(инстр) инстр.style.opacity=(recClamp((видно-0.6)/0.4,0,1)*(1-cancelP)).toFixed(3);
+}
+
+// ── Интерфейс записи: вход, фиксация, выход ───────────────────────────────
+function recUiEnter(r){
+  const b=el("mic-btn"), слой=el("rec-layer"), панель=el("rec-panel"), обёртка=b && b.closest(".iwrap");
+  if(!b || !слой || !панель) return;
+  const br=b.getBoundingClientRect();
+  r.fabCenter={x:br.left+br.width/2, y:br.top+br.height/2};
+  слой.style.setProperty("--rec-cx", r.fabCenter.x.toFixed(1)+"px");
+  слой.style.setProperty("--rec-cy", r.fabCenter.y.toFixed(1)+"px");
+  слой.classList.remove("locked","paused","stopped","sending","m-voice","m-video","armed");
+  панель.classList.remove("locked","paused","stopped","armed","m-voice","m-video");
+  слой.classList.add("on", "m-"+r.mode);
+  слой.setAttribute("aria-hidden","false");
+  recWatchCovered(true);
+  панель.classList.add("on", "m-"+r.mode);
+  if(обёртка) обёртка.classList.add("rec-on");
+  const tt=el("rec-time"); if(tt) tt.textContent="0:00,0";
+  const подпись=el("rec-slide-text"); if(подпись) подпись.textContent="Влево — отмена";
+  if(r.mode==="video"){
+    // Круг камеры: по центру над перепиской, появляется из кнопки.
+    const W=window.innerWidth, H=(window.visualViewport ? window.visualViewport.height : window.innerHeight);
+    const size=Math.round(Math.min(W*0.78, 330, H*0.48));
+    const x=Math.round((W-size)/2), y=Math.round(Math.max(56, Math.min(H*0.16, br.top-size-150)));
+    r.stage={x, y, size};
+    const круг=el("vc-circle");
+    if(круг){ круг.style.left=x+"px"; круг.style.top=y+"px"; круг.style.width=size+"px"; круг.style.height=size+"px"; круг.classList.remove("live","review","still","rear"); круг.style.transform=""; }
+    const инстр=el("vc-tools");
+    if(инстр){ инстр.style.left="16px"; инстр.style.bottom=Math.round(window.innerHeight-br.top+14)+"px"; }
+    const кольцо=el("vc-rec-ring-fg"); if(кольцо) кольцо.style.strokeDashoffset="301.6";
+    const тень=el("vc-dim"), бар=b.closest(".ibar")?.getBoundingClientRect();
+    if(тень) тень.style.bottom = бар ? Math.max(0, Math.round(window.innerHeight-бар.top))+"px" : "0px";
+    el("vc-stage")?.classList.add("on");
+    r.appearAt=performance.now();
+  }
+  recKick();
+}
+function recLock(r){
+  if(r.phase!=="recording") return;
+  r.phase="locked"; r.lockedAt=performance.now(); r.lockP=1; r.cancelP=0; r.armed=false;
+  recVibrate(20);
+  el("rec-layer")?.classList.add("locked");
+  el("rec-panel")?.classList.add("locked");
+  const пауза=el("rec-pause");
+  if(пауза){ const видео=r.mode==="video"; пауза.setAttribute("aria-label", видео ? "Остановить запись" : "Пауза"); пауза.classList.toggle("is-stop", видео); }
+  const fab=el("rec-fab"); if(fab) fab.setAttribute("aria-label","Отправить");
+  recKick();
+}
+// Выход с анимацией: why — "slide"|"button"|"short"|"send"|...
+function recBeginExit(r, why){
+  r.exitAt=performance.now(); r.exitWhy=why;
+  el("rec-layer")?.classList.add(why==="send" ? "sending" : "leaving");
+  recKick(r);
+  // Страховка, если кадры не идут (вкладка свёрнута): всё равно снимаем.
+  setTimeout(()=>{ if(!r.torn) recTeardownUi(r); }, recDur(REC_EXIT_MS)+400);
+}
+// Слой записи прячется, пока поверх открыто окно, экран или правая панель.
+// Наблюдатель живёт только пока слой показан: в остальное время (открытие
+// чата, перерисовка ленты) он ничего не стоит.
+let recCoverObs=null;
+function recSyncCovered(){
+  el("rec-layer")?.classList.toggle("covered", !!document.querySelector(".movl.on, .rp.mobile-open, .screen.on:not(.closing)"));
+}
+function recWatchCovered(вкл){
+  if(!вкл){ if(recCoverObs){ recCoverObs.disconnect(); recCoverObs=null; } return; }
+  if(!recCoverObs && typeof MutationObserver==="function"){
+    recCoverObs=new MutationObserver(recSyncCovered);
+    recCoverObs.observe(document.body, {subtree:true, childList:true, attributes:true, attributeFilter:["class"]});
+  }
+  recSyncCovered();
+}
+function recTeardownUi(r){
+  if(r.torn) return; r.torn=true;
+  const слой=el("rec-layer"), панель=el("rec-panel"), b=el("mic-btn");
+  if(rec && rec!==r) return;   // уже идёт новая запись — её интерфейс не трогаем
+  recWatchCovered(false);
+  слой?.classList.remove("on","locked","paused","stopped","sending","leaving","armed","m-voice","m-video","covered");
+  панель?.classList.remove("on","locked","paused","stopped","armed","m-voice","m-video");
+  слой?.setAttribute("aria-hidden","true");
+  b?.closest(".iwrap")?.classList.remove("rec-on");
+  const st=el("vc-stage"); if(st) st.classList.remove("on");
+  const круг=el("vc-circle"); if(круг){ круг.classList.remove("live","review","still","rear"); круг.style.transform=""; круг.style.opacity=""; }
+  const ревью=el("vc-review"); if(ревью){ ревью.pause(); ревью.removeAttribute("src"); ревью.load(); }
+  const ау=el("rec-audio"); if(ау){ ау.pause(); ау.removeAttribute("src"); ау.load(); }
+  ["rec-fab","rec-halo","rec-lock","rec-pause"].forEach(id=>{ const x=el(id); if(x){ x.style.transform=""; x.style.opacity=""; } });
+  const тень=el("vc-dim"); if(тень){ тень.style.opacity=""; тень.style.bottom=""; }
+  const инстр=el("vc-tools"); if(инстр) инстр.style.opacity="";
+  syncComposerState();
+}
+
+// ── Отмена, остановка, отправка ───────────────────────────────────────────
+function recCancel(r, why){
+  if(!r || r.phase==="cancelling" || r.phase==="done") return;
+  clearTimeout(r.holdTimer);
+  r.phase="cancelling";
+  try{ if(r.recorder && r.recorder.state!=="inactive"){ r.recorder.onstop=null; r.recorder.ondataavailable=null; r.recorder.stop(); } }catch(e){}
+  r.chunks=[];
+  recReleaseMedia(r);
+  if(r.reviewUrl){ URL.revokeObjectURL(r.reviewUrl); r.reviewUrl=null; }
+  recPopNav(r, why==="chat");
+  if(rec===r) rec=null;
+  if(why==="slide") recVibrate(15);
+  if(r.holdAt) recBeginExit(r, why); else recTeardownUi(r);
+  r.phase="done";
+}
+function recStopRecorder(r){
+  return new Promise((resolve)=>{
+    const rr=r.recorder;
+    const собрать=()=>new Blob(r.chunks, {type:(rr && rr.mimeType) || r.mime || (r.mode==="voice" ? "audio/webm" : "video/webm")});
+    if(!rr || rr.state==="inactive"){ resolve(r.reviewBlob || собрать()); return; }
+    rr.onstop=()=>{ r.stoppedAt=r.stoppedAt ?? performance.now(); resolve(собрать()); };
+    try{ rr.stop(); }catch(e){ resolve(собрать()); }
+  });
+}
+async function recFinish(r){
+  if(!r || r.phase==="finishing" || r.phase==="cancelling" || r.phase==="done") return;
+  if(!r.recorder){
+    // Отпустили раньше, чем запись реально началась (ждали разрешение).
+    recCancel(r, "short");
+    recTip("Удерживайте кнопку, чтобы записать", 2200);
+    return;
+  }
+  r.phase="finishing";
+  if(r.mode==="video") recFreezeFrame(r);
+  const blob=await recStopRecorder(r);
+  const сек=r.reviewDur!=null ? r.reviewDur : recElapsed(r);
+  recReleaseMedia(r);
+  if(сек<REC_MIN_SEC || !blob || !blob.size){
+    r.phase="recording";   // чтобы отмена прошла обычным путём
+    recCancel(r, "short");
+    recTip("Слишком коротко — удерживайте, чтобы записать", 2400);
+    return;
+  }
+  const kind=r.mode==="voice" ? "voice" : "videoCircle";
+  const ext=((blob.type.split("/")[1]||"webm").split(";")[0]) || "webm";
+  const мс=Math.round(сек*1000);
+  const file=new File([blob], (kind==="voice" ? "voice_" : "circle_")+мс+"ms_"+Date.now()+"."+ext, {type:blob.type});
+  const waveform = kind==="voice" ? recWaveform(r.levels) : null;
+  const previewUrl=URL.createObjectURL(blob);
+  if(r.reviewUrl){ URL.revokeObjectURL(r.reviewUrl); r.reviewUrl=null; }
+  recPopNav(r);
+  if(rec===r) rec=null;
+  const msg=sendRecordedMedia({file, kind, duration:сек, waveform, previewUrl});
+  recFlyToMessage(r, msg);
+  r.phase="done";
+}
+// Последний кадр камеры остаётся в круге: камера освобождается сразу, а круг
+// ещё перелетает в ленту.
+function recFreezeFrame(r){
+  const still=el("vc-still"), круг=el("vc-circle");
+  if(!still || !r.canvas || круг?.classList.contains("review")) return;
+  try{ still.getContext("2d").drawImage(r.canvas, 0, 0, still.width, still.height); круг?.classList.add("still"); }catch(e){}
+}
+// Голосовое после фиксации: пауза с прослушиванием и продолжение записи.
+// Видео после фиксации: стоп — круг показывает записанное, дальше отмена
+// или отправка.
+function recPauseToggle(){
+  const r=rec; if(!r) return;
+  if(r.mode==="video"){ if(r.phase==="locked") recStopToReview(r); return; }
+  if(r.phase==="locked" && r.recorder && r.recorder.state==="recording"){
+    try{ r.recorder.pause(); }catch(e){ recStopToReview(r); return; }
+    r.pausedAt=performance.now(); r.phase="paused";
+    try{ r.recorder.requestData(); }catch(e){}
+    setTimeout(()=>{ if(rec===r && r.phase==="paused") recShowReview(r, new Blob(r.chunks, {type:r.recorder.mimeType||r.mime||"audio/webm"}), recElapsed(r), true); }, 60);
+    return;
+  }
+  if(r.phase==="paused" && r.recorder && r.recorder.state==="paused" && !r.stoppedAt){
+    r.pausedTotal+=performance.now()-r.pausedAt; r.pausedAt=null; r.phase="locked";
+    const ау=el("rec-audio"); if(ау){ ау.pause(); }
+    if(r.reviewUrl){ URL.revokeObjectURL(r.reviewUrl); r.reviewUrl=null; }
+    el("rec-layer")?.classList.remove("paused"); el("rec-panel")?.classList.remove("paused");
+    try{ r.recorder.resume(); }catch(e){}
+    recKick();
+  }
+}
+// Запись окончательно остановлена (стоп видео, уход в фон, потеря
+// устройства): устройства освобождены, записанное можно прослушать или
+// посмотреть, отправить или удалить.
+async function recStopToReview(r){
+  if(!r || !(r.phase==="locked" || r.phase==="paused")) return;
+  r.phase="paused";
+  const сек=recElapsed(r);
+  const blob=await recStopRecorder(r);
+  r.stoppedAt=r.stoppedAt ?? performance.now();
+  r.reviewBlob=blob; r.reviewDur=сек;
+  recReleaseMedia(r);
+  if(rec!==r) return;
+  r.hidePause=true;
+  recShowReview(r, blob, сек, false);
+}
+function recShowReview(r, blob, сек, можноПродолжить){
+  if(r.reviewUrl) URL.revokeObjectURL(r.reviewUrl);
+  r.reviewUrl=URL.createObjectURL(blob);
+  const слой=el("rec-layer"), панель=el("rec-panel");
+  слой?.classList.add("paused"); панель?.classList.add("paused");
+  слой?.classList.toggle("stopped", !можноПродолжить); панель?.classList.toggle("stopped", !можноПродолжить);
+  if(r.mode==="voice"){
+    const ау=el("rec-audio"); if(ау){ ау.src=r.reviewUrl; ау.load(); }
+    const волна=el("rec-wave"); if(волна) волна.innerHTML=renderWaveBars(recWaveform(r.levels, 32));
+    const д=el("rec-review-dur"); if(д) д.textContent=formatDur(сек);
+    const кн=el("rec-play"); if(кн) кн.classList.remove("playing");
+  } else {
+    const круг=el("vc-circle"), ревью=el("vc-review");
+    if(ревью){ ревью.src=r.reviewUrl; ревью.muted=true; ревью.loop=true; ревью.play().catch(()=>{}); }
+    круг?.classList.add("review");
+  }
+  recKick();
+}
+function recReviewPlay(){
+  const ау=el("rec-audio"), кн=el("rec-play"); if(!ау || !ау.src) return;
+  if(ау.paused){ ау.currentTime=ау.currentTime>=ау.duration-0.05 ? 0 : ау.currentTime; ау.play().catch(()=>{}); кн?.classList.add("playing"); }
+  else { ау.pause(); кн?.classList.remove("playing"); }
+  ау.onended=()=>кн?.classList.remove("playing");
+}
+function recFabClick(){
+  const r=rec; if(!r) return;
+  if(r.phase==="locked" || r.phase==="paused") recFinish(r);
+}
+function recCancelButton(){ const r=rec; if(r) recCancel(r, "button"); }
+function recTrackEnded(r){
+  if(rec!==r) return;
+  if(r.phase==="recording") recCancel(r, "device");
+  else if(r.phase==="locked") recStopToReview(r);
+}
+// Освободить микрофон и камеру: дорожки, холст, звук, кадры.
+function recReleaseMedia(r){
+  if(!r) return;
+  [r.stream, r.canvasStream].forEach(s=>{ try{ s && s.getTracks().forEach(t=>t.stop()); }catch(e){} });
+  r.stream=null; r.canvasStream=null;
+  try{ r.audioCtx && r.audioCtx.close(); }catch(e){}
+  r.audioCtx=null; r.analyser=null;
+  const live=el("vc-live"); if(live && live.srcObject){ live.pause(); live.srcObject=null; }
+}
+
+// ── Форма волны голосового из живой громкости записи ─────────────────────
+function recWaveform(levels, bars){
+  bars=bars||40;
+  if(!levels || !levels.length) return null;
+  const out=[]; const шаг=levels.length/bars;
+  for(let i=0;i<bars;i++){
+    const a=Math.floor(i*шаг), b=Math.max(a+1, Math.floor((i+1)*шаг));
+    let s=0, n=0; for(let j=a;j<b && j<levels.length;j++){ s+=levels[j]; n++; }
+    out.push(n ? s/n : 0);
+  }
+  const max=Math.max(...out, 0.001);
+  return out.map(v=>Math.max(0.06, Math.min(1, v/max)));
+}
+
+// ── «Назад» после фиксации отменяет запись ────────────────────────────────
+function recPushNav(r){
+  const f=function(){ if(rec===r){ r.navFn=null; recCancel(r, "back"); } };
+  f.navRec=true; r.navFn=f;
+  pushNavEntry(f);
+}
+// безНазад — запись отменяет смена чата: асинхронный «назад» гонялся бы с
+// записью нового чата в истории (новый чат тут же закрылся бы).
+function recPopNav(r, безНазад){
+  const f=r.navFn; r.navFn=null;
+  if(!f) return;
+  if(!безНазад && navStack[navStack.length-1]===f && navLive>0 && !_navBackInFlight){ _navBackInFlight=true; history.back(); }
+  else f.navSpent=true;
+}
+
+// ── Камера: смена и вспышка — только если устройство умеет ───────────────
+async function recVideoToolsCheck(r){
+  const flip=el("vc-flip"), flash=el("vc-flash");
+  try{
+    const devs=await navigator.mediaDevices.enumerateDevices();
+    const камер=devs.filter(d=>d.kind==="videoinput").length;
+    const tr=r.stream && r.stream.getVideoTracks()[0];
+    let куда="";
+    try{ куда=(tr.getSettings && tr.getSettings().facingMode) || ((tr.getCapabilities && tr.getCapabilities().facingMode)||[])[0] || ""; }catch(e){}
+    if(flip) flip.hidden = !(камер>1 && куда);
+  }catch(e){ if(flip) flip.hidden=true; }
+  recFlashCheck(r);
+}
+function recFlashCheck(r){
+  const flash=el("vc-flash"); if(!flash) return;
+  const tr=r.stream && r.stream.getVideoTracks()[0];
+  let умеет=false;
+  try{ умеет=!!(tr && tr.getCapabilities && tr.getCapabilities().torch); }catch(e){}
+  flash.hidden=!умеет; flash.classList.remove("on"); r.torch=false;
+}
+// Большинство телефонов не открывают вторую камеру, пока первая занята:
+// сначала освобождаем текущую, при неудаче возвращаем её. Холст держит
+// последний кадр, запись не прерывается.
+async function recFlipCamera(){
+  const r=rec; if(!r || r.mode!=="video" || !r.stream || r.stoppedAt || r.flipping) return;
+  r.flipping=true;
+  const на = r.facing==="user" ? "environment" : "user";
+  const открыть=(куда)=>navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:куда}, width:{ideal:640}, height:{ideal:640}}, audio:false});
+  const звук=r.stream.getAudioTracks();
+  r.stream.getVideoTracks().forEach(t=>{ t._flip=true; t.stop(); });
+  let новый=null, вышло=на;
+  try{ новый=await открыть(на); }
+  catch(e){ try{ новый=await открыть(r.facing); вышло=r.facing; showToast("❌ Не удалось переключить камеру"); }catch(e2){} }
+  r.flipping=false;
+  if(rec!==r || r.stoppedAt){ if(новый) новый.getTracks().forEach(t=>t.stop()); return; }
+  if(!новый){ recTrackEnded(r); return; }
+  const трек=новый.getVideoTracks()[0];
+  трек.addEventListener("ended", ()=>{ if(!трек._flip) recTrackEnded(r); });
+  r.stream=new MediaStream([трек, ...звук]);
+  r.facing=(трек.getSettings && трек.getSettings().facingMode) || вышло;
+  const live=el("vc-live"); if(live){ live.srcObject=r.stream; live.play().catch(()=>{}); }
+  el("vc-circle")?.classList.toggle("rear", r.facing==="environment");
+  recFlashCheck(r);
+}
+async function recToggleFlash(){
+  const r=rec; const tr=r && r.stream && r.stream.getVideoTracks()[0]; if(!tr) return;
+  try{ await tr.applyConstraints({advanced:[{torch:!r.torch}]}); r.torch=!r.torch; el("vc-flash")?.classList.toggle("on", r.torch); }catch(e){}
+}
+
+// ── Уход в фон, смена чата, Escape ────────────────────────────────────────
+function recOnBackground(){
+  const r=rec; if(!r) return;
+  if(r.phase==="arming"){ clearTimeout(r.holdTimer); rec=null; return; }
+  if(r.phase==="recording") recCancel(r, "background");
+  else if(r.phase==="locked" || (r.phase==="paused" && !r.stoppedAt)) recStopToReview(r);
+}
+function recCancelIfActive(){ const r=rec; if(r){ if(r.phase==="arming"){ clearTimeout(r.holdTimer); rec=null; } else recCancel(r, "chat"); } }
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden") recOnBackground(); vcPickAutoplay(); });
+if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", ()=>{ recInitButton(); setMicVideoMode(micVideoMode); });
+else { recInitButton(); setMicVideoMode(micVideoMode); }
+window.addEventListener("pagehide", recOnBackground);
+window.addEventListener("blur", ()=>{ const r=rec; if(r && r.phase==="recording" && r.pointerType==="mouse") recCancel(r, "background"); });
+document.addEventListener("keydown", (e)=>{
+  const r=rec;
+  if(!r || e.key!=="Escape" || e.defaultPrevented) return;
+  if(document.querySelector(".movl.on")) return;
+  e.preventDefault();
+  if(r.phase==="arming"){ clearTimeout(r.holdTimer); rec=null; return; }
+  recCancel(r, "button");
+});
+
+// ── Отправка записи: тот же путь, что у всех вложений ────────────────────
+function sendRecordedMedia({file, kind, duration, waveform, previewUrl}){
+  const chatId=S.chat;
+  const tm=now();
+  if(!S.messages[chatId]) S.messages[chatId]=[];
+  const msg={id:nextId(), clientMsgId:genClientMsgId(), t:"out", time:tm, ts:Date.now(), read:false, uploading:true, uploadProgress:0, tx:""};
+  msg._retryAtt={file, kind, duration, waveform, previewUrl, spoiler:false};
+  msg._retryCaption="";
+  if(kind==="voice") msg.voice={url:previewUrl, duration, waveform:waveform||null, size:file.size||0};
+  else msg.videoCircle={url:previewUrl, duration};
+  if(S.reply){ msg.reply={fr:S.reply.fr, tx:S.reply.tx}; cancelReply(); }
+  S.messages[chatId].push(msg);
+  const ch=S.chats.find(c=>c.id===chatId);
+  if(ch){ msg._chSnap={prev:ch.prev, time:ch.time, lastTs:ch.lastTs}; ch.prev = kind==="voice" ? "🎤 Голосовое" : "⭕ Видео-кружочек"; ch.time=tm; ch.lastTs=Date.now(); }
+  renderMsgs(); renderChats(); saveState();
+  retryAttachmentMsg(msg, chatId, ch, getChatMemberIds(S.chats.find(c=>c.id===chatId)));
+  return msg;
+}
+// Панель записи «уходит» в новое сообщение: голосовое вырастает из панели,
+// круг камеры перелетает на место исходящего кружка в ленте.
+function recFlyToMessage(r, msg){
+  const найти=()=>document.querySelector(`#msgs .video-circle-wrap[data-msg-id="${msg.id}"], #msgs .voice-msg[data-msg-id="${msg.id}"]`);
+  if(r.mode==="video" && r.stage && !recReduced()){
+    requestAnimationFrame(()=>{
+      const цель=найти();
+      const тр=цель && цель.getBoundingClientRect();
+      if(!тр || !тр.width){ recBeginExit(r, "send"); return; }
+      цель.style.visibility="hidden";
+      el("rec-layer")?.classList.add("sending");
+      r.fly={t0:performance.now(), cx:тр.left+тр.width/2, cy:тр.top+тр.height/2, size:тр.width,
+        onDone:()=>{ цель.style.visibility=""; recBeginExit(r, "send"); el("vc-stage")?.classList.remove("on"); }};
+      r.exitAt=null;
+      const шаг=()=>{ if(r.fly && !r.fly.done){ recFrame(r); requestAnimationFrame(шаг); } };
+      requestAnimationFrame(шаг);
+    });
+    return;
+  }
+  const панель=el("rec-panel"), пр=панель && панель.getBoundingClientRect();
+  recBeginExit(r, "send");
+  if(!пр || recReduced()) return;
+  requestAnimationFrame(()=>{
+    const цель=найти(); const пуз=цель && (цель.closest(".bub") || цель);
+    const тр=пуз && пуз.getBoundingClientRect(); if(!тр || !тр.width) return;
+    const sx=пр.width/тр.width, sy=пр.height/тр.height;
+    try{
+      пуз.animate([
+        {transformOrigin:"0 0", transform:`translate(${(пр.left-тр.left).toFixed(1)}px,${(пр.top-тр.top).toFixed(1)}px) scale(${sx.toFixed(3)},${sy.toFixed(3)})`, opacity:.35},
+        {transformOrigin:"0 0", transform:"none", opacity:1}
+      ], {duration:recDur(REC_FLY_MS), easing:"cubic-bezier(.25,.8,.35,1)"});
+    }catch(e){}
+  });
+}
+
+// ── Загрузка с прогрессом и отменой (голосовые и кружки) ─────────────────
+const uploadXhrs=new Map();
+function uploadWithProgress(file, m){
+  return new Promise((resolve, reject)=>{
+    const xhr=new XMLHttpRequest();
+    uploadXhrs.set(m.id, xhr);
+    xhr.open("POST", API_URL+"/api/upload");
+    const t=getToken(); if(t) xhr.setRequestHeader("Authorization", "Bearer "+t);
+    xhr.upload.onprogress=(ev)=>{ if(ev.lengthComputable){ m.uploadProgress=ev.loaded/Math.max(1, ev.total); paintUploadProgress(m); } };
+    xhr.onload=()=>{
+      uploadXhrs.delete(m.id);
+      let data={}; try{ data=JSON.parse(xhr.responseText||"{}"); }catch(e){}
+      if(xhr.status===401) onAuthorizedRequest401("/api/upload", t);
+      checkBannedResponse(data);
+      if(xhr.status>=200 && xhr.status<300 && data.success && data.url) resolve(data);
+      else reject(new Error(data.error || "Не удалось загрузить файл"));
+    };
+    xhr.onerror=()=>{ uploadXhrs.delete(m.id); reject(new Error("Нет связи")); };
+    xhr.onabort=()=>{ uploadXhrs.delete(m.id); const e=new Error("Отменено"); e.aborted=true; reject(e); };
+    const fd=new FormData(); fd.append("file", file);
+    xhr.send(fd);
+  });
+}
+function paintUploadProgress(m){
+  document.querySelectorAll(`[data-up-for="${m.id}"]`).forEach(c=>{
+    const L=+c.getAttribute("data-len")||94.25;
+    c.style.strokeDashoffset=String(L*(1-Math.max(0.04, Math.min(1, m.uploadProgress||0))));
+  });
+}
+function upRingHTML(m, r, len){
+  const off=len*(1-Math.max(0.04, Math.min(1, m.uploadProgress||0)));
+  return `<circle class="up-ring-bg" cx="${r+3}" cy="${r+3}" r="${r}"></circle><circle class="up-ring-fg" data-up-for="${m.id}" data-len="${len}" cx="${r+3}" cy="${r+3}" r="${r}" style="stroke-dasharray:${len};stroke-dashoffset:${off}"></circle>`;
+}
+// Отмена отправки с самого сообщения: загрузка обрывается, повторов нет,
+// сообщение убирается.
+function cancelUpload(e, msgId){
+  if(e){ e.stopPropagation(); e.preventDefault(); }
+  const chatId=S.chat;
+  const arr=S.messages[chatId]||[];
+  const i=arr.findIndex(x=>x.id===msgId); if(i<0) return;
+  const m=arr[i];
+  if(!m.uploading || m.dbId) return;
+  m._cancelled=true;
+  const xhr=uploadXhrs.get(m.id); if(xhr){ try{ xhr.abort(); }catch(_){} }
+  arr.splice(i,1);
+  const url=m._retryAtt && m._retryAtt.previewUrl; if(url && url.startsWith("blob:")) setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  const ch=S.chats.find(c=>c.id===chatId);
+  if(ch && i===arr.length && m._chSnap){ ch.prev=m._chSnap.prev; ch.time=m._chSnap.time; ch.lastTs=m._chSnap.lastTs; }
+  renderMsgs(); renderChats(); saveState();
+  showToast("Отправка отменена");
+}
+// Длительность записи — в имени файла (voice_12345ms_…): получатель видит
+// её сразу, без скачивания файла, и без изменений сервера.
+function recDurationFromName(name){
+  const m=/_(\d{2,7})ms_/.exec(String(name||""));
+  return m ? +m[1]/1000 : 0;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ВОСПРОИЗВЕДЕНИЕ КРУЖКОВ В ЛЕНТЕ (4 октября 2026)
+// ══════════════════════════════════════════════════════════════════════════
+// Как в Telegram: кружок в видимой части ленты сам загружается и играет без
+// звука (muted, playsinline); вне видимой части — пауза; без звука играет не
+// больше одного кружка. Первый тап — остальные останавливаются, этот
+// начинается строго с начала и со звуком; дальше тап — пауза/продолжение.
+// Конец со звуком — назад в беззвучный предпросмотр. Перерисовка ленты
+// переносит сами <video>/<audio> в новые узлы, поэтому новое сообщение не
+// обрывает то, что сейчас играет.
+let vcObserver=null;
+function vcEnsureObserver(){
+  const box=el("msgs"); if(!box || !window.IntersectionObserver) return null;
+  if(vcObserver && vcObserver._root===box) return vcObserver;
+  vcObserver=new IntersectionObserver((entries)=>{
+    entries.forEach(en=>{ en.target._vcRatio=en.isIntersecting ? en.intersectionRatio : 0; });
+    vcPickAutoplay();
+  }, {root:box, threshold:[0, 0.2, 0.25, 0.5, 0.6, 0.75, 1]});
+  vcObserver._root=box;
+  return vcObserver;
+}
+function vcAfterRender(){
+  const io=vcEnsureObserver(); if(!io) return;
+  io.disconnect();
+  document.querySelectorAll("#msgs .video-circle-wrap[data-msg-id]").forEach(w=>{ if(w._vcRatio==null) w._vcRatio=0; io.observe(w); vcWire(w); });
+}
+function vcWire(w){
+  const v=w.querySelector("video.video-circle"); if(!v || v._vcWired) return;
+  v._vcWired=true;
+  v.addEventListener("timeupdate", ()=>{
+    const ww=v.closest(".video-circle-wrap"); if(!ww) return;
+    const д=vcDuration(v, ww);
+    const ring=ww.querySelector(".vc-ring-progress");
+    if(ring && ww.classList.contains("vc-sound") && д) ring.style.strokeDashoffset=String(295.3*(1-Math.min(1, v.currentTime/д)));
+    const бейдж=ww.querySelector(".vc-dur-badge");
+    if(бейдж && д){ бейдж.hidden=false; бейдж.textContent=formatDur(ww.classList.contains("vc-sound") ? Math.max(0, д-v.currentTime) : д); }
+  });
+  v.addEventListener("loadedmetadata", ()=>{
+    const ww=v.closest(".video-circle-wrap"); const бейдж=ww && ww.querySelector(".vc-dur-badge");
+    if(бейдж && isFinite(v.duration) && v.duration>0 && бейдж.hidden){ бейдж.hidden=false; бейдж.textContent=formatDur(v.duration); }
+  });
+  v.addEventListener("ended", ()=>{
+    const ww=v.closest(".video-circle-wrap"); if(!ww) return;
+    vcToPreview(ww);
+    vcPickAutoplay();
+  });
+  v.addEventListener("loadeddata", ()=>{ const ww=v.closest(".video-circle-wrap"); ww && ww.classList.add("vc-ready"); });
+}
+function vcDuration(v, w){
+  if(isFinite(v.duration) && v.duration>0) return v.duration;
+  const д=+((w && w.dataset.dur) || 0); return д>0 ? д : 0;
+}
+function vcToPreview(w){
+  const v=w.querySelector("video.video-circle"); if(!v) return;
+  w.classList.remove("vc-sound","vc-paused");
+  v.muted=true; v.loop=true;
+  const ring=w.querySelector(".vc-ring-progress"); if(ring) ring.style.strokeDashoffset="295.3";
+}
+// Переписка на экране: чат открыт (на телефоне — показан), страница видна и
+// поверх нет экрана вроде профиля или настроек.
+function vcFeedVisible(){
+  if(!S.chat || document.visibilityState==="hidden") return false;
+  if(document.body.classList.contains("mobile-mode") && !document.querySelector(".layout.chat-open")) return false;
+  if([...document.querySelectorAll(".screen.on")].some(x=>!x.classList.contains("closing"))) return false;
+  if(document.querySelector(".rp.mobile-open")) return false;
+  return true;
+}
+function vcPickAutoplay(){
+  const все=[...document.querySelectorAll("#msgs .video-circle-wrap[data-msg-id]")];
+  if(!все.length) return;
+  if(!vcFeedVisible()){ все.forEach(w=>{ const v=w.querySelector("video.video-circle"); if(v && !v.paused){ v.pause(); if(w.classList.contains("vc-sound")) w.classList.add("vc-paused"); } }); return; }
+  // Кружок со звуком ушёл из виду — пауза.
+  все.forEach(w=>{ const v=w.querySelector("video.video-circle"); if(w.classList.contains("vc-sound") && (w._vcRatio||0)<0.2 && v && !v.paused){ v.pause(); w.classList.add("vc-paused"); } });
+  const играетСоЗвуком=все.some(w=>{ const v=w.querySelector("video.video-circle"); return w.classList.contains("vc-sound") && v && !v.paused; });
+  let выбран=null;
+  if(!играетСоЗвуком){
+    for(let i=все.length-1;i>=0;i--){ if((все[i]._vcRatio||0)>=0.6){ выбран=все[i]; break; } }
+  }
+  все.forEach(w=>{
+    const v=w.querySelector("video.video-circle"); if(!v) return;
+    if(w.classList.contains("vc-sound")) return;   // им управляет человек
+    if((w._vcRatio||0)>0 && v.preload!=="auto"){ v.preload="auto"; }   // первый кадр вместо чёрного круга
+    if(w===выбран){
+      v.muted=true; v.loop=true; v.playsInline=true;
+      if(v.paused){ const p=v.play(); if(p && p.catch) p.catch(()=>{}); }
+    } else if(!v.paused) v.pause();
+  });
+}
+function vcStopSound(){
+  document.querySelectorAll("#msgs .video-circle-wrap.vc-sound").forEach(w=>{ const v=w.querySelector("video.video-circle"); if(v && !v.paused) v.pause(); vcToPreview(w); });
+}
+function vcStopOthers(кроме){
+  document.querySelectorAll("#msgs .video-circle-wrap video.video-circle").forEach(v=>{
+    const w=v.closest(".video-circle-wrap"); if(w===кроме) return;
+    if(!v.paused) v.pause();
+    if(w && w.classList.contains("vc-sound")) vcToPreview(w);
+  });
+  document.querySelectorAll("#msgs .voice-msg audio").forEach(a=>{ if(!a.paused) a.pause(); });
+}
+function vcTap(e, w){
+  if(e && e.target && e.target.closest(".vc-speed-btn,.vc-up-x,.vc-ring")) return;
+  if(w.classList.contains("uploading")) return;
+  const v=w.querySelector("video.video-circle"); if(!v) return;
+  if(!w.classList.contains("vc-sound")){
+    vcStopOthers(w);
+    w.classList.add("vc-sound"); w.classList.remove("vc-paused");
+    v.loop=false; v.muted=false;
+    try{ v.currentTime=0; }catch(_){}
+    v.playbackRate=S.playbackSpeed||1;
+    const p=v.play(); if(p && p.catch) p.catch(()=>{});
+    return;
+  }
+  if(v.paused){ vcStopOthers(w); const p=v.play(); if(p && p.catch) p.catch(()=>{}); w.classList.remove("vc-paused"); }
+  else { v.pause(); w.classList.add("vc-paused"); }
+}
+// Чат закрыли или переключили: видео и звук в нём останавливаются, запись
+// отменяется.
+function stopChatMedia(){
+  document.querySelectorAll("#msgs video, #msgs audio").forEach(x=>{ try{ x.pause(); }catch(e){} });
+  document.querySelectorAll("#msgs .video-circle-wrap.vc-sound").forEach(vcToPreview);
+  recCancelIfActive();
+}
+// Перенос живых медиа-узлов через перерисовку ленты.
+function mediaStashBeforeRender(c){
+  const ст=new Map();
+  c.querySelectorAll(".video-circle-wrap[data-msg-id] video.video-circle, .voice-msg[data-msg-id] audio").forEach(x=>{
+    const w=x.closest("[data-msg-id]"); if(!w) return;
+    const src=x.getAttribute("src")||x.dataset.src||"";
+    if(!src) return;
+    if(x.tagName==="VIDEO" && x.error) return;   // не загрузилось — пусть новая пересборка попробует заново
+    ст.set(w.dataset.msgId+"|"+src, {node:x, cls:w.className, ratio:w._vcRatio});
+  });
+  return ст;
+}
+function mediaRestoreAfterRender(c, ст){
+  if(!ст || !ст.size) return;
+  c.querySelectorAll(".video-circle-wrap[data-msg-id] video.video-circle, .voice-msg[data-msg-id] audio").forEach(x=>{
+    const w=x.closest("[data-msg-id]"); if(!w) return;
+    const ключ=w.dataset.msgId+"|"+(x.getAttribute("src")||x.dataset.src||"");
+    const был=ст.get(ключ); if(!был) return;
+    x.replaceWith(был.node);
+    if(w.classList.contains("video-circle-wrap")){
+      ["vc-sound","vc-paused","vc-ready"].forEach(k=>{ if(был.cls.split(" ").includes(k)) w.classList.add(k); });
+      w._vcRatio=был.ratio;
+      const mlo=w.querySelector(".msg-media-loading");
+      if(mlo){ if(был.node.readyState>=2) mlo.remove(); else showMediaLoading(был.node); }
+      try{ был.node.dispatchEvent(new Event("timeupdate")); }catch(_){}   // кольцо и время — с текущего места
     } else {
-      toggleVoiceRecording(); // существующая функция — сейчас не пишем, значит просто стартует запись
+      const a=был.node, btn=w.querySelector(".voice-play-btn");
+      if(btn && !a.paused) btn.firstChild && (btn.firstChild.nodeType===3) && (btn.firstChild.textContent="⏸");
+      const progress=w.querySelector(".voice-wave-progress");
+      if(progress && a.duration && isFinite(a.duration)) progress.style.clipPath=`inset(0 ${100-a.currentTime/a.duration*100}% 0 0)`;
     }
-  }, MIC_HOLD_MS);
-}
-function micTouchMove(e){
-  if(!micGestureState) return;
-  const state=micGestureState;
-  if(!state.started) return; // ждём порога удержания — жесты слайда пока не считаем
-  const t=e.touches[0];
-  const dx=t.clientX-state.x0, dy=t.clientY-state.y0;
-  if(!state.locked && dy<-MIC_LOCK_THRESHOLD_PX){
-    state.locked=true;
-    if(navigator.vibrate) navigator.vibrate(30);
-    // Голосовое — руки свободны, дальше как обычно через .recording-bar.
-    // Видео — модалка остаётся открытой, кнопка "⏹" внутри неё работает как обычно.
-    if(micVideoMode==="voice"){ const hint=el("rec-hint"); if(hint) hint.textContent="🔒 Заблокировано — отпустите, запись продолжится"; }
-    return;
-  }
-  if(!state.locked){
-    const nowCancelled=dx<-MIC_CANCEL_THRESHOLD_PX;
-    if(nowCancelled!==state.cancelled){
-      state.cancelled=nowCancelled;
-      if(nowCancelled && navigator.vibrate) navigator.vibrate(20);
-      if(micVideoMode==="voice"){
-        const hint=el("rec-hint"); if(hint) hint.textContent=nowCancelled?"← Отпустите для отмены":"Запись голосового…";
-      }
-    }
-  }
-}
-function micTouchEnd(e){
-  if(!micGestureState) return;
-  const state=micGestureState; micGestureState=null;
-  clearTimeout(state.holdTimer);
-  justHandledMicTouch=true; // проглатывает синтетический click, идущий следом за этим touchend
-  if(!state.started){
-    // Быстрый тап без удержания — запись ещё не началась, просто меняем режим
-    setMicVideoMode(micVideoMode==="voice"?"video":"voice");
-    return;
-  }
-  if(state.locked) return; // руки свободны — запись продолжается, стоп/отмена — через ручные кнопки как обычно
-  if(micVideoMode==="video"){
-    if(state.cancelled) cancelVideoCircle(); else finishVideoCircle();
-    return;
-  }
-  const hint=el("rec-hint"); if(hint) hint.textContent="Запись голосового…";
-  if(state.cancelled) cancelVoiceRecording();
-  else stopVoiceRecording();
-}
-function onMicBtnClick(e){
-  if(justHandledMicTouch){ justHandledMicTouch=false; return; }
-  // На мобильном обе кнопки (#mic-btn/#vc-btn) — по сути один и тот же логический
-  // контрол, просто CSS показывает то одну, то другую по micVideoMode; сюда
-  // попадаем только если клик прошёл БЕЗ предшествующего touch-жеста (редкий
-  // случай, обычно его глотает justHandledMicTouch выше).
-  if(isMobileLayout()){ if(micVideoMode==="video") openVideoCircleRecorder(); else toggleVoiceRecording(); return; }
-  toggleVoiceRecording(); // десктоп/мышь — прежнее поведение без изменений
-}
-function onVcBtnClick(e){
-  if(justHandledMicTouch){ justHandledMicTouch=false; return; }
-  if(isMobileLayout()){ if(micVideoMode==="video") openVideoCircleRecorder(); else toggleVoiceRecording(); return; }
-  openVideoCircleRecorder(); // десктоп/мышь — прежнее поведение без изменений, кнопка всегда отдельная
+  });
 }
 
 // Воспроизведение голосового в чате: play/pause + прогресс-бар
 function toggleVoicePlay(wrapEl, url){
   const audio=wrapEl.querySelector("audio");
   const btn=wrapEl.querySelector(".voice-play-btn");
-  const progress=wrapEl.querySelector(".voice-wave-progress");
-  const durEl=wrapEl.querySelector(".voice-dur");
   if(!audio.src) audio.src=url;
   // Ставим на паузу все остальные голосовые в чате перед воспроизведением этого
   if(audio.paused){
     document.querySelectorAll(".voice-msg audio").forEach(a=>{ if(a!==audio && !a.paused) a.pause(); });
+    vcStopSound();   // кружок со звуком — тоже
     audio.playbackRate=S.playbackSpeed||1;
     audio.play();
-    btn.textContent="⏸";
+    btn.firstChild && btn.firstChild.nodeType===3 ? (btn.firstChild.textContent="⏸") : (btn.textContent="⏸");
     // Помечаем прослушанным — раньше "прослушано/не прослушано" не отслеживалось вообще
     const msgId=wrapEl.dataset.msgId;
     if(msgId){
@@ -11515,16 +12477,22 @@ function toggleVoicePlay(wrapEl, url){
     }
   } else {
     audio.pause();
-    btn.textContent="▶";
+    btn.firstChild && btn.firstChild.nodeType===3 ? (btn.firstChild.textContent="▶") : (btn.textContent="▶");
   }
   if(!audio._wired){
     audio._wired=true;
+    // Узлы ищем каждый раз заново: перерисовка ленты переносит этот <audio>
+    // в новую строку, и старые ссылки на кнопку и прогресс устарели бы.
+    const узлы=()=>{ const w=audio.closest(".voice-msg"); return w ? {w, btn:w.querySelector(".voice-play-btn"), progress:w.querySelector(".voice-wave-progress"), durEl:w.querySelector(".voice-dur")} : null; };
+    const полн=()=>{ if(isFinite(audio.duration) && audio.duration>0) return audio.duration; const u=узлы(); const m=u && (S.messages[S.chat]||[]).find(x=>String(x.id)===String(u.w.dataset.msgId)); return (m && m.voice && m.voice.duration) || 0; };
     audio.addEventListener("timeupdate",()=>{
-      if(audio.duration && progress){ const pct=audio.currentTime/audio.duration*100; progress.style.clipPath=`inset(0 ${100-pct}% 0 0)`; }
-      durEl.textContent=formatDur(audio.duration&&!isNaN(audio.duration)?(audio.duration-audio.currentTime):0);
+      const u=узлы(); if(!u) return; const д=полн();
+      if(д && u.progress){ const pct=Math.min(100, audio.currentTime/д*100); u.progress.style.clipPath=`inset(0 ${100-pct}% 0 0)`; }
+      if(u.durEl) u.durEl.textContent=formatDur(д ? (д-audio.currentTime) : 0);
     });
-    audio.addEventListener("ended",()=>{ btn.textContent="▶"; if(progress)progress.style.clipPath="inset(0 100% 0 0)"; durEl.textContent=formatDur(audio.duration||0); });
-    audio.addEventListener("loadedmetadata",()=>{ if(audio.duration && !isNaN(audio.duration)) durEl.textContent=formatDur(audio.duration); });
+    audio.addEventListener("ended",()=>{ const u=узлы(); if(!u) return; if(u.btn) (u.btn.firstChild && u.btn.firstChild.nodeType===3 ? (u.btn.firstChild.textContent="▶") : (u.btn.textContent="▶")); if(u.progress) u.progress.style.clipPath="inset(0 100% 0 0)"; if(u.durEl) u.durEl.textContent=formatDur(полн()); });
+    audio.addEventListener("loadedmetadata",()=>{ const u=узлы(); const д=полн(); if(u && u.durEl && д) u.durEl.textContent=formatDur(д); });
+    audio.addEventListener("pause",()=>{ const u=узлы(); if(u && u.btn) (u.btn.firstChild && u.btn.firstChild.nodeType===3 ? (u.btn.firstChild.textContent="▶") : (u.btn.textContent="▶")); });
   }
 }
 function seekVoice(e, wrapEl){
@@ -11533,14 +12501,16 @@ function seekVoice(e, wrapEl){
   const bar=e.currentTarget;
   const progress=wrapEl.querySelector(".voice-wave-progress");
   const durEl=wrapEl.querySelector(".voice-dur");
-  if(!audio.duration || isNaN(audio.duration)) return;
+  const мс=(S.messages[S.chat]||[]).find(x=>String(x.id)===String(wrapEl.dataset.msgId));
+  const длит=(isFinite(audio.duration) && audio.duration>0) ? audio.duration : ((мс && мс.voice && +мс.voice.duration) || 0);
+  if(!audio.src || !длит) return;
 
   const applySeek=(clientX)=>{
     const rect=bar.getBoundingClientRect();
     const pct=Math.max(0,Math.min(1,(clientX-rect.left)/rect.width));
-    audio.currentTime=pct*audio.duration;
+    audio.currentTime=pct*длит;
     if(progress) progress.style.clipPath=`inset(0 ${100-pct*100}% 0 0)`;
-    if(durEl) durEl.textContent=formatDur(audio.duration-audio.currentTime);
+    if(durEl) durEl.textContent=formatDur(длит-audio.currentTime);
   };
 
   applySeek(e.touches?e.touches[0].clientX:e.clientX);
@@ -11558,42 +12528,17 @@ function seekVoice(e, wrapEl){
   document.addEventListener("touchend",onUp);
 }
 
-// ── ВИДЕО-КРУЖОЧКИ ───────────────────────────────────────────
-const VC_MAX_SEC=60; // как в Telegram — максимум минута
-let vcRecorder=null, vcChunks=[], vcStream=null, vcStartTs=0, vcTimerInt=null, vcRecording=false;
-
-async function openVideoCircleRecorder(){
-  if(isOfficialBotChat(S.chat)){ showToast("⭕ Видео-кружочки здесь недоступны"); return; }
-  const vch=S.chats.find(c=>c.id===S.chat);
-  if(vch?.peerBlockVoiceVideo){ showToast("🔒 Собеседник запретил голосовые и видео-сообщения"); return; }
-  try{
-    vcStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:400,height:400},audio:true});
-  }catch(e){
-    showToast("❌ Нет доступа к камере — разреши в настройках браузера");
-    return;
-  }
-  const preview=el("vc-preview");
-  preview.srcObject=vcStream;
-  el("vc-timer").textContent="0:00";
-  el("vc-rec-btn").style.display="flex";
-  el("vc-rec-btn").classList.remove("recording");
-  el("vc-rec-btn").textContent="⏺";
-  el("vc-send-btn").style.display="none";
-  openM("m-videocircle");
-}
-
-let vcCanvas=null, vcCanvasCtx=null, vcCanvasRaf=null, vcSourceVideo=null;
-
-// Водяной знак "ANGIE" дугой по нижнему краю кружочка — свой аналог того,
-// что у Telegram уже вшито в скачиваемый файл видео-заметки
+// Водяной знак дугой по нижнему краю кружочка — только в скачиваемом файле
+// (свой аналог того, что Telegram вшивает в файл видеосообщения). 4 окт 2026:
+// бренд — «Монохром» (было ANGIE/ЭНДЖИ).
 function drawVcWatermark(ctx,size){
   const y=size*0.895;
   const logoR=size*0.032;
-  const logoX=size*0.36, logoY=y;
+  const logoX=size*0.33, logoY=y;
   ctx.save();
   ctx.shadowColor="rgba(0,0,0,.5)";
   ctx.shadowBlur=size*0.02;
-  // Логотип — шестиугольник, как эмблема Angie
+  // Шестиугольник — знак «Монохрома».
   ctx.fillStyle="rgba(255,255,255,.9)";
   ctx.beginPath();
   for(let i=0;i<6;i++){
@@ -11603,92 +12548,13 @@ function drawVcWatermark(ctx,size){
   }
   ctx.closePath();
   ctx.fill();
-  // Текст рядом с логотипом
   ctx.font="700 "+Math.round(size*0.034)+"px Syne, Arial, sans-serif";
   ctx.textAlign="left";
   ctx.textBaseline="middle";
-  ctx.fillText(detectIsRussianRegion() ? "ЭНДЖИ" : "ANGIE", logoX+logoR*1.9, logoY);
+  ctx.fillText(detectIsRussianRegion() ? BRAND_RU : BRAND_EN, logoX+logoR*1.9, logoY);
   ctx.restore();
 }
 
-function toggleVideoCircleRecording(){
-  if(vcRecording){ finishVideoCircle(); return; }
-  vcChunks=[];
-  const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus") ? "video/webm;codecs=vp8,opus" : (MediaRecorder.isTypeSupported("video/webm")?"video/webm":"");
-  vcRecorder = mime ? new MediaRecorder(vcStream,{mimeType:mime}) : new MediaRecorder(vcStream);
-  vcRecorder.ondataavailable=e=>{ if(e.data && e.data.size>0) vcChunks.push(e.data); };
-  vcRecorder.start();
-  vcStartTs=Date.now();
-  vcRecording=true;
-  el("vc-rec-btn").classList.add("recording");
-  el("vc-rec-btn").textContent="⏹";
-  vcTimerInt=setInterval(()=>{
-    const sec=(Date.now()-vcStartTs)/1000;
-    el("vc-timer").textContent=formatDur(sec);
-    if(sec>=VC_MAX_SEC) finishVideoCircle();
-  },200);
-}
-
-function closeVideoCircleModal(){
-  clearInterval(vcTimerInt);
-  cancelAnimationFrame(vcCanvasRaf);
-  el("vc-rec-btn").classList.remove("recording");
-  el("m-videocircle").classList.remove("on");
-  if(vcStream){ vcStream.getTracks().forEach(t=>t.stop()); vcStream=null; }
-  if(vcSourceVideo){ vcSourceVideo.pause(); vcSourceVideo.srcObject=null; vcSourceVideo=null; }
-  vcCanvas=null; vcCanvasCtx=null;
-  vcRecording=false;
-}
-
-function cancelVideoCircle(){
-  if(vcRecorder && vcRecorder.state==="recording"){ vcRecorder.onstop=null; vcRecorder.stop(); }
-  closeVideoCircleModal();
-  vcRecorder=null; vcChunks=[];
-}
-
-function finishVideoCircle(){
-  if(!vcRecording || !vcRecorder || vcRecorder.state!=="recording") return;
-  const durationSec=(Date.now()-vcStartTs)/1000;
-  vcRecorder.onstop=()=>{
-    closeVideoCircleModal();
-    if(durationSec<1){ showToast("❌ Слишком короткая запись"); vcRecorder=null; vcChunks=[]; return; }
-    const blob=new Blob(vcChunks, {type: vcRecorder.mimeType||"video/webm"});
-    const ext=(blob.type.split("/")[1]||"webm").split(";")[0];
-    const file=new File([blob], "circle_"+Date.now()+"."+ext, {type: blob.type});
-    const previewUrl=URL.createObjectURL(blob);
-    if(pendingAttach && (pendingAttach.kind==="video"||pendingAttach.kind==="audio"||pendingAttach.kind==="voice"||pendingAttach.kind==="videoCircle") && pendingAttach.previewUrl){
-      URL.revokeObjectURL(pendingAttach.previewUrl);
-    }
-    pendingAttach={file, kind:"videoCircle", previewUrl, spoiler:false, duration:durationSec};
-    renderAttachPreview();
-    vcRecorder=null; vcChunks=[];
-  };
-  vcRecorder.stop();
-}
-
-// Воспроизведение кружочка в чате: тап — play/pause, звук включается сразу
-function toggleVideoCirclePlay(wrapEl){
-  const video=wrapEl.querySelector("video");
-  const overlay=wrapEl.querySelector(".vc-play-overlay");
-  const ring=wrapEl.querySelector(".vc-ring-progress");
-  if(video.paused){
-    document.querySelectorAll(".video-circle-wrap video").forEach(v=>{ if(v!==video && !v.paused) v.pause(); });
-    video.muted=false;
-    video.playbackRate=S.playbackSpeed||1;
-    video.play();
-    overlay.classList.add("hidden");
-  } else {
-    video.pause();
-    overlay.classList.remove("hidden");
-  }
-  if(!video._wired){
-    video._wired=true;
-    video.addEventListener("timeupdate",()=>{
-      if(video.duration && ring){ const pct=video.currentTime/video.duration; ring.style.strokeDashoffset=295.3*(1-pct); }
-    });
-    video.addEventListener("ended",()=>{ overlay.classList.remove("hidden"); if(ring) ring.style.strokeDashoffset=295.3; video.currentTime=0; });
-  }
-}
 // Скорость воспроизведения — общая и для голосовых, и для видео-кружочков,
 // как в Telegram: 1x → 1.5x → 2x → снова 1x. Выбор запоминается и сразу
 // применяется ко всем другим открытым голосовым/кружочкам в чате.
@@ -11707,16 +12573,18 @@ function seekVideoCircle(e, wrapEl){
   e.stopPropagation();
   const video=wrapEl.querySelector("video");
   const ring=wrapEl.querySelector(".vc-ring-progress");
-  if(!video.duration || isNaN(video.duration)) return;
+  const длит=vcDuration(video, wrapEl);   // у записи из браузера duration бывает Infinity
+  if(!длит) return;
 
   const applySeek=(clientX, clientY)=>{
-    const rect=wrapEl.getBoundingClientRect();
+    const rect=(video.closest(".video-circle-wrap")||wrapEl).getBoundingClientRect();
     const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
     const dx=clientX-cx, dy=clientY-cy;
     let angle=Math.atan2(dy,dx)*180/Math.PI+90; // 0° = 12 часов, дальше по часовой
     if(angle<0) angle+=360;
-    video.currentTime=(angle/360)*video.duration;
-    if(ring){ const pct=angle/360; ring.style.strokeDashoffset=295.3*(1-pct); }
+    video.currentTime=(angle/360)*длит;
+    const ringNow=(video.closest(".video-circle-wrap")||wrapEl).querySelector(".vc-ring-progress");
+    if(ringNow){ const pct=angle/360; ringNow.style.strokeDashoffset=295.3*(1-pct); }
   };
 
   const getXY=(ev)=> ev.touches ? [ev.touches[0].clientX, ev.touches[0].clientY] : [ev.clientX, ev.clientY];
@@ -11814,7 +12682,10 @@ function renderAttachPreview(){
   const spWrap=el("ap-spoiler-wrap");
   spWrap.style.display = canSpoiler ? "flex" : "none";
   el("ap-spoiler-cb").checked = !!pendingAttach.spoiler;
-  el("minput")?.focus();
+  // Фото и файл подписываются — поле ввода в фокусе. Свежая запись голосового
+  // или кружка сюда не попадает (её отправляет панель записи) и клавиатуру не
+  // открывает.
+  if(!(pendingAttach.kind==="voice" || pendingAttach.kind==="videoCircle")) el("minput")?.focus();
 }
 
 function toggleAttachSpoiler(cb){
@@ -12322,12 +13193,15 @@ function ctxHolePath(row, полоса){
   const f=el("msgs")?.getBoundingClientRect(); if(!f || !полоса) return "none";
   const n=v=>Math.round(v*100)/100;
   let d=`M0 0H${W}V${H}H0Z`, дыр=0;
-  for(const k of ctxMsgParts(row)){
+  // У кружка пузыря нет — вырезаем видимые части: сам круг, время, реакции.
+  const части=ctxMsgParts(row).flatMap(p=>p.classList.contains("vc-bub")
+    ? [...p.children].filter(x=>x.offsetWidth>0 && x.offsetHeight>0 && getComputedStyle(x).visibility!=="hidden") : [p]);
+  for(const k of части){
     const q=k.getBoundingClientRect(), s=getComputedStyle(k);
     const l=Math.max(q.left,f.left), r=Math.min(q.right,f.right);
     const t=Math.max(q.top,f.top,полоса.top), b=Math.min(q.bottom,f.bottom,полоса.bottom);
     if(r-l<1 || b-t<1) continue;
-    const рад=(v)=>parseFloat(String(v).split(" ")[0])||0;
+    const рад=(v)=>{ const t0=String(v).split(" ")[0]; return t0.endsWith("%") ? parseFloat(t0)/100*Math.min(q.width,q.height) : (parseFloat(t0)||0); };
     const max=Math.min((r-l)/2,(b-t)/2);
     // Срезанный угол (часть ушла за ленту или под группу) — прямой.
     let tl=(t>q.top+.5||l>q.left+.5)?0:Math.min(рад(s.borderTopLeftRadius),max);
@@ -13159,11 +14033,23 @@ function isInputEmpty(){
 // \u043F\u0440\u0438\u043A\u0440\u0435\u043F\u043B\u0435\u043D\u043E. "\u041F\u0443\u0441\u0442\u043E" \u0434\u043B\u044F composer'\u0430 \u0442\u0435\u043F\u0435\u0440\u044C \u0437\u043D\u0430\u0447\u0438\u0442 "\u043D\u0435\u0442 \u043D\u0438 \u0442\u0435\u043A\u0441\u0442\u0430, \u043D\u0438
 // \u0432\u043B\u043E\u0436\u0435\u043D\u0438\u044F", \u0430 \u043D\u0435 \u0442\u043E\u043B\u044C\u043A\u043E "\u043D\u0435\u0442 \u0442\u0435\u043A\u0441\u0442\u0430".
 function isComposerEmpty(){
-  return isInputEmpty() && !pendingAttach && !(pendingAttachGroup && pendingAttachGroup.length);
+  return !composerCanSend();
 }
-function syncComposerEmptyClass(){
-  el("minput")?.classList.toggle("empty", isComposerEmpty());
+// ⚠️ 4 октября 2026. Один источник истины для правой кнопки строки ввода:
+// есть что отправить (настоящий текст, вложение, альбом, готовая запись) —
+// стрелка отправки, нет — кнопка записи. Пробелы — не текст. Свежая запись
+// голосового или кружка подписи не имеет и сюда как вложение не попадает:
+// её отправляет сама панель записи.
+function composerCanSend(){
+  const запись = !!(rec && (rec.phase==="paused" || rec.phase==="locked"));
+  return !isInputEmpty() || !!pendingAttach || !!(pendingAttachGroup && pendingAttachGroup.length) || запись;
 }
+function syncComposerState(){
+  const можно=composerCanSend();
+  el("minput")?.classList.toggle("empty", !можно);
+  document.body.classList.toggle("composer-can-send", можно);
+}
+const syncComposerEmptyClass=syncComposerState;   // прежнее имя — у прежних вызовов
 
 // Показать/скрыть плашку форматирования при выделении текста
 function onTextSelect(){
@@ -13688,7 +14574,15 @@ let storiesNavFn=null;           // запись истории под раск�
 let storiesPendingRender=false;  // обновление пришло во время жеста
 
 let pullStartY=null, pullActive=false, pullEngaged=false, pullStage=0;
-let pullStartState="collapsed", pullLastY=0, pullLastT=0, pullVel=0;
+let pullStartState="collapsed", pullSamples=[];
+function pullVelocity(сейчас){
+  const n=pullSamples.length; if(n<2) return 0;
+  const b=pullSamples[n-1];
+  if(сейчас!=null && сейчас-b.t>80) return 0;   // палец стоял перед отпусканием — рывка нет
+  let i=0; while(i<n-2 && b.t-pullSamples[i].t>100) i++;
+  const a=pullSamples[i];
+  return b.t>a.t ? (b.y-a.y)/(b.t-a.t) : 0;
+}
 
 // Есть ли у кого-нибудь активные сторис прямо сейчас.
 function storiesAvailable(){
@@ -13714,7 +14608,12 @@ const ST_STACK_STEP=21;    // шаг стопки: кружки перекрыв
 const ST_STACK_MAX=3;      // слотов в стопке: своя ячейка + две чужие или пустые
 const ST_STACK_GAP=8;      // от стопки до названия
 const ST_SETTLE_MS=240;    // доводка после отпускания (общая кривая --e-out)
-let _stP=0, _stRaf=0, _stAnim=null, _stGeom=null, _stScroll0=0, _stExpandedMode=false, _stLogoW=0, _stTapT=-1e9;
+// storyPullProgress ∈ [0,1] — единственный источник геометрии перехода «стопка
+// → ряд»: положение и размер кружков, перекрытие, подписи, прозрачность,
+// сдвиг названия, место ряда, поиск, категории, список и кнопки. Во время
+// жеста он — прямая функция смещения пальца (pullArchiveMove), анимация по
+// времени — только после отпускания или по тапу/клику (setStoriesProgress).
+let storyPullProgress=0, _stRaf=0, _stAnim=null, _stGeom=null, _stScroll0=0, _stExpandedMode=false, _stLogoW=0, _stTapT=-1e9;
 window._storiesReady=true;   // см. applyMobileModeClass
 
 // Кубическая Безье (.25,.8,.35,1) — та же кривая, что --e-out у всех переходов.
@@ -13826,11 +14725,11 @@ function stFitTitle(шапка, лого, мобильный, слева){
   лого.style.fontSize=размер+"px";
   if(лого.offsetWidth>доступно){ лого.style.maxWidth=Math.max(0, Math.floor(доступно))+"px"; лого.style.overflow="hidden"; }
 }
-function storiesProgress(){ return _stP; }
+function storiesProgress(){ return storyPullProgress; }
 // Один кадр: всё из одного p. Только transform/opacity и две переменные.
 function storiesFrame(){
   _stRaf=0;
-  const g=_stGeom, p=_stP;
+  const g=_stGeom, p=storyPullProgress;
   const ряд=el("stories-row");
   const спокойноРаскрыто = p>=1 && !_stAnim && storiesState==="expanded";
   if(спокойноРаскрыто!==_stExpandedMode && ряд){
@@ -13895,17 +14794,17 @@ function setStoriesProgress(pr, плавно){
   pr=Math.max(0, Math.min(1, pr));
   if(!плавно || stReducedMotion()){
     if(_stAnim){ cancelAnimationFrame(_stAnim.raf); _stAnim=null; }
-    _stP=pr; storiesRequestFrame(); return;
+    storyPullProgress=pr; storiesRequestFrame(); return;
   }
   if(_stAnim) cancelAnimationFrame(_stAnim.raf);
-  const от=_stP, к=pr, t0=performance.now();
-  if(Math.abs(к-от)<0.001){ _stAnim=null; _stP=к; storiesRequestFrame(); return; }
+  const от=storyPullProgress, к=pr, t0=performance.now();
+  if(Math.abs(к-от)<0.001){ _stAnim=null; storyPullProgress=к; storiesRequestFrame(); return; }
   _stAnim={raf:0};
   const шаг=(t)=>{
     const u=Math.min(1, (t-t0)/ST_SETTLE_MS);
-    _stP=от+(к-от)*stEase(u);
+    storyPullProgress=от+(к-от)*stEase(u);
     if(u>=1){
-      _stP=к; _stAnim=null; storiesFrame();
+      storyPullProgress=к; _stAnim=null; storiesFrame();
       // Обновления, отложенные на время доводки, — теперь.
       if(storiesPendingRender) applyPendingStories();
       return;
@@ -13920,17 +14819,20 @@ function archiveDist(){
   const box=el("pull-archive");
   return box ? (parseFloat(box.style.height)||0) : 0;
 }
-function setArchiveDist(d){
+// плавно — только после отпускания: во время жеста высота строго за пальцем
+// (раньше её переход в 0,2 с отставал от пальца и доигрывал сам).
+function setArchiveDist(d, плавно){
   const box=el("pull-archive"), icon=el("pull-archive-icon");
-  if(box) box.style.height=d+"px";
+  if(box){ box.style.transition=плавно ? "height .2s ease" : "none"; box.style.height=d+"px"; }
   if(icon){
+    icon.style.transition=плавно ? "transform .1s,opacity .1s,background .1s" : "background .1s";
     const pr=Math.min(d/ARCHIVE_RANGE,1);
     icon.style.transform="scale("+(0.5+0.5*pr)+")";
     icon.style.opacity=0.4+0.6*pr;
     icon.style.background=pr>=1?"var(--acc)":"var(--bg3)";
   }
 }
-function resetPullVisual(){ setArchiveDist(0); }
+function resetPullVisual(){ setArchiveDist(0, true); }
 
 // ⚠️ Запись истории создаётся ТОЛЬКО здесь — в обработчике окончания жеста,
 // то есть внутри настоящего пользовательского действия. Ни из popstate, ни
@@ -13985,7 +14887,7 @@ function storiesToggle(открыть){
 // Тап по кружку стопки: пока ряд не раскрыт — раскрывает его (true: дальше
 // ничего не делать). В спокойном раскрытом ряду кружок открывает свою сторис.
 function storiesTapExpand(){
-  if(storiesState==="expanded" && _stP>=0.99 && !_stAnim) return false;
+  if(storiesState==="expanded" && storyPullProgress>=0.99 && !_stAnim) return false;
   if(storiesState==="collapsed" && !pullActive){ _stTapT=performance.now(); commitStoriesExpanded(true); }
   return true;
 }
@@ -14065,12 +14967,13 @@ function chatListTouchWatch(e){
   if(!цель || !список || цель===список) return;
   const выпала=()=>!список.contains(цель);   // иначе событие дойдёт до #clist само
   const ход=(ev)=>{ if(выпала()) pullArchiveMove(ev); };
-  const конец=()=>{
+  const конец=(ev)=>{
     цель.removeEventListener("touchmove",ход); цель.removeEventListener("touchend",конец); цель.removeEventListener("touchcancel",конец);
     if(!выпала()) return;
-    chatListTouchActive=false; pullArchiveEnd();
+    chatListTouchActive=false; pullArchiveEnd(ev);
   };
-  цель.addEventListener("touchmove",ход,{passive:true});
+  // Не пассивный: жест сторис отменяет у касаний действие браузера.
+  цель.addEventListener("touchmove",ход,{passive:false});
   цель.addEventListener("touchend",конец,{passive:true});
   цель.addEventListener("touchcancel",конец,{passive:true});
 }
@@ -14084,31 +14987,57 @@ function pullArchiveStart(e){
     pullStartY=null; pullActive=false; return;
   }
   pullStartY=e.touches[0].clientY;
-  pullLastY=pullStartY; pullLastT=performance.now(); pullVel=0;
+  pullSamples=[{t:e.timeStamp || performance.now(), y:pullStartY}];
   pullActive=true; pullEngaged=false; pullStage=0;
   pullStartState=storiesState;
 }
+// ⚠️ 4 октября 2026. Всё, что видно во время жеста, — функция ТЕКУЩЕГО
+// смещения пальца: одно и то же смещение даёт одну и ту же картинку, сколько
+// бы раз палец ни менял направление; палец стоит — стоит и интерфейс. Жест,
+// ставший нашим (вышел из мёртвой зоны), отменяет у касаний действие
+// браузера: иначе тот прокручивал бы список вместе со сворачиванием или
+// забирал перетяжку себе (overscroll, pull-to-refresh).
 function pullArchiveMove(e){
   if(!pullActive || pullStartY==null) return;
   const y=e.touches[0].clientY;
-  const t=performance.now();
-  if(t>pullLastT) pullVel=(y-pullLastY)/(t-pullLastT);
-  pullLastY=y; pullLastT=t;
+  // Время самого касания, а не обработки: на телефоне события приходят
+  // пачками, и время обработки исказило бы скорость.
+  const t=e.timeStamp || performance.now();
+  pullSamples.push({t, y});
+  while(pullSamples.length>2 && t-pullSamples[0].t>100) pullSamples.shift();
   const dy=y-pullStartY;
+  const забрать=()=>{ if(e.cancelable) e.preventDefault(); };
+  // Наш жест: из свёрнутого — вниз (прокручивать нечего, только системный
+  // overscroll), из раскрытого — в любую сторону. Вверх из свёрнутого — это
+  // обычная прокрутка списка, её не трогаем.
+  if(pullStartState==="expanded" || dy>0) забрать();
 
   // Свайп ВВЕРХ при раскрытой ленте — сворачивание за пальцем.
   if((storiesState==="expanded"||storiesState==="collapsing") && dy<0){
-    if(dy>-PULL_DEADZONE) return;          // мёртвая зона и вверх тоже
+    if(dy>-PULL_DEADZONE){
+      // Мёртвая зона: пока жест не наш — ничего не трогаем; если уже наш —
+      // палец вернулся к началу, ряд ровно раскрыт.
+      if(storiesState==="collapsing"){ setStoriesProgress(1); забрать(); }
+      return;
+    }
     storiesState="collapsing"; pullEngaged=true; pullStage=0;
     const диап=storiesRange();
     const вверх=Math.min((-dy-PULL_DEADZONE)*PULL_DAMP, диап);
     setStoriesProgress(1-вверх/диап);
+    забрать();
     return;
   }
   if(storiesState==="collapsing" && dy>=0){ storiesState="expanded"; setStoriesProgress(1); }
 
   if(dy<=PULL_DEADZONE){
-    // Всё ещё может оказаться обычным тапом — DOM не трогаем.
+    // Жест уже наш, палец вернулся в мёртвую зону — всё в начале пути, за
+    // пальцем (раньше прогресс замирал на последнем значении за её краем).
+    if(pullEngaged && dy>0){
+      if(pullStartState==="expanded") setArchiveDist(0);
+      else { pullStage=1; storiesState="pulling-stories"; setStoriesProgress(0); setArchiveDist(0); }
+      забрать();
+    }
+    // Ещё может оказаться обычным тапом — DOM не трогаем.
     if(pullEngaged && dy<=0){
       resetPullVisual(); pullEngaged=false;
       // ⚠️ 4 октября 2026. Палец вернулся выше точки старта — жест отменён.
@@ -14120,6 +15049,7 @@ function pullArchiveMove(e){
     return;
   }
   pullEngaged=true;
+  забрать();
   const dist=(dy-PULL_DEADZONE)*PULL_DAMP;
   if(pullStartState==="expanded"){
     // Лента уже раскрыта — то же движение сразу управляет второй ступенью.
@@ -14138,12 +15068,13 @@ function pullArchiveMove(e){
     setArchiveDist(Math.min(dist-диап, ARCHIVE_RANGE));
   }
 }
-function pullArchiveEnd(){
+function pullArchiveEnd(ev){
   if(!pullActive){ pullStartY=null; applyPendingStories(); return; }
   pullActive=false; pullStartY=null;
   const был=pullEngaged; pullEngaged=false;
   const стадия=pullStage; pullStage=0;
-  const рывокВниз=pullVel>FLICK, рывокВверх=pullVel<-FLICK;
+  const скорость=pullVelocity(ev && ev.timeStamp ? ev.timeStamp : performance.now()); pullSamples=[];
+  const рывокВниз=скорость>FLICK, рывокВверх=скорость<-FLICK;
   const дистАрхива=archiveDist();
 
   if(storiesState==="collapsing"){
@@ -14162,7 +15093,7 @@ function pullArchiveEnd(){
     applyPendingStories(); return;
   }
 
-  if(стадия===2){
+  if(стадия===2 && !(рывокВверх && pullStartState!=="expanded")){
     commitStoriesExpanded(pullStartState!=="expanded");
     // Строка «Архив» остаётся видимой, но сам архив НЕ открывается —
     // входить в него по-прежнему нужно отдельным тапом по строке.
@@ -14170,8 +15101,9 @@ function pullArchiveEnd(){
       archiveRowRevealed=true; renderChats();
     }
   } else {
+    // Вытянул за порог, но резко дёрнул вверх — передумал: в стопку.
     const pr=storiesProgress();
-    if(pr>=STORIES_TRIGGER || рывокВниз) commitStoriesExpanded(true);
+    if((pr>=STORIES_TRIGGER && !рывокВверх) || рывокВниз) commitStoriesExpanded(true);
     else commitStoriesCollapsed();
   }
   resetPullVisual();
@@ -15160,7 +16092,7 @@ async function downloadMedia(url, filename){
     showToast("❌ Не удалось скачать — попробуй открыть в новой вкладке");
   }
 }
-// Скачивание видео-кружочка — вживляем виньетку по краям и водяной знак "ANGIE"
+// Скачивание видео-кружочка — вживляем виньетку по краям и водяной знак «Монохром»
 // ТОЛЬКО в скачиваемый файл (внутри самого чата кружок остаётся чистым, без
 // эффектов — ровно как у Telegram: внутри приложения просто круглая обрезка,
 // а виньетка/подпись нужны лишь когда файл открывают вне приложения, там
@@ -16356,6 +17288,14 @@ function showToast(msg){
 // сама решает, уйти через стек или закрыться напрямую.
 function openM(id){
   const w=el(id); if(!w) return;
+  // ⚠️ 4 октября 2026. Окно, которое ещё доигрывает закрытие (180 мс), — не
+  // «уже открыто»: раньше повторное открытие в эти мгновения молча ничего не
+  // делало, а таймер закрытия потом всё равно его прятал (так терялся
+  // редактор сторис, открытый сразу после публикации). Отменяем закрытие.
+  if(w.classList.contains("closing")){
+    clearTimeout(w._closeMTimer); w._closeMTimer=null;
+    w.classList.remove("closing","on"); w.querySelector(".modal")?.classList.remove("closing");
+  }
   if(w.classList.contains("on")) return;   // уже открыто: второй записи в стек не создаём
   // «Назад» ещё в полёте (соседнее окно закрывают этим же действием) — открываем
   // сразу после того, как оно приземлится, иначе popstate снимет не ту запись.
@@ -16402,7 +17342,8 @@ function closeM(id, viaBack){
   if(!box){ wrap.classList.remove("on"); return; }
   box.classList.add("closing");
   wrap.classList.add("closing");   // затемнение уходит вместе с карточкой, одной парой
-  setTimeout(()=>{ wrap.classList.remove("on"); wrap.classList.remove("closing"); box.classList.remove("closing"); }, 180);
+  clearTimeout(wrap._closeMTimer);
+  wrap._closeMTimer=setTimeout(()=>{ wrap._closeMTimer=null; wrap.classList.remove("on"); wrap.classList.remove("closing"); box.classList.remove("closing"); }, 180);
 }
 // Тот же приём для полноэкранных разделов (Настройки/Контакты/Админка и
 // т.д.) — используется в closeSettings()/closeContacts()/closeAdmin()/
@@ -18980,25 +19921,71 @@ function openMyGiftDetail(idx){
 // ══════════════════════════════════════════════════
 //  STORIES — MULTI + CHANNEL STORIES
 // ══════════════════════════════════════════════════
+// ⚠️ 4 октября 2026 (правило 16). Черновик сторис живёт до подтверждённой
+// публикации или явной «Отмены»: после ошибки сервера редактор остаётся
+// открытым, а если его закрыли «назад» — при следующем открытии текст и
+// выбранное фото/видео на месте.
+let storyPublishBusy=false;   // идёт публикация: повторное нажатие ничего не шлёт
+let storyDraftKept=false;     // черновик живёт до подтверждённой публикации или «Отмены»
+let storyPublishStage="";     // "upload" | "post" — что сейчас ждём
+let storyUploadCtl=null;      // отмена загрузки файла кнопкой «Отмена»
+// Попытка, исход которой неизвестен (обрыв связи, тайм-аут, 5xx): перед
+// следующей отправкой той же сторис сначала смотрим ленту сервера — вдруг она
+// уже создана, и второй запрос сделал бы дубль.
+let storyAmbiguous=null;
 function openStoryEditor(){
   if(!S.vip?.active){ showToast("👑 Сторис — функция VIP"); openVIP(); return; }
   const limit=storyLimit();
   const active=(S.my_stories||[]).filter(s=>Date.now()<s.expires).length;
   if(active >= limit){ showToast(`❌ Максимум ${limit} активных сторис`); return; }
+  if(!storyDraftKept && !storyPublishBusy) clearStoryDraft();
+  storyDraftKept=true;   // «назад» черновик не стирает — только успех или «Отмена»
+  // Показываем выбор "от себя / от канала" если есть каналы
+  renderStoryAuthorChoice();
+  openM("m-story-editor");
+}
+// Чистый редактор: текст, фон, тип, автор, фото/видео и их превью.
+function clearStoryDraft(){
   selectedStoryBg = "linear-gradient(135deg,#6c63ff,#38bdf8)";
   selectedStoryType = "text";
   selectedStoryChannel = null; // по умолчанию от себя
   if(pendingStoryMedia?.previewUrl) URL.revokeObjectURL(pendingStoryMedia.previewUrl);
   pendingStoryMedia = null;
+  storyDraftKept = false;
+  storyAmbiguous = null;
   const pd=el("story-photo-drop"), vd=el("story-video-drop");
   if(pd) pd.innerHTML=`<span id="story-photo-hint">📷 Нажми, чтобы выбрать фото</span><input type="file" accept="image/*" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="previewStoryMedia(this,'photo')">`;
   if(vd) vd.innerHTML=`<span id="story-video-hint">🎥 Нажми, чтобы выбрать видео</span><input type="file" accept="video/*" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="previewStoryMedia(this,'video')">`;
+  if(el("se-text")) el("se-text").value="";
   if(el("se-photo-caption")) el("se-photo-caption").value="";
   if(el("se-video-caption")) el("se-video-caption").value="";
+  document.querySelectorAll("#story-text-editor [data-bg]").forEach((e,i)=>{ e.style.borderColor = i===0 ? "#fff" : "transparent"; });
   selectStoryType("text");
-  // Показываем выбор "от себя / от канала" если есть каналы
-  renderStoryAuthorChoice();
-  openM("m-story-editor");
+  setStoryPublishUi("idle");
+}
+// «Отмена» в редакторе — явная отмена: черновик очищается. Пока сервер не
+// ответил, отменять нечего — кнопка выключена.
+// Пока грузится файл, отменить можно (загрузка обрывается); пока ждём ответа
+// на публикацию — нет: исход неизвестен.
+function cancelStoryEditor(){
+  if(storyPublishBusy){
+    if(storyPublishStage!=="upload" || !storyUploadCtl) return;
+    storyUploadCtl.abort();
+    return;   // publishStory сам очистит черновик и закроет редактор
+  }
+  clearStoryDraft();
+  closeM("m-story-editor");
+}
+// Состояние кнопки «Опубликовать» и строки статуса под полями.
+function setStoryPublishUi(state, текст){
+  const кн=el("story-publish-btn"), отм=el("story-cancel-btn"), ст=el("story-publish-status");
+  const занято=state==="busy";
+  if(кн){
+    кн.disabled=занято; кн.setAttribute("aria-busy", занято ? "true" : "false");
+    кн.innerHTML = занято ? `<span class="story-pub-spin" aria-hidden="true"></span>${escHtml(текст||"Публикация…")}` : "📖 Опубликовать";
+  }
+  if(отм) отм.disabled=занято && storyPublishStage!=="upload";
+  if(ст){ ст.textContent = state==="error" ? (текст||"") : ""; ст.classList.toggle("err", state==="error"); }
 }
 
 let selectedStoryChannel = null;
@@ -19044,15 +20031,26 @@ function selectStoryEmoji(e){ selectedStoryEmoji = e; showToast("Выбрано:
 let pendingStoryMedia=null; // {file, kind:'photo'|'video', previewUrl}
 function previewStoryMedia(inp, kind){
   if(!inp.files[0]) return;
+  // Пока идёт публикация, файл не меняется (иначе ушёл бы не тот или никакой).
+  if(storyPublishBusy){ inp.value=""; showToast("Дождитесь окончания публикации"); return; }
   const file=inp.files[0];
   const previewUrl=URL.createObjectURL(file);
   if(pendingStoryMedia?.previewUrl) URL.revokeObjectURL(pendingStoryMedia.previewUrl);
   pendingStoryMedia={file, kind, previewUrl};
+  storyAmbiguous=null;   // другой файл — другая сторис
+  // Превью строится заново при каждом выборе (повторный выбор после ошибки).
   const drop=el(kind==="photo"?"story-photo-drop":"story-video-drop");
-  if(kind==="photo"){
-    drop.querySelector("span").outerHTML=`<img src="${previewUrl}" style="max-width:100%;max-height:140px;border-radius:8px">`;
-  } else {
-    drop.querySelector("span").outerHTML=`<video src="${previewUrl}" muted style="max-width:100%;max-height:140px;border-radius:8px"></video>`;
+  drop.querySelectorAll("span,img,video").forEach(n=>n.remove());
+  const pv=document.createElement(kind==="photo"?"img":"video");
+  pv.src=previewUrl; if(kind==="video") pv.muted=true;
+  pv.style.cssText="max-width:100%;max-height:140px;border-radius:8px";
+  drop.insertBefore(pv, drop.querySelector("input"));
+  // Другой вид — подсказка на месте (слот файла один, его превью уже освобождено).
+  const другой=el(kind==="photo"?"story-video-drop":"story-photo-drop");
+  if(другой && !другой.querySelector("span")){
+    другой.querySelectorAll("img,video").forEach(n=>n.remove());
+    const п=document.createElement("span"); п.textContent=kind==="photo" ? "🎥 Нажми, чтобы выбрать видео" : "📷 Нажми, чтобы выбрать фото";
+    другой.insertBefore(п, другой.querySelector("input"));
   }
 }
 
@@ -19081,87 +20079,155 @@ function notifyAboutStory(story, channel){
   }});
 }
 
-// Сохраняет сторис на сервере по-настоящему — раньше сторис были полностью
-// эфемерными (жили только в момент отправки по WebSocket), кто не был
-// в сети именно в эту секунду, никогда её не видел. Теперь настоящая
-// запись в БД, достаётся через /api/stories/feed при заходе в приложение.
-async function saveStoryToServer(story, channel){
+// ⚠️ 4 октября 2026 (правило 16): публикация подтверждается сервером. Раньше
+// сторис добавлялась в стопку и в localStorage ДО ответа POST /api/stories,
+// ошибка сервера глоталась, и человек видел «Сторис опубликована», хотя её не
+// было нигде, кроме его браузера. Теперь: кнопка занята, пока идёт запрос;
+// сторис появляется только из ответа сервера (его id и время); при ошибке
+// редактор остаётся открытым с текстом и медиа, причина видна, повтор — той
+// же кнопкой. Если ответа нет (сеть, тайм-аут), сервер мог успеть её создать:
+// проверяем ленту, прежде чем сказать «не опубликована», — повтор не
+// создаст вторую.
+const STORY_PUBLISH_TIMEOUT_MS=15000;
+function storyError(kind, message){ const e=new Error(message); e.kind=kind; return e; }
+const STORY_UPLOAD_TIMEOUT_MS=120000;
+async function uploadStoryMedia(file){
+  const fd=new FormData(); fd.append("file", file);
+  const t=getToken();
+  const ctl=new AbortController(); storyUploadCtl=ctl;
+  let поТаймеру=false;
+  const таймер=setTimeout(()=>{ поТаймеру=true; ctl.abort(); }, STORY_UPLOAD_TIMEOUT_MS);
+  let res;
+  try{ res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd,signal:ctl.signal}); }
+  catch(e){
+    if(ctl.signal.aborted && !поТаймеру) throw storyError("cancel", "Отменено");
+    throw storyError("net", поТаймеру ? "Файл не загрузился вовремя" : "Нет связи — файл не загрузился");
+  }
+  finally{ clearTimeout(таймер); storyUploadCtl=null; }
+  if(res.status===401) onAuthorizedRequest401("/api/upload", t);
+  const data=checkBannedResponse(await res.json().catch(()=>({})));
+  if(!res.ok || !data.success || !data.url) throw storyError("upload", "Не удалось загрузить файл"+(data.error?": "+data.error:""));
+  return data.url;
+}
+// Уже созданная на сервере, но ещё неизвестная здесь сторис с тем же
+// содержимым — значит, ответ на публикацию потерялся по дороге.
+async function findPublishedStory(body, начало, строго){
+  const ctl=new AbortController(); const tm=setTimeout(()=>ctl.abort(), 8000);
   try{
-    const data=await apiPost("/api/stories", {
-      type:story.type, bg:story.bg, text:story.text, emoji:story.emoji,
-      mediaUrl:story.mediaUrl, caption:story.caption||null, channelId:channel?channel.id:null
-    }, true);
-    if(data && data.success && data.story){ story.dbId=data.story.id; saveState(); }
-  }catch(e){ console.warn("save story to server error:", e); }
+    const t=getToken();
+    const res=await fetch(API_URL+"/api/stories/feed",{headers:t?{"Authorization":"Bearer "+t}:{},signal:ctl.signal});
+    if(!res.ok) throw new Error("лента "+res.status);
+    const data=checkBannedResponse(await res.json());
+    const известные=new Set((S.my_stories||[]).map(x=>String(x.dbId||"")));
+    Object.values(S.channel_stories||{}).forEach(d=>(d.items||[]).forEach(x=>известные.add(String(x.dbId||""))));
+    const свои=((data && data.stories)||[]).filter(r=>
+      !известные.has(String(r.id)) &&
+      (body.channelId ? r.channel_id===body.channelId : (r.user_id===S.user?.id && !r.channel_id)) &&
+      r.type===body.type && (r.text||"")===(body.text||"") && (r.emoji||"")===(body.emoji||"") &&
+      (r.caption||"")===(body.caption||"") && (r.media_url||null)===(body.mediaUrl||null) &&
+      new Date(r.created_at).getTime() >= начало-120000);
+    свои.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    return свои[0]||null;
+  }catch(e){
+    if(строго) throw storyError("net", "Нет связи с сервером — сторис не опубликована");
+    return null;
+  }finally{ clearTimeout(tm); }
+}
+async function postStoryConfirmed(body, начало){
+  const ctl=new AbortController(); let поТаймеру=false;
+  const таймер=setTimeout(()=>{ поТаймеру=true; ctl.abort(); }, STORY_PUBLISH_TIMEOUT_MS);
+  const t=getToken();
+  try{
+    let res;
+    try{
+      res=await fetch(API_URL+"/api/stories",{method:"POST",headers:Object.assign({"Content-Type":"application/json"}, t?{"Authorization":"Bearer "+t}:{}),body:JSON.stringify(body),signal:ctl.signal});
+    }catch(e){
+      storyAmbiguous={key:JSON.stringify(body), начало};
+      const найдена=await findPublishedStory(body, начало);
+      if(найдена) return найдена;
+      throw storyError(поТаймеру ? "timeout" : "net", поТаймеру ? "Сервер не ответил вовремя — сторис не опубликована" : "Нет связи с сервером — сторис не опубликована");
+    }
+    if(res.status===401) onAuthorizedRequest401("/api/stories", t);
+    const data=checkBannedResponse(await res.json().catch(()=>({})));
+    if(!res.ok || !data.success || !data.story || !data.story.id){
+      // 5xx или непонятный ответ: сервер мог успеть её создать.
+      if(res.status>=500 || res.ok) storyAmbiguous={key:JSON.stringify(body), начало};
+      throw storyError("server", "Не удалось опубликовать"+(data.error?": "+data.error:" (ответ сервера "+res.status+")"));
+    }
+    return data.story;
+  } finally { clearTimeout(таймер); }
+}
+// Сторис из строки сервера: его id, время создания и истечения.
+function storyFromServerRow(row, channel){
+  const story={
+    id: nextId(), dbId: row.id,
+    type: row.type, bg: row.bg, text: row.text||"", emoji: row.emoji||"",
+    mediaUrl: row.media_url||null, caption: row.caption||"",
+    created: new Date(row.created_at).getTime() || Date.now(),
+    expires: new Date(row.expires_at).getTime() || (Date.now()+24*60*60*1000),
+    views: 0,
+  };
+  if(channel) story.channel={id:channel.id, nm:channel.nm, ini:channel.ini, col:channel.col};
+  return story;
 }
 
 async function publishStory(){
-  if(!S.vip?.active) return;
-  const text = selectedStoryType==="text" ? (el("se-text")?.value||"") : "";
-  const emoji = selectedStoryType==="emoji" ? selectedStoryEmoji : "";
-
-  if((selectedStoryType==="photo"||selectedStoryType==="video") && !pendingStoryMedia){
-    showToast("❌ Сначала выбери "+(selectedStoryType==="photo"?"фото":"видео"));
+  if(storyPublishBusy) return;
+  if(!S.vip?.active){ openStoryEditor(); return; }
+  const type=selectedStoryType;
+  const медиа = type==="photo"||type==="video";
+  // Файл — этого же вида (фото на вкладке «Видео» видео не станет).
+  if(медиа && (!pendingStoryMedia || pendingStoryMedia.kind!==type)){
+    showToast("❌ Сначала выбери "+(type==="photo"?"фото":"видео"));
     return;
   }
-
-  const story = {
-    id: nextId(),
-    type: selectedStoryType,
-    bg: selectedStoryBg,
-    text, emoji,
-    created: Date.now(),
-    expires: Date.now() + 24*60*60*1000, // 24h
-    views: 0
+  // Свой файл — до первого ожидания: выбор другого файла посреди загрузки
+  // не подменит его (previewStoryMedia во время публикации и не даст).
+  const файл = медиа ? pendingStoryMedia : null;
+  const channel = selectedStoryChannel ? S.chats.find(c=>c.id===selectedStoryChannel) : null;
+  const caption = медиа ? (el(type==="photo"?"se-photo-caption":"se-video-caption")?.value?.trim()||"") : "";
+  const body={
+    type, bg:selectedStoryBg,
+    text: type==="text" ? (el("se-text")?.value||"") : "",
+    emoji: type==="emoji" ? selectedStoryEmoji : "",
+    mediaUrl:null, caption:caption||null, channelId: channel ? channel.id : null,
   };
-  let publishingChannel=null;
-  if(selectedStoryChannel){
-    publishingChannel=S.chats.find(c=>c.id===selectedStoryChannel);
-    if(publishingChannel) story.channel={id:publishingChannel.id, nm:publishingChannel.nm, ini:publishingChannel.ini, col:publishingChannel.col};
-  }
-
-  if(selectedStoryType==="photo"||selectedStoryType==="video"){
-    const capEl=el(selectedStoryType==="photo"?"se-photo-caption":"se-video-caption");
-    story.caption=capEl?.value?.trim()||"";
-    story.mediaUrl=pendingStoryMedia.previewUrl; // локальное превью сразу, пока грузится
-    story.uploading=true;
-    addStoryToOwnCollection(story, publishingChannel);
+  storyPublishBusy=true; storyDraftKept=true;
+  const начало=Date.now();
+  try{
+    if(медиа){
+      // Загруженный при прошлой попытке файл второй раз не грузим.
+      if(!файл.uploadedUrl){
+        storyPublishStage="upload";
+        setStoryPublishUi("busy", type==="photo" ? "Загрузка фото…" : "Загрузка видео…");
+        файл.uploadedUrl=await uploadStoryMedia(файл.file);
+      }
+      body.mediaUrl=файл.uploadedUrl;
+    }
+    storyPublishStage="post";
+    setStoryPublishUi("busy", "Публикация…");
+    // Прошлая попытка этой же сторис кончилась неизвестно чем — сначала лента.
+    let row=null;
+    if(storyAmbiguous && storyAmbiguous.key===JSON.stringify(body)) row=await findPublishedStory(body, storyAmbiguous.начало, true);
+    if(!row) row=await postStoryConfirmed(body, начало);
+    storyAmbiguous=null;
+    const story=storyFromServerRow(row, channel);
+    addStoryToOwnCollection(story, channel);
+    storyPublishBusy=false; storyPublishStage="";
+    clearStoryDraft();               // и превью фото/видео — только сейчас
     closeM("m-story-editor");
     renderStoriesBar(); saveState();
-    showToast("📖 Загружаем...");
-    try{
-      const fd=new FormData();
-      fd.append("file",pendingStoryMedia.file);
-      const t=getToken();
-      const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
-      const data=await res.json().catch(()=>({}));
-      if(!res.ok||!data.success) throw new Error(data.error||"Не удалось загрузить файл");
-      URL.revokeObjectURL(story.mediaUrl);
-      story.mediaUrl=data.url;
-      story.uploading=false;
-      saveState();
-      await saveStoryToServer(story, publishingChannel);
-      notifyAboutStory(story, publishingChannel);
-      const where = story.channel ? `в канал «${story.channel.nm}»` : "";
-      showToast(`📖 Сторис опубликована ${where}!`);
-    }catch(err){
-      console.error("story upload error:",err);
-      removeStoryFromOwnCollection(story.id, publishingChannel);
-      renderStoriesBar(); saveState();
-      showToast("❌ "+(err.message||"Не удалось загрузить файл"));
-    }
-    pendingStoryMedia=null;
-    return;
+    notifyAboutStory(story, channel);
+    const where = story.channel ? ` в канал «${story.channel.nm}»` : "";
+    showToast(`📖 Сторис опубликована${where}`);
+  }catch(err){
+    storyPublishBusy=false; storyPublishStage="";
+    // «Отмена» во время загрузки файла — явная отмена: черновик очищается.
+    if(err && err.kind==="cancel"){ clearStoryDraft(); closeM("m-story-editor"); return; }
+    const текст=err && err.kind ? err.message : "Не удалось опубликовать сторис";
+    setStoryPublishUi("error", текст+". Попробуйте ещё раз.");
+    showToast("❌ "+текст);
   }
-
-  addStoryToOwnCollection(story, publishingChannel);
-  closeM("m-story-editor");
-  renderStoriesBar();
-  saveState();
-  await saveStoryToServer(story, publishingChannel);
-  notifyAboutStory(story, publishingChannel);
-  const where = story.channel ? `в канал «${story.channel.nm}»` : "";
-  showToast(`📖 Сторис опубликована ${where}!`);
 }
 
 // Складывает сторис в правильное хранилище — личное или конкретного канала
@@ -20480,6 +21546,16 @@ applyTheme(S.theme||"dark", true);
 .story-av-inner{width:100%;height:100%;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;border:2px solid var(--bg2);overflow:hidden}
 .story-nm{font-size:9.5px;color:var(--tx2);white-space:nowrap;max-width:48px;overflow:hidden;text-overflow:ellipsis;text-align:center}
 .sbar{flex:1;height:3px;background:rgba(255,255,255,.25);border-radius:3px;overflow:hidden}
+/* Публикация сторис (4 окт 2026): статус под полями и занятая кнопка. */
+.story-publish-status{min-height:0;font-size:12px;line-height:1.35;color:var(--tx2);margin:-4px 0 10px}
+.story-publish-status:empty{display:none}
+.story-publish-status.err{color:var(--rd)}
+#story-publish-btn[aria-busy="true"]{opacity:.75;cursor:progress}
+#story-cancel-btn:disabled{opacity:.5;cursor:default}
+.story-pub-spin{display:inline-block;width:12px;height:12px;margin-right:7px;vertical-align:-1px;border-radius:50%;
+  border:2px solid currentColor;border-right-color:transparent;animation:storyPubSpin .8s linear infinite}
+@keyframes storyPubSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){ .story-pub-spin{animation-duration:1.6s} }
 .sbar-fill{height:100%;background:#fff;border-radius:3px;transition:width .1s linear}
 .sdot{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;font-weight:700;color:#fff;border:2px solid transparent;transition:all .15s}
 .sdot.on{border-color:#fff}
@@ -20699,20 +21775,6 @@ applyTheme(S.theme||"dark", true);
     <div class="settings-section">
       <div class="settings-section-title">Статус заявки</div>
       <div id="vr-status" style="padding:14px;color:var(--tx3);font-size:12.5px">Заявок нет</div>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: VIDEO CIRCLE RECORDER -->
-<div class="movl" id="m-videocircle">
-  <div class="vc-recorder">
-    <video id="vc-preview" autoplay muted playsinline></video>
-    <canvas id="vc-record-canvas" width="360" height="360" style="display:none"></canvas>
-    <div class="vc-timer" id="vc-timer">0:00</div>
-    <div class="vc-actions">
-      <button class="vc-btn" onclick="cancelVideoCircle()" title="Отменить">🗑️</button>
-      <button class="vc-btn vc-btn-rec" id="vc-rec-btn" onclick="toggleVideoCircleRecording()" title="Начать запись">⏺</button>
-      <button class="vc-btn vc-btn-ok" id="vc-send-btn" onclick="finishVideoCircle()" title="Готово" style="display:none">✓</button>
     </div>
   </div>
 </div>
@@ -20993,12 +22055,40 @@ applyTheme(S.theme||"dark", true);
       </div>
       <div class="fg"><span class="fl">Подпись (необязательно)</span><input class="fii" id="se-video-caption" placeholder="Добавь подпись..."></div>
     </div>
+    <div class="story-publish-status" id="story-publish-status" role="status" aria-live="polite"></div>
     <div class="macts">
-      <button class="xbtn sec" onclick="closeM('m-story-editor')">Отмена</button>
-      <button class="xbtn" onclick="publishStory()">📖 Опубликовать</button>
+      <button class="xbtn sec" id="story-cancel-btn" onclick="cancelStoryEditor()">Отмена</button>
+      <button class="xbtn" id="story-publish-btn" onclick="publishStory()">📖 Опубликовать</button>
     </div>
   </div>
 </div>
 
+<!-- 4 окт 2026: слой записи голосовых и кружков — над перепиской. -->
+<div class="rec-layer" id="rec-layer" aria-hidden="true">
+  <div class="vc-stage" id="vc-stage">
+    <div class="vc-dim" id="vc-dim"></div>
+    <div class="vc-circle" id="vc-circle">
+      <div class="vc-warm"></div>
+      <video id="vc-live" muted playsinline autoplay></video>
+      <canvas id="vc-still" width="384" height="384"></canvas>
+      <video id="vc-review" muted playsinline loop></video>
+      <svg class="vc-rec-ring" viewBox="0 0 100 100" aria-hidden="true"><circle class="vc-rec-ring-bg" cx="50" cy="50" r="48"></circle><circle class="vc-rec-ring-fg" id="vc-rec-ring-fg" cx="50" cy="50" r="48"></circle></svg>
+    </div>
+    <div class="vc-tools" id="vc-tools">
+      <button type="button" id="vc-flip" aria-label="Сменить камеру" onclick="recFlipCamera()" hidden><svg width="19" height="19" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9a8 8 0 0 1 14.5-3.5M20 4v4h-4M20 15a8 8 0 0 1-14.5 3.5M4 20v-4h4"/></svg></button>
+      <button type="button" id="vc-flash" aria-label="Вспышка" onclick="recToggleFlash()" hidden><svg width="19" height="19" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5L5.5 13.5h6l-1 8 7.5-11h-6z"/></svg></button>
+    </div>
+    <canvas id="vc-rec-canvas" width="384" height="384" hidden></canvas>
+  </div>
+  <div class="rec-halo" id="rec-halo"></div>
+  <div class="rec-lock" id="rec-lock"><svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="10.5" width="13" height="10" rx="2.5"/><path class="lk-shackle" d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></svg><svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 14l5-5 5 5"/></svg></div>
+  <button type="button" class="rec-pause" id="rec-pause" aria-label="Пауза" onclick="recPauseToggle()"><svg class="ic-pause" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/></svg><svg class="ic-stop" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="3"/></svg><svg class="ic-resume" width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2.5a3 3 0 0 0-3 3v6.5a3 3 0 0 0 6 0V5.5a3 3 0 0 0-3-3z"/><path d="M18.5 10.5v1.5a6.5 6.5 0 0 1-13 0v-1.5M12 18.5v3"/></svg></button>
+  <button type="button" class="rec-fab" id="rec-fab" aria-label="Запись" onclick="recFabClick()">
+    <svg class="fab-voice" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5a3 3 0 0 0-3 3v6.5a3 3 0 0 0 6 0V5.5a3 3 0 0 0-3-3z"/><path d="M18.5 10.5v1.5a6.5 6.5 0 0 1-13 0v-1.5M12 18.5v3"/></svg>
+    <svg class="fab-video" width="25" height="25" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9.2"/><circle cx="12" cy="12" r="3.4"/></svg>
+    <svg class="fab-send" width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+  </button>
+  <div class="rec-tip" id="rec-tip" role="status"></div>
+</div>
 </body>
 </html>
