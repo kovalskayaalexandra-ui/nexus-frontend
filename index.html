@@ -4259,6 +4259,10 @@ function loadState(){
       // Пользовательские данные (баланс, мои подарки, чаты) при этом сохраняются.
       S.gifts_catalog = JSON.parse(JSON.stringify(DEFAULT_STATE.gifts_catalog));
       if(DEFAULT_STATE.vip_plans) S.vip_plans = JSON.parse(JSON.stringify(DEFAULT_STATE.vip_plans));
+      // 7 окт 2026: хранилище до разделения по аккаунтам — чьё оно, не
+      // записано. Считаем его данными последнего вошедшего (S.user); чужие
+      // серверные чаты уберёт сверка со списком сервера (loadChatsFromDB).
+      if(!("owner" in parsed)) S.owner = accountIdOf(S.user);
       if(parsed.version === APP_VERSION){
         // same version — trust saved packs list
       } else {
@@ -4271,6 +4275,7 @@ function loadState(){
   } catch(e){
     S = JSON.parse(JSON.stringify(DEFAULT_STATE));
   }
+  if(S.owner===undefined) S.owner=null;
   // Режим выделения сообщений — временный UI-режим. Если он случайно "залип" в сохранённом
   // состоянии (например, автосохранение сработало пока он был активен), сбрасываем его —
   // иначе панель выделения не появится, а правый клик/долгое нажатие останутся заблокированы.
@@ -4374,10 +4379,12 @@ function loadState(){
 }
 
 function saveState(){
+  if(typeof _tabLeaving!=="undefined" && _tabLeaving) return false;   // вкладка уходит: хранилище уже чужое
   try{
     S.version = APP_VERSION;
     localStorage.setItem(STORE_KEY, JSON.stringify(S));
-  } catch(e){ console.warn("localStorage save failed:", e); }
+    return true;
+  } catch(e){ console.warn("localStorage save failed:", e); return false; }
 }
 
 function deepMerge(defaults, saved){
@@ -4390,6 +4397,172 @@ function deepMerge(defaults, saved){
     }
   }
   return result;
+}
+
+// ── АККАУНТ НА УСТРОЙСТВЕ ─────────────────────────────────────────
+// ⚠️ 7 окт 2026. Раньше всё состояние лежало одним блоком на всё устройство:
+// «Выйти» и конец сессии меняли только токен, а чаты, сообщения, архив,
+// закрепы, непрочитанные, контакты с номерами, сторис, VIP, баланс и
+// открытый чат аккаунта А доставались аккаунту Б, вошедшему следом на том же
+// устройстве (список чатов с сервера только добавлял, ничего не убирая).
+// Теперь S делится на поля УСТРОЙСТВА (явный список ниже — всё, чего в нём
+// нет, принадлежит аккаунту) и поля аккаунта. При смене аккаунта поля
+// прежнего уходят в его отдельную запись nexus_v2_u_<id>, новый получает
+// свои (или пустые), а ответы на запросы, ушедшие от прежнего, ничего не
+// меняют у нового (accountGen, см. обёртку fetch рядом с getToken).
+const DEVICE_FIELDS=new Set(["version","lang","theme","currency","rate","playbackSpeed","recHintShown","sbWidth","mpMode","tab","notifSettings","gifts_catalog","packs","coinPkgs","vip_plans","draftsByUser","owner"]);
+const ACCOUNT_STORE_PREFIX="nexus_v2_u_";
+let accountGen=0;
+function accountIdOf(u){ const id=u && u.id; return id!=null && id!=="" ? String(id) : null; }
+function accountChangedError(){ const e=new Error("Аккаунт на устройстве сменился"); e.accountChanged=true; return e; }
+function accountSlice(){ const o={}; for(const k in S) if(!DEVICE_FIELDS.has(k)) o[k]=S[k]; return o; }
+// Данные аккаунта, который уходит с устройства. Не влезают целиком — сначала
+// без base64-копий вложений, затем без кэша серверных переписок (их вернёт
+// сервер): неотправленное и местное (Избранное, служебные чаты) остаются.
+// true — записано.
+function stashAccount(){
+  const uid=S.owner; if(uid==null) return true;
+  const slice=accountSlice();
+  for(const вариант of [0,1,2]){
+    try{ localStorage.setItem(ACCOUNT_STORE_PREFIX+uid, JSON.stringify(вариант ? облегчённыйСрез(slice, вариант===2) : slice)); return true; }catch(e){}
+  }
+  console.warn("account stash failed");
+  return false;
+}
+function облегчённыйСрез(slice, безСерверных){
+  const msgs={};
+  for(const k in (slice.messages||{})){
+    let list=(slice.messages[k]||[]).map(m=>{
+      if(m && m._retryAtt && typeof m._retryAtt.previewUrl==="string" && m._retryAtt.previewUrl.startsWith("data:")){ const c={...m, _retryAtt:{...m._retryAtt}}; delete c._retryAtt.previewUrl; return c; }
+      return m;
+    });
+    if(безСерверных && /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(k)) list=list.filter(m=>m && !m.dbId);
+    msgs[k]=list;
+  }
+  return {...slice, messages:msgs};
+}
+// Отправка прежнего аккаунта, шедшая в момент смены, дальше не продолжается
+// (accountGen) — такие сообщения помечаются неотправленными, чтобы при его
+// возвращении не висели «отправленными» без ответа сервера. Повтор безопасен:
+// тот же clientMsgId сервер не задвоит.
+function markInFlightFailed(){
+  for(const k in (S.messages||{})){
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(k)) continue;   // местные чаты (Избранное и т.п.) сервер не видит
+    for(const m of (S.messages[k]||[])){
+      if(m && msgIsOut(m) && !m.dbId && !m.failed && !m._cancelled && !m._deletedForMe && !m._deletedForAll){ m.failed=true; m.uploading=false; }
+    }
+  }
+}
+// id аккаунта из токена (JWT, поле userId) — без запроса к серверу.
+function tokenUserId(t){
+  try{
+    const p=String(t||"").split(".")[1]; if(!p) return null;
+    const j=JSON.parse(atob(p.replace(/-/g,"+").replace(/_/g,"/").padEnd(Math.ceil(p.length/4)*4,"=")));
+    return j && j.userId!=null ? String(j.userId) : null;
+  }catch(e){ return null; }
+}
+function loadAccountSlice(uid){
+  try{ const t=localStorage.getItem(ACCOUNT_STORE_PREFIX+uid); return t ? JSON.parse(t) : null; }catch(e){ return null; }
+}
+// Смена аккаунта. newUid — id входящего аккаунта или null (выход, конец
+// сессии). true — аккаунт правда сменился.
+function switchAccount(newUid){
+  newUid = newUid!=null && newUid!=="" ? String(newUid) : null;
+  // Владелец ещё не записан (вход до этой сборки, данные заданы напрямую) —
+  // данные в S принадлежат тому, кто в S.user, как и у старого хранилища.
+  if(S.owner==null) S.owner=accountIdOf(S.user);
+  const old = S.owner!=null ? String(S.owner) : null;
+  if(newUid===old) return false;
+  // Номер, набранный на экране входа, — того, кто входит сейчас.
+  const carryPhone = old==null ? S.phone : undefined;
+  if(old!=null) try{ markInFlightFailed(); }catch(e){}
+  if(!stashAccount()) try{ showToast("⚠️ Местные данные аккаунта не поместились в память устройства"); }catch(e){}
+  accountGen++;
+  try{ resetAccountRuntime(); }catch(e){ console.warn("resetAccountRuntime:", e); }
+  for(const k of Object.keys(S)) if(!DEVICE_FIELDS.has(k)) delete S[k];
+  const def=JSON.parse(JSON.stringify(DEFAULT_STATE));
+  for(const k in def) if(!DEVICE_FIELDS.has(k)) S[k]=def[k];
+  const saved = newUid ? loadAccountSlice(newUid) : null;
+  if(saved){
+    const merged=deepMerge(def, saved);
+    for(const k in merged) if(!DEVICE_FIELDS.has(k)) S[k]=merged[k];
+    // Экранные режимы и «печатает…» не переживают смену аккаунта.
+    S.selectMode=false; S.selectedMsgs=[]; S.chatSelectMode=false; S.selectedChats=[];
+    (S.chats||[]).forEach(c=>{ if(c){ delete c._typing; delete c._typingTimer; } });
+  }
+  if(carryPhone!==undefined) S.phone=carryPhone;
+  S.owner=newUid;
+  const записано=saveState();
+  // Живая копия теперь в nexus_v2_data — отдельная запись больше не нужна
+  // (если общая запись не удалась — остаётся, иначе данные пропали бы).
+  if(newUid && записано) try{ localStorage.removeItem(ACCOUNT_STORE_PREFIX+newUid); }catch(e){}
+  try{ renderChats(); renderStoriesBar(); updateUserUI(); updBal(); }catch(e){}
+  return true;
+}
+// Всё, что прежний аккаунт держал в памяти страницы: очереди, кэши, поиск,
+// открытый чат на экране. Данные S меняет сама switchAccount.
+function resetAccountRuntime(){
+  const тихо=(f)=>{ try{ f(); }catch(e){} };
+  тихо(()=>{ _readQueue=new Map(); _dwellSince=new Map(); clearTimeout(_dwellTimer); _dwellTimer=null; });
+  тихо(()=>{ presenceByUser.clear(); presenceWsAt.clear(); });
+  тихо(()=>{ _viewedThisSession=new Set(); storySeenNow.clear(); });
+  тихо(()=>{ _lastRenderedChat=null; _lastMsgCount={}; _msgByIdAt=null; });
+  тихо(()=>{ wsHasAuthedOnce=false; lastReconnectResyncAt=0; });
+  тихо(()=>stopTinkoffPolling());
+  тихо(()=>{ clearTimeout(_searchDebounce); clearTimeout(_usrSearchTimer); clearTimeout(_botSearchTimer); _addMemberResults=[]; });
+  тихо(()=>{ const п=el("sb-search"); if(п) п.value=""; const г=el("global-search-results"); if(г) г.innerHTML=""; });
+  тихо(()=>{ if(srchResults.length || el("srch-overlay")?.classList.contains("on")) closeChatSearchNow(); });
+  тихо(()=>{ myReceivedGifts=[]; myGiftGroups=[]; uiProfileGifts=[]; mpProfileGifts=[]; birthdayNotifQueue=[]; officialPersonalMessages=[]; });
+  тихо(()=>{ giftVipRecipient=null; giftRecipient=null; curMemberId=null; reportState=null; crystalGiftTargetMsg=null; supportChatId=null; botFatherState=null; });
+  тихо(()=>{ if(storyState && storyState.timer){ clearTimeout(storyState.timer); clearInterval(storyState.timer); } storyState={items:[], index:0, timer:null, progress:0}; });
+  тихо(()=>{ document.body.classList.remove("select-mode","chat-select-mode"); el("select-bar")?.classList.remove("on"); el("chat-select-bar")?.classList.remove("on"); });
+  // Форма входа, регистрации и 2FA: номер, пароль, коды, секрет TOTP и
+  // резервные коды прежнего аккаунта не должны достаться следующему.
+  тихо(()=>{
+    ["phinp","pl-phone","pl-password","pl-2fa-code","m2fa-code","rname","rbio","rphinp","sec-2fa-disable-pass","o0","o1","o2","o3","o4"].forEach(id=>{ const e=el(id); if(e) e.value=""; });
+    ["m2fa-secret","m2fa-backup-list","sec-2fa-secret","sec-2fa-backup-list"].forEach(id=>{ const e=el(id); if(e) e.textContent=""; });
+    el("m2fa-qr")?.removeAttribute("src");
+    const р=el("pl-2fa-row"); if(р) р.style.display="none";
+    regAvatarData=""; const а=el("reg-av-btn"); if(а) а.textContent="👤";
+    _mandatory2FAData=null;
+  });
+  // Черновик сторис (фото, текст, уже загруженный файл) — только своего аккаунта.
+  тихо(()=>clearStoryDraft());
+  // Уведомления о сообщениях прежнего аккаунта — и в приложении, и системные.
+  тихо(()=>{
+    el("notif")?.classList.remove("on");
+    if(navigator.serviceWorker && navigator.serviceWorker.getRegistration)
+      navigator.serviceWorker.getRegistration().then(r=>r && r.getNotifications ? r.getNotifications() : []).then(ns=>(ns||[]).forEach(n=>n.close())).catch(()=>{});
+  });
+  тихо(()=>el("ver-banner")?.classList.remove("on"));
+  тихо(()=>clearChatView());
+}
+// Экран открытого чата без чата: ни ленты, ни имени, ни медиа прежнего
+// аккаунта (openChat для несуществующего чата ничего не перерисовывает).
+function clearChatView(){
+  const m=el("msgs"); if(m) m.innerHTML="";
+  const nm=el("chnm"); if(nm) nm.textContent="";
+  const av=el("chav"); if(av){ av.innerHTML=""; av.style.background=""; }
+  const st=el("chst"); if(st){ st.textContent=""; st.className="chst"; }
+  const pb=el("pinbar"); if(pb) pb.style.display="none";
+  const rn=el("rpnm"); if(rn) rn.textContent="";
+  const ra=el("rpav"); if(ra){ ra.innerHTML=""; ra.style.background=""; }
+  const rs=el("rpst"); if(rs) rs.textContent="";
+  ["rp-media","rp-stickers"].forEach(id=>{ const x=el(id); if(x) x.innerHTML=""; });
+  document.querySelector(".layout")?.classList.remove("chat-open");
+  el("rp")?.classList.remove("mobile-open");
+}
+// Конец сессии без перезагрузки: всё, что прежний аккаунт открыл (окна,
+// экраны, меню, выбор), закрывается напрямую — как серия «назад», но без
+// истории браузера. Её оставшиеся записи потом просто ничего не делают.
+// ⚠️ Закрыватель НЕ помечается navSpent: часть из них — общие функции
+// (closeMobileChat), пометка выключила бы «назад» для всех следующих чатов.
+function unwindAllWindows(){
+  for(let i=navStack.length-1;i>=0;i--){ const f=navStack[i]; if(f && !f.navSpent){ try{ f(); }catch(e){} } }
+  navStack.length=0;
+  document.querySelectorAll(".movl.on").forEach(w=>{ clearTimeout(w._closeMTimer); w.classList.remove("on","closing"); w.querySelector(".modal")?.classList.remove("closing"); });
+  document.querySelectorAll(".screen.on").forEach(s=>{ if(s.id!=="screen-main") s.classList.remove("on","closing"); });
+  try{ if(el("ctx")?.classList.contains("on")) closeCtx(); }catch(e){}
 }
 
 // Auto-save on every state change
@@ -4806,10 +4979,11 @@ function wsSend(data){
 
 // Надёжная отправка с повтором — для важных разовых уведомлений (создание группы и т.п.),
 // где потеря сообщения из-за случайного переподключения WebSocket особенно заметна
-function wsSendReliable(data, attempt=1){
+function wsSendReliable(data, attempt=1, g=accountGen){
+  if(g!==accountGen) return;   // 7 окт 2026: кадр прежнего аккаунта не уходит от следующего
   const ok=wsSend(data);
   if(!ok && attempt<15){
-    setTimeout(()=>wsSendReliable(data, attempt+1), 5000); // до ~70 секунд суммарно
+    setTimeout(()=>wsSendReliable(data, attempt+1, g), 5000); // до ~70 секунд суммарно
   }
 }
 
@@ -5545,8 +5719,37 @@ function wsSendTyping(){
 }
 
 function getToken(){ return localStorage.getItem("nexus_token"); }
-function setToken(t){ localStorage.setItem("nexus_token",t); }
-function clearToken(){ localStorage.removeItem("nexus_token"); }
+function setToken(t){ localStorage.setItem("nexus_token",t); _tabToken=t; }
+function clearToken(){ localStorage.removeItem("nexus_token"); _tabToken=null; }
+// 7 окт 2026: ответ на запрос, ушедший с токеном ПРЕЖНЕГО аккаунта, ничего не
+// меняет у следующего — продолжение обрывается ошибкой (как обрыв связи).
+// Касается только запросов с заголовком Authorization.
+(function(){
+  const исходный=window.fetch;
+  if(typeof исходный!=="function") return;
+  window.fetch=function(input, init){
+    let сТокеном=false;
+    try{ const h=init && init.headers; сТокеном=!!(h && (typeof h.get==="function" ? h.get("Authorization") : (h.Authorization||h.authorization))); }catch(e){}
+    const p=исходный.call(window, input, init);
+    if(!сТокеном) return p;
+    const g=accountGen;
+    return p.then(r=>{ if(g!==accountGen) throw accountChangedError(); return r; });
+  };
+})();
+// Вход другим аккаунтом или выход в соседней вкладке: токен в хранилище общий,
+// и эта вкладка продолжила бы с чужим токеном (или без него) и своими данными.
+// Свои данные — в запись аккаунта, и перезапуск: после старта страница возьмёт
+// данные того, кто вошёл (сверка токена при запуске и в syncProfileFromServer).
+let _tabToken=localStorage.getItem("nexus_token");
+let _tabLeaving=false;
+window.addEventListener("storage", e=>{
+  // Выход в соседней вкладке (токена больше нет) — тоже: иначе эта продолжала
+  // бы показывать данные аккаунта и записывать их обратно как «вошедший».
+  if(e.key!=="nexus_token" || e.newValue===_tabToken) return;
+  try{ if(S.owner!=null && S.loggedIn) stashAccount(); }catch(err){}
+  _tabLeaving=true;
+  location.reload();
+});
 
 // Общая проверка на "забанен/удалён" — сервер теперь может вернуть её на
 // ЛЮБОМ запросе (не только при входе), см. middleware/auth.js. Проверяем в
@@ -5564,20 +5767,24 @@ function checkBannedResponse(data){
 
 async function apiPost(path, body, auth=false){
   const headers = {"Content-Type":"application/json"};
-  const t = auth ? getToken() : null;
+  const t = auth ? getToken() : null, g=accountGen;
   if(t) headers["Authorization"]="Bearer "+t;
   const res = await fetch(API_URL+path,{method:"POST",headers,body:JSON.stringify(body)});
   if(res.status===401) onAuthorizedRequest401(path, t);
-  return checkBannedResponse(await res.json());
+  const data=await res.json();
+  if(t && g!==accountGen) throw accountChangedError();
+  return checkBannedResponse(data);
 }
 
 async function apiPatch(path, body, auth=false){
   const headers = {"Content-Type":"application/json"};
-  const t = auth ? getToken() : null;
+  const t = auth ? getToken() : null, g=accountGen;
   if(t) headers["Authorization"]="Bearer "+t;
   const res = await fetch(API_URL+path,{method:"PATCH",headers,body:JSON.stringify(body)});
   if(res.status===401) onAuthorizedRequest401(path, t);
-  return checkBannedResponse(await res.json());
+  const data=await res.json();
+  if(t && g!==accountGen) throw accountChangedError();
+  return checkBannedResponse(data);
 }
 
 function getChatMemberIds(chat){
@@ -5595,18 +5802,22 @@ function getChatMemberIds(chat){
 }
 
 async function apiGet(path){
-  const t=getToken();
+  const t=getToken(), g=accountGen;
   const headers = t ? {"Authorization":"Bearer "+t} : {};
   const res = await fetch(API_URL+path,{headers});
   if(res.status===401) onAuthorizedRequest401(path, t);
-  return checkBannedResponse(await res.json());
+  const data=await res.json();
+  if(t && g!==accountGen) throw accountChangedError();
+  return checkBannedResponse(data);
 }
 
 async function apiDelete(path, body){
-  const t=getToken();
+  const t=getToken(), g=accountGen;
   const headers = {"Content-Type":"application/json","Authorization":"Bearer "+(t||"")};
   const res = await fetch(API_URL+path,{method:"DELETE",headers, body: body?JSON.stringify(body):undefined});
-  return checkBannedResponse(await res.json());
+  const data=await res.json();
+  if(g!==accountGen) throw accountChangedError();
+  return checkBannedResponse(data);
 }
 
 // ── AUTH FUNCTIONS ────────────────────────────────────────────
@@ -5709,6 +5920,7 @@ async function doPasswordLogin(){
       return;
     }
     setToken(data.token);
+    switchAccount(data.user.id);   // 7 окт 2026: данные — этого аккаунта, не прежнего
     S.user={
       id:data.user.id, name:data.user.name||"", uname:data.user.username||"",
       bio:data.user.bio||"", phone:data.user.phone||phone, avatar:data.user.avatar||"",
@@ -5729,6 +5941,7 @@ async function confirmMandatory2FA(){
     // Бэкенд при обязательной настройке сразу довыдаёт полноценный токен и юзера
     if(data.token){
       setToken(data.token);
+      switchAccount(data.user.id);   // 7 окт 2026: данные — этого аккаунта, не прежнего
       S.user={
         id:data.user.id, name:data.user.name||"", uname:data.user.username||"",
         bio:data.user.bio||"", phone:data.user.phone||_mandatory2FAData?.phone||"",
@@ -5796,6 +6009,7 @@ async function verifyCode(){
     setToken(data.token);
 
     if(data.user){
+      switchAccount(data.user.id);   // 7 окт 2026: данные — этого аккаунта, не прежнего
       S.user = {
         id: data.user.id,
         name: data.user.name||"",
@@ -6413,11 +6627,31 @@ function buildRealMembers(dbChat, others){
   return [me, ...rest];
 }
 
+// Серверный чат (id — UUID), а не служебный/локальный.
+function isServerChatId(id){ return typeof id==="string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id); }
 async function loadChatsFromDB(){
   try {
     const presenceSince=performance.now();
+    // 7 окт 2026: что было в списке ДО запроса — только это можно убирать
+    // (чат, появившийся, пока запрос шёл, сервер мог ещё не показать).
+    const доЗапроса=new Set(S.chats.filter(c=>isServerChatId(c.id)).map(c=>c.id));
     const data = await apiGet("/api/chats");
-    if(!data.chats) return;
+    if(!data || !Array.isArray(data.chats)) return;
+    // Сервер отдаёт ВСЕ чаты, где человек участник (с архивом). Серверного
+    // чата, которого в ответе нет, у этого аккаунта нет: чужой (данные
+    // другого аккаунта со старого хранилища), удалённый или покинутый.
+    {
+      const есть=new Set(data.chats.map(c=>c.id));
+      const лишние=S.chats.filter(c=>isServerChatId(c.id) && доЗапроса.has(c.id) && !есть.has(c.id)).map(c=>c.id);
+      if(лишние.length){
+        const убрать=new Set(лишние);
+        S.chats=S.chats.filter(c=>!убрать.has(c.id));
+        лишние.forEach(id=>{ delete S.messages[id]; if(S.pinnedByChat) delete S.pinnedByChat[id]; if(S.chatPos) delete S.chatPos[id]; try{ forgetChatDraft(id); }catch(e){} });
+        // Открытый чат исчез — как при событии chat.deleted; список на
+        // телефоне при этом не уезжает в Избранное, если чат не был открыт.
+        if(убрать.has(S.chat)) openChat(77777, {skipMobileSlide: !document.querySelector(".layout")?.classList.contains("chat-open")});
+      }
+    }
     data.chats.forEach(dbChat => {
       // Пропускаем служебные чаты
       if(dbChat.id === 88888 || dbChat.id === 99999 || dbChat.id === 77777) return;
@@ -6437,7 +6671,9 @@ async function loadChatsFromDB(){
       const existing = S.chats.find(c => c.id === dbChat.id);
       const mutedFromServer = !!(dbChat.muted_until && new Date(dbChat.muted_until) > new Date());
       if(existing){
-        existing.prev = dbChat.last_message || existing.prev;
+        // 7 окт 2026: '' с сервера — «все сообщения удалены», а не «нет
+        // данных»: раньше пустое превью оставляло на экране удалённый текст.
+        existing.prev = dbChat.last_message!=null ? dbChat.last_message : existing.prev;
         existing.time = dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : existing.time;
         // То же правило для уже известного чата: пустой чат получает время
         // создания, иначе при каждой перезагрузке он снова уезжал бы вниз.
@@ -6670,6 +6906,7 @@ async function markChatAsRead(chatId, ids){
     }
     return true;
   }catch(e){
+    if(e && e.accountChanged) return false;   // прочтения прежнего аккаунта — не в очередь следующего
     console.warn("mark chat as read error:", e);
     if(ids && ids.length) msgsRequeueUnsentRead(chatId, ids);
     return false;
@@ -8295,18 +8532,21 @@ function retryFailedMsg(msgId){
 // пользователя беспокоит только после нескольких неудач подряд
 const AUTO_RETRY_DELAYS=[1500, 3000, 6000];
 async function attemptWithAutoRetry(m, doAttempt){
+  // 7 окт 2026: аккаунт на устройстве сменился — сообщение прежнего не
+  // уходит с токеном следующего.
+  const g=accountGen;
   for(let i=0;i<=AUTO_RETRY_DELAYS.length;i++){
-    if(m._cancelled) return false;           // отправку отменили с самого сообщения
+    if(m._cancelled || g!==accountGen) return false;           // отправку отменили с самого сообщения
     try{
       const ok=await doAttempt();
       if(ok) return true;
-    }catch(e){ console.warn("send attempt failed:",e); }
-    if(m._cancelled) return false;
+    }catch(e){ if(e && e.accountChanged) return false; console.warn("send attempt failed:",e); }
+    if(m._cancelled || g!==accountGen) return false;
     if(i<AUTO_RETRY_DELAYS.length){
       await new Promise(r=>setTimeout(r, AUTO_RETRY_DELAYS[i]));
     }
   }
-  if(m._cancelled) return false;
+  if(m._cancelled || g!==accountGen) return false;
   m.uploading=false;   // не оставлять кольцо загрузки и ✕ у неудачного вложения
   m.failed=true; renderMsgs(); saveState();
   return false;
@@ -10401,7 +10641,9 @@ async function countChannelViews(ch){
   // всегда стучались в /api/messages/:id/view, для чата 88888 это всегда
   // било мимо (404, тихо игнорировалось) — счётчик там никогда не рос.
   const isOfficial = ch.id===88888;
+  const g=accountGen;
   for(const m of msgs){
+    if(g!==accountGen) return;   // 7 окт 2026: просмотры прежнего аккаунта не засчитываются от следующего
     _viewedThisSession.add(m.dbId);
     try{
       if(isOfficial){
@@ -12730,10 +12972,11 @@ function uploadWithProgress(file, m){
     const xhr=new XMLHttpRequest();
     uploadXhrs.set(m.id, xhr);
     xhr.open("POST", API_URL+"/api/upload");
-    const t=getToken(); if(t) xhr.setRequestHeader("Authorization", "Bearer "+t);
+    const t=getToken(), g=accountGen; if(t) xhr.setRequestHeader("Authorization", "Bearer "+t);
     xhr.upload.onprogress=(ev)=>{ if(ev.lengthComputable){ m.uploadProgress=ev.loaded/Math.max(1, ev.total); paintUploadProgress(m); } };
     xhr.onload=()=>{
       uploadXhrs.delete(m.id);
+      if(g!==accountGen){ reject(accountChangedError()); return; }   // 7 окт 2026: файл прежнего аккаунта не отправляется от следующего
       let data={}; try{ data=JSON.parse(xhr.responseText||"{}"); }catch(e){}
       if(xhr.status===401) onAuthorizedRequest401("/api/upload", t);
       checkBannedResponse(data);
@@ -13297,7 +13540,9 @@ async function sendImageGroup(caption){
 
   const curChat=S.chats.find(c=>c.id===chatId);
   const memberIds=getChatMemberIds(curChat);
+  const g=accountGen;
   for(const m of msgs){
+    if(g!==accountGen) break;   // 7 окт 2026: аккаунт сменился — остальные фото не уходят от следующего
     await retryAttachmentMsg(m, chatId, ch, memberIds);
   }
 }
@@ -16772,7 +17017,7 @@ function ctxDownload(){
 function exportData(){ const blob=new Blob([JSON.stringify({user:S.user,chats:S.chats,messages:S.messages},null,2)],{type:"application/json"}); const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="angie_export.json";a.click(); showToast("💾 Экспорт готов"); }
 
 function importData(){ showToast("📥 Выберите файл angie_export.json"); }
-function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{ try{ saveComposerDraft(); }catch(e){} S.loggedIn=false;clearToken();saveState();location.reload();}; openM("m-confirm"); }
+function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{ try{ saveComposerDraft(); }catch(e){} S.loggedIn=false;switchAccount(null);clearToken();saveState();location.reload();}; openM("m-confirm"); }
 // ── Истёкшая сессия ────────────────────────────────────────────────────────
 // 3 окт 2026. Один сценарий для всех путей: auth.error по WebSocket, 401 у
 // /api/users/me при запуске и 401 у любого запроса с токеном.
@@ -16842,8 +17087,9 @@ function sessionExpired(){
   // Уведомления, накопленные для этой сессии, не должны уйти от имени
   // следующего входа.
   wsOutbox=[];
-  // Чистим ТОЛЬКО авторизацию: токен и признак входа. Чаты, сообщения,
-  // черновики, тема, язык и прочие настройки остаются как были.
+  // Токен и признак входа. Данные аккаунта (чаты, сообщения, черновики)
+  // уходят в его отдельную запись и вернутся при его же входе (switchAccount);
+  // тема, язык и прочие настройки устройства остаются.
   _mandatory2FAData=null;
   try{ saveComposerDraft(); }catch(e){}
   // Неотправленное этого аккаунта не должно достаться следующему: идущая
@@ -16856,8 +17102,12 @@ function sessionExpired(){
   if(S.editingId){ S.editingId=null; el("estrip")?.classList.remove("on"); }
   draftStash=null; composerChatId=null; composerOwner=null;
   try{ setInputText(""); }catch(e){}
-  clearToken();
+  // 7 окт 2026: всё, что этот аккаунт открыл и держит, — прочь: следующий
+  // вход (тот же или другой аккаунт) начинает со своих данных.
+  try{ unwindAllWindows(); }catch(e){}
   S.loggedIn=false;
+  switchAccount(null);
+  clearToken();
   saveState();
   // Меню сообщения лежит выше экранов входа — закрываем, чтобы не висело поверх.
   try{ if(el("ctx")?.classList.contains("on")) closeCtx(); }catch(e){}
@@ -16875,7 +17125,7 @@ function forceLogoutBanned(reason){
   if(_forceLogoutShown) return; // WS и HTTP-ответ могут прилететь почти одновременно
   _forceLogoutShown=true;
   alert("🚫 "+(reason||"Ваш аккаунт заблокирован администрацией"));
-  S.loggedIn=false; clearToken(); saveState(); location.reload();
+  S.loggedIn=false; switchAccount(null); clearToken(); saveState(); location.reload();
 }
 
 // Мягкое удаление — аккаунт останется в базе год, можно восстановить при
@@ -16891,7 +17141,7 @@ function confirmDeleteAccount(){
       const data=await apiPost("/api/users/me/delete", {}, true);
       if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось удалить аккаунт")); return; }
       showToast("💀 Аккаунт удалён");
-      S.loggedIn=false; clearToken(); saveState();
+      S.loggedIn=false; switchAccount(null); clearToken(); saveState();
       setTimeout(()=>location.reload(), 800);
     }catch(e){ showToast("❌ Нет связи с сервером"); }
   };
@@ -18914,6 +19164,15 @@ function syncProfileFromServer(){
       .then(resp=>{
         const data = resp && resp.user; // GET /api/users/me отдаёт { user: {...} }, не плоский объект
         if(!data||!data.id) return;
+        // 7 окт 2026: токен принадлежит другому аккаунту, чем данные на
+        // устройстве (вход в соседней вкладке, старое хранилище) — берём данные
+        // этого аккаунта и перезапускаемся начисто.
+        if(S.owner!=null && String(data.id)!==String(S.owner)){
+          switchAccount(data.id);
+          S.user={id:data.id, name:data.name||"", uname:data.username||"", bio:data.bio||"", phone:data.phone||"", avatar:data.avatar_url||"", initials:(data.name||"Я").slice(0,2).toUpperCase(), role:data.role||"user", balance_cr:data.balance_cr||0};
+          S.loggedIn=true; saveState(); location.reload(); return;
+        }
+        if(S.owner==null) S.owner=String(data.id);   // старое хранилище без id в S.user
         S.user={...S.user,...{id:data.id,name:data.name||S.user.name,uname:data.username||S.user.uname,bio:data.bio||S.user.bio,avatar:data.avatar_url||S.user.avatar,role:data.role||S.user.role,balance_cr:data.balance_cr||S.user.balance_cr,billing_region:data.billing_region||S.user.billing_region,statusEmoji:data.status_emoji||S.user.statusEmoji,nameColor:data.name_color||S.user.nameColor,hidePhone:!!data.hide_phone,hideLastSeen:!!data.hide_last_seen,lastSeenVisibility:(["everyone","contacts","nobody"].includes(data.last_seen_visibility)?data.last_seen_visibility:(data.hide_last_seen?"nobody":"everyone")),blockVoiceVideo:!!data.block_voice_video,pendingPhoneChange:data.pending_phone_change||null,pendingPhoneChangeAt:data.pending_phone_change_at||null,verified:!!data.is_verified}};
         renderLastSeenPrivacy();
         // Зарубежным пользователям (не +7) незачем видеть цены в рублях —
@@ -18942,6 +19201,18 @@ function syncProfileFromServer(){
       .catch(()=>{});
 }
 
+// 7 окт 2026: вход сохранён, а токена нет (вышли в соседней вкладке) или
+// токен другого аккаунта (вошли там) — данные на устройстве не этого входа.
+// Решаем до первой отрисовки и до запросов, без ожидания /users/me.
+{
+  const т=getToken(), чей=tokenUserId(т);
+  if(S.loggedIn && !т){ S.loggedIn=false; switchAccount(null); }
+  else if(S.loggedIn && чей && S.owner!=null && чей!==String(S.owner)){
+    switchAccount(чей); S.loggedIn=true;
+    if(!S.user || S.user.id==null) S.user={...(S.user||{}), id:чей};
+    saveState();
+  }
+}
 // При наличии токена — обновляем данные с сервера в фоне
 if(S.loggedIn){
   // ⚠️ Защита: на всякий случай принудительно закрываем все полноэкранные
