@@ -4556,13 +4556,22 @@ function clearChatView(){
   el("rp")?.classList.remove("mobile-open");
 }
 // Конец сессии без перезагрузки: всё, что прежний аккаунт открыл (окна,
-// экраны, меню, выбор), закрывается напрямую — как серия «назад», но без
-// истории браузера. Её оставшиеся записи потом просто ничего не делают.
+// экраны, меню, выбор), закрывается напрямую — как серия «назад».
 // ⚠️ Закрыватель НЕ помечается navSpent: часть из них — общие функции
 // (closeMobileChat), пометка выключила бы «назад» для всех следующих чатов.
+// 7 окт 2026 (вечер): записи этих окон в истории браузера тоже снимаются.
+// Раньше они оставались «холостыми»: на Android «назад» на экране входа, а
+// потом и в списке чатов следующего аккаунта ничего не делало, пока их не
+// израсходует. Уходим одним переходом на столько шагов, сколько наших записей
+// живо (кроме «назад», который уже в полёте: его popstate придёт сам);
+// пришедший popstate только обнуляет счёт (см. _navDrainAll).
 function unwindAllWindows(){
   for(let i=navStack.length-1;i>=0;i--){ const f=navStack[i]; if(f && !f.navSpent){ try{ f(); }catch(e){} } }
   navStack.length=0;
+  selNavCount=0; selNavDrain=0; _selNavReplaceTop=false;
+  _navPendingOpen=null; _navPendingLayer=null; _navPendingSelectExit=false; _navPendingFn=null; _rootTabPending=null;
+  const шагов=navLive-(_navBackInFlight?1:0);
+  if(шагов>0){ _navDrainAll=true; _navBackInFlight=true; history.go(-шагов); }
   document.querySelectorAll(".movl.on").forEach(w=>{ clearTimeout(w._closeMTimer); w.classList.remove("on","closing"); w.querySelector(".modal")?.classList.remove("closing"); });
   document.querySelectorAll(".screen.on").forEach(s=>{ if(s.id!=="screen-main") s.classList.remove("on","closing"); });
   try{ if(el("ctx")?.classList.contains("on")) closeCtx(); }catch(e){}
@@ -7862,6 +7871,10 @@ function pushNavEntry(closeFn){
 // лежит НОВОЕ окно, и «назад» закрыл бы именно его. Поэтому пока «назад» в
 // полёте, открытие откладывается до его приземления (см. openM и popstate).
 let _navBackInFlight=false, _navPendingOpen=null, _navPendingLayer=null, _navPendingSelectExit=false, _navPendingFn=null;
+// 7 окт 2026: конец сессии снял все наши записи истории разом (unwindAllWindows).
+// Первый пришедший popstate — это он (или «назад», бывший в полёте): закрывать
+// нечего, стопка уже пуста, только обнулить счёт живых записей.
+let _navDrainAll=false;
 function popNavEntry(){
   if(navStack.length===0) return;
   // Своей записи в истории не осталось — уходить «назад» нельзя, это выход из
@@ -7875,6 +7888,7 @@ function popNavEntry(){
   _navBackInFlight=true; history.back();
 }
 window.addEventListener("popstate",()=>{
+  if(_navDrainAll){ _navDrainAll=false; navLive=0; _navBackInFlight=false; return; }
   navLive=Math.max(0, navLive-1);
   _navBackInFlight=false;
   const closeFn=navStack.pop();
