@@ -5658,10 +5658,31 @@ function wsHandleMessage(msg){
     }
 
     case "message.deleted": {
-      const { messageId, chatId } = msg.payload;
+      const p = msg.payload||{};
+      const { messageId, chatId } = p;
+      let m=null, былоПоследним=false;
       if(S.messages[chatId]){
-        const m = S.messages[chatId].find(x => x.wsId === messageId || x.dbId === messageId || x.id === messageId);
-        if(m) m._deletedForAll = true;
+        const list=S.messages[chatId];
+        m = list.find(x => x.wsId === messageId || x.dbId === messageId || x.id === messageId);
+        if(m){
+          // Своё удаление сборка помечает заранее — само сообщение в счёт
+          // «последнего» берём независимо от пометки.
+          const видимые=list.filter(x=>x===m || (x.t!=="sys" && x.t!=="date" && !x._deletedForMe && !x._deletedForAll));
+          былоПоследним = видимые[видимые.length-1]===m;
+          m._deletedForAll = true;
+        }
+      }
+      // 7 окт 2026: с 7 октября это событие шлёт только сервер — после записи
+      // в базе — и кладёт в него новое превью чата (lastMessage). Строка
+      // списка больше не показывает удалённый текст ни у получателя, ни у
+      // удалившего (его устройство получает то же событие). Удалено не
+      // последнее — превью не трогаем. Кадр старого сервера превью не несёт.
+      if("lastMessage" in p && (!m || былоПоследним)){
+        const ch=S.chats.find(c=>c.id===chatId);
+        if(ch){
+          ch.prev=String(p.lastMessage||"");
+          if(p.lastMessageAt) ch.time=new Date(p.lastMessageAt).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"});
+        }
       }
       if(S.chat === chatId) renderMsgs();
       renderChats(); saveState();
@@ -6935,9 +6956,18 @@ async function loadMessagesFromDB(chatId){
   // (четырнадцатый круг: rules R14-8, races F9).
   let nvOldest=null;
   if(nvHad){ nvOldest=0; for(const m of S.messages[chatId]) if(Number.isFinite(m.ts)){ nvOldest=m.ts; break; } }
+  // 7 окт 2026: что устройство знало ДО запроса — сверяем только это (своё,
+  // сохранённое на сервере, пока запрос шёл, в ответ попасть не могло).
+  const известныеДо=new Set((S.messages[chatId]||[]).filter(m=>m.dbId).map(m=>m.dbId));
   try {
     const data = await apiGet("/api/messages/"+chatId);
     if(!data.messages || !data.messages.length){
+      // 7 окт 2026: «сообщений нет» — известные устройству удалены на сервере.
+      if(Array.isArray(data.messages)){
+        let скрыто=false;
+        for(const m of (S.messages[chatId]||[])) if(m.dbId && известныеДо.has(m.dbId) && m.t!=="sys" && !m._deletedForAll && !m._deletedForMe){ m._deletedForMe=true; скрыто=true; }
+        if(скрыто){ saveState(); if(S.chat===chatId) renderMsgs(); }
+      }
       if(_awaitingDb===chatId) _awaitingDb=null;
       if(_openLoadChat===chatId) _openLoadChat=null;   // иначе следующая фоновая пересинхронизация запишет своё в «новые к открытию»
       // Итерация 16: сервер ответил пустым — решаем по тому, что есть в памяти,
@@ -7123,6 +7153,24 @@ async function loadMessagesFromDB(chatId){
       // (осторожность с фото без размера, граница «увидено», «у низа»).
       if(_openLoadChat===chatId && _unreadDivider && _unreadDivider.chat===chatId && _unreadDivider.ids) _unreadDivider.ids.add(String(m.id));
       changedAnything=true;
+    }
+    // 7 окт 2026: сообщение, известное устройству до запроса, которого в ответе
+    // нет, на сервере удалено (у всех или у меня) — прячем: раньше удалённое,
+    // пока устройство было не в сети, оставалось в ленте навсегда. Окно
+    // сверки — вся история, если пришло меньше предела (50), иначе строки
+    // после самой старой пришедшей.
+    {
+      const пришли=new Set(data.messages.map(x=>x.id));
+      const list=S.messages[chatId];
+      let с=0;
+      if(data.messages.length>=50){
+        const старейшая=data.messages.reduce((a,x)=>new Date(x.created_at)<new Date(a.created_at)?x:a);
+        с=list.findIndex(m=>m.dbId===старейшая.id);
+      }
+      if(с>=0) for(let i=с;i<list.length;i++){
+        const m=list[i];
+        if(m.dbId && известныеДо.has(m.dbId) && !пришли.has(m.dbId) && m.t!=="sys" && !m._deletedForAll && !m._deletedForMe){ m._deletedForMe=true; changedAnything=true; }
+      }
     }
     // 3 авг 2026: раньше renderMsgs() тут звался безусловно — было безопасно,
     // пока функция вызывалась ТОЛЬКО для открытого чата. Теперь, когда
@@ -14590,13 +14638,13 @@ function selDeleteAll(){
   if(!n) return;
   const ms=S.messages[S.chat]||[];
   const curChat=S.chats.find(c=>c.id===S.chat);
-  const canAll=canModerateChat(curChat);
+  const canAll=delStaff();   // 7 окт 2026: чужое «у всех» — только глобальная роль, как на сервере
   const memberIds=getChatMemberIds(curChat);
   let blocked=0;
   S.selectedMsgs.forEach(id=>{
     const m=ms.find(x=>x.id===id);
     if(m){
-      if(m.t!=="out" && !canAll){ blocked++; return; }
+      if(!msgIsOut(m) && !canAll){ blocked++; return; }
       m._deletedForAll=true;
       wsSend({type:"message.delete", payload:{messageId:m.wsId||m.dbId||m.id, chatId:S.chat, forAll:true, memberIds}});
       if(m.dbId && typeof S.chat==="string") apiDelete("/api/messages/"+m.dbId, {forAll:true}).catch(()=>{});
@@ -15104,11 +15152,10 @@ function switchRxnCat(cat, catEl){
 function openDelModal(){
   const ms=S.messages[S.chat]||[];
   const m=ms.find(x=>x.id===S.ctxId);
-  const isOwn=m&&m.t==="out";
-  const ch=S.chats.find(c=>c.id===S.chat);
-  const isPersonal = !ch || ch.type==="personal";
-  // В личном чате — свои и чужие; в группе — свои всегда, чужие только при праве deleteMsg
-  const canDeleteForAll = isOwn || isPersonal || canI("deleteMsg");
+  // 7 окт 2026: «у всех» — только своё (или глобальная роль admin/owner), как
+  // решает сервер; раньше кнопка была и для чужих — сервер отказывал (403),
+  // а у удалившего сообщение пропадало.
+  const canDeleteForAll = !!m && (msgIsOut(m) || delStaff());
   el("del-forall-btn").style.display=canDeleteForAll?"flex":"none";
   el("del-info").textContent=canDeleteForAll
     ?"Вы можете удалить сообщение только у себя или у всех участников чата."
@@ -15123,16 +15170,15 @@ function openBulkDeleteModal(){
   if(!n) return;
   const ms=S.messages[S.chat]||[];
   const selected=S.selectedMsgs.map(id=>ms.find(x=>x.id===id)).filter(Boolean);
-  const allOwn=selected.every(m=>m.t==="out");
-  const ch=S.chats.find(c=>c.id===S.chat);
-  const isPersonal = !ch || ch.type==="personal";
-  const canDeleteForAll = allOwn || isPersonal || canI("deleteMsg");
+  const canDeleteForAll = selected.every(m=>msgIsOut(m)) || delStaff();   // 7 окт 2026: как решает сервер
   el("del-forall-btn").style.display=canDeleteForAll?"flex":"none";
   el("del-info").textContent=canDeleteForAll
     ? `Удалить ${n} ${n===1?"сообщение":"сообщений"} только у себя или у всех участников чата.`
     : "Можно удалить только у себя.";
   openM("m-delete");
 }
+// Глобальная роль admin/owner — сервер разрешает ей «у всех» и чужое.
+function delStaff(){ return S.user?.role==="admin" || S.user?.role==="owner"; }
 function delForMe(){
   // Та же модалка используется и для массового удаления в режиме выбора
   // (см. openBulkDeleteModal) — там уже готовая selDeleteForMe() умеет
@@ -15156,7 +15202,7 @@ function delForAll(){
   if(i!==-1){
     const m=ms[i];
     const curChat=S.chats.find(c=>c.id===S.chat);
-    if(m.t!=="out" && !canModerateChat(curChat)){ showToast("🔒 Нет прав удалять чужие сообщения у всех"); return; }
+    if(!msgIsOut(m) && !delStaff()){ showToast("🔒 Удалить у всех можно только свои сообщения"); return; }
     m._deletedForAll=true;
     // Отправляем удаление через WebSocket другим участникам
     const memberIds=getChatMemberIds(curChat);
@@ -15976,7 +16022,7 @@ function renderArchiveList(){
       <div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>
       <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
         <div class="cnm">${escHtml(ch.nm)}</div>
-        <div class="cprev">${ch.prev||""}</div>
+        <div class="cprev">${escHtml(ch.prev||"")}</div>
       </div>
       <button class="rp-action-btn" style="width:auto;padding:6px 10px;font-size:11.5px;flex-shrink:0" onclick="event.stopPropagation();unarchiveChat(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})">Вернуть</button>
     </div>`;
@@ -16192,7 +16238,13 @@ function reportAndBlockCurrentChat(){
   ch.blocked=true; if(!S.blocked.includes(ch.id))S.blocked.push(ch.id);
   renderUnknownBar(ch);
   renderChats(); showToast("🚫 Жалоба отправлена, "+ch.nm+" заблокирован"); saveState();
-  if(ch.withUserId) apiPost("/api/users/"+ch.withUserId+"/block", {}, true).catch(e=>console.warn("block error:",e));
+  if(ch.withUserId) blockOnServer(ch.withUserId);
+}
+// 7 окт 2026: при блокировке в любую сторону сервер больше не отдаёт номер —
+// прячем его в контактах сразу и сверяем список с сервером.
+function blockOnServer(userId){
+  (S.contacts||[]).forEach(c=>{ if(String(c.id)===String(userId)) c.phone=""; });
+  apiPost("/api/users/"+userId+"/block", {}, true).then(()=>loadContacts()).catch(e=>console.warn("block error:",e));
 }
 // Базовые системные чаты — Избранное/Angie Official/AngieSupport/BotFather/Verify.
 // Их нельзя удалить, заблокировать или отправить в архив.
@@ -16255,7 +16307,7 @@ function blockUser(){
     renderChats(); showToast("🚫 "+ch.nm+" заблокирован"); saveState();
     // Раньше блокировка была полностью локальной — сервер не знал, человек
     // всё равно мог вам писать
-    if(ch.withUserId) apiPost("/api/users/"+ch.withUserId+"/block", {}, true).catch(e=>console.warn("block error:",e));
+    if(ch.withUserId) blockOnServer(ch.withUserId);
   }
 }
 
@@ -16265,7 +16317,7 @@ async function unblockUser(chatId){
   renderChats(); renderBlockedList(); saveState();
   showToast("✅ "+ch.nm+" разблокирован");
   if(ch.withUserId){
-    try{ await apiPost("/api/users/"+ch.withUserId+"/unblock", {}, true); }catch(e){ console.warn("unblock error:",e); }
+    try{ await apiPost("/api/users/"+ch.withUserId+"/unblock", {}, true); loadContacts(); }catch(e){ console.warn("unblock error:",e); }
   }
 }
 // Считает реальное количество разных типов вложений в истории чата
@@ -17230,7 +17282,7 @@ function renderContacts(filter=""){
   const list=S.contacts.filter(c=>!filter||c.nm.toLowerCase().includes(filter.toLowerCase())||("@"+(c.uname||"")).includes(filter.toLowerCase()));
   list.sort((a,b)=>a.nm.localeCompare(b.nm));
   let html=""; let lastL="";
-  list.forEach(c=>{ const l=c.nm[0].toUpperCase(); if(l!==lastL){html+=`<div class="alpha-idx">${l}</div>`;lastL=l;} html+=`<div class="contact-item"><div style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer" onclick="startChatWith('${c.id}')"><div class="contact-av" style="background:${colBg(c.col)}">${c.nm[0]}</div><div style="flex:1"><div class="contact-nm">${c.nm}</div><div class="contact-ph">@${c.uname||"—"} · ${c.phone||""}</div></div><div class="contact-online">${contactOnline(c)?"● онлайн":""}</div></div><button class="xbtn sec" style="padding:4px 8px;font-size:10px;flex-shrink:0" onclick="event.stopPropagation();removeFromContacts('${c.id}')">✕</button></div>`; });
+  list.forEach(c=>{ const l=c.nm[0].toUpperCase(); if(l!==lastL){html+=`<div class="alpha-idx">${l}</div>`;lastL=l;} html+=`<div class="contact-item"><div style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer" onclick="startChatWith('${c.id}')"><div class="contact-av" style="background:${colBg(c.col)}">${escHtml(c.nm[0])}</div><div style="flex:1"><div class="contact-nm">${escHtml(c.nm)}</div><div class="contact-ph">@${escHtml(c.uname||"—")}${c.phone?" · "+escHtml(c.phone):""}</div></div><div class="contact-online">${contactOnline(c)?"● онлайн":""}</div></div><button class="xbtn sec" style="padding:4px 8px;font-size:10px;flex-shrink:0" onclick="event.stopPropagation();removeFromContacts('${c.id}')">✕</button></div>`; });
   if(!list.length)html=`<div style="text-align:center;color:var(--tx3);padding:24px">Не найдено</div>`;
   el("contacts-list").innerHTML=html;
 }
