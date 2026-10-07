@@ -4362,9 +4362,11 @@ function loadState(){
       if(видели.has(c.id)) return false;
       видели.add(c.id); return true;
     });
-    // Ложные черновики из невидимых знаков ("\n" после стирания и т.п.),
-    // сохранённые прежними сборками, — убираем: «Черновик:» без текста.
-    S.chats.forEach(c=>{ if(c && "draft" in c && !hasMeaningfulDraft(c.draft)) delete c.draft; });
+    // 7 окт 2026: черновики теперь по аккаунтам (S.draftsByUser). Старые,
+    // лежавшие прямо в чатах, ничьи: на этом устройстве мог работать и другой
+    // аккаунт, доказать владельца нельзя — не переносим, удаляем (один раз:
+    // новая сборка в чаты черновики не пишет).
+    S.chats.forEach(c=>{ if(c && "draft" in c) delete c.draft; });
     // «Печатает…» — мгновенный признак; сохранённый при закрытии, он прятал бы
     // превью и черновик до следующего набора собеседника.
     S.chats.forEach(c=>{ if(c){ delete c._typing; delete c._typingTimer; } });
@@ -5230,7 +5232,7 @@ function wsHandleMessage(msg){
       const ch=S.chats.find(c=>c.id===chatId);
       if(ch){
         if(String(removedUserId)===String(S.user?.id)){
-          S.chats=S.chats.filter(c=>c.id!==chatId);
+          S.chats=S.chats.filter(c=>c.id!==chatId); forgetChatDraft(chatId);
           delete S.messages[chatId];
           if(S.chat===chatId) openChat(77777);
           showToast("➖ Вас удалили из «"+ch.nm+"»");
@@ -5474,7 +5476,7 @@ function wsHandleMessage(msg){
 
     case "chat.deleted": {
       const { chatId } = msg.payload;
-      S.chats = S.chats.filter(c => c.id !== chatId);
+      S.chats = S.chats.filter(c => c.id !== chatId); forgetChatDraft(chatId);
       delete S.messages[chatId];
       if(S.chat === chatId) openChat(77777);
       renderChats(); saveState();
@@ -6994,7 +6996,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-05 онлайн по настройке, поддержка прочитана, черновик без пустого, тап при перерисовке";
+const BUILD_TAG = "2026-10-07 онлайн по настройке, поддержка прочитана, черновики по аккаунтам, тап при перерисовке";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -7456,8 +7458,8 @@ function openChat(id,opts){
   if(el("rpst"))el("rpst").textContent="● "+presenceText(ch);
 
   // Черновик этого чата — в поле; с этой минуты поле принадлежит ему.
-  composerChatId=ch.id;
-  const inp=el("minput"); if(inp){setInputText(hasMeaningfulDraft(ch.draft)?ch.draft:""); }
+  composerChatId=ch.id; composerOwner=draftOwner();
+  const inp=el("minput"); if(inp){ setInputText(getChatDraft(ch.id)); }
 
   updateInputPermissionUI(ch);
 
@@ -8031,11 +8033,11 @@ function chatSelectDelete(){
     const isRealChat=typeof chatId==="string" && chatId.length>10;
     const isGroupOrChannel=ch.type==="groups"||ch.type==="channels";
     if(isGroupOrChannel && !canModerateChat(ch)){
-      S.chats=S.chats.filter(c=>c.id!==chatId); delete S.messages[chatId];
+      S.chats=S.chats.filter(c=>c.id!==chatId); forgetChatDraft(chatId); delete S.messages[chatId];
       if(isRealChat) apiDelete("/api/chats/"+chatId+"/leave").catch(e=>console.warn("leave chat error:",e));
     } else {
       const memberIds=getChatMemberIds(ch);
-      S.chats=S.chats.filter(c=>c.id!==chatId); delete S.messages[chatId];
+      S.chats=S.chats.filter(c=>c.id!==chatId); forgetChatDraft(chatId); delete S.messages[chatId];
       if(isRealChat){
         apiDelete("/api/chats/"+chatId).catch(e=>console.warn("delete chat error:",e));
         wsSendReliable({type:"chat.delete", payload:{chatId, memberIds}});
@@ -10557,7 +10559,7 @@ function deleteGroupFromSettings(){
   const memberIds = getChatMemberIds(ch);
 
   closeM("m-chsettings");
-  S.chats = S.chats.filter(c => c.id !== chatId);
+  S.chats = S.chats.filter(c => c.id !== chatId); forgetChatDraft(chatId);
   delete S.messages[chatId];
   saveState();
   openChat(77777);
@@ -11271,7 +11273,7 @@ async function sendMsg(){
   if(S.reply){msg.reply={fr:S.reply.fr,tx:S.reply.tx};cancelReply();}
   S.messages[S.chat].push(msg);
   const ch=S.chats.find(c=>c.id===S.chat);
-  if(ch){ch.prev=txt;ch.time=tm;ch.lastTs=Date.now();delete ch.draft;}
+  if(ch){ch.prev=txt;ch.time=tm;ch.lastTs=Date.now();clearChatDraft(ch.id);}
   setInputText(""); aResize(inp); renderMsgs(); renderChats(); saveState();
 
   // Сохраняем сообщение в БД (получаем настоящий id) и уже с ним рассылаем через WebSocket
@@ -11390,13 +11392,13 @@ async function confirmScheduleSend(){
   if(pendingAttach){ await scheduleAttachmentSend(when); return; }
   const txt=getInputText();
   if(!hasRealText(txt)) return;
-  const chatId=S.chat;
+  const chatId=S.chat, owner=draftOwner();
   closeM("m-schedule");
   setInputText(""); aResize(el("minput"));
   const d=await apiPost("/api/messages", {chatId, text:txt, type:"text", scheduledAt: when.toISOString(), clientMsgId: genClientMsgId()}, true);
   if(!d || !d.success){
     showToast("❌ "+(d&&d.error||"Не удалось запланировать"));
-    restoreComposerText(chatId, txt); // возвращаем текст своему чату, чтобы не потерялся
+    restoreComposerText(chatId, txt, owner); // возвращаем текст своему чату (и своему аккаунту), чтобы не потерялся
     return;
   }
   showToast("🕓 Запланировано на "+when.toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}));
@@ -11408,7 +11410,7 @@ async function confirmScheduleSend(){
 async function scheduleAttachmentSend(when){
   const att=pendingAttach;
   const caption=getInputText();
-  const chatId=S.chat;
+  const chatId=S.chat, owner=draftOwner();
   closeM("m-schedule");
   pendingAttach=null; renderAttachPreview();
   setInputText(""); aResize(el("minput"));
@@ -11420,25 +11422,38 @@ async function scheduleAttachmentSend(when){
     const res=await fetch(API_URL+"/api/upload",{method:"POST",headers:t?{"Authorization":"Bearer "+t}:{},body:fd});
     const upData=await res.json().catch(()=>({}));
     if(!res.ok||!upData.success) throw new Error(upData.error||"Не удалось загрузить файл");
+    // Пока грузился файл, сменился аккаунт (сессия кончилась, вошёл другой) —
+    // публиковать чужим токеном нельзя: подпись — в черновик владельца.
+    if(draftOwner()!==owner){ restoreComposerText(chatId, caption, owner); showToast("Отложенная отправка отменена: аккаунт сменился"); return; }
     const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:upData.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,scheduledAt:when.toISOString(),clientMsgId:genClientMsgId()},true);
     if(!d || !d.success){
       showToast("❌ "+(d&&d.error||"Не удалось запланировать"));
-      if(restoreComposerText(chatId, caption)){ pendingAttach=att; renderAttachPreview(); }
+      if(restoreComposerText(chatId, caption, owner)){ pendingAttach=att; renderAttachPreview(); }
       return;
     }
     showToast("🕓 Запланировано на "+when.toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}));
     if(S.scheduledModalChatId===chatId) renderScheduledList();
   }catch(e){
     showToast("❌ Нет связи с сервером");
-    if(restoreComposerText(chatId, caption)){ pendingAttach=att; renderAttachPreview(); }
+    if(restoreComposerText(chatId, caption, owner)){ pendingAttach=att; renderAttachPreview(); }
   }
 }
 // ⚠️ 5 окт 2026. Текст возвращается после await — человек мог уже уйти в
 // другой чат. Тогда текст остаётся черновиком СВОЕГО чата, а не попадает в
 // поле чужого (раньше попадал и становился его черновиком). true — поле
 // всё ещё у этого чата, текст возвращён в поле.
-function restoreComposerText(chatId, text){
-  const своё = String(composerChatId)===String(chatId);
+function restoreComposerText(chatId, text, owner){
+  // 7 окт 2026: запрос начинал другой аккаунт (с тех пор сменился) — текст в его
+  // черновик, в поле и в черновики текущего не попадает.
+  if(owner!==undefined && owner!==draftOwner()){
+    if(owner && hasMeaningfulDraft(text)){
+      if(!S.draftsByUser || typeof S.draftsByUser!=="object") S.draftsByUser={};
+      const d=S.draftsByUser[owner]=S.draftsByUser[owner]||{}, k=String(chatId);
+      d[k]=hasMeaningfulDraft(d[k]) ? text+"\n"+d[k] : text; saveState();
+    }
+    return false;
+  }
+  const своё = String(composerChatId)===String(chatId) && composerOwner===draftOwner();
   // Нечего возвращать (подписи не было) — ничего и не трогаем.
   if(!hasMeaningfulDraft(text)) return своё && !S.editingId;
   // Поле у этого чата и свободно: возвращаем текст, не теряя набранного за время запроса.
@@ -11455,7 +11470,7 @@ function restoreComposerText(chatId, text){
   }
   // Ушли в другой чат — в черновик своего чата, вместе с тем, что там уже есть.
   const ch=S.chats.find(c=>String(c.id)===String(chatId));
-  const было=ch && hasMeaningfulDraft(ch.draft) ? ch.draft : "";
+  const было=ch ? getChatDraft(chatId) : "";
   setChatDraft(chatId, было ? text+"\n"+было : text);
   return false;
 }
@@ -13239,7 +13254,7 @@ async function sendWithAttachment(caption){
   S.messages[chatId].push(msg);
   const ch=S.chats.find(c=>c.id===chatId);
   const label=att.kind==="image"?"📷 Фото":(att.kind==="video"?"🎥 Видео":(att.kind==="videoCircle"?"⭕ Видео-кружочек":(att.kind==="voice"?"🎤 Голосовое":(att.kind==="audio"?"🎵 "+att.file.name:"📎 "+att.file.name))));
-  if(ch){ch.prev=caption?label+" · "+caption:label;ch.time=tm;ch.lastTs=Date.now();delete ch.draft;}
+  if(ch){ch.prev=caption?label+" · "+caption:label;ch.time=tm;ch.lastTs=Date.now();clearChatDraft(ch.id);}
   renderMsgs(); renderChats(); saveState();
 
   const curChat=S.chats.find(c=>c.id===chatId);
@@ -13277,7 +13292,7 @@ async function sendImageGroup(caption){
   });
   if(S.reply){ msgs[0].reply={fr:S.reply.fr,tx:S.reply.tx}; cancelReply(); }
   S.messages[chatId].push(...msgs);
-  if(ch){ ch.prev=caption?("🖼 "+items.length+" фото · "+caption):("🖼 "+items.length+" фото"); ch.time=tm; ch.lastTs=Date.now(); delete ch.draft; }
+  if(ch){ ch.prev=caption?("🖼 "+items.length+" фото · "+caption):("🖼 "+items.length+" фото"); ch.time=tm; ch.lastTs=Date.now(); clearChatDraft(ch.id); }
   renderMsgs(); renderChats(); saveState();
 
   const curChat=S.chats.find(c=>c.id===chatId);
@@ -13302,7 +13317,7 @@ async function sendFeedbackAttachment(caption){
   S.messages[FEEDBACK_CHAT_ID].push(fbMsg);
   setInputText(""); aResize(el("minput"));
   const sch=S.chats.find(c=>c.id===FEEDBACK_CHAT_ID);
-  if(sch){sch.prev=caption?label+" · "+caption:label;sch.time=now();sch.lastTs=Date.now();delete sch.draft;}
+  if(sch){sch.prev=caption?label+" · "+caption:label;sch.time=now();sch.lastTs=Date.now();clearChatDraft(sch.id);}
   renderMsgs(); renderChats(); saveState();
   try{
     const fd=new FormData();
@@ -13357,7 +13372,7 @@ async function sendLocalBotAttachment(caption){
   S.messages[chatId].push(msg);
   setInputText(""); aResize(el("minput"));
   const sch=S.chats.find(c=>c.id===chatId);
-  if(sch){sch.prev=caption?label+" · "+caption:label;sch.time=now();sch.lastTs=Date.now();delete sch.draft;}
+  if(sch){sch.prev=caption?label+" · "+caption:label;sch.time=now();sch.lastTs=Date.now();clearChatDraft(sch.id);}
   renderMsgs(); renderChats(); saveState();
   try{
     const fd=new FormData();
@@ -13480,7 +13495,7 @@ function cancelEdit(){
   const отложено=draftStash; draftStash=null;
   // Поле всё ещё у того же чата — возвращаем его черновик (или пусто).
   if(отложено && String(отложено.chatId)===String(composerChatId)) setInputText(отложено.text);
-  else { const ch=S.chats.find(c=>String(c.id)===String(composerChatId)); setInputText(ch && hasMeaningfulDraft(ch.draft) ? ch.draft : ""); }
+  else setInputText(composerOwner===draftOwner() ? getChatDraft(composerChatId) : "");
 }
 
 // ── CTX MENU ──────────────────────────────────────────────────
@@ -14491,25 +14506,48 @@ function hasRealText(s){ return hasMeaningfulDraft(s); }
 // openChat \u0437\u0430\u043F\u0438\u0441\u044B\u0432\u0430\u043B \u044D\u0442\u0443 \u043F\u0443\u0441\u0442\u043E\u0442\u0443 \u0432 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u043E\u0442\u043A\u0440\u044B\u0442\u043E\u0433\u043E \u0447\u0430\u0442\u0430 (\u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A
 // \u043F\u0440\u043E\u043F\u0430\u0434\u0430\u043B); \u043F\u0440\u0438 \u0430\u0441\u0438\u043D\u0445\u0440\u043E\u043D\u043D\u044B\u0445 \u0432\u043E\u0437\u0432\u0440\u0430\u0442\u0430\u0445 \u0442\u0435\u043A\u0441\u0442\u0430 \u043E\u043D \u043C\u043E\u0433 \u043F\u043E\u043F\u0430\u0441\u0442\u044C \u0432 \u0447\u0443\u0436\u043E\u0439 \u0447\u0430\u0442.
 let composerChatId=null;
+let composerOwner=null;           // аккаунт, чей черновик сейчас в поле (draftOwner на момент открытия)
 let composerComposing=false;      // \u0438\u0434\u0451\u0442 \u043D\u0430\u0431\u043E\u0440 \u0447\u0435\u0440\u0435\u0437 IME/\u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438 \u043A\u043B\u0430\u0432\u0438\u0430\u0442\u0443\u0440\u044B
 let draftStash=null;              // \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A, \u043E\u0442\u043B\u043E\u0436\u0435\u043D\u043D\u044B\u0439 \u043D\u0430 \u0432\u0440\u0435\u043C\u044F \u043F\u0440\u0430\u0432\u043A\u0438 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F
 // \u0417\u0430\u043F\u0438\u0441\u0430\u0442\u044C \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u0447\u0430\u0442\u0430: \u0435\u0441\u0442\u044C \u0432\u0438\u0434\u0438\u043C\u044B\u0439 \u0442\u0435\u043A\u0441\u0442 \u2014 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u043C, \u043D\u0435\u0442 \u2014 \u0443\u0434\u0430\u043B\u044F\u0435\u043C \u0441\u0430\u043C
 // \u043A\u043B\u044E\u0447 (\u043D\u0435 \u043F\u0443\u0441\u0442\u0443\u044E \u0441\u0442\u0440\u043E\u043A\u0443). \u0421\u0442\u0440\u043E\u043A\u0430 \u0441\u043F\u0438\u0441\u043A\u0430 \u043E\u0431\u043D\u043E\u0432\u043B\u044F\u0435\u0442\u0441\u044F \u0441\u0440\u0430\u0437\u0443, \u0431\u0435\u0437 \u043F\u0435\u0440\u0435\u0440\u0438\u0441\u043E\u0432\u043A\u0438.
+// ⚠️ 7 окт 2026. Черновик принадлежит АККАУНТУ, а не только чату: на одном
+// устройстве по очереди работают разные аккаунты, а список чатов (и их id) в
+// S общий. Поэтому черновики лежат в S.draftsByUser[id аккаунта][id чата];
+// в объект чата они больше не пишутся. Очистка — только у своего аккаунта.
+function draftOwner(){ const id=S.user && S.user.id; return id!=null && id!=="" ? String(id) : null; }
+function draftsOfOwner(create){
+  const u=draftOwner(); if(!u) return null;
+  if(!S.draftsByUser || typeof S.draftsByUser!=="object"){ if(!create) return null; S.draftsByUser={}; }
+  if(!S.draftsByUser[u] || typeof S.draftsByUser[u]!=="object"){ if(!create) return null; S.draftsByUser[u]={}; }
+  return S.draftsByUser[u];
+}
+function getChatDraft(chatId){ const d=draftsOfOwner(false); const t=d ? d[String(chatId)] : ""; return hasMeaningfulDraft(t) ? t : ""; }
 function setChatDraft(chatId, text){
   const ch=S.chats.find(c=>String(c.id)===String(chatId)); if(!ch) return;
-  const \u0431\u044B\u043B\u043E=hasMeaningfulDraft(ch.draft) ? ch.draft : null;
-  if(hasMeaningfulDraft(text)) ch.draft=text; else delete ch.draft;
-  const \u0441\u0442\u0430\u043B\u043E=hasMeaningfulDraft(ch.draft) ? ch.draft : null;
+  const \u0431\u044B\u043B\u043E=getChatDraft(chatId)||null;
+  const d=draftsOfOwner(hasMeaningfulDraft(text));
+  if(d){ if(hasMeaningfulDraft(text)) d[String(chatId)]=text; else delete d[String(chatId)]; }
+  const \u0441\u0442\u0430\u043B\u043E=getChatDraft(chatId)||null;
   if(\u0431\u044B\u043B\u043E!==\u0441\u0442\u0430\u043B\u043E) updateChatRowPreview(ch);
 }
+function clearChatDraft(chatId){ setChatDraft(chatId, ""); }
+// Чат ушёл из списка — черновик этого аккаунта к нему больше не нужен (при
+// возвращении в тот же чат он не должен всплыть). Другие аккаунты не трогаем:
+// они могут оставаться в этом чате.
+function forgetChatDraft(chatId){ const d=draftsOfOwner(false); if(d) delete d[String(chatId)]; }
 function saveComposerDraft(){
-  if(composerChatId==null || S.editingId) return;    // \u043F\u0440\u0430\u0432\u043A\u0430 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u2014 \u043D\u0435 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A
+  if(composerChatId==null || S.editingId) return;
+  // Поле набирал другой аккаунт (вышли, сессия кончилась, вошёл другой) —
+  // его текст не становится черновиком текущего.
+  if(composerOwner!==draftOwner()) return;    // \u043F\u0440\u0430\u0432\u043A\u0430 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u2014 \u043D\u0435 \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A
   setChatDraft(composerChatId, getInputText());
 }
 // \u041F\u0440\u0435\u0432\u044C\u044E \u0441\u0442\u0440\u043E\u043A\u0438 \u0447\u0430\u0442\u0430: \u00AB\u043F\u0435\u0447\u0430\u0442\u0430\u0435\u0442\u00BB, \u0447\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u0438\u043B\u0438 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0435\u0435 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435.
 function chatPreviewHTML(ch){
   if(ch._typing) return `<span class="typing-label">${typingDotsHTML("\u043F\u0435\u0447\u0430\u0442\u0430\u0435\u0442")}</span>`;
-  return hasMeaningfulDraft(ch.draft) ? '<span class="draft-label">\u0427\u0435\u0440\u043D\u043E\u0432\u0438\u043A: </span>'+escHtml(ch.draft) : escHtml(ch.prev);
+  const d=getChatDraft(ch.id);
+  return d ? '<span class="draft-label">\u0427\u0435\u0440\u043D\u043E\u0432\u0438\u043A: </span>'+escHtml(d) : escHtml(ch.prev);
 }
 function updateChatRowPreview(ch){
   const row=document.querySelector(`#clist .ci[data-chat-id="${CSS.escape(String(ch.id))}"] .cprev`);
@@ -15786,7 +15824,7 @@ function deleteChatCompletely(){
       onConfirm: ()=>{
         const chatId=S.chat;
         const isRealChat = typeof chatId==="string" && chatId.length>10;
-        S.chats = S.chats.filter(c => c.id !== chatId);
+        S.chats = S.chats.filter(c => c.id !== chatId); forgetChatDraft(chatId);
         delete S.messages[chatId];
         saveState();
         openChat(77777);
@@ -15816,7 +15854,7 @@ function deleteChatCompletely(){
       const isRealChat = typeof chatId==="string" && chatId.length>10;
       const memberIds = getChatMemberIds(ch);
 
-      S.chats = S.chats.filter(c => c.id !== chatId);
+      S.chats = S.chats.filter(c => c.id !== chatId); forgetChatDraft(chatId);
       delete S.messages[chatId];
       saveState();
 
@@ -16734,7 +16772,7 @@ function ctxDownload(){
 function exportData(){ const blob=new Blob([JSON.stringify({user:S.user,chats:S.chats,messages:S.messages},null,2)],{type:"application/json"}); const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="angie_export.json";a.click(); showToast("💾 Экспорт готов"); }
 
 function importData(){ showToast("📥 Выберите файл angie_export.json"); }
-function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{S.loggedIn=false;clearToken();saveState();location.reload();}; openM("m-confirm"); }
+function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{ try{ saveComposerDraft(); }catch(e){} S.loggedIn=false;clearToken();saveState();location.reload();}; openM("m-confirm"); }
 // ── Истёкшая сессия ────────────────────────────────────────────────────────
 // 3 окт 2026. Один сценарий для всех путей: auth.error по WebSocket, 401 у
 // /api/users/me при запуске и 401 у любого запроса с токеном.
@@ -16807,6 +16845,17 @@ function sessionExpired(){
   // Чистим ТОЛЬКО авторизацию: токен и признак входа. Чаты, сообщения,
   // черновики, тема, язык и прочие настройки остаются как были.
   _mandatory2FAData=null;
+  try{ saveComposerDraft(); }catch(e){}
+  // Неотправленное этого аккаунта не должно достаться следующему: идущая
+  // запись (микрофон/камера), вложение, альбом, ответ, панель эмодзи.
+  try{ stopChatMedia(); }catch(e){}
+  try{ cancelPendingAttach(); }catch(e){}
+  try{ cancelPendingAttachGroup(); }catch(e){}
+  try{ cancelReply(); }catch(e){}
+  try{ closeMPanelNow(); }catch(e){}
+  if(S.editingId){ S.editingId=null; el("estrip")?.classList.remove("on"); }
+  draftStash=null; composerChatId=null; composerOwner=null;
+  try{ setInputText(""); }catch(e){}
   clearToken();
   S.loggedIn=false;
   saveState();
