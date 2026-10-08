@@ -4531,7 +4531,7 @@ function resetAccountRuntime(){
   тихо(()=>{ _viewedThisSession=new Set(); storySeenNow.clear(); });
   тихо(()=>{ _lastRenderedChat=null; _lastMsgCount={}; _msgByIdAt=null; });
   тихо(()=>{ wsHasAuthedOnce=false; lastReconnectResyncAt=0; clearTimeout(_reconnectResyncLater); _reconnectResyncLater=null; });
-  тихо(()=>{ pinBusy.clear(); pinSettledAt.clear(); _returnResyncAt=0; });
+  тихо(()=>{ pinBusy.clear(); pinSettledAt.clear(); prefBusy.clear(); prefSettledAt.clear(); _returnResyncAt=0; });
   тихо(()=>stopTinkoffPolling());
   тихо(()=>{ clearTimeout(_searchDebounce); clearTimeout(_usrSearchTimer); clearTimeout(_botSearchTimer); _addMemberResults=[]; });
   тихо(()=>{ const п=el("sb-search"); if(п) п.value=""; const г=el("global-search-results"); if(г) г.innerHTML=""; });
@@ -6809,8 +6809,10 @@ async function loadChatsFromDB(){
         existing.isPrivate = !!dbChat.is_private;
         // Закреп/мьют/архив — раньше были чисто локальными, теперь синхронизируются с сервера
         if(!pinBusy.has(existing.id) && !((pinSettledAt.get(existing.id)||0) > presenceSince)) existing.pinned = !!dbChat.pinned;
-        existing.archived = !!dbChat.archived;
-        existing.muted = mutedFromServer;
+        // 8 окт 2026 (вечер): мьют и архив — так же: только что сделанное на
+        // этом устройстве старый снимок списка не откатывает.
+        if(!prefFresh(existing.id, "archived", presenceSince)) existing.archived = !!dbChat.archived;
+        if(!prefFresh(existing.id, "muted", presenceSince)) existing.muted = mutedFromServer;
         // Настоящее число непрочитанных с сервера — не трогаем, если сейчас
         // открыт именно этот чат (там непрочитанного и так 0, но markChatAsRead()
         // мог ещё не долететь до сервера в этот самый момент — не хотим
@@ -15472,9 +15474,24 @@ function srchNav(d){ if(!srchResults.length)return; srchIdx=(srchIdx+d+srchResul
 // Общая функция сохранения личных настроек чата на сервере — раньше
 // закреп/мьют/архив были полностью локальными, не синхронизировались
 // между устройствами
+// 8 окт 2026 (вечер): пока запрос в пути и если настройку поменяли уже после
+// того, как ушёл запрос списка, — список её не откатывает (как закрепление,
+// см. pinSettledAt). Раньше возврат в приложение (resyncChatListOnReturn)
+// мог тут же вернуть только что заглушённый чат в «не заглушён».
+const prefBusy=new Map(), prefSettledAt=new Map();   // "chatId:поле" → запросов в пути / когда менялось
+function prefFresh(chatId, field, since){
+  const k=chatId+":"+field;
+  return prefBusy.has(k) || (prefSettledAt.get(k)||0) > since;
+}
 function saveChatMemberPref(chatId, field, value){
   if(!(typeof chatId==="string" && chatId.length>10)) return; // системные чаты — не настоящие записи в БД
-  apiPatch("/api/chats/"+chatId+"/member-prefs", {[field]:value}, true).catch(e=>console.warn("save chat pref error:",e));
+  const k=chatId+":"+field, ag=accountGen;
+  prefBusy.set(k, (prefBusy.get(k)||0)+1); prefSettledAt.set(k, performance.now());
+  apiPatch("/api/chats/"+chatId+"/member-prefs", {[field]:value}, true).catch(e=>console.warn("save chat pref error:",e)).finally(()=>{
+    if(ag!==accountGen) return;
+    const n=(prefBusy.get(k)||1)-1; if(n>0) prefBusy.set(k, n); else prefBusy.delete(k);
+    prefSettledAt.set(k, performance.now());
+  });
 }
 
 // chatId/silent — опциональные (этап 10 дорожной карты, добавлены для свайп-
@@ -15488,17 +15505,25 @@ function saveChatMemberPref(chatId, field, value){
 // нажатие по этому чату ничего не шлёт (двойной тап). Служебные чаты
 // (Избранное, Поддержка и т.п.) живут только на устройстве — у сервера для
 // них нет записи, поэтому действия «закрепить» у них нет вовсе.
-const pinBusy=new Set();          // чаты, по которым запрос закрепления в пути
+const pinBusy=new Map();          // чаты, по которым запрос закрепления в пути → {value, promise}
 const pinSettledAt=new Map();     // когда закрепление чата последний раз поменялось
 function pinChat(chatId=S.chat, silent=false){
   const ch=S.chats.find(c=>c.id===chatId); if(!ch) return Promise.resolve(false);
   if(isSystemChat(ch.id)) return Promise.resolve(false);
   return setChatPinned(ch.id, !ch.pinned, silent);
 }
-async function setChatPinned(chatId, value, silent=false){
+// Запрос по этому чату уже в пути: то же значение — его итог (массовое
+// закрепление не считает такой чат неудачей), обратное — не шлём (двойной тап).
+function setChatPinned(chatId, value, silent=false){
+  const идёт=pinBusy.get(chatId);
+  if(идёт) return Promise.resolve(идёт.value===!!value && идёт.promise ? идёт.promise : false);
+  const p=setChatPinnedNow(chatId, value, silent);
+  const z=pinBusy.get(chatId); if(z && !z.promise) z.promise=p;
+  return p;
+}
+async function setChatPinnedNow(chatId, value, silent=false){
   const ch=S.chats.find(c=>c.id===chatId);
   if(!ch || isSystemChat(chatId)) return false;
-  if(pinBusy.has(chatId)) return false;
   value=!!value;
   if(!!ch.pinned===value) return true;
   const прежнее=!!ch.pinned, ag=accountGen;
@@ -15509,7 +15534,7 @@ async function setChatPinned(chatId, value, silent=false){
     if(!silent) showToast(value?"📌 Чат закреплён":"Чат откреплён");
     return true;
   }
-  pinBusy.add(chatId);
+  pinBusy.set(chatId, {value, promise:null});
   renderChats(); refreshChatActionButtons(); saveState();
   let ok=false;
   try{
