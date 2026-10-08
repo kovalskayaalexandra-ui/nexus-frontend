@@ -4587,7 +4587,7 @@ function unwindAllWindows(){
   for(let i=navStack.length-1;i>=0;i--){ const f=navStack[i]; if(f && !f.navSpent){ try{ f(); }catch(e){} } }
   navStack.length=0;
   selNavCount=0; selNavDrain=0; _selNavReplaceTop=false;
-  _navPendingOpen=null; _navPendingLayer=null; _navPendingSelectExit=false; _navPendingFn=null; _rootTabPending=null;
+  _navPendingOpen=null; _navPendingLayer=null; _navPendingSelectExit=false; _navPendingFn=null; _rootTabPending=null; _navAfterDrain=null;
   const шагов=navLive-(_navBackInFlight?1:0);
   if(шагов>0){ _navDrainAll=true; _navBackInFlight=true; history.go(-шагов); }
   document.querySelectorAll(".movl.on").forEach(w=>{ clearTimeout(w._closeMTimer); w.classList.remove("on","closing"); w.querySelector(".modal")?.classList.remove("closing"); });
@@ -7933,6 +7933,9 @@ let _navBackInFlight=false, _navPendingOpen=null, _navPendingLayer=null, _navPen
 // Первый пришедший popstate — это он (или «назад», бывший в полёте): закрывать
 // нечего, стопка уже пуста, только обнулить счёт живых записей.
 let _navDrainAll=false;
+// 8 окт 2026 (вечер): что сделать, когда этот снятый разом стек приземлится
+// (переход из уведомления открывает чат уже в чистой истории).
+let _navAfterDrain=null;
 function popNavEntry(){
   if(navStack.length===0) return;
   // Своей записи в истории не осталось — уходить «назад» нельзя, это выход из
@@ -7946,7 +7949,11 @@ function popNavEntry(){
   _navBackInFlight=true; history.back();
 }
 window.addEventListener("popstate",()=>{
-  if(_navDrainAll){ _navDrainAll=false; navLive=0; _navBackInFlight=false; return; }
+  if(_navDrainAll){
+    _navDrainAll=false; navLive=0; _navBackInFlight=false;
+    const f=_navAfterDrain; _navAfterDrain=null; if(f) f();
+    return;
+  }
   navLive=Math.max(0, navLive-1);
   _navBackInFlight=false;
   const closeFn=navStack.pop();
@@ -18323,14 +18330,39 @@ function notifTap(){
 // Переход из уведомления (полоска, системное уведомление, новое окно по
 // ?open=). Открывается только чат ТЕКУЩЕГО аккаунта: уведомление, пришедшее
 // до смены аккаунта, чужой чат не откроет.
+// 8 окт 2026 (вечер): всё, что открыто поверх (Настройки, Контакты, экран
+// «⋮», окна, меню, другой чат), сначала закрывается — как серия «назад»,
+// одним переходом по истории, — и только потом открывается чат. Раньше чат
+// открывался ПОД открытым экраном (на вид ничего не происходило, а «назад»
+// закрывало невидимый чат), а под окном «Удалить чат» подтверждение потом
+// удаляло уже этот, другой чат.
 function openChatFromNotif(chatId, owner){
   if(chatId==null || chatId==="") return false;
   if(owner!=null && owner!=="" && String(owner)!==String(S.owner??"")) return false;
   if(!S.loggedIn) return false;
   const ch=S.chats.find(c=>c.id===chatId);
   if(!ch) return false;
-  try{ if(el("ctx")?.classList.contains("on")) closeCtx(); }catch(e){}
-  openChat(ch.id);
+  if(el("screen-maintenance")?.classList.contains("on")) return false;
+  // «Назад» в полёте: дождаться его, иначе он снимет запись открытого чата.
+  if(_navDrainAll){ _navAfterDrain=()=>openChatFromNotif(chatId, owner); return true; }
+  if(_navBackInFlight){
+    const прежняя=_navPendingFn;
+    _navPendingFn=()=>{ if(прежняя) прежняя(); openChatFromNotif(chatId, owner); };
+    return true;
+  }
+  // Телефон, открыт только чат и поверх ничего нет — чат меняется на месте:
+  // запись «назад» у него та же (иначе одно «назад» уходило бы впустую).
+  const верх=navStack[navStack.length-1];
+  if(isMobileLayout() && navStack.length===1 && верх===closeMobileChat && !верх.navSpent
+     && document.querySelector(".layout.chat-open") && !el("rp")?.classList.contains("mobile-open")
+     && !document.querySelector(".movl.on") && !document.querySelector(".screen.on:not(#screen-main)")
+     && !el("ctx")?.classList.contains("on")){
+    openChat(ch.id,{skipMobileSlide:true});
+    return true;
+  }
+  unwindAllWindows();
+  const открыть=()=>{ const c=S.chats.find(x=>x.id===chatId); if(c && S.loggedIn) openChat(c.id); };
+  if(_navDrainAll) _navAfterDrain=открыть; else открыть();
   return true;
 }
 
