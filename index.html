@@ -16228,7 +16228,10 @@ function chatConfirmDo(){
 }
 
 function clearHistory(){
-  const ch=S.chats.find(c=>c.id===S.chat);
+  // 8 окт 2026 (вечер): чат, который в окне, а не тот, что окажется открыт к
+  // моменту «Очистить» (S.chat могли сменить, пока окно на экране).
+  const chatId=S.chat;
+  const ch=S.chats.find(c=>c.id===chatId);
   const canAll=canModerateChat(ch);
   // 30 июля 2026: раньше для личных чатов canModerateChat() всегда true (нет
   // ролей в 1:1), поэтому "очистить только у себя" было мертвой веткой —
@@ -16238,25 +16241,26 @@ function clearHistory(){
   // хочешь стереть и у другого участника. Для группы/канала чекбокс виден
   // только модератору (canAll) — рядовой участник просто чистит у себя без вопросов.
   const doClear=(wipeForAll)=>{
+    if(!S.chats.some(c=>c.id===chatId)){ showToast("Этого чата уже нет"); return; }
     if(!wipeForAll){
-      (S.messages[S.chat]||[]).forEach(m=>{ m._deletedForMe=true; });
+      (S.messages[chatId]||[]).forEach(m=>{ m._deletedForMe=true; });
       renderMsgs(); renderChats();
       showToast("🗑️ История очищена у вас");
       saveState();
-      if(typeof S.chat==="string" && S.chat.length>10){
-        apiDelete("/api/messages/chat/"+S.chat+"/clear-for-me").catch(e=>console.warn("clear history error:",e));
+      if(typeof chatId==="string" && chatId.length>10){
+        apiDelete("/api/messages/chat/"+chatId+"/clear-for-me").catch(e=>console.warn("clear history error:",e));
       }
       return;
     }
-    S.messages[S.chat]=[];
+    S.messages[chatId]=[];
     renderMsgs(); renderChats();
     showToast("🗑️ История очищена");
     saveState();
-    if(typeof S.chat==="string" && S.chat.length>10){
-      apiDelete("/api/messages/chat/"+S.chat+"/clear").catch(e=>console.warn("clear history error:",e));
-      const curChat=S.chats.find(c=>c.id===S.chat);
+    if(typeof chatId==="string" && chatId.length>10){
+      apiDelete("/api/messages/chat/"+chatId+"/clear").catch(e=>console.warn("clear history error:",e));
+      const curChat=S.chats.find(c=>c.id===chatId);
       const memberIds=getChatMemberIds(curChat);
-      wsSendReliable({type:"chat.clear", payload:{chatId:S.chat, memberIds}});
+      wsSendReliable({type:"chat.clear", payload:{chatId, memberIds}});
     }
   };
   if(!canAll){ doClear(false); return; }
@@ -16283,12 +16287,15 @@ function deleteChatCompletely(){
       text: `Покинуть «${ch.nm}»?`,
       confirmLabel: "Покинуть",
       onConfirm: ()=>{
-        const chatId=S.chat;
+        // 8 окт 2026 (вечер): чат из окна, а не открытый сейчас (S.chat могли
+        // сменить, пока окно на экране); чата уже нет — делать нечего.
+        const chatId=ch.id;
+        if(!S.chats.some(c=>c.id===chatId)){ showToast("Этого чата уже нет"); return; }
         const isRealChat = typeof chatId==="string" && chatId.length>10;
         S.chats = S.chats.filter(c => c.id !== chatId); forgetChatDraft(chatId);
         delete S.messages[chatId];
         saveState();
-        openChat(77777);
+        if(S.chat===chatId) openChat(77777);
         renderChats();
         showToast("Вы покинули «"+ch.nm+"»");
         if(isRealChat){
@@ -16311,7 +16318,8 @@ function deleteChatCompletely(){
       : `Удалить чат с ${ch.nm} полностью? Это сотрёт переписку у ОБОИХ участников и не отменяется.`,
     confirmLabel: "Удалить",
     onConfirm: ()=>{
-      const chatId=S.chat;
+      const chatId=ch.id;   // 8 окт 2026 (вечер): чат из окна (см. «Покинуть» выше)
+      if(!S.chats.some(c=>c.id===chatId)){ showToast("Этого чата уже нет"); return; }
       const isRealChat = typeof chatId==="string" && chatId.length>10;
       const memberIds = getChatMemberIds(ch);
 
@@ -16319,7 +16327,7 @@ function deleteChatCompletely(){
       delete S.messages[chatId];
       saveState();
 
-      openChat(77777); // безопасный переход, чтобы не остаться на удалённом чате
+      if(S.chat===chatId) openChat(77777); // безопасный переход, чтобы не остаться на удалённом чате
       renderChats();
       showToast("🗑️ Чат удалён");
 
