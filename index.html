@@ -4298,78 +4298,10 @@ function loadState(){
   // Контактов пока нет как реальной функции — список всегда пустой из кода
   S.contacts = [];
 
-  // Самовосстановление системных чатов (Избранное/AngieSupport/BotFather/
-  // Angie Verify) — раньше это в лучшем случае проверялось только в момент
-  // входа (loginOK), поэтому если чат отсутствовал (первый показ нового
-  // бота уже после того, как человек залогинился в прошлый раз — именно
-  // так Angie Verify не появился у Александры без повторного входа), обычная
-  // перезагрузка страницы его не создавала. Теперь проверяется при каждой
-  // загрузке состояния. Angie Official (88888) сюда сознательно не входит —
-  // его контент строится из buildOfficialMessages()/OFFICIAL_POSTS, которые
-  // объявлены намного ниже в файле и ещё не существуют в момент вызова
-  // loadState() (та же проблема с порядком объявления, что была у текстов
-  // приветствий) — для него самовосстановление остаётся только при входе.
-  if(!S.messages) S.messages={};
-  const SYSTEM_CHAT_DEFAULTS = [
-    {id:77777, nm:"Избранное", ini:"", col:2, online:false, prev:"Сохранённые сообщения", type:"personal", pinned:true, saved:true,
-     greet:[{id:1,t:"sys",tx:"Это ваше Избранное — сохраняйте сюда важные сообщения, ссылки и заметки. Видите только вы."}]},
-    {id:99999, nm:"Монохром Поддержка", ini:"NS", col:6, online:true, prev:"Чем могу помочь?", type:"personal", pinned:false,
-     greet:[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NS",col:6,tx:SUPPORT_GREET,time:now(),isSupport:true}]},
-    {id:66666, nm:"Монохром Боты", ini:"BF", col:5, online:true, prev:"Создавай ботов прямо тут", type:"personal", pinned:false,
-     greet:[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"BF",col:5,tx:BOTFATHER_GREET,time:now(),isSupport:true}]},
-    {id:55555, nm:"Монохром Верификация", ini:"NV", col:3, online:true, prev:"Подать заявку на верификацию", type:"personal", pinned:false,
-     greet:[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NV",col:3,tx:VERIFY_GREET,time:now(),isSupport:true}]},
-  ];
-  SYSTEM_CHAT_DEFAULTS.forEach(def=>{
-    if(S.chats && !S.chats.find(c=>c.id===def.id)){
-      S.chats.push({id:def.id,nm:def.nm,ini:def.ini,col:def.col,online:def.online,prev:def.prev,time:def.id===77777?"":now(),unread:0,type:def.type,pinned:def.pinned,muted:false,blocked:false,saved:def.saved,verified:def.id!==77777});
-      if(!S.messages[def.id]) S.messages[def.id]=def.greet;
-    }
-  });
-  // На случай, если системные чаты успели получить blocked/archived ДО того, как мы
-  // защитили их от этого — снимаем флаги принудительно при каждой загрузке.
-  // 66666 (BotFather) добавлен сюда отдельно — раньше не входил в защищённый
-  // список вообще, из-за чего у alex2 он мог застрять заблокированным/в
-  // архиве навсегда, не долетая обратно даже после перезагрузки страницы.
-  // 55555 (Angie Verify) — новый бот верификации, защищён с самого начала.
-  // 44444 (Angie Feedback) — этого чата может и не быть локально (виден не
-  // всем, см. syncFeedbackBotStatus()), .find() просто ничего не найдёт.
-  [77777,88888,99999,66666,55555,44444].forEach(sid=>{
-    const sc=S.chats?.find(c=>c.id===sid);
-    if(sc && (sc.blocked||sc.archived)){
-      sc.blocked=false; sc.archived=false;
-    }
-  });
-  // Все официальные каналы/боты Angie (не "Избранное" — это просто личные
-  // заметки, не отдельная сущность) — сразу с синей галочкой, у уже
-  // существующих локально чатов флага могло не быть (появился позже)
-  [88888,99999,66666,55555,44444].forEach(sid=>{
-    const sc=S.chats?.find(c=>c.id===sid);
-    if(sc && !sc.verified) sc.verified=true;
-  });
-  // Раньше у Angie Official галочка была просто вписана в текст имени —
-  // теперь есть настоящий значок verifiedBadgeHTML(), старый текстовый
-  // вариант ("... ✅") убирается ниже вместе с миграцией бренда, чтобы не
-  // показывались две галочки разом.
-  // Миграция бренда Nexus → Angie: у уже вошедших пользователей старые имена
-  // системных ботов лежат сохранёнными в localStorage, поправляем один раз
-  // по id (стабильный), а не по имени (оно как раз и меняется).
-  [[99999,"Монохром Поддержка"],[66666,"Монохром Боты"],[55555,"Монохром Верификация"],[44444,"Монохром Отзывы"],[88888,"Монохром Официальный"]].forEach(([sid,newNm])=>{
-    const sc=S.chats?.find(c=>c.id===sid);
-    // ⚠️ 5 окт 2026: и прежние имена «Angie…» («AngieSupport 🤖» и т.п.), а не
-    // только «Nexus…». Иначе openSupport, искавший чат по имени, не находил его
-    // и заводил второй 99999 с жёстким unread:1 — «1», которая не снималась.
-    if(sc && sc.nm && sc.nm!==newNm && /Nexus|Angie/i.test(sc.nm)) sc.nm=newNm;
-  });
-  // 5 окт 2026: служебные чаты — по одному на id (на устройствах, где уже
-  // успел появиться дубль 99999, лишний убирается).
+  // 8 окт 2026: служебные чаты (Избранное, Поддержка, Боты, Верификация,
+  // Отзывы, Официальный) — одной функцией, см. normalizeSystemChats ниже.
+  normalizeSystemChats();
   if(Array.isArray(S.chats)){
-    const видели=new Set();
-    S.chats=S.chats.filter(c=>{
-      if(![77777,88888,99999,66666,55555,44444].includes(c.id)) return true;
-      if(видели.has(c.id)) return false;
-      видели.add(c.id); return true;
-    });
     // 7 окт 2026: черновики теперь по аккаунтам (S.draftsByUser). Старые,
     // лежавшие прямо в чатах, ничьи: на этом устройстве мог работать и другой
     // аккаунт, доказать владельца нельзя — не переносим, удаляем (один раз:
@@ -4379,6 +4311,64 @@ function loadState(){
     // превью и черновик до следующего набора собеседника.
     S.chats.forEach(c=>{ if(c){ delete c._typing; delete c._typingTimer; } });
   }
+}
+
+// ── СЛУЖЕБНЫЕ ЧАТЫ ───────────────────────────────────────────────
+// 8 окт 2026. Служебные чаты живут только на устройстве, под постоянными
+// числовыми id (у серверных чатов id — UUID, пересечься не могут). Их вид
+// определяется ТОЛЬКО id, а не сохранённым именем: раньше «Поддержку» искали
+// по имени, и после переименования Angie → «Монохром» на старых устройствах
+// появлялся второй чат 99999 («Монохром Поддержка» + «AngieSupport 🤖»),
+// который переживал F5, выход и смену аккаунта. Функция идемпотентна и
+// вызывается везде, где в S попадают сохранённые данные аккаунта: при
+// загрузке (loadState) и после смены аккаунта (switchAccount).
+const SUPPORT_CHAT_ID=99999;
+const SYSTEM_CHAT_IDS=[77777,88888,99999,66666,55555,44444];
+const SYSTEM_CHAT_NAMES={99999:"Монохром Поддержка",66666:"Монохром Боты",55555:"Монохром Верификация",44444:"Монохром Отзывы",88888:"Монохром Официальный"};
+function isSupportChat(id){ return id===SUPPORT_CHAT_ID; }
+// Создаются при отсутствии. Официальный (88888) — при входе (его лента
+// строится из buildOfficialMessages, объявленной ниже по файлу), Отзывы
+// (44444) — только тем, кому положено (syncFeedbackBotStatus).
+function systemChatDefaults(){
+  return [
+    {id:77777, nm:"Избранное", ini:"", col:2, online:false, prev:"Сохранённые сообщения", type:"personal", pinned:true, saved:true,
+     greet:[{id:1,t:"sys",tx:"Это ваше Избранное — сохраняйте сюда важные сообщения, ссылки и заметки. Видите только вы."}]},
+    {id:99999, nm:"Монохром Поддержка", ini:"NS", col:6, online:true, prev:"Чем могу помочь?", type:"personal", pinned:false,
+     greet:[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NS",col:6,tx:SUPPORT_GREET,time:now(),isSupport:true}]},
+    {id:66666, nm:"Монохром Боты", ini:"BF", col:5, online:true, prev:"Создавай ботов прямо тут", type:"personal", pinned:false,
+     greet:[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"BF",col:5,tx:BOTFATHER_GREET,time:now(),isSupport:true}]},
+    {id:55555, nm:"Монохром Верификация", ini:"NV", col:3, online:true, prev:"Подать заявку на верификацию", type:"personal", pinned:false,
+     greet:[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NV",col:3,tx:VERIFY_GREET,time:now(),isSupport:true}]},
+  ];
+}
+function normalizeSystemChats(){
+  if(!Array.isArray(S.chats)) S.chats=[];
+  if(!S.messages) S.messages={};
+  // По одному на id. Остаётся первый: в старой сборке все изменения
+  // (закреп, счётчик, превью) доставались именно ему, второй был застывшим.
+  const видели=new Set();
+  S.chats=S.chats.filter(c=>{
+    if(!c || !SYSTEM_CHAT_IDS.includes(c.id)) return true;
+    if(видели.has(c.id)) return false;
+    видели.add(c.id); return true;
+  });
+  systemChatDefaults().forEach(def=>{
+    if(!S.chats.find(c=>c.id===def.id)){
+      S.chats.push({id:def.id,nm:def.nm,ini:def.ini,col:def.col,online:def.online,prev:def.prev,time:def.id===77777?"":now(),unread:0,type:def.type,pinned:def.pinned,muted:false,blocked:false,saved:def.saved,verified:def.id!==77777});
+      if(!S.messages[def.id]) S.messages[def.id]=def.greet;
+    }
+  });
+  S.chats.forEach(c=>{
+    if(!c || !SYSTEM_CHAT_IDS.includes(c.id)) return;
+    // Имя — по id, всегда (служебные имена не редактируются; старые
+    // «Nexus…», «Angie…», «AngieSupport 🤖» исчезают).
+    if(SYSTEM_CHAT_NAMES[c.id]) c.nm=SYSTEM_CHAT_NAMES[c.id];
+    // Заблокировать или убрать в архив служебный чат нельзя; флаги, успевшие
+    // сохраниться раньше, снимаются.
+    c.blocked=false; c.archived=false;
+    // Все, кроме Избранного, — с синей галочкой.
+    if(c.id!==77777) c.verified=true;
+  });
 }
 
 function saveState(){
@@ -4495,6 +4485,10 @@ function switchAccount(newUid){
   }
   if(carryPhone!==undefined) S.phone=carryPhone;
   S.owner=newUid;
+  // 8 окт 2026: данные входящего аккаунта (его сохранённая запись или
+  // умолчания) — с теми же служебными чатами, что и при загрузке: запись,
+  // сохранённая старой сборкой, могла нести дубль «Поддержки».
+  if(newUid) try{ normalizeSystemChats(); }catch(e){ console.warn("normalizeSystemChats:", e); }
   const записано=saveState();
   // Живая копия теперь в nexus_v2_data — отдельная запись больше не нужна
   // (если общая запись не удалась — остаётся, иначе данные пропали бы).
