@@ -4349,6 +4349,7 @@ function systemChatDefaults(){
 }
 // Прежние названия приложения (Nexus → Angie/Энджи → «Монохром»).
 const OLD_BRAND_RE=/Nexus|Angie|Энджи/i;
+const OLD_DEMO_PREV_RE=new RegExp("^🎉 (?:"+OLD_BRAND_RE.source+") v3\\.0 — крупное обновление!$");
 function normalizeSystemChats(){
   if(!Array.isArray(S.chats)) S.chats=[];
   if(!S.messages) S.messages={};
@@ -4380,7 +4381,9 @@ function normalizeSystemChats(){
     // записи, синхронизировать нечего — действия «закрепить» у них нет.
     c.pinned=c.id===77777;
     // Превью официального канала, записанное при создании прежним брендом.
-    if(c.id===88888 && typeof c.prev==="string" && OLD_BRAND_RE.test(c.prev)) c.prev="🎉 Монохром v3.0 — крупное обновление!";
+    // Только прежняя демо-строка: настоящий пост канала со словом Nexus или
+    // Энджи (ссылка /nexus-frontend/, старое приветствие) не подменяется.
+    if(c.id===88888 && typeof c.prev==="string" && OLD_DEMO_PREV_RE.test(c.prev)) c.prev="🎉 Монохром v3.0 — крупное обновление!";
   });
   // Приветствия служебных ботов, записанные прежними сборками, — на
   // нынешние (только местное приветствие бота, не сообщения с сервера).
@@ -20275,7 +20278,7 @@ async function syncFeedbackBotStatus(){
     const show = !!(data && data.show);
     const exists = !!S.chats.find(c=>c.id===FEEDBACK_CHAT_ID);
     if(show && !exists){
-      const ch={id:FEEDBACK_CHAT_ID,nm:"Монохром Отзывы",ini:"NF",col:1,online:true,prev:"Сообщите разработчику о багах и идеях",time:now(),unread:0,type:"personal",pinned:true,muted:false,blocked:false,verified:true};
+      const ch={id:FEEDBACK_CHAT_ID,nm:"Монохром Отзывы",ini:"NF",col:1,online:true,prev:"Сообщите разработчику о багах и идеях",time:now(),unread:0,type:"personal",pinned:false,muted:false,blocked:false,verified:true};
       S.chats.push(ch);
       S.messages[FEEDBACK_CHAT_ID]=[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NF",col:1,tx:FEEDBACK_GREET,time:now(),isSupport:true}];
       saveState(); renderChats();
@@ -20326,7 +20329,7 @@ function openSupport(){
   // жёстким unread:1, а история перезаписывалась приветствием.
   let ch = S.chats.find(c=>c.id===99999);
   if(!ch){
-    ch = {id:99999, nm:"Монохром Поддержка", ini:"NS", col:6, online:true, prev:"Напишите нам!", time:now(), unread:0, type:"personal", pinned:true, muted:false, blocked:false, verified:true};
+    ch = {id:99999, nm:"Монохром Поддержка", ini:"NS", col:6, online:true, prev:"Напишите нам!", time:now(), unread:0, type:"personal", pinned:false, muted:false, blocked:false, verified:true};
     S.chats.unshift(ch);
     saveState();
   }
