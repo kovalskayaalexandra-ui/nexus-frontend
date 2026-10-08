@@ -4591,7 +4591,10 @@ function unwindAllWindows(){
   navStack.length=0;
   selNavCount=0; selNavDrain=0; _selNavReplaceTop=false;
   _navPendingOpen=null; _navPendingLayer=null; _navPendingSelectExit=false; _navPendingFn=null; _rootTabPending=null; _navAfterDrain=null;
-  const шагов=navLive-(_navBackInFlight?1:0);
+  // 9 окт 2026: слив уже летит (второй сброс в его окне — например, конец
+  // сессии сразу после тапа по уведомлению): его popstate снимет всё сам,
+  // ещё один переход увёл бы за первую запись — со страницы.
+  const шагов=_navDrainAll ? 0 : navLive-(_navBackInFlight?1:0);
   if(шагов>0){ _navDrainAll=true; _navBackInFlight=true; history.go(-шагов); }
   document.querySelectorAll(".movl.on").forEach(w=>{ clearTimeout(w._closeMTimer); w.classList.remove("on","closing"); w.querySelector(".modal")?.classList.remove("closing"); });
   document.querySelectorAll(".screen.on").forEach(s=>{ if(s.id!=="screen-main") s.classList.remove("on","closing"); });
@@ -7956,7 +7959,12 @@ function popNavEntry(){
 window.addEventListener("popstate",()=>{
   if(_navDrainAll){
     _navDrainAll=false; navLive=0; _navBackInFlight=false;
-    const f=_navAfterDrain; _navAfterDrain=null; if(f) f();
+    const f=_navAfterDrain; _navAfterDrain=null;
+    // 9 окт 2026: слив ради перехода из уведомления — сначала чат, затем то,
+    // что человек успел открыть, пока слив летел (вкладка, «Новый чат»…):
+    // раньше это оставалось отложенным и всплывало при следующем «назад».
+    // Слив конца сессии — отложенное прежним аккаунтом не открываем.
+    if(f){ f(); navRunPending(); } else navDropPending();
     return;
   }
   navLive=Math.max(0, navLive-1);
@@ -7965,6 +7973,12 @@ window.addEventListener("popstate",()=>{
   // navSpent — окно этой записи уже закрыли напрямую (см. closeM). Вызывать
   // нечего, иначе закрыли бы то, что лежит под ним.
   if(closeFn && !closeFn.navSpent) closeFn();
+  navRunPending();
+});
+function navDropPending(){
+  _navPendingOpen=null; _navPendingLayer=null; _navPendingSelectExit=false; _navPendingFn=null; _rootTabPending=null;
+}
+function navRunPending(){
   // Окно, которое просили открыть, пока «назад» был в полёте, открываем сейчас —
   // теперь его запись ляжет в стек ПОВЕРХ закрытого, а не под него.
   if(_navPendingOpen){ const id=_navPendingOpen; _navPendingOpen=null; openM(id); }
@@ -7980,7 +7994,7 @@ window.addEventListener("popstate",()=>{
     S.selectedMsgs=[];
     exitSelectMode();
   }
-});
+}
 
 // ══════════════════════════════════════════════════
 //  НИЖНЯЯ ПАНЕЛЬ ВКЛАДОК (этап 6 дорожной карты)
