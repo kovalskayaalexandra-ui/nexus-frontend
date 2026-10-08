@@ -3211,7 +3211,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <button class="rp-action-btn" id="rp-members-btn" onclick="openMembers()" style="display:none"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14c2.3.3 4 2 4 4.6"/></svg> Участники</button>
         <button class="rp-action-btn" id="rp-chsettings-btn" onclick="openChannelSettings()" style="display:none"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.7 7.7 0 0 0 0-2l2-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-1.7-1L15 3.6h-4l-.4 2.4a7.6 7.6 0 0 0-1.7 1l-2.3-.9-2 3.4L6.6 11a7.7 7.7 0 0 0 0 2l-2 1.5 2 3.4 2.3-.9c.5.4 1.1.8 1.7 1l.4 2.4h4l.4-2.4c.6-.2 1.2-.6 1.7-1l2.3.9 2-3.4-2-1.5z"/></svg> Настройки канала</button>
         <button class="rp-action-btn" id="rp-scheduled-btn" onclick="openScheduledMessages()" style="display:none"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg> Отложенные сообщения</button>
-        <button class="rp-action-btn" onclick="pinChat()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 15v5"/></svg> Закрепить чат</button>
+        <button class="rp-action-btn" id="rp-pin-btn" onclick="pinChat()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 15v5"/></svg> Закрепить чат</button>
         <button class="rp-action-btn" onclick="muteChat()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/><path d="M3 3l18 18"/></svg> Заглушить</button>
         <button class="rp-action-btn" onclick="archiveChat()" id="rp-archive-btn"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg> В архив</button>
         <button class="rp-action-btn" onclick="clearHistory()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg> Очистить историю</button>
@@ -4376,6 +4376,9 @@ function normalizeSystemChats(){
     c.blocked=false; c.archived=false;
     // Все, кроме Избранного, — с синей галочкой.
     if(c.id!==77777) c.verified=true;
+    // Закрепление у служебных чатов постоянное: у сервера для них нет
+    // записи, синхронизировать нечего — действия «закрепить» у них нет.
+    c.pinned=c.id===77777;
     // Превью официального канала, записанное при создании прежним брендом.
     if(c.id===88888 && typeof c.prev==="string" && OLD_BRAND_RE.test(c.prev)) c.prev="🎉 Монохром v3.0 — крупное обновление!";
   });
@@ -4525,6 +4528,7 @@ function resetAccountRuntime(){
   тихо(()=>{ _viewedThisSession=new Set(); storySeenNow.clear(); });
   тихо(()=>{ _lastRenderedChat=null; _lastMsgCount={}; _msgByIdAt=null; });
   тихо(()=>{ wsHasAuthedOnce=false; lastReconnectResyncAt=0; clearTimeout(_reconnectResyncLater); _reconnectResyncLater=null; });
+  тихо(()=>{ pinBusy.clear(); pinSettledAt.clear(); _returnResyncAt=0; });
   тихо(()=>stopTinkoffPolling());
   тихо(()=>{ clearTimeout(_searchDebounce); clearTimeout(_usrSearchTimer); clearTimeout(_botSearchTimer); _addMemberResults=[]; });
   тихо(()=>{ const п=el("sb-search"); if(п) п.value=""; const г=el("global-search-results"); if(г) г.innerHTML=""; });
@@ -4917,7 +4921,19 @@ function wsShutdown(){
 // Вкладку открыли — проверяем сразу, не дожидаясь очередного срабатывания.
 document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState === "visible" && wsHbSeen) wsSilenceCheck();
+  // 8 окт 2026: изменения с другого устройства (закрепление и т.п.) — при
+  // возврате в приложение, а не только при переподключении или F5.
+  if(document.visibilityState === "visible" && S.loggedIn && getToken()) resyncChatListOnReturn();
 });
+// Возврат в приложение: перечитать список чатов (закрепления, архив,
+// непрочитанные, присутствие), не чаще раза в 5 с и не под пальцем.
+let _returnResyncAt=0;
+function resyncChatListOnReturn(){
+  if(Date.now()-_returnResyncAt<5000) return;
+  if(chatListTouchActive){ setTimeout(resyncChatListOnReturn, 1000); return; }
+  _returnResyncAt=Date.now();
+  loadChatsFromDB();
+}
 
 function wsConnect(){
   if(ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
@@ -6789,7 +6805,7 @@ async function loadChatsFromDB(){
         existing.forwardProtection = !!dbChat.forward_protection;
         existing.isPrivate = !!dbChat.is_private;
         // Закреп/мьют/архив — раньше были чисто локальными, теперь синхронизируются с сервера
-        existing.pinned = !!dbChat.pinned;
+        if(!pinBusy.has(existing.id) && !((pinSettledAt.get(existing.id)||0) > presenceSince)) existing.pinned = !!dbChat.pinned;
         existing.archived = !!dbChat.archived;
         existing.muted = mutedFromServer;
         // Настоящее число непрочитанных с сервера — не трогаем, если сейчас
@@ -7449,6 +7465,7 @@ function formatChatListTime(ts){
 }
 
 function renderChats(filter=""){
+  try{ refreshChatActionButtons(); }catch(e){}
   // ⚠️ 5 окт 2026. Палец лежит на строке (тап или долгое нажатие ещё решается) —
   // список не перестраиваем: строка под пальцем не заменяется, ни тап, ни
   // долгое нажатие не теряются (раньше их ломало любое пришедшее сообщение или
@@ -7527,7 +7544,7 @@ function renderChats(filter=""){
     </div>
     <div class="ci-select-check">${S.chatSelectMode&&S.selectedChats.includes(ch.id)?"✓":""}</div>
     <div class="ci-actions">
-      <div class="ci-act ci-act-pin" title="Закрепить">${uiIcon("pin",16)}</div>
+      ${isSystemChat(ch.id)?"":`<div class="ci-act ci-act-pin" title="${ch.pinned?"Открепить":"Закрепить"}" aria-label="${ch.pinned?"Открепить":"Закрепить"}">${uiIcon("pin",16)}</div>`}
       <div class="ci-act ci-act-mute" title="Заглушить">${uiIcon("mute",16)}</div>
       <div class="ci-act ci-act-arch" title="В архив">${uiIcon("archive",16)}</div>
       <div class="ci-act ci-act-del" title="Удалить">🗑️</div>
@@ -7546,7 +7563,8 @@ function renderChats(filter=""){
       if(d.classList.contains("swipe-open")){ d.classList.remove("swipe-open"); return; }
       openChat(ch.id);
     };
-    d.querySelector(".ci-act-pin").onclick=(e)=>{ e.stopPropagation(); d.classList.remove("swipe-open"); pinChat(ch.id); };
+    const pinAct=d.querySelector(".ci-act-pin");
+    if(pinAct) pinAct.onclick=(e)=>{ e.stopPropagation(); d.classList.remove("swipe-open"); pinChat(ch.id); };
     d.querySelector(".ci-act-mute").onclick=(e)=>{ e.stopPropagation(); d.classList.remove("swipe-open"); muteChat(ch.id); };
     d.querySelector(".ci-act-arch").onclick=(e)=>{ e.stopPropagation(); d.classList.remove("swipe-open"); archiveChat(ch.id); };
     d.querySelector(".ci-act-del").onclick=(e)=>{ e.stopPropagation(); d.classList.remove("swipe-open"); openChat(ch.id,{skipMobileSlide:true}); deleteChatCompletely(); };
@@ -7772,6 +7790,7 @@ function openChat(id,opts){
   // нельзя удалить, заблокировать или отправить в архив
   const isSystem=isSystemChat(ch.id);
   if(archBtn) archBtn.style.display=isSystem?"none":"";
+  refreshChatActionButtons();   // 8 окт 2026: «Закрепить/Открепить» по состоянию
   if(el("rp-delete-btn")) el("rp-delete-btn").style.display=isSystem?"none":"";
   if(el("rp-block-btn")) el("rp-block-btn").style.display=isSystem?"none":"";
 
@@ -8065,6 +8084,7 @@ function rootTabGo(вкладка){
 // оверлей поверх .layout, через общий бэк-стек (этап 5).
 function openChatInfoScreen(){
   const rp=el("rp"); if(!rp) return;
+  refreshChatActionButtons();
   rp.classList.add("mobile-open");
   pushNavEntry(closeChatInfoScreen);
 }
@@ -8344,10 +8364,15 @@ function toggleChatSelect(id){
 }
 
 function chatSelectPin(){
-  const n=S.selectedChats.length;
-  S.selectedChats.forEach(id=>pinChat(id,true));
-  showToast(`📌 Изменено закреплений: ${n}`);
+  const ids=S.selectedChats.filter(id=>{ const c=S.chats.find(x=>x.id===id); return c && !isSystemChat(id); });
   requestExitChatSelectMode();
+  if(!ids.length){ showToast("Служебные чаты не закрепляются"); return; }
+  const цель=!ids.every(id=>!!(S.chats.find(c=>c.id===id)||{}).pinned);
+  Promise.all(ids.map(id=>setChatPinned(id, цель, true))).then(итоги=>{
+    const ок=итоги.filter(Boolean).length, нет=итоги.length-ок;
+    if(!нет) showToast(цель?`📌 Закреплено: ${ок}`:`Откреплено: ${ок}`);
+    else showToast(`❌ Не удалось ${цель?"закрепить":"открепить"}: ${нет} из ${итоги.length}`);
+  });
 }
 function chatSelectMute(){
   const n=S.selectedChats.length;
@@ -15447,10 +15472,66 @@ function saveChatMemberPref(chatId, field, value){
 // аргументов) поведение 1-в-1 как раньше — действует на текущий открытый чат,
 // с тостом. Все существующие вызовы (кнопки в .rp, openChatInfo() и т.д.) не
 // передают аргументы и продолжают работать без изменений.
+// 8 окт 2026. Закрепление — общая настройка аккаунта (видна на всех его
+// устройствах), поэтому идёт через сервер: список меняет порядок сразу,
+// ответ сервера подтверждает или откатывает. Пока запрос идёт, повторное
+// нажатие по этому чату ничего не шлёт (двойной тап). Служебные чаты
+// (Избранное, Поддержка и т.п.) живут только на устройстве — у сервера для
+// них нет записи, поэтому действия «закрепить» у них нет вовсе.
+const pinBusy=new Set();          // чаты, по которым запрос закрепления в пути
+const pinSettledAt=new Map();     // когда закрепление чата последний раз поменялось
 function pinChat(chatId=S.chat, silent=false){
-  const ch=S.chats.find(c=>c.id===chatId); if(!ch)return;
-  ch.pinned=!ch.pinned; renderChats(); if(!silent) showToast(ch.pinned?"📌 Чат закреплён":"Чат откреплён"); saveState();
-  saveChatMemberPref(ch.id, "pinned", ch.pinned);
+  const ch=S.chats.find(c=>c.id===chatId); if(!ch) return Promise.resolve(false);
+  if(isSystemChat(ch.id)) return Promise.resolve(false);
+  return setChatPinned(ch.id, !ch.pinned, silent);
+}
+async function setChatPinned(chatId, value, silent=false){
+  const ch=S.chats.find(c=>c.id===chatId);
+  if(!ch || isSystemChat(chatId)) return false;
+  if(pinBusy.has(chatId)) return false;
+  value=!!value;
+  if(!!ch.pinned===value) return true;
+  const прежнее=!!ch.pinned, ag=accountGen;
+  ch.pinned=value; pinSettledAt.set(chatId, performance.now());
+  // Чат, которого нет на сервере (не UUID), — только на устройстве, как раньше.
+  if(!isServerChatId(chatId)){
+    renderChats(); refreshChatActionButtons(); saveState();
+    if(!silent) showToast(value?"📌 Чат закреплён":"Чат откреплён");
+    return true;
+  }
+  pinBusy.add(chatId);
+  renderChats(); refreshChatActionButtons(); saveState();
+  let ok=false;
+  try{
+    const d=await apiPatch("/api/chats/"+encodeURIComponent(chatId)+"/member-prefs", {pinned:value}, true);
+    if(ag!==accountGen) return false;
+    if(!d || !d.success) throw new Error((d && d.error) || "нет ответа сервера");
+    const c2=S.chats.find(c=>c.id===chatId); if(c2) c2.pinned=!!d.pinned;
+    ok=true;
+    if(!silent) showToast(d.pinned?"📌 Чат закреплён":"Чат откреплён");
+  }catch(e){
+    if((e && e.accountChanged) || ag!==accountGen) return false;
+    const c2=S.chats.find(c=>c.id===chatId); if(c2) c2.pinned=прежнее;
+    if(!silent) showToast("❌ Не удалось "+(value?"закрепить":"открепить")+" чат. Проверьте связь и попробуйте ещё раз");
+  }finally{
+    if(ag===accountGen){
+      pinBusy.delete(chatId); pinSettledAt.set(chatId, performance.now());
+      renderChats(); refreshChatActionButtons(); saveState();
+    }
+  }
+  return ok;
+}
+// Подписи действий открытого чата — всегда по текущему состоянию (раньше
+// «Закрепить чат» была неизменным текстом в разметке).
+function refreshChatActionButtons(){
+  const b=el("rp-pin-btn"); if(!b) return;
+  const ch=S.chats.find(c=>c.id===S.chat);
+  if(!ch || isSystemChat(ch.id)){ b.style.display="none"; return; }
+  b.style.display="";
+  const занят=pinBusy.has(ch.id);
+  b.disabled=занят; b.setAttribute("aria-busy", занят?"true":"false");
+  const svg=b.querySelector("svg"); const знак=svg ? svg.outerHTML : "";
+  b.innerHTML=знак+" "+(ch.pinned?"Открепить чат":"Закрепить чат");
 }
 function muteChat(chatId=S.chat, silent=false){
   const ch=S.chats.find(c=>c.id===chatId); if(!ch)return;
