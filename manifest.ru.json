@@ -1,7 +1,7 @@
 {
-  "name": "Энджи Мессенджер",
-  "short_name": "Энджи",
-  "description": "Мессенджер Энджи",
+  "name": "Монохром",
+  "short_name": "Монохром",
+  "description": "Мессенджер «Монохром»",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

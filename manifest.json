@@ -1,7 +1,7 @@
 {
-  "name": "Angie Messenger",
-  "short_name": "Angie",
-  "description": "Angie Messenger",
+  "name": "Monochrome",
+  "short_name": "Monochrome",
+  "description": "Monochrome messenger",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

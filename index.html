@@ -43,7 +43,7 @@
 <!-- PWA-основа (этап 2 мобильной дорожной карты) — нужна и для "Добавить на экран",
      и как фундамент для будущей TWA-сборки (Android-приложение в Google Play).
      Манифест выбираем синхронно до его загрузки браузером: у русскоязычных —
-     manifest.ru.json ("Энджи"), у остальных — manifest.json ("Angie"), как и
+     manifest.ru.json («Монохром»), у остальных — manifest.json ("Monochrome"), как и
      сам бренд в интерфейсе (см. detectIsRussianRegion() в скрипте ниже). -->
 <script>document.write('<link rel="manifest" href="manifest'+((navigator.language||'').toLowerCase().startsWith('ru')?'.ru':'')+'.json">');</script>
 <meta name="theme-color" content="#6c63ff">
@@ -4040,7 +4040,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 
 <script>
 // ══════════════════════════════════════════════════
-//  ANGIE MESSENGER v2.0 — Full JS
+//  МОНОХРОМ — Full JS
 //  localStorage persistence + all Telegram features
 // ══════════════════════════════════════════════════
 
@@ -4347,6 +4347,8 @@ function systemChatDefaults(){
      greet:[{id:1,t:"date",tx:"Сегодня",ts:Date.now()},{id:2,t:"in",fr:"NV",col:3,tx:VERIFY_GREET,time:now(),isSupport:true}]},
   ];
 }
+// Прежние названия приложения (Nexus → Angie/Энджи → «Монохром»).
+const OLD_BRAND_RE=/Nexus|Angie|Энджи/i;
 function normalizeSystemChats(){
   if(!Array.isArray(S.chats)) S.chats=[];
   if(!S.messages) S.messages={};
@@ -4374,7 +4376,19 @@ function normalizeSystemChats(){
     c.blocked=false; c.archived=false;
     // Все, кроме Избранного, — с синей галочкой.
     if(c.id!==77777) c.verified=true;
+    // Превью официального канала, записанное при создании прежним брендом.
+    if(c.id===88888 && typeof c.prev==="string" && OLD_BRAND_RE.test(c.prev)) c.prev="🎉 Монохром v3.0 — крупное обновление!";
   });
+  // Приветствия служебных ботов, записанные прежними сборками, — на
+  // нынешние (только местное приветствие бота, не сообщения с сервера).
+  const GREETS={99999:SUPPORT_GREET,66666:BOTFATHER_GREET,55555:VERIFY_GREET,44444:FEEDBACK_GREET};
+  for(const id of Object.keys(GREETS)){
+    const list=S.messages[id];
+    if(!Array.isArray(list)) continue;
+    list.forEach(m=>{
+      if(m && m.t==="in" && m.isSupport && !m.serverId && typeof m.tx==="string" && /^👋/.test(m.tx) && OLD_BRAND_RE.test(m.tx)) m.tx=GREETS[id];
+    });
+  }
 }
 
 function saveState(){
@@ -6199,9 +6213,9 @@ function loginOK(){
 function updateChatAvatarDisplays(ch){
   if(!ch) return;
   const chav=el("chav");
-  if(chav){ chav.style.background=ch.avatar?"none":colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?"; }
+  if(chav){ chav.style.background=ch.avatar?"none":colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:avFallback(ch,17); }
   const rpav=el("rpav");
-  if(rpav){ rpav.style.background=ch.avatar?"none":colBg(ch.col); rpav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?"; }
+  if(rpav){ rpav.style.background=ch.avatar?"none":colBg(ch.col); rpav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:avFallback(ch,26); }
 }
 
 // Имя чата для отображения в шапке — с короной VIP и эмодзи-статусом,
@@ -6401,6 +6415,10 @@ function uiIconIn(name,size,style){
 }
 // Значок вместо инициалов у служебных чатов «Монохрома».
 const SYS_CHAT_ICON={77777:"star",99999:"bot",66666:"tools",55555:"shield",44444:"bell",88888:"spark"};
+// 8 окт 2026: то, что стоит в кружке без фото. У служебных чатов — тот же
+// значок, что в списке; раньше в шапке и правой панели оставались инициалы
+// эпохи Nexus («NS» — NexusSupport, «NV», «NO»).
+function avFallback(ch, size){ return SYS_CHAT_ICON[ch && ch.id] ? uiIcon(SYS_CHAT_ICON[ch.id], size||19) : ((ch && ch.ini)||"?"); }
 const VIP_STAR_SVG = `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 2.5l2.5 5.6 6.1.6-4.6 4.1 1.3 6-5.3-3.2-5.3 3.2 1.3-6-4.6-4.1 6.1-.6z"/></svg>`;
 // Индикатор "печатает" — раньше был просто пульсирующей прозрачностью всей
 // надписи целиком, теперь три прыгающих точки (как в Telegram/WhatsApp),
@@ -7711,7 +7729,7 @@ function openChat(id,opts){
   updateAttachMenuForChat(ch);
   applyBotMenuButton(ch.peerIsBot ? ch.withUserId : null);
 
-  const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
+  const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:avFallback(ch,17);}
   if(el("chnm"))el("chnm").innerHTML=escHtml(chatDisplayName(ch))+vipBadgeHTML(ch)+verifiedBadgeHTML(ch);
   { const st=el("chst"); if(st) st.classList.remove("typ"); }
   renderChatHeaderStatus(ch);   // «онлайн» / время захода — с сервера, с приватностью владельца
@@ -7760,7 +7778,7 @@ function openChat(id,opts){
     S.sendAsChannel=null; // сбрасываем при выходе из подходящего чата
   }
 
-  const rpav=el("rpav"); if(rpav){rpav.style.background=colBg(ch.col); rpav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini||"?";}
+  const rpav=el("rpav"); if(rpav){rpav.style.background=colBg(ch.col); rpav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:avFallback(ch,26);}
   if(el("rpnm"))el("rpnm").textContent=ch.nm;
   if(el("rpst"))el("rpst").textContent="● "+presenceText(ch);
 
@@ -16454,7 +16472,7 @@ function openChatInfo(){
   if(ch.id===88888){ openOfficialChannel(); return; }
 
   const av=el("ui-avatar");
-  av.innerHTML = ch.avatar ? `<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">` : (ch.ini||"?");
+  av.innerHTML = ch.avatar ? `<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">` : avFallback(ch,30);
   av.style.cursor = ch.avatar ? "pointer" : "default";
   av.onclick = ch.avatar ? (()=>openImgViewer(ch.avatar)) : null;
   el("ui-name").innerHTML = escHtml(ch.nm)+verifiedBadgeHTML(ch);
@@ -17124,9 +17142,9 @@ function ctxDownload(){
   else if(m.file) downloadMedia(m.file.url, m.file.name||("file_"+m.id));
 }
 
-function exportData(){ const blob=new Blob([JSON.stringify({user:S.user,chats:S.chats,messages:S.messages},null,2)],{type:"application/json"}); const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="angie_export.json";a.click(); showToast("💾 Экспорт готов"); }
+function exportData(){ const blob=new Blob([JSON.stringify({user:S.user,chats:S.chats,messages:S.messages},null,2)],{type:"application/json"}); const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="monochrome_export.json";a.click(); showToast("💾 Экспорт готов"); }
 
-function importData(){ showToast("📥 Выберите файл angie_export.json"); }
+function importData(){ showToast("📥 Выберите файл monochrome_export.json"); }
 function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{ try{ saveComposerDraft(); }catch(e){} S.loggedIn=false;switchAccount(null);clearToken();saveState();location.reload();}; openM("m-confirm"); }
 // ── Истёкшая сессия ────────────────────────────────────────────────────────
 // 3 окт 2026. Один сценарий для всех путей: auth.error по WebSocket, 401 у
@@ -18187,7 +18205,7 @@ function endCall(){ el("call-screen").classList.remove("on"); clearInterval(call
 function showNotif(chat, previewText){
   if(!S.notifSettings?.push)return;
   if(!chat)return;
-  const nav=el("nnav"); if(nav){nav.style.background=colBg(chat.col);nav.textContent=chat.ini||"?";}
+  const nav=el("nnav"); if(nav){nav.style.background=colBg(chat.col); if(SYS_CHAT_ICON[chat.id]) nav.innerHTML=avFallback(chat,16); else nav.textContent=chat.ini||"?";}
   if(el("nnm"))el("nnm").textContent=chat.nm;
   if(el("ntx"))el("ntx").textContent=previewText||"Новое сообщение";
   const n=el("notif");
@@ -19873,7 +19891,7 @@ const SUPPORT_FAQ = [
   { keys:["admin","адмін","панель","devpanel","dev panel","разработч"],
     ans:"⚙️ *Dev Panel (Admin)*\n\nОткрыть: кнопка «⚙️ Dev Panel» в топбаре.\n\nДоступно:\n• Обзор статистики\n• Управление Crystals и валютами\n• Кошельки и распределение выручки\n• Стикер-паки, пользователи, языки\n• Боты, API-ключи, вебхуки" },
   { keys:["оператор","operator","человек","живой","support","помог"],
-    ans:"👨‍💻 *Соединяю с оператором...*\n\nВаше обращение принято. Оператор ответит в течение нескольких минут.\n\n⏰ Время работы: Пн–Пт 9:00–21:00 МСК\n📧 Email: support@angie.app\n\nНомер обращения: #AG-"+Math.floor(Math.random()*90000+10000) },
+    ans:"👨‍💻 *Соединяю с оператором...*\n\nВаше обращение принято. Оператор ответит в течение нескольких минут.\n\n⏰ Время работы: Пн–Пт 9:00–21:00 МСК\n\nНомер обращения: #"+Math.floor(Math.random()*90000+10000) },
 ];
 
 const SUPPORT_QUICK = ["💎 Crystals и оплата","🐱 Стикеры","👑 VIP подписка","📞 Звонки","⚙️ Настройки","👨‍💻 Оператор"];
@@ -22762,7 +22780,7 @@ applyTheme(S.theme||"dark", true);
       <div class="settings-section-title">Создать пак</div>
       <div style="padding:14px">
         <div class="frow s1"><div class="fg"><span class="fl">Название пака</span><input class="fii" id="cs-name" placeholder="Например: Мои котики"></div></div>
-        <div class="frow s1"><div class="fg"><span class="fl">Короткая ссылка</span><input class="fii" id="cs-link" placeholder="my_cats" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_]/g,'')"><div style="font-size:10.5px;color:var(--tx3);margin-top:3px">angie.app/stickers/<span id="cs-link-preview">my_cats</span></div></div></div>
+        <div class="frow s1"><div class="fg"><span class="fl">Короткая ссылка</span><input class="fii" id="cs-link" placeholder="my_cats" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_]/g,'')"><div style="font-size:10.5px;color:var(--tx3);margin-top:3px">Адрес набора: <span id="cs-link-preview">my_cats</span></div></div></div>
         <div class="frow"><div class="fg"><span class="fl">Тип стикеров</span><select class="fsel" id="cs-type"><option value="emoji">Эмодзи</option><option value="image">Изображения</option></select></div><div class="fg"><span class="fl">Цена (0 = бесплатно)</span><input class="fii" type="number" id="cs-price" value="0" min="0"></div></div>
 
         <!-- Upload zone -->
@@ -22897,7 +22915,7 @@ applyTheme(S.theme||"dark", true);
 <div class="movl" id="m-join-link"><div class="modal">
   <div class="mtit">🔗 Войти по ссылке</div>
   <div class="msub">Вставь ссылку-приглашение или код</div>
-  <div class="frow s1"><div class="fg"><input class="fii" id="join-link-inp" placeholder="angie.app/join/xxxxxxxx"></div></div>
+  <div class="frow s1"><div class="fg"><input class="fii" id="join-link-inp" placeholder="Ссылка-приглашение или код"></div></div>
   <div class="macts"><button class="xbtn sec" onclick="closeM('m-join-link')">Отмена</button><button class="xbtn gn" onclick="doJoinByLink()">Войти</button></div>
 </div></div>
 
