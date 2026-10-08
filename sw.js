@@ -15,17 +15,27 @@ self.addEventListener('activate', (event) => {
 });
 
 // Тап по системному уведомлению о новом сообщении (см. notifyRealMessage()
-// в index.html) — переводим фокус на уже открытую вкладку, если она есть,
-// иначе открываем новую. Полноценный переход сразу в нужный чат по chatId —
-// отдельная задача на потом (там, где появится настоящий push с сервера).
+// в index.html). 8 окт 2026: открывается ИМЕННО его чат — в уже открытом
+// окне приложения (странице уходит {type:'open-chat'}), а если окна нет —
+// новое окно в области приложения с ?open=<id> (раньше openWindow('/')
+// открывал корень сайта github.io, а не приложение).
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const data = (event.notification && event.notification.data) || {};
+  const chatId = data.chatId;
+  const scope = self.registration.scope;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if ('focus' in client) return client.focus();
+        if (!String(client.url || '').startsWith(scope)) continue;   // чужие страницы того же сайта
+        if ('focus' in client) {
+          if (chatId != null) client.postMessage({ type: 'open-chat', chatId, owner: data.owner });
+          return client.focus();
+        }
       }
-      if (self.clients.openWindow) return self.clients.openWindow('/');
+      if (!self.clients.openWindow) return;
+      if (chatId == null) return self.clients.openWindow(scope);
+      return self.clients.openWindow(scope + '?open=' + encodeURIComponent(chatId) + (data.owner ? '&u=' + encodeURIComponent(data.owner) : ''));
     })
   );
 });

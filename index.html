@@ -4032,7 +4032,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 </div></div>
 
 <!-- NOTIFICATION -->
-<div class="notif" id="notif" onclick="this.classList.remove('on')">
+<div class="notif" id="notif" onclick="notifTap()">
   <div class="nnav" id="nnav" style="background:linear-gradient(135deg,#34d399,#38bdf8)">МК</div>
   <div><div class="nnm" id="nnm">Мария</div><div class="ntx" id="ntx">Новое сообщение</div></div>
 </div>
@@ -4051,6 +4051,12 @@ const APP_VERSION = "2.1.0";
 if("serviceWorker" in navigator){
   window.addEventListener("load", ()=>{
     navigator.serviceWorker.register("sw.js").catch(e=>console.warn("SW registration failed:",e));
+  });
+  // 8 окт 2026: тап по системному уведомлению — service worker просит открыть
+  // его чат в уже открытом окне (см. sw.js, notificationclick).
+  navigator.serviceWorker.addEventListener("message", (e)=>{
+    const d=e && e.data;
+    if(d && d.type==="open-chat") openChatFromNotif(d.chatId, d.owner);
   });
 }
 async function clearMediaCache(){
@@ -6128,6 +6134,7 @@ function loginOK(){
   // Подключаем WebSocket
   setTimeout(wsConnect, 300);
   checkPendingJoinLink();
+  checkPendingOpenChat();
   showVerBanner();
   // official channel + stories bar + support bot
   setTimeout(()=>{
@@ -10890,6 +10897,22 @@ function openJoinByLink(){
 }
 // Если в адресной строке есть ?join=код (перешли по ссылке-приглашению) —
 // автоматически вступаем в чат, как только пользователь точно залогинен
+// 8 окт 2026: новое окно, открытое тапом по системному уведомлению (sw.js),
+// приходит с ?open=<id чата>&u=<аккаунт>. Чат открывается, когда он есть в
+// списке (служебный — сразу, серверный — после загрузки списка).
+function checkPendingOpenChat(){
+  const params=new URLSearchParams(window.location.search);
+  const raw=params.get("open");
+  if(raw==null) return;
+  const owner=params.get("u");
+  const url=new URL(window.location.href);
+  url.searchParams.delete("open"); url.searchParams.delete("u");
+  window.history.replaceState(history.state, "", url.toString());
+  const id=/^\d+$/.test(raw) ? Number(raw) : raw;
+  let n=0;
+  const попытка=()=>{ if(openChatFromNotif(id, owner) || ++n>12) return; setTimeout(попытка, 500); };
+  setTimeout(попытка, 300);
+}
 function checkPendingJoinLink(){
   const params=new URLSearchParams(window.location.search);
   const code=params.get("join");
@@ -16738,11 +16761,11 @@ function notifyRealMessage(chat, previewText){
   if(typeof Notification==="undefined" || Notification.permission!=="granted") return;
   const title=chat.nm||BRAND_RU;
   const body=S.notifSettings.preview===false ? "Новое сообщение" : (previewText||"Новое сообщение");
-  const opts={body, icon:"icon-192.png", badge:"icon-192.png", tag:"chat-"+chat.id, data:{chatId:chat.id}};
+  const opts={body, icon:"icon-192.png", badge:"icon-192.png", tag:"chat-"+chat.id, data:{chatId:chat.id, owner:String(S.owner??"")}};
   const showViaConstructor=()=>{
     try{
       const n=new Notification(title, opts);
-      n.onclick=()=>{ window.focus(); openChat(chat.id); n.close(); };
+      n.onclick=()=>{ window.focus(); openChatFromNotif(chat.id, opts.data.owner); n.close(); };
     }catch(e){ /* конструктор недоступен на этом браузере — без SW уведомление просто пропускаем */ }
   };
   if(navigator.serviceWorker && navigator.serviceWorker.ready){
@@ -18167,7 +18190,29 @@ function showNotif(chat, previewText){
   const nav=el("nnav"); if(nav){nav.style.background=colBg(chat.col);nav.textContent=chat.ini||"?";}
   if(el("nnm"))el("nnm").textContent=chat.nm;
   if(el("ntx"))el("ntx").textContent=previewText||"Новое сообщение";
-  const n=el("notif"); n.classList.add("on"); setTimeout(()=>n.classList.remove("on"),3500);
+  const n=el("notif");
+  // 8 окт 2026: тап по полоске открывает этот чат (раньше только закрывал её).
+  n.dataset.chatId=JSON.stringify(chat.id); n.dataset.owner=String(S.owner??"");
+  n.classList.add("on"); clearTimeout(n._hideTimer); n._hideTimer=setTimeout(()=>n.classList.remove("on"),3500);
+}
+function notifTap(){
+  const n=el("notif"); if(!n) return;
+  n.classList.remove("on");
+  let id=null; try{ id=JSON.parse(n.dataset.chatId||"null"); }catch(e){}
+  openChatFromNotif(id, n.dataset.owner);
+}
+// Переход из уведомления (полоска, системное уведомление, новое окно по
+// ?open=). Открывается только чат ТЕКУЩЕГО аккаунта: уведомление, пришедшее
+// до смены аккаунта, чужой чат не откроет.
+function openChatFromNotif(chatId, owner){
+  if(chatId==null || chatId==="") return false;
+  if(owner!=null && owner!=="" && String(owner)!==String(S.owner??"")) return false;
+  if(!S.loggedIn) return false;
+  const ch=S.chats.find(c=>c.id===chatId);
+  if(!ch) return false;
+  try{ if(el("ctx")?.classList.contains("on")) closeCtx(); }catch(e){}
+  openChat(ch.id);
+  return true;
 }
 
 // ── TOAST ──────────────────────────────────────────────────
@@ -19320,6 +19365,7 @@ if(S.loggedIn){
   // Подключаем WebSocket при старте если уже залогинены
   setTimeout(wsConnect, 500);
   checkPendingJoinLink();
+  checkPendingOpenChat();
   // Фоновое обновление профиля с сервера если есть токен
   if(getToken()){
     syncProfileFromServer();
