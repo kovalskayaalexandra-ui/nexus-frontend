@@ -4524,7 +4524,7 @@ function resetAccountRuntime(){
   тихо(()=>{ presenceByUser.clear(); presenceWsAt.clear(); });
   тихо(()=>{ _viewedThisSession=new Set(); storySeenNow.clear(); });
   тихо(()=>{ _lastRenderedChat=null; _lastMsgCount={}; _msgByIdAt=null; });
-  тихо(()=>{ wsHasAuthedOnce=false; lastReconnectResyncAt=0; });
+  тихо(()=>{ wsHasAuthedOnce=false; lastReconnectResyncAt=0; clearTimeout(_reconnectResyncLater); _reconnectResyncLater=null; });
   тихо(()=>stopTinkoffPolling());
   тихо(()=>{ clearTimeout(_searchDebounce); clearTimeout(_usrSearchTimer); clearTimeout(_botSearchTimer); _addMemberResults=[]; });
   тихо(()=>{ const п=el("sb-search"); if(п) п.value=""; const г=el("global-search-results"); if(г) г.innerHTML=""; });
@@ -4738,8 +4738,21 @@ let wsGeneration = 0;
 // пропуск, пока явно идёт касание списка, снимают гонку.
 let chatListTouchActive=false;
 let lastReconnectResyncAt=0;
+let _reconnectResyncLater=null;
 function performReconnectResyncIfDue(){
-  if(Date.now()-lastReconnectResyncAt<15000) return;
+  // 8 окт 2026: переподключение внутри 15-секундного окна раньше просто
+  // ничего не досинхронизировало — присутствие собеседников в списке (и всё
+  // пропущенное) оставалось прежним до следующего переподключения или F5.
+  // Теперь досинхронизация откладывается до конца окна (одна на окно).
+  const прошло=Date.now()-lastReconnectResyncAt;
+  if(прошло<15000){
+    if(!_reconnectResyncLater){
+      const ag=accountGen;
+      _reconnectResyncLater=setTimeout(()=>{ _reconnectResyncLater=null; if(ag===accountGen && S.loggedIn) performReconnectResyncIfDue(); }, 15000-прошло+50);
+    }
+    return;
+  }
+  clearTimeout(_reconnectResyncLater); _reconnectResyncLater=null;
   if(chatListTouchActive){ setTimeout(performReconnectResyncIfDue, 1000); return; }
   lastReconnectResyncAt=Date.now();
   loadChatsFromDB();
@@ -4869,6 +4882,9 @@ function wsSilenceCheck(){
 function wsAbandonSocket(){
   const брошенный = ws;
   wsGeneration++;          // с этого мгновения события брошенного сокета — чужие
+  // 8 окт 2026: связь молчала — кадр «не в сети» собеседника мог потеряться.
+  // «В сети» не показываем, пока сервер не скажет снова (как при onclose).
+  try{ presenceMarkStale(); }catch(e){}
   ws = null;
   wsConnected = false;
   wsAuthed = false;
@@ -4888,6 +4904,7 @@ function wsAbandonSocket(){
 function wsShutdown(){
   const старый = ws;
   wsGeneration++;
+  try{ presenceMarkStale(); }catch(e){}   // 8 окт 2026: без связи «в сети» не утверждаем
   ws = null;
   wsConnected = false;
   wsAuthed = false;
@@ -6562,9 +6579,12 @@ function applyPresence(userId){
   // Открытая карточка собеседника
   if(el("m-user-info")?.classList.contains("on") && open && peerOf(open)===uid && el("ui-status")) el("ui-status").textContent=presenceText(open);
 }
+// 8 окт 2026: «в сети» — только по слову сервера (presenceByUser). Флаг
+// online, сохранённый в контакте, — не доказательство: он мог пережить
+// перезапуск и смену аккаунта.
 function contactOnline(c){
   const p=presenceByUser.get(String(c.id));
-  return p ? (!p.hidden && p.online) : !!c.online;
+  return !!(p && !p.hidden && p.online);
 }
 // «N минут назад» стареет — раз в минуту освежаем шапку открытого чата.
 setInterval(()=>{ const ch=S.chats && S.chats.find(c=>c.id===S.chat); if(ch && peerOf(ch) && document.visibilityState==="visible") renderChatHeaderStatus(ch); }, 60000);
