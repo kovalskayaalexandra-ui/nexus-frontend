@@ -4749,15 +4749,21 @@ function phoneMaxNat(c){ return phoneIsZone7(c) ? 10 : 15-(c.c.length-1); }
 // контакты телефона, WhatsApp и iOS при копировании). Международный — если
 // перед первой цифрой есть «+» («+7…», «tel:+…», «(+380) …», «Тел.: +…») или
 // цифры начинаются с «00». Иначе null.
-function phoneIntlDigits(t){
+function phonePlusFirst(t){
   const s=String(t||"").normalize("NFKC").replace(/\p{Cf}/gu,"");
   const i=s.search(/\d/);
-  const head=i<0 ? s : s.slice(0,i);
-  const d=phoneDigits(s);
-  if(head.includes("+")) return d.slice(0,15);
+  return (i<0 ? s : s.slice(0,i)).includes("+");
+}
+function phoneIntlDigits(t){
+  const d=phoneDigits(t);
+  if(phonePlusFirst(t)) return d.slice(0,15);
   if(d.startsWith("00")) return d.slice(2,17);
   return null;
 }
+// Само поле: международный номер phoneApply всегда пишет как «+цифры», поэтому
+// признак — только «+» в начале. «001 234-56-7» (стёрли первую цифру в
+// «900 123-45-67») — национальный номер, а не «00…».
+function phoneFieldIntl(v){ return /^\s*\+/.test(String(v||"")) ? phoneDigits(v).slice(0,15) : null; }
 // Россия: 11 цифр с первой 7 или 8 → без первой («8 999…», «7 999…»).
 // Казахстан: только повторённый код страны (11 цифр с первой 7) — магистральная
 // «8» здесь не российская, её не трогаем.
@@ -4771,8 +4777,9 @@ function phoneTrimLead(iso, d){
 function phoneParse(iso, text){
   const t=String(text||"").normalize("NFKC").trim();
   let c=countryByIso(iso), d=phoneDigits(t);
-  if(/^(\+|00)/.test(t)){
-    if(t.startsWith("00")) d=d.slice(2);
+  // Международный текст сюда приходит уже как «+цифры» (phoneApply); «00…» в
+  // самом поле — национальный номер (см. phoneFieldIntl).
+  if(/^\+/.test(t)){
     const own=c.c.slice(1);
     if(d.startsWith(own)) d=d.slice(own.length);
     else {
@@ -4885,7 +4892,14 @@ function phoneApply(inp, selId, o){
     rawD=phoneIntlDigits(o.paste);                                     // вставили номер с «+»
     if(rawD==null && !(before.a===0 && before.b===before.v.length))
       rawD=phoneIntlDigits(before.v.slice(0,before.a)+o.paste+before.v.slice(before.b));   // вставили после набранного «+»
-  } else if(!/^delete/.test(o.type||"") || phoneIntlDigits(before.v)!=null) rawD=phoneIntlDigits(inp.value);   // набор и автозаполнение
+  } else if(!o.type || o.type==="insertReplacementText") rawD=phoneIntlDigits(inp.value);   // автозаполнение — текст целиком
+  else if(phoneFieldIntl(before.v)!=null) rawD=phoneIntlDigits(inp.value);   // правка внутри «+цифры» (стёрли «+» — уже национальный)
+  else if(!/^delete/.test(o.type)){
+    // Набор: «+» перед первой цифрой — международный; «00» — только если его
+    // создал этот ввод (поле «001 234-56-7» после удаления цифры — национальное).
+    const r=phoneIntlDigits(inp.value);
+    if(r!=null && (phonePlusFirst(inp.value) || !phoneDigits(before.v).startsWith("00"))) rawD=r;
+  }
   let intl=null;
   if(rawD!=null){
     const hit=phoneCodeOf(rawD);
@@ -4915,7 +4929,7 @@ function phoneApply(inp, selId, o){
     } else { raw=inp.value; caret=inp.selectionStart??raw.length; }
     d=phoneDigits(raw); k=phoneDigits(raw.slice(0,caret)).length;
     // Backspace/Delete по разделителю (цифры не изменились) — убрать соседнюю цифру.
-    if(o.paste==null && d===dBefore && before.v!==inp.value && phoneIntlDigits(before.v)==null){
+    if(o.paste==null && d===dBefore && before.v!==inp.value && phoneFieldIntl(before.v)==null){
       if(o.type==="deleteContentBackward" && k>0){ d=d.slice(0,k-1)+d.slice(k); k--; }
       else if(o.type==="deleteContentForward" && k<d.length){ d=d.slice(0,k)+d.slice(k+1); }
     }
@@ -4942,7 +4956,7 @@ function phoneCountryChanged(selId, keepCaret){
   inp.placeholder=phoneIsZone7(c) ? "999 123-45-67" : "";
   // В поле «+цифры» (код набирали руками) — это код, а не номер: страну выбрали
   // в списке, поле начинается заново.
-  if(/^\s*(\+|00)/.test(inp.value)){ inp.value=""; return; }
+  if(phoneFieldIntl(inp.value)!=null){ inp.value=""; return; }
   const d=phoneDigits(inp.value);
   inp.value=phoneFormat(c, d);
 }
@@ -6135,7 +6149,7 @@ async function apiDelete(path, body){
 async function sendCode(){
   if(el("t-btnsnd")?.disabled) return;      // запрос уже в пути (Enter, двойной тап)
   // «+цифры» в поле: код ещё набирается («+», «+3», «+99») или его нет в списке.
-  const pd=phoneIntlDigits(el("phinp")?.value||"");
+  const pd=phoneFieldIntl(el("phinp")?.value||"");
   if(pd!=null){
     showToast("❌ "+(!pd ? PHONE_ERR.empty : phoneCodeOf(pd).wait ? PHONE_ERR.short : phoneCodeErr(pd, phoneCountry("csel1")))); return;
   }
