@@ -4764,8 +4764,21 @@ function phoneParse(iso, text){
       const other=COUNTRIES.filter(x=>d.startsWith(x.c.slice(1))).sort((a,b)=>b.c.length-a.c.length)[0];
       if(other){ d=d.slice(other.c.length-1); c=phoneIsZone7(other) ? countryByIso(/^[67]/.test(d)?"KZ":"RU") : other; }
     }
+    // «+7 701…» при выбранной России — Казахстан, «+7 999…» при Казахстане — Россия.
+    if(phoneIsZone7(c) && d) c=countryByIso(/^[67]/.test(d)?"KZ":"RU");
   }
   return {iso:c.cc, d:phoneTrimLead(c.cc, d).d};
+}
+// «+цифры», набранные вручную: код страны ещё не ясен (wait) — поле остаётся
+// «+цифры»; ясен — country (цифры кода); неизвестен — country:null.
+// У +7 нужна ещё одна цифра: по ней различаются Россия и Казахстан.
+function phoneCodeOf(raw){
+  const codes=[...new Set(COUNTRIES.map(x=>x.c.slice(1)))];
+  const exact=codes.filter(c=>raw.startsWith(c)).sort((a,b)=>b.length-a.length)[0]||null;
+  if(codes.some(c=>c.length>(exact?exact.length:0) && c.startsWith(raw))) return {wait:true};
+  if(!exact) return {wait:false, country:null};
+  if(exact==="7" && raw.length<2) return {wait:true};
+  return {wait:false, country:exact};
 }
 // Вид в поле: зона +7 — «999 123-45-67», остальные — только цифры.
 function phoneFormat(c, d){
@@ -4792,6 +4805,9 @@ function phoneSet(inp, c, d, k){
 function phoneE164(iso, d){
   const c=countryByIso(iso);
   if(phoneIsZone7(c)){
+    // Казахстан: «8» перед номером не снимаем (правило: российская «8» — только
+    // при России), но и не отправляем — +7 8xx… это чужой российский номер.
+    if(c.cc==="KZ" && d[0]==="8") return {error:"kz8"};
     if(d.length<10) return {error:"short"};
     if(d.length>10) return {error:"long"};
     if(!/^[346789]/.test(d)) return {error:"range"};
@@ -4803,7 +4819,8 @@ function phoneE164(iso, d){
   if(all.length>15) return {error:"long"};
   return {phone:"+"+all};
 }
-const PHONE_ERR={short:"Номер слишком короткий", long:"Номер слишком длинный", range:"Такого номера нет: проверьте цифры после +7", empty:"Введите номер телефона"};
+const PHONE_ERR={short:"Номер слишком короткий", long:"Номер слишком длинный", range:"Такого номера нет: проверьте цифры после +7", empty:"Введите номер телефона",
+  kz8:"Казахстан: наберите номер без 8, например 701 123-45-67", code:"Код страны не распознан — выберите страну в списке"};
 // Для показа: «+7 999 123-45-67»; остальное — как есть.
 function fmtPhone(e164){
   const m=/^\+7(\d{10})$/.exec(String(e164||""));
@@ -4827,13 +4844,27 @@ function initPhoneField(inpId, selId){
     const before=inp._phBefore; inp._phBefore=null;
     phoneApply(inp, selId, {type:e.inputType||"", before});
   });
-  inp.addEventListener("keydown", (e)=>{ if(e.key==="Enter" && inpId==="phinp"){ e.preventDefault(); sendCode(); } });
+  inp.addEventListener("keydown", (e)=>{ if(e.key==="Enter" && inpId==="phinp"){ e.preventDefault(); if(!el("t-btnsnd")?.disabled) sendCode(); } });
 }
 // Правка поля: набор по символу, удаление, вставка, автозаполнение.
 function phoneApply(inp, selId, o){
   const sel=el(selId), c0=phoneCountry(selId);
   const before=o.before||{v:inp.value, a:inp.value.length, b:inp.value.length};
   const dBefore=phoneDigits(before.v);
+  // 9 окт 2026 (после проверки): «+код» при наборе с клавиатуры. Раньше «+»
+  // стирался сразу, и «+998 90…» при России становился +7 998 901-23-45 —
+  // чужим номером. Теперь, пока код не ясен, в поле «+цифры»; ясен — страна
+  // переключается и код уходит из поля (дальше — как вставка целиком).
+  if(o.paste==null && o.type && o.type!=="insertReplacementText" && /^\s*(\+|00)/.test(inp.value)){
+    const t=inp.value.trim();
+    const rawD=phoneDigits(t.startsWith("00") ? t.slice(2) : t).slice(0,15);   // E.164 — не больше 15 цифр
+    const hit=phoneCodeOf(rawD);
+    if(hit.wait || !hit.country){
+      inp.value="+"+rawD;
+      try{ if(document.activeElement===inp) inp.setSelectionRange(inp.value.length, inp.value.length); }catch(e){}
+      return;
+    }
+  }
   let c=c0, d, k;
   const whole = o.paste!=null
     ? (/^\s*(\+|00)/.test(o.paste) || (before.a===0 && before.b===before.v.length))
@@ -4855,13 +4886,17 @@ function phoneApply(inp, selId, o){
       if(o.type==="deleteContentBackward" && k>0){ d=d.slice(0,k-1)+d.slice(k); k--; }
       else if(o.type==="deleteContentForward" && k<d.length){ d=d.slice(0,k)+d.slice(k+1); }
     }
-    const t=phoneTrimLead(c.cc, d); d=t.d; k=Math.max(0,k-t.cut);
+    // «8 999…»/«7 999…» снимается, только когда цифру дописали в конец (набор
+    // с начала); цифра, вставленная в середину 10-значного номера, — лишняя.
+    if(k===d.length){ const t=phoneTrimLead(c.cc, d); d=t.d; k=Math.max(0,k-t.cut); }
   }
-  if(d.length>phoneMaxNat(c)){
-    // Лишняя цифра не принимается: поле и курсор — как были.
+  // Лишняя цифра не принимается (поле и курсор — как были); удаление — всегда
+  // (после смены страны цифр может быть больше нормы — стереть их можно).
+  if(d.length>phoneMaxNat(c) && d.length>dBefore.length){
     inp.value=before.v;
     try{ if(document.activeElement===inp) inp.setSelectionRange(before.a??before.v.length, before.b??before.v.length); }catch(e){}
-    if(o.paste!=null || whole) showToast("❌ "+PHONE_ERR.long);
+    if(c.cc==="KZ" && d[0]==="8") showToast("❌ "+PHONE_ERR.kz8);
+    else if(o.paste!=null || whole) showToast("❌ "+PHONE_ERR.long);
     return;
   }
   if(c.cc!==c0.cc && sel){ sel.value=c.cc; sel.dataset.picked="1"; updateLogoText(); phoneCountryChanged(selId, true); }
@@ -6062,6 +6097,8 @@ async function apiDelete(path, body){
 
 // ── AUTH FUNCTIONS ────────────────────────────────────────────
 async function sendCode(){
+  if(el("t-btnsnd")?.disabled) return;      // запрос уже в пути (Enter, двойной тап)
+  if(/^\s*(\+|00)/.test(el("phinp")?.value||"")){ showToast("❌ "+PHONE_ERR.code); return; }
   const c=phoneCountry("csel1");
   const d=phoneFieldDigits("phinp","csel1");
   if(!d){ showToast("❌ "+T("entph")); return; }
@@ -6744,7 +6781,7 @@ function renderChatHeaderStatus(ch){
   if(el("rpst") && ch.type!=="groups") el("rpst").textContent="● "+presenceText(ch);
 }
 // Пришло новое присутствие человека: шапка, точка «в сети» в списке, контакты.
-function applyPresence(userId){
+function applyPresence(userId, opts){
   const uid=String(userId);
   const open=S.chats.find(c=>c.id===S.chat);
   if(open && peerOf(open)===uid) renderChatHeaderStatus(open);
@@ -6756,7 +6793,7 @@ function applyPresence(userId){
     if(on && !dot) av.insertAdjacentHTML("beforeend",'<div class="odot"></div>');
     else if(!on && dot) dot.remove();
   }
-  if(el("screen-contacts")?.classList.contains("on") && (S.contacts||[]).some(c=>String(c.id)===uid)) renderContacts(el("contacts-search")?.value||"");
+  if(!(opts && opts.noContacts) && el("screen-contacts")?.classList.contains("on") && (S.contacts||[]).some(c=>String(c.id)===uid)) renderContacts(el("contacts-search")?.value||"");
   // Открытая карточка собеседника
   if(el("m-user-info")?.classList.contains("on") && open && peerOf(open)===uid && el("ui-status")) el("ui-status").textContent=presenceText(open);
 }
@@ -11998,6 +12035,7 @@ async function confirmScheduleSend(){
 // (как и текстовое отложенное) до момента публикации.
 async function scheduleAttachmentSend(when){
   const att=pendingAttach;
+  if(att && att.chatId!==undefined && att.chatId!==S.chat){ cancelPendingAttach(); closeM("m-schedule"); showToast("❌ Вложение было выбрано в другом чате — выберите заново"); return; }
   const caption=getInputText();
   const chatId=S.chat, owner=draftOwner();
   closeM("m-schedule");
@@ -13682,6 +13720,9 @@ async function attachFile(inp){
   const files=[...inp.files];
   if(!files.length)return;
   inp.value=""; // сбрасываем, чтобы можно было выбрать тот же файл ещё раз
+  // 9 окт 2026: чат — тот, где файл ВЫБРАЛИ: чтение файла занимает время, и
+  // открытый за это время другой чат не должен получить вложение.
+  const chatAtPick=S.chat;
 
   if(S.chat===77777){
     showToast("📎 Прикрепление файлов здесь пока недоступно");
@@ -13697,7 +13738,7 @@ async function attachFile(inp){
     const imgs=files.filter(x=>x.type.startsWith("image/"));
     if(imgs.length>1){
       if(imgs.length<files.length) showToast("ℹ️ В альбом попадут только фото — остальное пропущено");
-      await attachImageGroup(imgs);
+      await attachImageGroup(imgs, chatAtPick);
       return;
     }
   }
@@ -13729,13 +13770,15 @@ async function attachFile(inp){
   } else if(isVideo||isAudio){
     previewUrl=URL.createObjectURL(f); // лёгкий локальный превью, без base64
   }
+  // Пока читался файл, открыли другой чат — его вложение (если есть) не трогаем.
+  if(S.chat!==chatAtPick){ if(isVideo||isAudio) URL.revokeObjectURL(previewUrl); showToast("📎 Чат сменился — выберите файл заново"); return; }
 
   // если уже было вложение (video/audio) — освобождаем память от старого
   if(pendingAttach && (pendingAttach.kind==="video"||pendingAttach.kind==="audio") && pendingAttach.previewUrl){
     URL.revokeObjectURL(pendingAttach.previewUrl);
   }
 
-  pendingAttach={file:f, kind, previewUrl, spoiler:false, chatId:S.chat};
+  pendingAttach={file:f, kind, previewUrl, spoiler:false, chatId:chatAtPick};
   renderAttachPreview();
   syncComposerEmptyClass();
 }
@@ -13780,13 +13823,14 @@ function cancelPendingAttach(){
 // pendingAttach (который остаётся одиночным, как и был) — так один выбранный
 // файл продолжает идти уже проверенным старым путём без единого изменения.
 let pendingAttachGroup=null;
-async function attachImageGroup(files){
+async function attachImageGroup(files, chatAtPick=S.chat){
   const items=await Promise.all(files.map(f=>new Promise(res=>{
     const r=new FileReader();
     r.onload=ev=>res({file:f, previewUrl:ev.target.result, spoiler:false});
     r.readAsDataURL(f);
   })));
-  pendingAttachGroup=items; pendingAttachGroup.chatId=S.chat;
+  if(S.chat!==chatAtPick){ showToast("📎 Чат сменился — выберите фото заново"); return; }
+  pendingAttachGroup=items; pendingAttachGroup.chatId=chatAtPick;
   renderAttachPreviewGroup();
   syncComposerEmptyClass();
 }
@@ -13868,6 +13912,7 @@ async function sendImageGroup(caption){
   pendingAttachGroup=null;
   renderAttachPreviewGroup();
   syncComposerEmptyClass();
+  if(items && items.chatId!==undefined && items.chatId!==S.chat){ showToast("❌ Фото были выбраны в другом чате — выберите заново"); return; }
 
   const chatId=S.chat;
   const tm=now();
@@ -19367,7 +19412,7 @@ async function loadContacts(){
     // 9 окт 2026: и точки в списке чатов / шапке — тем же состоянием. Раньше
     // после повторного переподключения (полная досинхронизация отложена до
     // 15 с) «Контакты» уже показывали «онлайн», а точки в списке не было.
-    rows.forEach(u=>{ if(u.presence) applyPresence(u.id); });
+    rows.forEach(u=>{ if(u.presence) applyPresence(u.id, {noContacts:true}); });   // «Контакты» — один раз ниже
     saveState();
     if(el("contacts-list")) renderContacts();
   }catch(e){ /* не удалось — останется пустым */ }
