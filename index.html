@@ -7888,6 +7888,13 @@ function openChat(id,opts){
   // Черновик чата, чей текст сейчас в поле (а не «S.chat» — при запуске поле
   // ещё пустое и стёрло бы черновик открытого чата).
   saveComposerDraft();
+  // 9 окт 2026: выбранное, но не отправленное вложение принадлежит СВОЕМУ чату.
+  // Раньше оно оставалось в поле при переходе в другой чат и уходило туда:
+  // фото, выбранное для А, получал Б. Возврат в тот же чат вложение сохраняет.
+  try{
+    if(pendingAttach && pendingAttach.chatId!==undefined && pendingAttach.chatId!==id) cancelPendingAttach();
+    if(pendingAttachGroup && pendingAttachGroup.chatId!==undefined && pendingAttachGroup.chatId!==id) cancelPendingAttachGroup();
+  }catch(e){}   // при запуске до объявления этих переменных вложений ещё нет
   // 14 сен 2026: запоминаем, где человек оставил предыдущий чат (см. saveChatPos)
   if(S.chat && S.chat!==id) saveChatPos(S.chat);
 
@@ -13728,7 +13735,7 @@ async function attachFile(inp){
     URL.revokeObjectURL(pendingAttach.previewUrl);
   }
 
-  pendingAttach={file:f, kind, previewUrl, spoiler:false};
+  pendingAttach={file:f, kind, previewUrl, spoiler:false, chatId:S.chat};
   renderAttachPreview();
   syncComposerEmptyClass();
 }
@@ -13779,7 +13786,7 @@ async function attachImageGroup(files){
     r.onload=ev=>res({file:f, previewUrl:ev.target.result, spoiler:false});
     r.readAsDataURL(f);
   })));
-  pendingAttachGroup=items;
+  pendingAttachGroup=items; pendingAttachGroup.chatId=S.chat;
   renderAttachPreviewGroup();
   syncComposerEmptyClass();
 }
@@ -13798,7 +13805,7 @@ function removeGroupAttachAt(i){
   if(pendingAttachGroup.length<2){
     const rest=pendingAttachGroup;
     pendingAttachGroup=null;
-    if(rest.length===1) { pendingAttach={file:rest[0].file, kind:"image", previewUrl:rest[0].previewUrl, spoiler:rest[0].spoiler}; renderAttachPreview(); }
+    if(rest.length===1) { pendingAttach={file:rest[0].file, kind:"image", previewUrl:rest[0].previewUrl, spoiler:rest[0].spoiler, chatId:rest.chatId}; renderAttachPreview(); }
     renderAttachPreviewGroup();
     syncComposerEmptyClass();
     return;
@@ -13820,6 +13827,8 @@ async function sendWithAttachment(caption){
   pendingAttach=null;
   renderAttachPreview();
   syncComposerEmptyClass();
+  // Вложение другого чата сюда не уходит (страховка к сбросу в openChat).
+  if(att && att.chatId!==undefined && att.chatId!==S.chat){ showToast("❌ Вложение было выбрано в другом чате — выберите заново"); return; }
 
   const chatId=S.chat;
   const tm=now();
