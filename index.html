@@ -4743,6 +4743,21 @@ const phoneIsZone7=(c)=>c.c==="+7";
 // Цифры любого письма → 0-9 (полноширинные — через NFKC, арабские — вручную).
 function phoneDigits(t){ return String(t||"").normalize("NFKC").replace(/[\u0660-\u0669\u06F0-\u06F9]/g,ch=>String(ch.charCodeAt(0)&15)).replace(/\D/g,""); }
 function phoneMaxNat(c){ return phoneIsZone7(c) ? 10 : 15-(c.c.length-1); }
+// Международный ли номер в тексте, и если да — его цифры без «+»/«00» (до 15).
+// Текст очищается как на сервере (services/phone.js): NFKC («＋» → «+»), без
+// невидимых знаков (\p{Cf}: знаки направления текста, которые добавляют
+// контакты телефона, WhatsApp и iOS при копировании). Международный — если
+// перед первой цифрой есть «+» («+7…», «tel:+…», «(+380) …», «Тел.: +…») или
+// цифры начинаются с «00». Иначе null.
+function phoneIntlDigits(t){
+  const s=String(t||"").normalize("NFKC").replace(/\p{Cf}/gu,"");
+  const i=s.search(/\d/);
+  const head=i<0 ? s : s.slice(0,i);
+  const d=phoneDigits(s);
+  if(head.includes("+")) return d.slice(0,15);
+  if(d.startsWith("00")) return d.slice(2,17);
+  return null;
+}
 // Россия: 11 цифр с первой 7 или 8 → без первой («8 999…», «7 999…»).
 // Казахстан: только повторённый код страны (11 цифр с первой 7) — магистральная
 // «8» здесь не российская, её не трогаем.
@@ -4862,17 +4877,17 @@ function phoneApply(inp, selId, o){
   // «+цифры» остаются, отправка отказывает. Цифры после «+» никогда не
   // считаются номером выбранной страны: «+995 555…» при России стал бы
   // +7 995 555… — чужим номером (так было, когда «+» при наборе стирался).
-  let intl=null;
+  // Признак — по очищенному тексту (phoneIntlDigits): «＋», «tel:+», «(+380)» и
+  // невидимые знаки направления текста из контактов его не прячут. Удаление
+  // международным номер не делает: «900…» → Backspace → «00…» — та же страна.
+  let rawD=null;
   if(o.paste!=null){
-    if(/^\s*(\+|00)/.test(o.paste)) intl=o.paste;                       // вставили номер с «+»
-    else if(!(before.a===0 && before.b===before.v.length)){
-      const comb=before.v.slice(0,before.a)+o.paste+before.v.slice(before.b);
-      if(/^\s*(\+|00)/.test(comb)) intl=comb;                          // вставили после набранного «+»
-    }
-  } else if(/^\s*(\+|00)/.test(inp.value)) intl=inp.value;             // набор и автозаполнение
-  if(intl!=null){
-    const t=intl.trim();
-    const rawD=phoneDigits(t.startsWith("00") ? t.slice(2) : t).slice(0,15);   // E.164 — не больше 15 цифр
+    rawD=phoneIntlDigits(o.paste);                                     // вставили номер с «+»
+    if(rawD==null && !(before.a===0 && before.b===before.v.length))
+      rawD=phoneIntlDigits(before.v.slice(0,before.a)+o.paste+before.v.slice(before.b));   // вставили после набранного «+»
+  } else if(!/^delete/.test(o.type||"") || phoneIntlDigits(before.v)!=null) rawD=phoneIntlDigits(inp.value);   // набор и автозаполнение
+  let intl=null;
+  if(rawD!=null){
     const hit=phoneCodeOf(rawD);
     if(hit.wait || !hit.country){
       inp.value="+"+rawD;
@@ -4900,7 +4915,7 @@ function phoneApply(inp, selId, o){
     } else { raw=inp.value; caret=inp.selectionStart??raw.length; }
     d=phoneDigits(raw); k=phoneDigits(raw.slice(0,caret)).length;
     // Backspace/Delete по разделителю (цифры не изменились) — убрать соседнюю цифру.
-    if(o.paste==null && d===dBefore && before.v!==inp.value && !/^\s*(\+|00)/.test(before.v)){
+    if(o.paste==null && d===dBefore && before.v!==inp.value && phoneIntlDigits(before.v)==null){
       if(o.type==="deleteContentBackward" && k>0){ d=d.slice(0,k-1)+d.slice(k); k--; }
       else if(o.type==="deleteContentForward" && k<d.length){ d=d.slice(0,k)+d.slice(k+1); }
     }
@@ -6120,9 +6135,8 @@ async function apiDelete(path, body){
 async function sendCode(){
   if(el("t-btnsnd")?.disabled) return;      // запрос уже в пути (Enter, двойной тап)
   // «+цифры» в поле: код ещё набирается («+», «+3», «+99») или его нет в списке.
-  const pv=(el("phinp")?.value||"").trim();
-  if(/^(\+|00)/.test(pv)){
-    const pd=phoneDigits(pv.startsWith("00") ? pv.slice(2) : pv);
+  const pd=phoneIntlDigits(el("phinp")?.value||"");
+  if(pd!=null){
     showToast("❌ "+(!pd ? PHONE_ERR.empty : phoneCodeOf(pd).wait ? PHONE_ERR.short : phoneCodeErr(pd, phoneCountry("csel1")))); return;
   }
   const c=phoneCountry("csel1");
