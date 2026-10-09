@@ -2789,7 +2789,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       <span class="lchl" id="t-chlng">Изменить язык</span>
     </div>
     <button class="abtn" id="t-btnph" onclick="showA('auth-phone')">📱 Войти по номеру телефона</button>
-    <div class="alink">Нет аккаунта? <span onclick="showA('auth-reg')" id="t-creacc">Создать</span></div>
+    <div class="alink">Нет аккаунта? <span onclick="showA('auth-phone')" id="t-creacc">Создать</span></div>
   </div>
 </div>
 
@@ -2800,8 +2800,8 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
     <div class="atitle" id="t-entph">Введите номер телефона</div>
     <div class="asub" id="t-phsub">Мы отправим вам код подтверждения</div>
     <div class="pw">
-      <select class="csel" id="csel1"></select>
-      <input class="fi" type="tel" id="phinp" placeholder="000 000 0000">
+      <select class="csel" id="csel1" autocomplete="tel-country-code" aria-label="Страна"></select>
+      <input class="fi" type="tel" id="phinp" placeholder="999 123-45-67" inputmode="tel" autocomplete="tel" name="phone" enterkeyhint="go" aria-label="Номер телефона">
     </div>
     <button class="abtn" id="t-btnsnd" onclick="sendCode()">Отправить код</button>
     <button class="abtn sec" onclick="showA('auth-welcome')">← Назад</button>
@@ -2833,7 +2833,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
     <div class="atitle">Вход по паролю</div>
     <div class="asub">Для аккаунтов с включённой двухфакторной защитой</div>
     <label class="fl">Телефон</label>
-    <input class="fii" id="pl-phone" placeholder="+7 999 000 0000" style="margin-bottom:10px">
+    <input class="fii" type="tel" inputmode="tel" autocomplete="tel" id="pl-phone" placeholder="+7 999 123-45-67" style="margin-bottom:10px">
     <label class="fl">Пароль</label>
     <input class="fii" type="password" id="pl-password" style="margin-bottom:10px">
     <div id="pl-2fa-row" style="display:none">
@@ -2890,10 +2890,6 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
     <input class="fi" id="rname" placeholder="Ваше имя" style="margin-bottom:12px">
     <label class="fl">Bio (необязательно)</label>
     <input class="fi" id="rbio" placeholder="Расскажите о себе" style="margin-bottom:12px">
-    <div class="pw">
-      <select class="csel" id="csel2"></select>
-      <input class="fi" type="tel" id="rphinp" placeholder="000 000 0000">
-    </div>
     <button class="abtn" onclick="doReg()">Зарегистрироваться</button>
     <button class="abtn sec" onclick="showA('auth-phone')">Уже есть аккаунт?</button>
   </div>
@@ -3753,7 +3749,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 
   <div id="cp-step-phone">
     <div class="msub">Для защиты от угона аккаунта потребуется подтверждение по SMS</div>
-    <div class="fg"><span class="fl">Новый номер</span><input class="fii" id="cp-new-phone" placeholder="+7 900 123-45-67"></div>
+    <div class="fg"><span class="fl">Новый номер</span><input class="fii" type="tel" inputmode="tel" autocomplete="tel" id="cp-new-phone" placeholder="+7 900 123-45-67"></div>
     <div class="trow"><div><div class="trl">У меня есть доступ к старому номеру</div><div style="font-size:11px;color:var(--tx3)">Если нет — смена произойдёт через 7 дней, можно отменить в любой момент</div></div><label class="toggle"><input type="checkbox" id="cp-has-old-access" checked><span class="ts"></span></label></div>
     <div class="macts"><button class="xbtn sec" onclick="closeM('m-change-phone')">Отмена</button><button class="xbtn" onclick="startPhoneChange()">Далее</button></div>
   </div>
@@ -4691,7 +4687,9 @@ function detectLang(){
         if(lang!==S.lang){ S.lang=lang; applyLang(); saveState(); }
         const cc=d.country_code;
         const country=COUNTRIES.find(c=>c.cc===cc);
-        if(country){ ["csel1","csel2"].forEach(id=>{const s=el(id);if(!s)return;for(let i=0;i<s.options.length;i++){if(s.options[i].value===country.c){s.selectedIndex=i;break;}}}); }
+        // 9 окт 2026: пункт списка — ISO-код (у России и Казахстана общий +7);
+        // страну не трогаем, если её уже выбрали или номер уже начали набирать.
+        if(country){ const s=el("csel1"); if(s && !s.dataset.picked && !(el("phinp")?.value)){ s.value=country.cc; phoneCountryChanged("csel1", true); } }
       }).catch(()=>{});
   }catch(e){}
 }
@@ -4702,7 +4700,7 @@ function detectLang(){
 function detectIsRussianRegion(){
   if(S.user?.phone) return S.user.phone.replace(/[^\d+]/g,"").startsWith("+7");
   const csel=el("csel1");
-  if(csel && csel.value) return csel.value==="+7";
+  if(csel && csel.value) return countryByIso(csel.value).c==="+7";
   return (navigator.language||"").toLowerCase().startsWith("ru");
 }
 // 3 окт 2026: продукт называется «Монохром». Подписи «Мессенджер» нет.
@@ -4720,7 +4718,163 @@ function updateLogoText(){
 
 function showA(id){ document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on")); el(id)&&el(id).classList.add("on"); updateLogoText(); }
 
-function fillCSEL(){ ["csel1","csel2"].forEach(id=>{ const s=el(id);if(!s)return; s.innerHTML=COUNTRIES.map(c=>`<option value="${c.c}">${c.f} ${c.c}</option>`).join(""); s.onchange=updateLogoText; }); }
+function fillCSEL(){
+  const s=el("csel1"); if(!s) return;
+  s.innerHTML=COUNTRIES.map(c=>`<option value="${c.cc}">${c.f} ${c.c}</option>`).join("");
+  s.onchange=()=>{ s.dataset.picked="1"; updateLogoText(); phoneCountryChanged("csel1"); };
+  initPhoneField("phinp","csel1");
+}
+
+// ── НОМЕР ТЕЛЕФОНА (9 окт 2026) ────────────────────────────────────
+// Пункт списка стран — ISO-код (у России и Казахстана общий +7, различить их
+// можно только так). В поле — только национальная часть номера: без кода
+// страны, без магистральной «8» (ТОЛЬКО у России) и без форматирования. На
+// сервер уходит E.164 («+79991234567») и подсказка страны; сервер приводит
+// номер к тому же виду сам (services/phone.js), клиентская часть — для
+// человека: что набрал, то и увидит, и курсор не прыгает.
+// Раньше поле не обрабатывалось вовсе, а номер склеивался как «код + пробел +
+// цифры»: «8 999 123-45-67» при России давал на сервере +789991234567 —
+// чужой номер и новый пустой аккаунт.
+// Магистральный префикс, который снимаем при отправке (у Италии 0 — часть номера).
+const PHONE_TRUNK={US:"1",GB:"0",DE:"0",FR:"0",BR:"0",TR:"0",SA:"0",CN:"0",JP:"0",KR:"0",UA:"0",AE:"0",BY:"80",AM:"0"};
+function countryByIso(iso){ return COUNTRIES.find(c=>c.cc===iso)||COUNTRIES[0]; }
+function phoneCountry(selId){ const s=el(selId); return countryByIso(s&&s.value); }
+const phoneIsZone7=(c)=>c.c==="+7";
+// Цифры любого письма → 0-9 (полноширинные — через NFKC, арабские — вручную).
+function phoneDigits(t){ return String(t||"").normalize("NFKC").replace(/[\u0660-\u0669\u06F0-\u06F9]/g,ch=>String(ch.charCodeAt(0)&15)).replace(/\D/g,""); }
+function phoneMaxNat(c){ return phoneIsZone7(c) ? 10 : 15-(c.c.length-1); }
+// Россия: 11 цифр с первой 7 или 8 → без первой («8 999…», «7 999…»).
+// Казахстан: только повторённый код страны (11 цифр с первой 7) — магистральная
+// «8» здесь не российская, её не трогаем.
+function phoneTrimLead(iso, d){
+  if(iso==="RU" && d.length===11 && /^[78]/.test(d)) return {d:d.slice(1), cut:1};
+  if(iso==="KZ" && d.length===11 && d[0]==="7") return {d:d.slice(1), cut:1};
+  return {d, cut:0};
+}
+// Как набрали или вставили целиком (может начинаться с «+» или «00»):
+// код выбранной страны снимается, код другой страны из списка — меняет страну.
+function phoneParse(iso, text){
+  const t=String(text||"").normalize("NFKC").trim();
+  let c=countryByIso(iso), d=phoneDigits(t);
+  if(/^(\+|00)/.test(t)){
+    if(t.startsWith("00")) d=d.slice(2);
+    const own=c.c.slice(1);
+    if(d.startsWith(own)) d=d.slice(own.length);
+    else {
+      const other=COUNTRIES.filter(x=>d.startsWith(x.c.slice(1))).sort((a,b)=>b.c.length-a.c.length)[0];
+      if(other){ d=d.slice(other.c.length-1); c=phoneIsZone7(other) ? countryByIso(/^[67]/.test(d)?"KZ":"RU") : other; }
+    }
+  }
+  return {iso:c.cc, d:phoneTrimLead(c.cc, d).d};
+}
+// Вид в поле: зона +7 — «999 123-45-67», остальные — только цифры.
+function phoneFormat(c, d){
+  if(!phoneIsZone7(c) || d.length>10) return d;
+  let f=d.slice(0,3);
+  if(d.length>3) f+=" "+d.slice(3,6);
+  if(d.length>6) f+="-"+d.slice(6,8);
+  if(d.length>8) f+="-"+d.slice(8,10);
+  return f;
+}
+// Позиция курсора сразу после k-й цифры отформатированной строки.
+function phoneCaretAt(f, k){
+  if(k<=0) return 0;
+  let n=0;
+  for(let i=0;i<f.length;i++){ if(/\d/.test(f[i]) && ++n===k) return i+1; }
+  return f.length;
+}
+function phoneSet(inp, c, d, k){
+  const f=phoneFormat(c, d);
+  inp.value=f;
+  if(document.activeElement===inp){ const p=phoneCaretAt(f, k); try{ inp.setSelectionRange(p,p); }catch(e){} }
+}
+// E.164 или ошибка — то, что уйдёт на сервер.
+function phoneE164(iso, d){
+  const c=countryByIso(iso);
+  if(phoneIsZone7(c)){
+    if(d.length<10) return {error:"short"};
+    if(d.length>10) return {error:"long"};
+    if(!/^[346789]/.test(d)) return {error:"range"};
+    return {phone:"+7"+d};
+  }
+  const t=PHONE_TRUNK[c.cc]; if(t && d.startsWith(t)) d=d.slice(t.length);
+  const all=c.c.slice(1)+d;
+  if(all.length<8) return {error:"short"};
+  if(all.length>15) return {error:"long"};
+  return {phone:"+"+all};
+}
+const PHONE_ERR={short:"Номер слишком короткий", long:"Номер слишком длинный", range:"Такого номера нет: проверьте цифры после +7", empty:"Введите номер телефона"};
+// Для показа: «+7 999 123-45-67»; остальное — как есть.
+function fmtPhone(e164){
+  const m=/^\+7(\d{10})$/.exec(String(e164||""));
+  return m ? "+7 "+phoneFormat(COUNTRIES[0], m[1]) : String(e164||"");
+}
+function phoneFieldDigits(inpId, selId){
+  const c=phoneCountry(selId);
+  return phoneParse(c.cc, el(inpId)?.value||"").d;
+}
+function initPhoneField(inpId, selId){
+  const inp=el(inpId); if(!inp || inp._phoneInit) return;
+  inp._phoneInit=true;
+  // Состояние ДО правки: из него — откат лишней цифры и удаление разделителя.
+  inp.addEventListener("beforeinput", ()=>{ inp._phBefore={v:inp.value, a:inp.selectionStart, b:inp.selectionEnd}; });
+  inp.addEventListener("paste", (e)=>{
+    const text=(e.clipboardData||window.clipboardData)?.getData("text")||"";
+    e.preventDefault();
+    phoneApply(inp, selId, {paste:text, before:{v:inp.value, a:inp.selectionStart??inp.value.length, b:inp.selectionEnd??inp.value.length}});
+  });
+  inp.addEventListener("input", (e)=>{
+    const before=inp._phBefore; inp._phBefore=null;
+    phoneApply(inp, selId, {type:e.inputType||"", before});
+  });
+  inp.addEventListener("keydown", (e)=>{ if(e.key==="Enter" && inpId==="phinp"){ e.preventDefault(); sendCode(); } });
+}
+// Правка поля: набор по символу, удаление, вставка, автозаполнение.
+function phoneApply(inp, selId, o){
+  const sel=el(selId), c0=phoneCountry(selId);
+  const before=o.before||{v:inp.value, a:inp.value.length, b:inp.value.length};
+  const dBefore=phoneDigits(before.v);
+  let c=c0, d, k;
+  const whole = o.paste!=null
+    ? (/^\s*(\+|00)/.test(o.paste) || (before.a===0 && before.b===before.v.length))
+    : (!o.type || o.type==="insertReplacementText" || /^\s*(\+|00)/.test(inp.value));
+  if(whole){
+    // Целиком: вставка всего номера, автозаполнение (у него нет inputType), «+код…».
+    const p=phoneParse(c0.cc, o.paste!=null ? o.paste : inp.value);
+    c=countryByIso(p.iso); d=p.d; k=d.length;
+  } else {
+    let raw, caret;
+    if(o.paste!=null){
+      const ins=phoneDigits(o.paste);
+      raw=before.v.slice(0,before.a)+ins+before.v.slice(before.b);
+      caret=before.a+ins.length;
+    } else { raw=inp.value; caret=inp.selectionStart??raw.length; }
+    d=phoneDigits(raw); k=phoneDigits(raw.slice(0,caret)).length;
+    // Backspace/Delete по разделителю (цифры не изменились) — убрать соседнюю цифру.
+    if(o.paste==null && d===dBefore && before.v!==inp.value){
+      if(o.type==="deleteContentBackward" && k>0){ d=d.slice(0,k-1)+d.slice(k); k--; }
+      else if(o.type==="deleteContentForward" && k<d.length){ d=d.slice(0,k)+d.slice(k+1); }
+    }
+    const t=phoneTrimLead(c.cc, d); d=t.d; k=Math.max(0,k-t.cut);
+  }
+  if(d.length>phoneMaxNat(c)){
+    // Лишняя цифра не принимается: поле и курсор — как были.
+    inp.value=before.v;
+    try{ if(document.activeElement===inp) inp.setSelectionRange(before.a??before.v.length, before.b??before.v.length); }catch(e){}
+    if(o.paste!=null || whole) showToast("❌ "+PHONE_ERR.long);
+    return;
+  }
+  if(c.cc!==c0.cc && sel){ sel.value=c.cc; sel.dataset.picked="1"; updateLogoText(); phoneCountryChanged(selId, true); }
+  phoneSet(inp, c, d, k);
+}
+// Смена страны: те же цифры — по правилам новой страны, БЕЗ обрезки.
+function phoneCountryChanged(selId, keepCaret){
+  const inp=el(selId==="csel1"?"phinp":null); if(!inp) return;
+  const c=phoneCountry(selId);
+  inp.placeholder=phoneIsZone7(c) ? "999 123-45-67" : "";
+  const d=phoneDigits(inp.value);
+  inp.value=phoneFormat(c, d);
+}
 
 let otmr=null;
 // ── API CONFIG ────────────────────────────────────────────────
@@ -5908,16 +6062,20 @@ async function apiDelete(path, body){
 
 // ── AUTH FUNCTIONS ────────────────────────────────────────────
 async function sendCode(){
-  const s=el("csel1"); const ph=el("phinp").value.replace(/\D/g,"");
-  if(!ph||ph.length<6){showToast("❌ "+T("entph"));return;}
-  S.phone=(s?s.value:"+7")+" "+ph;
+  const c=phoneCountry("csel1");
+  const d=phoneFieldDigits("phinp","csel1");
+  if(!d){ showToast("❌ "+T("entph")); return; }
+  const r=phoneE164(c.cc, d);
+  if(r.error){ showToast("❌ "+PHONE_ERR[r.error]); return; }
+  S.phone=r.phone; S.phoneCountry=c.cc;
 
   const btn=el("t-btnsnd");
   if(btn){ btn.disabled=true; btn.textContent="⏳ Отправка..."; }
 
   try {
-    const data = await apiPost("/api/auth/send-code", { phone: S.phone });
+    const data = await apiPost("/api/auth/send-code", { phone: S.phone, country: c.cc });
     if(!data.success){ showToast("❌ "+(data.error||"Ошибка")); if(btn){btn.disabled=false;btn.textContent=T("btnsnd");} return; }
+    if(data.phone) S.phone=data.phone;     // номер, на который сервер отправил код
 
     // Dev режим — автоподставляем код в поля
     if(data.dev_code){
@@ -5928,7 +6086,7 @@ async function sendCode(){
       }, 400);
     }
 
-    el("otpph").textContent=S.phone;
+    el("otpph").textContent=fmtPhone(S.phone);
     showA("auth-otp"); startOTP();
     setTimeout(()=>el("o0")&&el("o0").focus(),50);
   } catch(e){
@@ -6128,7 +6286,9 @@ function previewRegAvatar(inp){ if(!inp.files[0])return; const r=new FileReader(
 
 async function doReg(){
   const nm=el("rname").value.trim(); if(!nm){showToast("❌ Введите имя");return;}
-  const ph=el("rphinp").value.replace(/\D/g,""); if(!ph||ph.length<6){showToast("❌ Введите номер");return;}
+  // 9 окт 2026: номер уже подтверждён кодом и записан сервером (ответ
+  // verify-code); второго поля номера здесь нет. Раньше оно переписывало
+  // номер только на устройстве — сырым значением «+7 8999…».
   // ⚠️ Своё имя пользователя (username) можно выбрать только с VIP (см.
   // PATCH /api/users/me) — при регистрации VIP ни у кого ещё нет, поэтому
   // поле для его ручного ввода убрано отсюда целиком. Автогенерация из
@@ -6155,7 +6315,6 @@ async function doReg(){
   S.user={
     ...S.user,
     name:nm, uname:uname, bio,
-    phone:(el("csel2")?.value||"+7")+" "+ph,
     avatar:regAvatarData,
     initials:nm.slice(0,2).toUpperCase()
   };
@@ -17458,7 +17617,7 @@ async function startPhoneChange(){
     el("cp-code").value="";
     el("cp-code-hint").textContent = data.step==="old_phone"
       ? "Введите код, отправленный на ваш ТЕКУЩИЙ номер"
-      : "Введите код, отправленный на НОВЫЙ номер";
+      : "Введите код, отправленный на НОВЫЙ номер"+(data.newPhone?" "+fmtPhone(data.newPhone):"");
     el("cp-step-phone").style.display="none";
     el("cp-step-code").style.display="block";
   }catch(e){ showToast("❌ Нет связи с сервером"); }
@@ -17476,7 +17635,7 @@ async function confirmPhoneChangeCode(){
       phoneChangeStep="new_phone";
       if(data.dev_code) showToast("🔧 DEV: код "+data.dev_code);
       el("cp-code").value="";
-      el("cp-code-hint").textContent="Старый номер подтверждён ✓. Теперь введите код, отправленный на НОВЫЙ номер";
+      el("cp-code-hint").textContent="Старый номер подтверждён ✓. Теперь введите код, отправленный на НОВЫЙ номер"+(data.newPhone?" "+fmtPhone(data.newPhone):"");
       showToast("✅ Старый номер подтверждён, код отправлен на новый");
       return;
     }
