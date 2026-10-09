@@ -4764,6 +4764,15 @@ function phoneIntlDigits(t){
 // признак — только «+» в начале. «001 234-56-7» (стёрли первую цифру в
 // «900 123-45-67») — национальный номер, а не «00…».
 function phoneFieldIntl(v){ return /^\s*\+/.test(String(v||"")) ? phoneDigits(v).slice(0,15) : null; }
+// Правка национального поля (набор, вставка не всего поля) — международная ли
+// она: «+» перед первой цифрой (в поле его не было — значит, из ввода) или
+// «00» в начале, если оба нуля НЕ лежат в нетронутой части поля до места
+// правки, то есть их создал сам ввод. «001 234-56-7» (стёрли первую цифру) +
+// вставка или цифра в конец — национальный номер, страна та же.
+function phoneEditIntl(text, untouched){
+  const r=phoneIntlDigits(text);
+  return r!=null && (phonePlusFirst(text) || phoneDigits(untouched).length<2) ? r : null;
+}
 // Россия: 11 цифр с первой 7 или 8 → без первой («8 999…», «7 999…»).
 // Казахстан: только повторённый код страны (11 цифр с первой 7) — магистральная
 // «8» здесь не российская, её не трогаем.
@@ -4826,6 +4835,9 @@ function phoneSet(inp, c, d, k){
 // E.164 или ошибка — то, что уйдёт на сервер.
 function phoneE164(iso, d){
   const c=countryByIso(iso);
+  // Национальный номер с «00» в начале не бывает ни в одной стране списка
+  // (так бывает, если стёрли первую цифру в «900…»).
+  if(/^00/.test(d)) return {error:"zeros"};
   if(phoneIsZone7(c)){
     // Казахстан: «8» перед номером не снимаем (правило: российская «8» — только
     // при России), но и не отправляем — +7 8xx… это чужой российский номер.
@@ -4844,7 +4856,8 @@ function phoneE164(iso, d){
 const PHONE_ERR={short:"Номер слишком короткий", long:"Номер слишком длинный", range:"Такого номера нет: проверьте цифры после +7", empty:"Введите номер телефона",
   kz8:"Казахстан: наберите номер без 8, например 701 123-45-67",
   code:"Такого кода страны нет в списке — выберите страну в списке и наберите номер без кода",
-  plus8:"Кода страны «+8» нет: наберите 8 999 … без «+» или +7 999 …"};
+  plus8:"Кода страны «+8» нет: наберите 8 999 … без «+» или +7 999 …",
+  zeros:"Номер не может начинаться с «00» — проверьте первые цифры"};
 function phoneCodeErr(rawD, c){ return rawD[0]==="8" && phoneIsZone7(c) ? PHONE_ERR.plus8 : PHONE_ERR.code; }
 // Для показа: «+7 999 123-45-67»; остальное — как есть.
 function fmtPhone(e164){
@@ -4891,14 +4904,17 @@ function phoneApply(inp, selId, o){
   if(o.paste!=null){
     rawD=phoneIntlDigits(o.paste);                                     // вставили номер с «+»
     if(rawD==null && !(before.a===0 && before.b===before.v.length))
-      rawD=phoneIntlDigits(before.v.slice(0,before.a)+o.paste+before.v.slice(before.b));   // вставили после набранного «+»
+      rawD=phoneEditIntl(before.v.slice(0,before.a)+o.paste+before.v.slice(before.b), before.v.slice(0,before.a));   // вставили после набранного «+» / «0»
   } else if(!o.type || o.type==="insertReplacementText") rawD=phoneIntlDigits(inp.value);   // автозаполнение — текст целиком
-  else if(phoneFieldIntl(before.v)!=null) rawD=phoneIntlDigits(inp.value);   // правка внутри «+цифры» (стёрли «+» — уже национальный)
-  else if(!/^delete/.test(o.type)){
-    // Набор: «+» перед первой цифрой — международный; «00» — только если его
-    // создал этот ввод (поле «001 234-56-7» после удаления цифры — национальное).
-    const r=phoneIntlDigits(inp.value);
-    if(r!=null && (phonePlusFirst(inp.value) || !phoneDigits(before.v).startsWith("00"))) rawD=r;
+  else {
+    // Подсказка буфера на клавиатуре (чип) и перетаскивание приходят как ввод
+    // целой строки: «+номер» в ней — как вставка номера с «+», заменяет поле
+    // (и поле «+3», и национальный номер).
+    const a=before.a ?? before.v.length, b=before.b ?? a;
+    const ins=/^delete/.test(o.type) ? "" : inp.value.slice(a, a+inp.value.length-(before.v.length-(b-a)));
+    if(ins.length>1 && phonePlusFirst(ins)) rawD=phoneIntlDigits(ins);
+    else if(phoneFieldIntl(before.v)!=null) rawD=phonePlusFirst(inp.value) ? phoneIntlDigits(inp.value) : null;   // правка внутри «+цифры»; стёрли «+» — национальный
+    else if(!/^delete/.test(o.type)) rawD=phoneEditIntl(inp.value, before.v.slice(0, a));   // набор
   }
   let intl=null;
   if(rawD!=null){
