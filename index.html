@@ -17462,7 +17462,25 @@ function ctxDownload(){
 function exportData(){ const blob=new Blob([JSON.stringify({user:S.user,chats:S.chats,messages:S.messages},null,2)],{type:"application/json"}); const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="monochrome_export.json";a.click(); showToast("💾 Экспорт готов"); }
 
 function importData(){ showToast("📥 Выберите файл monochrome_export.json"); }
-function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{ try{ saveComposerDraft(); }catch(e){} S.loggedIn=false;switchAccount(null);clearToken();saveState();location.reload();}; openM("m-confirm"); }
+function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{ try{ saveComposerDraft(); }catch(e){} endServerSession(); S.loggedIn=false;switchAccount(null);clearToken();saveState();location.reload();}; openM("m-confirm"); }
+// 9 окт 2026: «Выйти» завершает свою сессию и на сервере, и соединение
+// закрывается сразу. Раньше сессия оставалась действующей (токен — 30 дней),
+// а «не в сети» держалось только на закрытии сокета при перезагрузке: если
+// сеть в этот миг пропала, человек был «в сети» ещё до минуты. Запрос —
+// keepalive: перезагрузка страницы его не оборвёт.
+function endServerSession(){
+  const tok=getToken(); if(!tok) return;
+  let sid=null;
+  try{
+    let p=tok.split(".")[1].replace(/-/g,"+").replace(/_/g,"/");
+    while(p.length%4) p+="=";
+    sid=JSON.parse(atob(p)).sessionId||null;
+  }catch(e){}
+  if(sid){
+    try{ fetch(API_URL+"/api/auth/sessions/"+encodeURIComponent(sid), {method:"DELETE", headers:{"Authorization":"Bearer "+tok}, keepalive:true}).catch(()=>{}); }catch(e){}
+  }
+  try{ wsShutdown(); }catch(e){}
+}
 // ── Истёкшая сессия ────────────────────────────────────────────────────────
 // 3 окт 2026. Один сценарий для всех путей: auth.error по WebSocket, 401 у
 // /api/users/me при запуске и 401 у любого запроса с токеном.
@@ -19337,6 +19355,10 @@ async function loadContacts(){
       avatar:u.avatar_url||"", col:colorFromId(u.id), online:!!u.online,
     }));
     rows.forEach(u=>{ if(u.presence) setPresence(u.id, u.presence, {since:presenceSince}); });
+    // 9 окт 2026: и точки в списке чатов / шапке — тем же состоянием. Раньше
+    // после повторного переподключения (полная досинхронизация отложена до
+    // 15 с) «Контакты» уже показывали «онлайн», а точки в списке не было.
+    rows.forEach(u=>{ if(u.presence) applyPresence(u.id); });
     saveState();
     if(el("contacts-list")) renderContacts();
   }catch(e){ /* не удалось — останется пустым */ }
