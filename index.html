@@ -4736,14 +4736,18 @@ function fillCSEL(){
 // цифры»: «8 999 123-45-67» при России давал на сервере +789991234567 —
 // чужой номер и новый пустой аккаунт.
 // Магистральный префикс, который снимаем при отправке (у Италии 0 — часть номера).
-// Беларусь: «8 029…» и «029…» (11 окт 2026: «0» без «8» раньше уходил в номер).
-const PHONE_TRUNK={US:"1",GB:"0",DE:"0",FR:"0",BR:"0",TR:"0",SA:"0",CN:"0",JP:"0",KR:"0",UA:"0",AE:"0",BY:["80","0"],AM:"0"};
+// Беларусь: «8 029…», «8 29…» и «029…» (11 окт 2026: «0» и «8» по отдельности
+// раньше уходили в номер). Варианты — от длинного к короткому.
+const PHONE_TRUNK={US:"1",GB:"0",DE:"0",FR:"0",BR:"0",TR:"0",SA:"0",CN:"0",JP:"0",KR:"0",UA:"0",AE:"0",BY:["80","8","0"],AM:"0"};
+const phoneTrunks=(iso)=>[].concat(PHONE_TRUNK[iso]||[]);
 // 11 окт 2026. План нумерации стран списка (кроме зоны +7) — выдержка из Google
 // libphonenumber (resources/PhoneNumberMetadata.xml, master от 7 окт 2026):
 // [любой национальный номер страны (generalDesc), мобильный (mobile)]. У США
 // мобильный не отличим от городского — общий вид NANP; у Узбекистана — общий
 // вид (список мобильных там на 1000 знаков). Нужно, чтобы снимать код своей
 // страны, набранный без «+», только когда это однозначно (см. phoneOwnCode).
+// PHONE_NATMAX — самый длинный национальный номер страны любого типа (там же).
+const PHONE_NATMAX={US:10,GB:10,DE:15,FR:9,ES:9,IT:12,BR:11,TR:13,SA:10,CN:12,JP:17,KR:14,UA:10,PL:10,AE:12,BY:11,UZ:9,AM:8};
 const PHONE_PLAN={
   US:[/^(?:[2-9]\d{9}|3\d{6})$/, /^(?:[2-9]\d{9})$/],
   GB:[/^(?:[1-357-9]\d{9}|[18]\d{8}|8\d{6})$/, /^(?:7(?:457[0-57-9]|700[01]|911[028])\d{5}|7(?:[1-3]\d\d|4(?:[0-46-9]\d|5[0-689])|5(?:0[0-8]|[13-9]\d|2[0-35-9])|7(?:0[1-9]|[1-7]\d|8[02-9]|9[0-689])|8(?:[014-9]\d|[23][0-8])|9(?:[024-9]\d|1[02-9]|3[0-689]))\d{6})$/],
@@ -4769,7 +4773,15 @@ function phoneCountry(selId){ const s=el(selId); return countryByIso(s&&s.value)
 const phoneIsZone7=(c)=>c.c==="+7";
 // Цифры любого письма → 0-9 (полноширинные — через NFKC, арабские — вручную).
 function phoneDigits(t){ return String(t||"").normalize("NFKC").replace(/[\u0660-\u0669\u06F0-\u06F9]/g,ch=>String(ch.charCodeAt(0)&15)).replace(/\D/g,""); }
-function phoneMaxNat(c){ return phoneIsZone7(c) ? 10 : 15-(c.c.length-1); }
+// Предел цифр в поле: E.164 (15) без кода страны; номер, набранный с
+// магистральным префиксом, — плюс его длина («0 800 123 456 789» у ОАЭ — 13 цифр).
+// amb=false — правка не могла создать «7 + номер» (цифра в середину готового
+// номера): неоднозначные 11 цифр Казахстана тогда не принимаются, как раньше.
+function phoneMaxNat(c, d, amb=true){
+  if(phoneIsZone7(c)) return amb && phoneKz7Amb(c.cc, d||"") ? 11 : 10;
+  const t=phoneTrunks(c.cc).find((x)=>(d||"").startsWith(x));
+  return 15-(c.c.length-1)+(t ? t.length : 0);
+}
 // Международный ли номер в тексте, и если да — его цифры без «+»/«00» (до 15).
 // Текст очищается как на сервере (services/phone.js): NFKC («＋» → «+»), без
 // невидимых знаков (\p{Cf}: знаки направления текста, которые добавляют
@@ -4783,10 +4795,13 @@ function phonePlusFirst(t){
 }
 function phoneIntlDigits(t){
   const d=phoneDigits(t);
-  if(phonePlusFirst(t)) return d.slice(0,15);
-  if(d.startsWith("00")) return d.slice(2,17);
-  return null;
+  const r=phonePlusFirst(t) ? d : d.startsWith("00") ? d.slice(2) : null;
+  // Больше 15 цифр (добавочный, два номера в буфере) — не номер: дальше это
+  // обычная национальная правка, а она лишние цифры не принимает («слишком длинный»).
+  return r!=null && r.length<=15 ? r : null;
 }
+// Ровно код страны из списка («+380», «+7») — без цифр номера.
+function phoneIsCode(raw){ return COUNTRIES.some((x)=>x.c.slice(1)===raw); }
 // Само поле: международный номер phoneApply всегда пишет как «+цифры», поэтому
 // признак — только «+» в начале. «001 234-56-7» (стёрли первую цифру в
 // «900 123-45-67») — национальный номер, а не «00…».
@@ -4800,33 +4815,90 @@ function phoneEditIntl(text, untouched){
   const r=phoneIntlDigits(text);
   return r!=null && (phonePlusFirst(text) || phoneDigits(untouched).length<2) ? r : null;
 }
+// Настоящие номера зоны +7 — все виды номеров России и Казахстана из Google
+// libphonenumber (городские, мобильные, бесплатные и т. д.; master 7 окт 2026).
+const PHONE_Z7=[
+  /^(?:(?:3(?:0[12]|36|4[1-35-79]|5[1-3]|65|8[1-58]|9[0145])|4(?:01|1[1356]|2[13467]|7[1-5]|8[1-7]|9[1-689])|8(?:1[1-8]|2[01]|3[13-6]|4[0-8]|5[15-7]|6[0-35-79]|7[1-37-9]))\d{7})$/,
+  /^(?:9\d{9})$/,
+  /^(?:8(?:0[04]|108\d{3})\d{7})$/,
+  /^(?:80[39]\d{7})$/,
+  /^(?:808\d{7})$/,
+  /^(?:7(?:1(?:0(?:[23]\d|4[0-3]|59|63)|1(?:[23]\d|4[0-79]|59)|2(?:[23]\d|59)|3(?:2\d|3[0-79]|4[0-35-9]|59)|4(?:[24]\d|3[013-9]|5[1-9]|97)|5(?:2\d|3[1-9]|4[0-7]|59)|6(?:[2-4]\d|5[19]|61)|72\d|8(?:[27]\d|3[1-46-9]|4[0-5]|59))|2(?:1(?:[23]\d|4[46-9]|5[3469])|2(?:2\d|3[0679]|46|5[12679])|3(?:[2-4]\d|5[139])|4(?:2\d|3[1-35-9]|59)|5(?:[23]\d|4[0-8]|59|61)|6(?:2\d|3[1-9]|4[0-4]|59)|7(?:[2379]\d|40|5[279])|8(?:[23]\d|4[0-3]|59)|9(?:2\d|3[124578]|59)))\d{5})$/,
+  /^(?:7(?:0[0-25-8]|47|6[0-4]|7[15-8]|85)\d{7})$/,
+  /^(?:8(?:00|108\d{3})\d{7})$/,
+  /^(?:809\d{7})$/,
+  /^(?:808\d{7})$/,
+  /^(?:751\d{7})$/
+];
+const phoneZ7Real=(d)=>PHONE_Z7.some((r)=>r.test(d));
 // Россия: 11 цифр с первой 7 или 8 → без первой («8 999…», «7 999…»).
 // Казахстан: только повторённый код страны (11 цифр с первой 7) — магистральная
 // «8» здесь не российская, её не трогаем.
 function phoneTrimLead(iso, d){
-  if(iso==="RU" && d.length===11 && /^[78]/.test(d)) return {d:d.slice(1), cut:1};
-  if(iso==="KZ" && d.length===11 && d[0]==="7") return {d:d.slice(1), cut:1};
+  // «8»/«7» снимаются, только если дальше настоящий номер зоны: «8 999…», «8 495…»,
+  // «8 800…», «7 812…» — да; «812 123-45-67» или «843 123-45-67» и лишняя цифра в
+  // конце — нет (раньше уходило «121 234-56-75», «431 234-56-78» — чужие номера;
+  // теперь цифра не принимается). Россия: «8» и «7» снимаются всегда, когда
+  // дальше настоящий номер (правило «8» — требование, хотя «8 343…» и
+  // «834…» + цифра неотличимы). Казахстан: «7 777 123 45 67» — это и код + 777…,
+  // и номер 777 712-34-56 + лишняя цифра: если без последней цифры тоже
+  // настоящий номер — неоднозначно, не снимаем (все 11 цифр видны, отправка
+  // откажет с подсказкой kz7).
+  if(d.length!==11 || !phoneZ7Real(d.slice(1))) return {d, cut:0};
+  if(iso==="RU" && /^[78]/.test(d)) return {d:d.slice(1), cut:1};
+  if(iso==="KZ" && d[0]==="7" && !phoneZ7Real(d.slice(0,10))) return {d:d.slice(1), cut:1};
   return {d, cut:0};
 }
+// Казахстан, неоднозначное «7 7xx…» (см. phoneTrimLead) — в поле остаются все 11 цифр.
+const phoneKz7Amb=(iso, d)=>iso==="KZ" && d.length===11 && d[0]==="7" && phoneZ7Real(d.slice(1)) && phoneZ7Real(d.slice(0,10));
 // Код своей страны, набранный без «+» (страны вне зоны +7). Снимается, только
-// если ОДНОВРЕМЕННО: цифры начинаются с кода; после кода — полный мобильный
-// номер этой страны; а сами цифры целиком НЕ могут быть её национальным номером
-// ни одного вида. «380 50 123 45 67» при Украине → «50 123-45-67»; «380 123 456»
-// (номер Хмельницкой обл.) и «99 812-34-56» (Узбекистан) — номера, не трогаем.
-// Германия «49 151…»: это и «+49 151…», и номер 049xx — неоднозначно, не
-// снимаем (отправка откажет с подсказкой, см. phoneOwnCodeLike).
+// если ОДНОВРЕМЕННО: цифры начинаются с кода; ни сами цифры, ни они без
+// последней НЕ являются национальным номером страны ни одного вида; после кода
+// — мобильный номер страны (в т. ч. после магистрального «0»), или любой
+// национальный, но цифр больше, чем бывает в национальном номере страны.
+// «380 50 123 45 67» и «380 44 123 45 67» при Украине → «50 123-45-67»,
+// «44 123-45-67»; «380 123 456» (номер Хмельницкой обл.) и «99 812-34-56»
+// (Узбекистан) — номера, не трогаем. Германия «49 151…»: это и «+49 151…», и
+// номер 049xx — неоднозначно, не снимаем (отправка откажет с подсказкой, см.
+// phoneOwnCodeLike).
+// Что стоит после кода: "mob" — мобильный номер страны (в т. ч. с магистральным
+// префиксом: «44 07400 123456», «+44 (0)7400…» без «+»), "nat" — любой
+// национальный номер (городской и т. п., тоже с префиксом или без), null — нет.
+function phoneRest(iso, r){
+  const plan=PHONE_PLAN[iso]; if(!plan || !r) return null;
+  const tr=phoneTrunks(iso).filter((t)=>r.startsWith(t)).map((t)=>r.slice(t.length));
+  if(plan[1].test(r) || tr.some((x)=>plan[1].test(x))) return "mob";
+  if(plan[0].test(r) || tr.some((x)=>plan[0].test(x))) return "nat";
+  return null;
+}
 function phoneOwnCode(iso, d){
   const plan=PHONE_PLAN[iso], code=countryByIso(iso).c.slice(1);
-  if(!plan || !d.startsWith(code)) return {d, cut:0};
-  const r=d.slice(code.length);
-  return plan[1].test(r) && !plan[0].test(d) ? {d:r, cut:code.length} : {d, cut:0};
+  if(!plan || !d.startsWith(code) || plan[0].test(d)) return {d, cut:0};
+  // Без последней цифры это уже настоящий национальный номер: может быть
+  // опечаткой (лишняя цифра в конце готового номера: Италия «393 312 3456» + 7,
+  // Бразилия «55 98765 4321» + 0), а может быть «код + номер» — неоднозначно.
+  // Не снимаем ни при каком пути ввода (набор, вставка, автозаполнение — одинаково);
+  // отправка откажет с подсказкой (phoneOwnCodeLike).
+  if(plan[0].test(d.slice(0,-1))) return {d, cut:0};
+  const k=phoneRest(iso, d.slice(code.length));
+  // После кода мобильный — снимаем. Любой другой
+  // национальный (городской и т. п.) — только если цифр больше, чем бывает в
+  // национальном номере страны вообще: тогда это не номер и не начало номера
+  // (у Италии «390 1…» набирается мобильный 390…, его начало «39012345»
+  // похоже на «39» + городской «012345» — 8 цифр, а номера Италии до 12).
+  return k==="mob" || (k==="nat" && d.length>PHONE_NATMAX[iso]) ? {d:d.slice(code.length), cut:code.length} : {d, cut:0};
 }
-// Цифры выглядят как «код своей страны + мобильный» — так на сервер не уходит
-// (иначе +380380…, +4949…): или код не сняли из-за неоднозначности, или
-// защита от лишней цифры (phoneApply) оставила его на месте.
+// Цифры начинаются с кода своей страны и это не национальный номер страны (или
+// после кода мобильный) — так на сервер не уходит никогда (иначе +380380…,
+// +4949…, +444420…, +38038050… для недонабранного): код не сняли из-за
+// неоднозначности (Германия), защиты от лишней цифры, потому что после кода
+// городской номер, а длина ещё допускает национальный (Китай «86 10…»), или
+// номер недонабран. Настоящий национальный номер сюда не попадает: он входит в
+// план, а мобильный после кода бывает только у Германии 049xx — задумано.
 function phoneOwnCodeLike(iso, d){
   const plan=PHONE_PLAN[iso], code=countryByIso(iso).c.slice(1);
-  return !!plan && d.startsWith(code) && plan[1].test(d.slice(code.length));
+  if(!plan || !d.startsWith(code)) return false;
+  return phoneRest(iso, d.slice(code.length))==="mob" || !plan[0].test(d);
 }
 // Национальный ли это номер страны (любого вида).
 function phoneNatOk(iso, d){ const plan=PHONE_PLAN[iso]; return !!plan && plan[0].test(d); }
@@ -4899,13 +4971,19 @@ function phoneE164(iso, d){
     // Казахстан: «8» перед номером не снимаем (правило: российская «8» — только
     // при России), но и не отправляем — +7 8xx… это чужой российский номер.
     if(c.cc==="KZ" && d[0]==="8") return {error:"kz8"};
+    if(phoneKz7Amb(c.cc, d)) return {error:"kz7"};
     if(d.length<10) return {error:"short"};
     if(d.length>10) return {error:"long"};
     if(!/^[346789]/.test(d)) return {error:"range"};
     return {phone:"+7"+d};
   }
   if(phoneOwnCodeLike(c.cc, d)) return {error:"owncode"};
-  const t=[].concat(PHONE_TRUNK[c.cc]||[]).find((x)=>d.startsWith(x)); if(t) d=d.slice(t.length);
+  // Магистральный префикс снимается, кроме случая, когда он — начало настоящего
+  // национального номера (Беларусь «800 1234» — бесплатный номер, не «80» + «01234»).
+  const plan=PHONE_PLAN[c.cc];
+  const t=phoneTrunks(c.cc).find((x)=>d.startsWith(x) && !(plan && plan[0].test(d) && !plan[0].test(d.slice(x.length))));
+  if(t) d=d.slice(t.length);
+  if(t && phoneOwnCodeLike(c.cc, d)) return {error:"owncode"};   // «0 375 29…»: префикс и код страны вместе
   const all=c.c.slice(1)+d;
   if(all.length<8) return {error:"short"};
   if(all.length>15) return {error:"long"};
@@ -4913,6 +4991,7 @@ function phoneE164(iso, d){
 }
 const PHONE_ERR={short:"Номер слишком короткий", long:"Номер слишком длинный", range:"Такого номера нет: проверьте цифры после +7", empty:"Введите номер телефона",
   kz8:"Казахстан: наберите номер без 8, например 701 123-45-67",
+  kz7:"Номер начинается с 7 — это код страны? Наберите его с «+7» или 10 цифр без кода, например 777 123-45-67",
   code:"Такого кода страны нет в списке — выберите страну в списке и наберите номер без кода",
   plus8:"Кода страны «+8» нет: наберите 8 999 … без «+» или +7 999 …",
   zeros:"Номер не может начинаться с «00» — проверьте первые цифры",
@@ -4929,8 +5008,15 @@ function phoneFieldDigits(inpId){ return phoneDigits(el(inpId)?.value||""); }
 // Что уйдёт на сервер: {phone, iso} или {error, msg}. Его вызывает sendCode.
 function phoneSubmit(inpId, selId){
   const pd=phoneFieldIntl(el(inpId)?.value||"");
-  // «+цифры» в поле: код ещё набирается («+», «+3», «+99») или его нет в списке.
-  if(pd!=null) return {error:"intl", msg:!pd ? PHONE_ERR.empty : phoneCodeOf(pd).wait ? PHONE_ERR.short : phoneCodeErr(pd, phoneCountry(selId))};
+  // «+цифры» в поле: код ещё набирается («+», «+3», «+99») или его нет в списке;
+  // код известен (поставили «+» перед набранным номером) — это международный номер.
+  if(pd!=null){
+    const hit=pd ? phoneCodeOf(pd) : {wait:true};
+    if(!pd || hit.wait || !hit.country) return {error:"intl", msg:!pd ? PHONE_ERR.empty : hit.wait ? PHONE_ERR.short : phoneCodeErr(pd, phoneCountry(selId))};
+    const p=phoneParse(phoneCountry(selId).cc, "+"+pd), r=phoneE164(p.iso, p.d);
+    if(r.error) return {error:r.error, msg:PHONE_ERR[r.error].replace(/\{c\}/g, countryByIso(p.iso).c.slice(1))};
+    return {phone:r.phone, iso:p.iso};
+  }
   const c=phoneCountry(selId);
   const d=phoneFieldDigits(inpId);
   if(!d) return {error:"empty", msg:T("entph")};
@@ -4942,17 +5028,26 @@ function initPhoneField(inpId, selId){
   const inp=el(inpId); if(!inp || inp._phoneInit) return;
   inp._phoneInit=true;
   // Состояние ДО правки: из него — откат лишней цифры и удаление разделителя.
-  inp.addEventListener("beforeinput", ()=>{ inp._phBefore={v:inp.value, a:inp.selectionStart, b:inp.selectionEnd}; });
+  inp.addEventListener("beforeinput", (e)=>{ if(inp._phComp) return; inp._phBefore={v:inp.value, a:inp.selectionStart, b:inp.selectionEnd}; });
+  // IME-композиция (клавиатура составляет знак, потом подтверждает): переписывать
+  // поле посреди неё нельзя — знак удваивается (Gboard и др.). Состояние «до» —
+  // на начало композиции, обработка — один раз, когда она закончилась.
+  inp.addEventListener("compositionstart", ()=>{ inp._phComp={v:inp.value, a:inp.selectionStart, b:inp.selectionEnd}; });
+  inp.addEventListener("compositionend", ()=>{
+    const before=inp._phComp; inp._phComp=null; inp._phBefore=null;
+    if(before && inp.value!==before.v) phoneApply(inp, selId, {type:"insertText", before});
+  });
   inp.addEventListener("paste", (e)=>{
     const text=(e.clipboardData||window.clipboardData)?.getData("text")||"";
     e.preventDefault();
     phoneApply(inp, selId, {paste:text, before:{v:inp.value, a:inp.selectionStart??inp.value.length, b:inp.selectionEnd??inp.value.length}});
   });
   inp.addEventListener("input", (e)=>{
+    if(inp._phComp || e.isComposing) return;     // итог композиции — в compositionend
     const before=inp._phBefore; inp._phBefore=null;
     phoneApply(inp, selId, {type:e.inputType||"", before});
   });
-  inp.addEventListener("keydown", (e)=>{ if(e.key==="Enter" && inpId==="phinp"){ e.preventDefault(); if(!el("t-btnsnd")?.disabled) sendCode(); } });
+  inp.addEventListener("keydown", (e)=>{ if(e.key==="Enter" && inpId==="phinp"){ e.preventDefault(); if(e.repeat) return; if(!el("t-btnsnd")?.disabled) sendCode(); } });
 }
 // Правка поля: набор по символу, удаление, вставка, автозаполнение.
 function phoneApply(inp, selId, o){
@@ -4971,29 +5066,61 @@ function phoneApply(inp, selId, o){
   // невидимые знаки направления текста из контактов его не прячут. Удаление
   // международным номер не делает: «900…» → Backspace → «00…» — та же страна.
   let rawD=null;
+  // rel — сколько цифр слева от курсора в тексте после правки, когда курсор
+  // должен остаться на месте («+» набрали перед номером, «+код» вставили перед
+  // ним, правка внутри «+цифр»); null — курсор в конец (номер вставлен целиком).
+  let rel=null;
+  const wholeSel=before.a===0 && before.b===before.v.length;
+  const nationalBefore=phoneFieldIntl(before.v)==null;
+  // «+» без цифр (набран или вставлен) перед уже набранными цифрами: код страны
+  // человек ещё не набрал — цифры номера кодом не считаются («+» перед «44 123-45-67»
+  // у Украины — не Великобритания), поле ждёт код: «+цифры», курсор после «+».
+  let plusOnly=false;
   if(o.paste!=null){
-    rawD=phoneIntlDigits(o.paste);                                     // вставили номер с «+»
-    if(rawD==null && !(before.a===0 && before.b===before.v.length))
+    plusOnly=phonePlusFirst(o.paste) && !phoneDigits(o.paste) && nationalBefore && !phoneDigits(before.v.slice(0,before.a)) && !!phoneDigits(before.v.slice(before.b));
+    if(plusOnly) rel=0;
+    rawD=(phonePlusFirst(o.paste) && phoneDigits(o.paste) || wholeSel) ? phoneIntlDigits(o.paste) : null;   // вставили номер с «+» (или «00…» вместо всего поля)
+    // «+380», «+7» — только код — вставили перед набранным номером: это код этого номера.
+    if(rawD!=null && !wholeSel && nationalBefore && phoneIsCode(rawD) && !phoneDigits(before.v.slice(0,before.a))){
+      rel=phoneDigits(o.paste).length;
+      rawD=phoneIntlDigits(before.v.slice(0,before.a)+o.paste+before.v.slice(before.b));
+    }
+    if(rawD==null && !wholeSel)
       rawD=phoneEditIntl(before.v.slice(0,before.a)+o.paste+before.v.slice(before.b), before.v.slice(0,before.a));   // вставили после набранного «+» / «0»
   } else if(!o.type || o.type==="insertReplacementText") rawD=phoneIntlDigits(inp.value);   // автозаполнение — текст целиком
   else {
     // Подсказка буфера на клавиатуре (чип) и перетаскивание приходят как ввод
     // целой строки: «+номер» в ней — как вставка номера с «+», заменяет поле
-    // (и поле «+3», и национальный номер).
+    // (и поле «+3», и национальный номер); «+код» без номера перед набранным
+    // номером — его код.
     const a=before.a ?? before.v.length, b=before.b ?? a;
     const ins=/^delete/.test(o.type) ? "" : inp.value.slice(a, a+inp.value.length-(before.v.length-(b-a)));
-    if(ins.length>1 && phonePlusFirst(ins)) rawD=phoneIntlDigits(ins);
-    else if(phoneFieldIntl(before.v)!=null) rawD=phonePlusFirst(inp.value) ? phoneIntlDigits(inp.value) : null;   // правка внутри «+цифры»; стёрли «+» — национальный
-    else if(!/^delete/.test(o.type)) rawD=phoneEditIntl(inp.value, before.v.slice(0, a));   // набор
+    const end=(o.type==="insertFromDrop" ? inp.selectionEnd : inp.selectionStart) ?? inp.value.length;
+    const code=ins.length>1 && phonePlusFirst(ins) && nationalBefore && phoneIsCode(phoneDigits(ins)) && !phoneDigits(before.v.slice(0,a));
+    plusOnly=!!ins && phonePlusFirst(ins) && !phoneDigits(ins) && nationalBefore && !phoneDigits(before.v.slice(0,a)) && !!phoneDigits(before.v.slice(b));
+    if(ins.length>1 && phonePlusFirst(ins) && !code) rawD=phoneIntlDigits(ins);
+    else {
+      rel=phoneDigits(inp.value.slice(0, end)).length;
+      if(code) rawD=phoneIntlDigits(inp.value);
+      else if(!nationalBefore) rawD=phonePlusFirst(inp.value) ? phoneIntlDigits(inp.value) : null;   // правка внутри «+цифры»; стёрли «+» — национальный
+      else if(!/^delete/.test(o.type)) rawD=phoneEditIntl(inp.value, before.v.slice(0, a));   // набор
+    }
   }
   let intl=null;
   if(rawD!=null){
-    const hit=phoneCodeOf(rawD);
-    if(hit.wait || !hit.country){
+    // Код — цифры слева от курсора (их набрали после «+»); цифры справа — номер,
+    // набранный раньше («+|441234567» + «3» — ещё не Испания «34»). Зоне +7 для
+    // выбора Россия/Казахстан нужна следующая цифра — её берём и из номера.
+    const left=rel!=null && rel<rawD.length ? rawD.slice(0, rel) : rawD;
+    let hit=phoneCodeOf(left);
+    if(hit.wait && left==="7" && rawD.length>1) hit=phoneCodeOf(rawD.slice(0,2));
+    if(plusOnly || hit.wait || !hit.country){
       inp.value="+"+rawD;
-      try{ if(document.activeElement===inp) inp.setSelectionRange(inp.value.length, inp.value.length); }catch(e){}
+      const pos=rel==null ? inp.value.length : Math.min(inp.value.length, 1+rel);
+      inp._phCut=null;
+      try{ if(document.activeElement===inp) inp.setSelectionRange(pos, pos); }catch(e){}
       // Вставка и автозаполнение — сразу подсказка; при наборе — на «Отправить код».
-      if(!hit.wait && (o.paste!=null || !o.type || o.type==="insertReplacementText")) showToast("❌ "+phoneCodeErr(rawD, c0));
+      if(!plusOnly && !hit.wait && (o.paste!=null || !o.type || o.type==="insertReplacementText")) showToast("❌ "+phoneCodeErr(rawD, c0));
       return;
     }
     intl="+"+rawD;
@@ -5002,10 +5129,16 @@ function phoneApply(inp, selId, o){
   const whole = intl!=null || (o.paste!=null
     ? (before.a===0 && before.b===before.v.length)
     : (!o.type || o.type==="insertReplacementText"));
+  let cutNow="";   // снятое правилами выбранной страны начало (не явный «+код»)
+  let ambOk=true;  // могла ли правка создать «7 + номер» (Казахстан, phoneKz7Amb)
   if(whole){
     // Целиком: вставка всего номера, автозаполнение (у него нет inputType), «+код…».
     const p=phoneParse(c0.cc, intl!=null ? intl : (o.paste!=null ? o.paste : inp.value));
     c=countryByIso(p.iso); d=p.d; k=d.length;
+    if(intl==null){ const all=phoneDigits(o.paste!=null ? o.paste : inp.value); if(all.length>d.length && all.endsWith(d)) cutNow=all.slice(0, all.length-d.length); }
+    // «+7» набрали перед «999 123-45-67» — курсор там же, где был (перед номером),
+    // а не в конце: снятые в начале цифры (код, «8») вычитаются.
+    if(intl!=null && rel!=null) k=Math.max(0, Math.min(d.length, rel-(rawD.length-d.length)));
   } else {
     let raw, caret;
     if(o.paste!=null){
@@ -5021,34 +5154,35 @@ function phoneApply(inp, selId, o){
     }
     // Начало, которое не национальная часть (зона +7 — «8»/«7», остальные — код
     // своей страны без «+»), снимается, только когда правка его создала: цифры
-    // дописаны в конец (набор с начала, вставка продолжения) или вставлены в
-    // самое начало (в зоне +7 — в позицию 0, у остальных — внутрь кода). Цифра,
-    // вставленная в середину готового номера, — лишняя, номер не режется.
-    // Удаление никогда не снимает других цифр.
+    // дописаны в конец (набор с начала, вставка продолжения), вставлены в самое
+    // начало (в зоне +7 — в позицию 0, у остальных — внутрь кода) или
+    // вставлены в середину НЕЗАКОНЧЕННОГО номера (пропущенная цифра в «8 999
+    // 45-67», «380 50 123 467»). Цифра, вставленная в середину готового номера,
+    // — лишняя, номер не режется. Удаление никогда не снимает других цифр.
     if(!/^delete/.test(o.type||"")){
       const p=phoneDigits(before.v.slice(0, before.a ?? before.v.length)).length;   // цифр до места правки
       const atEnd=k===d.length;
       if(phoneIsZone7(c)){
-        if(atEnd || p===0){ const t=phoneTrimLead(c.cc, d); d=t.d; k=Math.max(0,k-t.cut); }
-      } else if(p < c.c.length-1 || (atEnd && !(d.length-dBefore.length===1 && phoneNatOk(c.cc, dBefore)))){
-        // Одна лишняя цифра в конце готового национального номера («393 312 3456» + 7
-        // у Италии) — опечатка, а не «код + номер»: начало не снимаем (отправка тогда
-        // откажет с подсказкой — phoneOwnCodeLike).
-        const t=phoneOwnCode(c.cc, d); d=t.d; k=Math.max(0,k-t.cut);
+        ambOk=atEnd || p===0 || dBefore.length<10;
+        if(ambOk){ const t=phoneTrimLead(c.cc, d); cutNow=d.slice(0, t.cut); d=t.d; k=Math.max(0,k-t.cut); }
+      } else if(p < c.c.length-1 || atEnd || !phoneNatOk(c.cc, dBefore)){
+        // Лишняя цифра в конце готового национального номера — см. phoneOwnCode.
+        const t=phoneOwnCode(c.cc, d); cutNow=d.slice(0, t.cut); d=t.d; k=Math.max(0,k-t.cut);
       }
     }
   }
   // Лишняя цифра не принимается (поле и курсор — как были); удаление — всегда
   // (после смены страны цифр может быть больше нормы — стереть их можно).
-  if(d.length>phoneMaxNat(c) && d.length>dBefore.length){
+  if(d.length>phoneMaxNat(c, d, ambOk) && d.length>dBefore.length){
     inp.value=before.v;
     try{ if(document.activeElement===inp) inp.setSelectionRange(before.a??before.v.length, before.b??before.v.length); }catch(e){}
     if(c.cc==="KZ" && d[0]==="8") showToast("❌ "+PHONE_ERR.kz8);
-    else if(o.paste!=null || whole) showToast("❌ "+PHONE_ERR.long);
+    else if(o.paste!=null || whole || k<d.length) showToast("❌ "+PHONE_ERR.long);
     return;
   }
   if(c.cc!==c0.cc && sel){ sel.value=c.cc; sel.dataset.picked="1"; updateLogoText(); phoneCountryChanged(selId, true); }
   phoneSet(inp, c, d, k);
+  inp._phCut=cutNow ? {cut:cutNow, rest:d} : null;
 }
 // Смена страны: те же цифры — по правилам новой страны, без обрезки лишних;
 // начало, которое для новой страны не национальная часть («8»/«7» у России,
@@ -5060,9 +5194,15 @@ function phoneCountryChanged(selId, keepCaret){
   inp.placeholder=PHONE_HINT[c.cc]||"";
   // В поле «+цифры» (код набирали руками) — это код, а не номер: страну выбрали
   // в списке, поле начинается заново.
-  if(phoneFieldIntl(inp.value)!=null){ inp.value=""; return; }
-  const d=phoneStripLead(c.cc, phoneDigits(inp.value)).d;
-  inp.value=phoneFormat(c, d);
+  if(phoneFieldIntl(inp.value)!=null){ inp.value=""; inp._phCut=null; return; }
+  // Начало, снятое по правилам прежней страны («1» у США, «8» у России, код
+  // своей страны), возвращается, пока цифры поля не правили: листание списка
+  // стран (на ПК стрелками — смена на каждой стрелке) не режет номер.
+  let all=phoneDigits(inp.value);
+  if(inp._phCut && inp._phCut.rest===all) all=inp._phCut.cut+all;
+  const t=phoneStripLead(c.cc, all);
+  inp._phCut=t.cut ? {cut:all.slice(0, t.cut), rest:t.d} : null;
+  inp.value=phoneFormat(c, t.d);
 }
 
 let otmr=null;
@@ -6275,6 +6415,7 @@ async function sendCode(){
     }
 
     el("otpph").textContent=fmtPhone(S.phone);
+    el("phinp")?.blur();      // повтор Enter, удержанной в поле номера, не уйдёт вторым запросом
     showA("auth-otp"); startOTP();
     setTimeout(()=>el("o0")&&el("o0").focus(),50);
   } catch(e){
