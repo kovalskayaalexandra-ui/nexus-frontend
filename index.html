@@ -5094,7 +5094,7 @@ function phoneSubmit(inpId, selId){
   // выбор или касание списка (fillCSEL).
   // Значение не из обработки поля (браузер восстановил форму): страну подтвердит человек;
   // это национальная часть, которую поле уже показывало, — свой код второй раз не снимается.
-  if(f && f.value && f._phOffV!==f.value){ f._phAf=true; f._phOff=true; f._phOffV=f.value; f._phSrc=null; phoneHistPut(f); }
+  if(f && f.value && f._phOffV!==f.value && !f._phComp){ f._phAf=true; f._phOff=true; f._phOffV=f.value; f._phSrc=null; phoneHistPut(f); }
   if(f && f._phAf) return {error:"afcountry", msg:PHONE_ERR.afcountry};
   const r=phoneE164(c.cc, d, !!(f && f._phOff));
   if(r.error) return {error:r.error, msg:PHONE_ERR[r.error].replace(/\{c\}/g, c.c.slice(1))};
@@ -5109,11 +5109,12 @@ function phoneAutofilled(x){ for(const s of [":autofill", ":-webkit-autofill"]){
 // подтверждена» (номер браузера, в том числе поправленный). Ключ — цифры («+цифры»
 // отдельно); у одинаковых цифр главное — последнее значение.
 function phoneHistKey(v){ return (phoneFieldIntl(v)!=null ? "+" : "")+phoneDigits(v); }
-function phoneHistPut(inp){
-  if(!inp.value) return;
-  const h=inp._phHist||(inp._phHist=new Map()), k=phoneHistKey(inp.value);
-  h.delete(k); h.set(k, {off:!!inp._phOff, af:!!inp._phAf});
-  if(h.size>200) h.delete(h.keys().next().value);
+function phoneHistPut(inp, v, off, af){
+  v=v ?? inp.value; if(!v) return;
+  const h=inp._phHist||(inp._phHist=new Map()), k=phoneHistKey(v);
+  h.delete(k); h.set(k, {off:off ?? !!inp._phOff, af:af ?? !!inp._phAf});
+  // Больше 200 значений — уходит самое старое подтверждённое (номер браузера помнится).
+  if(h.size>200){ let k0=null; for(const [k1, r] of h) if(!r.af){ k0=k1; break; } h.delete(k0!=null ? k0 : h.keys().next().value); }
 }
 // Отмена вернула значение: не подтверждено, если таким его оставила обработка; незнакомое
 // значение — если в поле был не подтверждённый номер браузера.
@@ -5159,7 +5160,7 @@ function initPhoneField(inpId, selId){
     if(inp._phDragT){ clearTimeout(inp._phDragT); inp._phDragT=null; }
     phoneApply(inp, selId, {type:e.inputType||"", before, dragBefore});
   });
-  inp.addEventListener("keydown", (e)=>{ if(e.key==="Enter" && inpId==="phinp"){ e.preventDefault(); if(e.repeat) return; if(!el("t-btnsnd")?.disabled) sendCode(); } });
+  inp.addEventListener("keydown", (e)=>{ if(e.key==="Enter" && inpId==="phinp"){ if(e.isComposing || e.keyCode===229 || inp._phComp) return; e.preventDefault(); if(e.repeat) return; if(!el("t-btnsnd")?.disabled) sendCode(); } });   // Enter в IME-композиции её принимает
 }
 // Правка поля: набор по символу, удаление, вставка, автозаполнение.
 function phoneApply(inp, selId, o){
@@ -5170,6 +5171,9 @@ function phoneApply(inp, selId, o){
   // целиком: цифры как есть (код и «8» второй раз не снимаются), признаки «код снят» и
   // «страна не подтверждена» — этого значения (phoneHistPut). «+цифры» — как обычно, ниже.
   const hist=/^history/.test(o.type||"");
+  // Chrome шлёт отмену и для шагов, которые обработка уже переписала: значение то же —
+  // ни цифры, ни признаки, ни память поля не меняются.
+  if(hist && o.before && inp.value===before.v) return;
   if(hist && phoneFieldIntl(inp.value)==null){
     const h=inp._phHist && inp._phHist.get(phoneHistKey(inp.value)), d=phoneDigits(inp.value), af=!!d && phoneHistAf(inp);
     phoneSet(inp, c0, d, phoneDigits(inp.value.slice(0, inp.selectionStart ?? inp.value.length)).length);
@@ -5183,7 +5187,7 @@ function phoneApply(inp, selId, o){
   // показывало (свой код не снимается второй раз), цифры — от браузера: правка
   // подтверждения страны не снимает (если не заменила все цифры).
   const prevV=(o.dragBefore||before).v, foreign=!!o.before && !!prevV && inp._phOffV!==prevV;
-  if(foreign){ inp._phAf=true; inp._phSrc=null; inp._phPlusTail=null; }
+  if(foreign){ inp._phAf=true; inp._phSrc=null; inp._phPlusTail=null; phoneHistPut(inp, prevV, true, true); }
   // 9 окт 2026 (после трёх проверок): «+» и «00» в начале — ВСЕГДА
   // международный номер, каким бы путём он ни попал в поле: набор по символу,
   // вставка (в т.ч. после уже набранного «+»), автозаполнение. Код ещё
