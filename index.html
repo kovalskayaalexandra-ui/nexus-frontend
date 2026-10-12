@@ -4723,11 +4723,11 @@ function showA(id){ document.querySelectorAll(".auth").forEach(a=>a.classList.re
 function fillCSEL(){
   const s=el("csel1"); if(!s) return;
   s.innerHTML=COUNTRIES.map(c=>`<option value="${c.cc}">${c.f} ${c.c}</option>`).join("");
-  s.onchange=()=>{ s.dataset.picked="1"; phoneRememberCountry(s.value, true); updateLogoText(); phoneCountryChanged("csel1"); };
+  s.onchange=()=>{ s.dataset.picked="1"; phoneRememberCountry(s.value, true); updateLogoText(); phoneAdopt(el("phinp")); phoneCountryChanged("csel1"); };
   // 12 окт 2026: страну номера после автозаполнения подтверждает человек — касанием или
   // клавишами на списке (выбор другой страны, повторный выбор той же — change его не
   // даёт); смена страны самим браузером при автозаполнении (change без касания) — нет.
-  const okCountry=()=>{ const i=el("phinp"); if(i){ i._phAf=false; if(i._phHist) for(const r of i._phHist.values()) r.af=false; } };
+  const okCountry=()=>{ const i=el("phinp"); if(i){ phoneAdopt(i); i._phAf=false; if(i._phHist) for(const r of i._phHist.values()) r.af=false; } };
   s.addEventListener("click", okCountry);
   s.addEventListener("keydown", (e)=>{ if(!e.ctrlKey && !e.altKey && !e.metaKey && (/^(Arrow|Page|Home|End|Enter)/.test(e.key) || e.key===" " || e.key.length===1)) okCountry(); });
   // 11 окт 2026: последняя страна — на устройстве. Страна по IP определяется
@@ -5094,7 +5094,7 @@ function phoneSubmit(inpId, selId){
   // выбор или касание списка (fillCSEL).
   // Значение не из обработки поля (браузер восстановил форму): страну подтвердит человек;
   // это национальная часть, которую поле уже показывало, — свой код второй раз не снимается.
-  if(f && f.value && f._phOffV!==f.value && !f._phComp){ f._phAf=true; f._phOff=true; f._phOffV=f.value; f._phSrc=null; phoneHistPut(f); }
+  phoneAdopt(f);
   if(f && f._phAf) return {error:"afcountry", msg:PHONE_ERR.afcountry};
   const r=phoneE164(c.cc, d, !!(f && f._phOff));
   if(r.error) return {error:r.error, msg:PHONE_ERR[r.error].replace(/\{c\}/g, c.c.slice(1))};
@@ -5114,7 +5114,16 @@ function phoneHistPut(inp, v, off, af){
   const h=inp._phHist||(inp._phHist=new Map()), k=phoneHistKey(v);
   h.delete(k); h.set(k, {off:off ?? !!inp._phOff, af:af ?? !!inp._phAf});
   // Больше 200 значений — уходит самое старое подтверждённое (номер браузера помнится).
-  if(h.size>200){ let k0=null; for(const [k1, r] of h) if(!r.af){ k0=k1; break; } h.delete(k0!=null ? k0 : h.keys().next().value); }
+  if(h.size>200){ let k0=null; for(const [k1, r] of h) if(!r.af && k1!==k){ k0=k1; break; } if(k0==null) for(const k1 of h.keys()) if(k1!==k){ k0=k1; break; } h.delete(k0); }
+}
+// Значение в поле не из этой обработки (браузер восстановил форму после «Назад» или
+// восстановления вкладки): национальная часть, которую поле уже показывало (код снят, второй
+// раз не снимается), страна не подтверждена. Для отправки, касания и смены страны в списке.
+function phoneAdopt(inp){
+  if(!inp || !inp.value || inp._phOffV===inp.value || inp._phComp) return false;
+  inp._phAf=true; inp._phOff=!!phoneDigits(inp.value); inp._phOffV=inp.value; inp._phSrc=null; inp._phPlusTail=null;
+  phoneHistPut(inp);
+  return true;
 }
 // Отмена вернула значение: не подтверждено, если таким его оставила обработка; незнакомое
 // значение — если в поле был не подтверждённый номер браузера.
@@ -5171,9 +5180,13 @@ function phoneApply(inp, selId, o){
   // целиком: цифры как есть (код и «8» второй раз не снимаются), признаки «код снят» и
   // «страна не подтверждена» — этого значения (phoneHistPut). «+цифры» — как обычно, ниже.
   const hist=/^history/.test(o.type||"");
-  // Chrome шлёт отмену и для шагов, которые обработка уже переписала: значение то же —
-  // ни цифры, ни признаки, ни память поля не меняются.
-  if(hist && o.before && inp.value===before.v) return;
+  // Chrome шлёт отмену и для шагов, которые обработка уже переписала: значение то же (или
+  // вернулись одни разделители — «+49 », Ctrl+Z, Ctrl+Y) — поле как было, ни цифры, ни
+  // признаки, ни память поля не меняются.
+  if(hist && o.before && phoneHistKey(inp.value)===phoneHistKey(before.v)){
+    if(inp.value!==before.v){ inp.value=before.v; try{ if(document.activeElement===inp) inp.setSelectionRange(before.a ?? before.v.length, before.b ?? before.v.length); }catch(e){} }
+    return;
+  }
   if(hist && phoneFieldIntl(inp.value)==null){
     const h=inp._phHist && inp._phHist.get(phoneHistKey(inp.value)), d=phoneDigits(inp.value), af=!!d && phoneHistAf(inp);
     phoneSet(inp, c0, d, phoneDigits(inp.value.slice(0, inp.selectionStart ?? inp.value.length)).length);
