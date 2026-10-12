@@ -4541,7 +4541,7 @@ function resetAccountRuntime(){
   тихо(()=>{
     ["phinp","pl-phone","pl-password","pl-2fa-code","m2fa-code","rname","rbio","rphinp","sec-2fa-disable-pass","o0","o1","o2","o3","o4"].forEach(id=>{ const e=el(id); if(e) e.value=""; });
     // Состояние поля номера (код снят, автозаполнение, память цифр) — тоже.
-    const п=el("phinp"); if(п){ п._phOff=false; п._phAf=false; п._phSrc=null; п._phPlusTail=null; п._phAfD=null; }
+    const п=el("phinp"); if(п){ п._phOff=false; п._phAf=false; п._phSrc=null; п._phPlusTail=null; п._phHist=null; }
     ["m2fa-secret","m2fa-backup-list","sec-2fa-secret","sec-2fa-backup-list"].forEach(id=>{ const e=el(id); if(e) e.textContent=""; });
     el("m2fa-qr")?.removeAttribute("src");
     const р=el("pl-2fa-row"); if(р) р.style.display="none";
@@ -4727,7 +4727,7 @@ function fillCSEL(){
   // 12 окт 2026: страну номера после автозаполнения подтверждает человек — касанием или
   // клавишами на списке (выбор другой страны, повторный выбор той же — change его не
   // даёт); смена страны самим браузером при автозаполнении (change без касания) — нет.
-  const okCountry=()=>{ const i=el("phinp"); if(i){ i._phAf=false; i._phAfD=null; } };
+  const okCountry=()=>{ const i=el("phinp"); if(i){ i._phAf=false; if(i._phHist) for(const r of i._phHist.values()) r.af=false; } };
   s.addEventListener("click", okCountry);
   s.addEventListener("keydown", (e)=>{ if(!e.ctrlKey && !e.altKey && !e.metaKey && (/^(Arrow|Page|Home|End|Enter)/.test(e.key) || e.key===" " || e.key.length===1)) okCountry(); });
   // 11 окт 2026: последняя страна — на устройстве. Страна по IP определяется
@@ -5026,10 +5026,10 @@ function phoneE164(iso, d, off){
   // Свой код без «+» (можно после магистрального префикса), а после него «00…» —
   // бесплатные номера Японии и Кореи (+81 0077…, +82 00308…): номер страны с «00» не
   // начинается, а сервер 2af400f сохранил бы такой номер без одного «0» — отказ, как
-  // для «+81 00…» (если сами цифры — не номер страны).
+  // для «+81 00…» (если сами цифры — не номер страны: Беларусь «803 750 0…» — бесплатный).
   if(!off){
     const cc=c.c.slice(1), t0=phoneTrunks(c.cc).find((x)=>d.startsWith(x+cc)), r=t0!=null ? d.slice(t0.length) : d;
-    if(r.startsWith(cc) && /^00/.test(r.slice(cc.length)) && !phoneFull(c.cc, r)) return {error:"zeros"};
+    if(r.startsWith(cc) && /^00/.test(r.slice(cc.length)) && !phoneFull(c.cc, r) && !phoneRestFull(c.cc, d)) return {error:"zeros"};
   }
   // Свой код, а после него неполный номер (и сами цифры — не номер страны): подсказка
   // называет оба случая — недонабран или набран с кодом.
@@ -5092,16 +5092,38 @@ function phoneSubmit(inpId, selId){
   // («+91 98765 43210» с адресом в России → 🇷🇺, уходило бы +7 987…), а уже заполненный
   // список не перезаполняет. Запрос не уходит, пока страну не подтвердит человек:
   // выбор или касание списка (fillCSEL).
-  if(f && f.value && f._phOffV!==f.value){ f._phAf=true; f._phOffV=f.value; }   // значение не из обработки поля (восстановлено браузером)
+  // Значение не из обработки поля (браузер восстановил форму): страну подтвердит человек;
+  // это национальная часть, которую поле уже показывало, — свой код второй раз не снимается.
+  if(f && f.value && f._phOffV!==f.value){ f._phAf=true; f._phOff=true; f._phOffV=f.value; f._phSrc=null; phoneHistPut(f); }
   if(f && f._phAf) return {error:"afcountry", msg:PHONE_ERR.afcountry};
   const r=phoneE164(c.cc, d, !!(f && f._phOff));
   if(r.error) return {error:r.error, msg:PHONE_ERR[r.error].replace(/\{c\}/g, c.c.slice(1))};
   // Код, оставшийся в поле, снят при отправке — поле показывает национальную часть.
-  if(r.cut && f){ phoneSet(f, c, r.nat, r.nat.length); if(r.code) f._phOff=true; f._phOffV=f.value; f._phSrc=null; }
+  if(r.cut && f){ phoneSet(f, c, r.nat, r.nat.length); if(r.code) f._phOff=true; f._phOffV=f.value; f._phSrc=null; phoneHistPut(f); }
   return {phone:r.phone, iso:c.cc};
 }
 // Заполнил ли элемент сам браузер (его автозаполнение): :autofill, в старых — :-webkit-autofill.
 function phoneAutofilled(x){ for(const s of [":autofill", ":-webkit-autofill"]){ try{ if(x && x.matches(s)) return true; }catch(e){} } return false; }
+// 12 окт 2026: память состояний поля для отмены/повтора (Ctrl+Z/Ctrl+Y): у каждого
+// значения, которое оставила обработка, — признак «код снят» и признак «страна не
+// подтверждена» (номер браузера, в том числе поправленный). Ключ — цифры («+цифры»
+// отдельно); у одинаковых цифр главное — последнее значение.
+function phoneHistKey(v){ return (phoneFieldIntl(v)!=null ? "+" : "")+phoneDigits(v); }
+function phoneHistPut(inp){
+  if(!inp.value) return;
+  const h=inp._phHist||(inp._phHist=new Map()), k=phoneHistKey(inp.value);
+  h.delete(k); h.set(k, {off:!!inp._phOff, af:!!inp._phAf});
+  if(h.size>200) h.delete(h.keys().next().value);
+}
+// Отмена вернула значение: не подтверждено, если таким его оставила обработка; незнакомое
+// значение — если в поле был не подтверждённый номер браузера.
+function phoneHistAf(inp){
+  const h=inp._phHist, r=h && h.get(phoneHistKey(inp.value));
+  if(r) return r.af;
+  if(inp._phAf) return true;
+  if(h) for(const x of h.values()) if(x.af) return true;
+  return false;
+}
 function initPhoneField(inpId, selId){
   const inp=el(inpId); if(!inp || inp._phoneInit) return;
   inp._phoneInit=true;
@@ -5144,6 +5166,24 @@ function phoneApply(inp, selId, o){
   const sel=el(selId), c0=phoneCountry(selId);
   const before=o.before||{v:inp.value, a:inp.value.length, b:inp.value.length};
   const dBefore=phoneDigits(before.v);
+  // 12 окт 2026: отмена/повтор (Ctrl+Z/Ctrl+Y) возвращает прежнее состояние поля
+  // целиком: цифры как есть (код и «8» второй раз не снимаются), признаки «код снят» и
+  // «страна не подтверждена» — этого значения (phoneHistPut). «+цифры» — как обычно, ниже.
+  const hist=/^history/.test(o.type||"");
+  if(hist && phoneFieldIntl(inp.value)==null){
+    const h=inp._phHist && inp._phHist.get(phoneHistKey(inp.value)), d=phoneDigits(inp.value), af=!!d && phoneHistAf(inp);
+    phoneSet(inp, c0, d, phoneDigits(inp.value.slice(0, inp.selectionStart ?? inp.value.length)).length);
+    inp._phSrc=null; inp._phPlusTail=null;
+    inp._phOff=!!d && (h ? h.off : true); inp._phOffV=inp.value; inp._phAf=af;
+    phoneHistPut(inp);
+    return;
+  }
+  // Поле до правки показывало значение не из этой обработки (браузер восстановил форму
+  // после «Назад» или восстановления вкладки): это национальная часть, которую поле уже
+  // показывало (свой код не снимается второй раз), цифры — от браузера: правка
+  // подтверждения страны не снимает (если не заменила все цифры).
+  const prevV=(o.dragBefore||before).v, foreign=!!o.before && !!prevV && inp._phOffV!==prevV;
+  if(foreign){ inp._phAf=true; inp._phSrc=null; inp._phPlusTail=null; }
   // 9 окт 2026 (после трёх проверок): «+» и «00» в начале — ВСЕГДА
   // международный номер, каким бы путём он ни попал в поле: набор по символу,
   // вставка (в т.ч. после уже набранного «+»), автозаполнение. Код ещё
@@ -5196,9 +5236,9 @@ function phoneApply(inp, selId, o){
   // значения поля, которое оставила эта обработка (_phOffV): поле, очищенное кодом
   // страницы, — новый номер.
   const untouched=phoneDigits(before.v.slice(0, selA))+phoneDigits(before.v.slice(selB));
-  // Правка вернула прежнее содержимое поля, а не ввела новое: отмена/повтор, перенос мышью.
-  const restore=/^history/.test(o.type||"") || o.type==="insertFromDrop";
-  let off=!!inp._phOff && inp._phOffV===(o.dragBefore||before).v && !(dBefore && !untouched);
+  // Цифры прежнего номера, оставшиеся после правки (перенос мышью внутри поля цифр не заменяет).
+  const kept=o.dragBefore ? phoneDigits(o.dragBefore.v) : untouched;
+  let off=foreign ? !(dBefore && !untouched) : !!inp._phOff && inp._phOffV===(o.dragBefore||before).v && !(dBefore && !untouched);
   const tail=!nationalBefore && inp._phPlusTail && phoneDigits(selA===selB ? before.v : before.v.slice(selB)).endsWith(inp._phPlusTail) ? inp._phPlusTail : null;
   if(o.paste!=null){
     plusOnly=phonePlusFirst(o.paste) && !phoneDigits(o.paste) && nationalBefore && !phoneDigits(before.v.slice(0,before.a)) && !!phoneDigits(before.v.slice(before.b));
@@ -5268,9 +5308,10 @@ function phoneApply(inp, selId, o){
       // Подставил браузер («+код» вне списка) — цифры его: стёрли «+» — страну подтвердит
       // человек. Отмена вернула их — тоже. Набор или вставка в пустое поле (или вместо
       // всех цифр) — ручной ввод.
-      if(!o.before && o.paste==null){ inp._phAf=true; inp._phAfD=rawD; }
-      else if(restore && inp._phAfD && rawD===inp._phAfD) inp._phAf=true;
-      else if(!untouched) inp._phAf=false;
+      if(!o.before && o.paste==null) inp._phAf=true;
+      else if(hist) inp._phAf=phoneHistAf(inp);
+      else if(!kept) inp._phAf=false;
+      phoneHistPut(inp);
       try{ if(document.activeElement===inp) inp.setSelectionRange(pos, pos); }catch(e){}
       // Вставка и автозаполнение — сразу подсказка; при наборе — на «Отправить код».
       if(!plusOnly && !hit.wait && (o.paste!=null || !o.type || o.type==="insertReplacementText")) showToast("❌ "+phoneCodeErr(rawD, c0));
@@ -5366,7 +5407,7 @@ function phoneApply(inp, selId, o){
     // страны (phoneCountryChanged их вернёт); подсказка — только если смены не было.
     if(noBefore){
       const mark={shown:"", core:"", extra:phoneDigits(inp.value), x:chromeAf, used:0}, msg=c.cc==="KZ" && d[0]==="8" ? PHONE_ERR.kz8 : PHONE_ERR.long;
-      inp._phSrc=mark; inp._phOff=false; inp._phAf=true; inp._phAfD=mark.extra; inp.value="";   // цифры — от браузера: страну подтвердит человек
+      inp._phSrc=mark; inp._phOff=false; inp._phAf=true; inp.value="";   // цифры — от браузера: страну подтвердит человек
       setTimeout(()=>{ if(inp._phSrc===mark){ inp._phSrc=null; showToast("❌ "+msg); } }, 300);
       return;
     }
@@ -5391,13 +5432,9 @@ function phoneApply(inp, selId, o){
   // 12 окт 2026: номер подставил браузер (автозаполнение — ввод без beforeinput,
   // целиком) — страну номера он мог не подтвердить: при отправке нужно подтверждение
   // (phoneSubmit). Набор вручную, вставка всего номера, явный «+код» — не нужно.
-  if(intl!=null || !d || !untouched && !noBefore) inp._phAf=false;
+  if(intl!=null || !d || !kept && !noBefore) inp._phAf=false;
   else if(noBefore) inp._phAf=true;
-  if(intl!=null) inp._phAfD=null;
-  else if(noBefore && d) inp._phAfD=d;
-  // В поле снова номер, подставленный браузером (отмена Ctrl+Z, перенос мышью), — страна
-  // по-прежнему не подтверждена. Набранный человеком номер — ручной ввод.
-  if(!inp._phAf && inp._phAfD && d===inp._phAfD && restore) inp._phAf=true;
+  phoneHistPut(inp);
 }
 // Смена страны: те же цифры — по правилам новой страны, без обрезки лишних;
 // начало, которое для новой страны не национальная часть («8»/«7» у России,
@@ -5441,6 +5478,7 @@ function phoneSrcApply(inp, c, core, extra, m, x){
   inp._phOff=!!t.d && (x || t.code);
   inp.value=phoneFormat(c, t.d);
   inp._phOffV=inp.value;
+  phoneHistPut(inp);
 }
 // Последняя страна поля номера — на устройстве, отдельно от данных аккаунта
 // (переживает «Выйти»): {cc, user} — user: выбрана человеком (списком, «+кодом»,
