@@ -4755,6 +4755,14 @@ const PHONE_ERR={short:"Номер слишком короткий", long:"Но�
   lib:"Проверка номера не загрузилась — обновите страницу"};
 const phoneField={selectedCountry:"RU", rawNationalDigits:""};
 let phoneRendering=false;     // поле обновляет сама модель — это не ввод
+// Набранный «+…», пока библиотека не узнала код страны («+», «+4»), или код страны не из
+// списка («+995…»): цифры после «+». Поле показывает «+…», национальных цифр нет. null —
+// «+…» нет. Как только код узнан, он уходит в список стран, буфер — null.
+let pendingInternationalDigits=null;
+// Код этого номера снят с «+»: цифры после него — национальные, код второй раз не снимается
+// («+49 491…» → 491…); у общего кода (+7) Россию или Казахстан по цифрам выбирает библиотека.
+// Сброс — цифры стёрты до конца, новый «+…», выбор страны в списке, выход из аккаунта.
+let phoneCodeFromPlus=false;
 const phoneLib=()=>window.libphonenumber||null;
 const phoneDigits=(t)=>{ const L=phoneLib(); return L ? L.parseDigits(String(t||"")) : String(t||"").replace(/\D/g,""); };
 // «+» в начале — международный номер: и «＋», и за невидимыми знаками направления текста,
@@ -4764,8 +4772,12 @@ function phoneIntlText(t){
   return s[0]==="+" ? "+"+phoneDigits(s) : null;
 }
 const phoneListed=(iso)=>COUNTRIES.some((c)=>c.cc===iso);
-// Отображение: национальные цифры в формате выбранной страны.
-function phoneShown(){ const L=phoneLib(), d=phoneField.rawNationalDigits; return !d ? "" : L ? new L.AsYouType(phoneField.selectedCountry).input(d) : d; }
+// Отображение: национальные цифры в формате выбранной страны; пока код не узнан — «+…».
+function phoneShown(){
+  const L=phoneLib(), d=phoneField.rawNationalDigits, p=pendingInternationalDigits;
+  if(p!==null) return L ? new L.AsYouType().input("+"+p) : "+"+p;
+  return !d ? "" : L ? new L.AsYouType(phoneField.selectedCountry).input(d) : d;
+}
 function phoneCaretEnd(inp){ if(document.activeElement===inp){ const n=inp.value.length; try{ inp.setSelectionRange(n, n); }catch(e){} } }
 function phoneRender(inp){
   phoneRendering=true;
@@ -4783,37 +4795,40 @@ function phoneNormalize(iso, d){
   if(d.length>code.length && d.startsWith(code) && L.isValidPhoneNumber(d.slice(code.length), iso)) return d.slice(code.length);
   return d;
 }
-// Явный «+код…»: страну определяет библиотека. Страна из списка — список переключается
-// сразу, в состоянии — национальные цифры. Пока человек печатает «+…», поле показывает
-// набранное: иначе «+49 491…», набранный по знаку, не отличить от «49 1…» (код снялся бы
-// второй раз). Код уходит из поля, когда поле теряет фокус, при отправке, вставке и
-// автозаполнении (finish). Код не набран или его страны нет в списке — поле как есть.
-// «+код…» по библиотеке: код, страна списка, национальные цифры. Страны нет в списке, а её
-// код в списке у одной страны — эта страна (+44 7911… по плану нумерации — Гернси, в
-// списке +44 — Великобритания). foreign — кода нет в списке ни у одной страны.
+// «+код…» по библиотеке: код, национальные цифры и страна списка с этим кодом — страна
+// номера по библиотеке, если она в списке; иначе выбранная, если у неё тот же код (+7 —
+// Россия и Казахстан); иначе основная страна кода или единственная в списке (+44 7911… по
+// плану нумерации — Гернси, в списке +44 — Великобритания). foreign — код узнан, но в
+// списке его нет. Код не узнан («+», «+4») — iso null.
 function phoneIntlParse(text){
   const L=phoneLib(), a=new L.AsYouType(); a.input(text);
   const cc=a.getCallingCode()||"", nat=a.getNationalNumber()||"";
-  let iso=a.getCountry(); if(!iso && cc && nat){ const p=L.parsePhoneNumberFromString(text); iso=p && p.country; }
-  const same=COUNTRIES.filter((c)=>c.c==="+"+cc);
-  if(cc && nat && (!iso || !phoneListed(iso)) && same.length===1) iso=same[0].cc;
-  return {cc, nat, iso: iso && phoneListed(iso) ? iso : null, foreign: !!cc && !same.length};
+  const same=cc ? COUNTRIES.filter((c)=>c.c==="+"+cc).map((c)=>c.cc) : [];
+  let iso=a.getCountry(); if(!iso && nat){ const p=L.parsePhoneNumberFromString(text); iso=p && p.country; }
+  if(!same.includes(iso)){
+    const main=(new L.Metadata().getCountryCodesForCallingCode(cc)||[])[0];
+    iso=same.includes(phoneField.selectedCountry) ? phoneField.selectedCountry : same.includes(main) ? main : same[0];
+  }
+  return {cc, nat, iso: iso||null, foreign: !!cc && !same.length};
 }
-function phoneFromIntl(inp, selId, text, finish){
+function phoneSetCountry(selId, iso){
+  phoneField.selectedCountry=iso;
+  const s=el(selId); if(s && s.value!==iso){ s.value=iso; s.dataset.picked="1"; phoneRememberCountry(iso, true); updateLogoText(); }
+}
+// Явный «+…» (набор, вставка, чип, автозаполнение): код узнан — страна в списке, «+код» из
+// поля уходит сразу (по знаку — на последней цифре кода), в состоянии и в поле —
+// национальные цифры. Код не узнан или его нет в списке — поле показывает «+…» (буфер).
+function phoneFromIntl(inp, selId, text){
   const r=phoneIntlParse(text);
-  // Код ещё набирается или его страны нет в списке: национальных цифр нет, поле как есть.
-  if(!r.iso){ phoneField.rawNationalDigits=""; phoneCaretEnd(inp); return false; }
-  phoneField.selectedCountry=r.iso; phoneField.rawNationalDigits=r.nat;
-  const s=el(selId); if(s && s.value!==r.iso){ s.value=r.iso; s.dataset.picked="1"; phoneRememberCountry(r.iso, true); updateLogoText(); }
-  if(finish) phoneRender(inp); else phoneCaretEnd(inp);
-  return true;
+  if(!r.iso){ pendingInternationalDigits=text.slice(1); phoneField.rawNationalDigits=""; phoneCodeFromPlus=false; phoneRender(inp); return; }
+  pendingInternationalDigits=null; phoneCodeFromPlus=true;
+  phoneSetCountry(selId, r.iso); phoneField.rawNationalDigits=r.nat;
+  phoneRender(inp);
 }
-// Подсказка, если «+…» не стал номером страны из списка.
+// Подсказка, если «+…» не стал кодом страны из списка.
 function phoneIntlErr(text){
   const r=phoneIntlParse(text);
-  if(r.foreign || !r.cc && text.length>3) return PHONE_ERR.code;
-  if(r.cc && r.nat) return PHONE_ERR.natinvalid.replace(/\{c\}/g, r.cc);
-  return PHONE_ERR.pluswait;
+  return r.foreign || !r.cc && text.length>3 ? PHONE_ERR.code : PHONE_ERR.pluswait;
 }
 // Правка поля человеком или браузером: набор, удаление, вставка, автозаполнение, IME.
 function phoneOnInput(inp, selId, e){
@@ -4823,27 +4838,31 @@ function phoneOnInput(inp, selId, e){
   // Чип клавиатуры с «+номером» (строка целиком) — как вставка: номер заменяет поле.
   if(chip){ const ci=phoneIntlText(e.data); if(ci && phoneIntlParse(ci).nat){ inp.value=e.data; v=e.data; } }
   const intl=phoneIntlText(v);
-  if(intl){ phoneFromIntl(inp, selId, intl, chip || !t || /^insert(FromPaste|FromDrop|ReplacementText)$/.test(t)); return; }
+  if(intl){ phoneFromIntl(inp, selId, intl); return; }
   if(v===phoneShown()){ phoneCaretEnd(inp); return; }    // в поле своё же отображение — правки нет
+  pendingInternationalDigits=null;    // «+» стёрт или заменён — дальше национальные цифры
   let d=phoneDigits(v);           // в поле — только национальные цифры (код там не показывается)
-  if(!/^delete/.test(t)) d=phoneNormalize(phoneField.selectedCountry, d);
+  if(/^delete/.test(t)){ if(!d) phoneCodeFromPlus=false; }    // стёрто до конца — дальше новый номер
+  else if(!phoneCodeFromPlus) d=phoneNormalize(phoneField.selectedCountry, d);
   phoneField.rawNationalDigits=d;
+  // Код снят с «+» и общий у нескольких стран списка (+7): страну по цифрам выбирает библиотека.
+  if(phoneCodeFromPlus && d){ const r=phoneIntlParse("+"+phoneLib().getCountryCallingCode(phoneField.selectedCountry)+d); if(r.iso) phoneSetCountry(selId, r.iso); }
   phoneRender(inp);
 }
-// Смена страны (список, страна по IP): цифры те же, меняется только отображение.
+// Смена страны (список, страна по IP): цифры те же, меняется только отображение; недописанный
+// «+…» уступает выбору в списке.
 function phoneCountryChanged(selId){
-  phoneSyncCountry(selId);
+  phoneSyncCountry(selId); pendingInternationalDigits=null; phoneCodeFromPlus=false;
   const inp=el(selId==="csel1" ? "phinp" : null); if(inp) phoneRender(inp);
 }
 // Отправка: {phone, iso} — E.164 и страна, или {error, msg}. Её вызывает sendCode.
 function phoneSubmit(inpId, selId){
-  const inp=el(inpId), L=phoneLib(), v=inp?.value||"";
+  const inp=el(inpId), L=phoneLib();
   if(!L) return {error:"lib", msg:PHONE_ERR.lib};
-  const intl=phoneIntlText(v);
-  if(intl && !phoneFromIntl(inp, selId, intl, true)) return {error:"intl", msg:phoneIntlErr(intl)};
-  // Поле показывает не своё отображение (браузер восстановил форму после «Назад»): это ввод целиком.
   phoneSyncCountry(selId);
-  if(inp && !intl && v!==phoneShown()) phoneOnInput(inp, selId, {inputType:""});
+  // Поле показывает не своё отображение (браузер восстановил форму после «Назад»): это ввод целиком.
+  if(inp && inp.value!==phoneShown()) phoneOnInput(inp, selId, {inputType:""});
+  if(pendingInternationalDigits!==null) return {error:"intl", msg:phoneIntlErr("+"+pendingInternationalDigits)};
   const iso=phoneField.selectedCountry, d=phoneField.rawNationalDigits;
   if(!d) return {error:"empty", msg:T("entph")};
   const len=L.validatePhoneNumberLength(d, iso);
@@ -4861,8 +4880,6 @@ function initPhoneField(inpId, selId){
   inp.addEventListener("input", (e)=>phoneOnInput(inp, selId, e));
   // IME: итог композиции — одной правкой, когда она закончилась.
   inp.addEventListener("compositionend", (e)=>phoneOnInput(inp, selId, {inputType:"insertText", data:e.data||""}));
-  // Поле потеряло фокус: набранный «+код…» — страна и национальные цифры, код из поля уходит.
-  inp.addEventListener("blur", ()=>{ const intl=phoneIntlText(inp.value); if(intl && phoneLib()) phoneFromIntl(inp, selId, intl, true); });
   // Вставка — сама: текст встаёт на место выделения; «+номер» целиком заменяет поле (не
   // склеивается с набранными цифрами), «+код» без номера — встаёт, как набран.
   inp.addEventListener("paste", (e)=>{
@@ -4876,7 +4893,7 @@ function initPhoneField(inpId, selId){
   inp.addEventListener("keydown", (e)=>{ if(e.key==="Enter" && inpId==="phinp"){ if(e.isComposing || e.keyCode===229) return; e.preventDefault(); if(e.repeat) return; if(!el("t-btnsnd")?.disabled) sendCode(); } });
 }
 // Выход из аккаунта: цифры прежнего номера следующему не достаются (страна остаётся).
-function phoneFieldReset(){ phoneField.rawNationalDigits=""; const i=el("phinp"); if(i) phoneRender(i); }
+function phoneFieldReset(){ phoneField.rawNationalDigits=""; pendingInternationalDigits=null; phoneCodeFromPlus=false; const i=el("phinp"); if(i) phoneRender(i); }
 // Последняя страна поля номера — на устройстве, отдельно от данных аккаунта
 // (переживает «Выйти»): {cc, user} — user: выбрана человеком (списком, «+кодом»,
 // отправкой), иначе определена по IP.
