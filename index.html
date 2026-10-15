@@ -25,13 +25,18 @@
 <script>
 (function(){
   try{
+    var search0 = location.search;
     fetch(location.pathname, {method:"HEAD", cache:"no-store"}).then(function(r){
       var v = r.headers.get("etag") || r.headers.get("last-modified");
       if(!v) return;
       var stored = localStorage.getItem("angie_page_version");
       if(stored && stored !== v){
         localStorage.setItem("angie_page_version", v);
-        location.replace(location.pathname + "?v=" + encodeURIComponent(v));
+        // 14 окт 2026: окно, открытое нажатием на уведомление (?open=<чат>&u=<аккаунт>),
+        // не теряет, какой чат открыть, если в этот момент вышло обновление.
+        var q = new URLSearchParams(search0), keep = "";
+        ["open", "u"].forEach(function(k){ var x = q.get(k); if(x) keep += "&" + k + "=" + encodeURIComponent(x); });
+        location.replace(location.pathname + "?v=" + encodeURIComponent(v) + keep);
       } else if(!stored){
         localStorage.setItem("angie_page_version", v);
       }
@@ -2390,6 +2395,16 @@ tr:hover td{background:var(--bg3)}
 .ver-banner.on{display:flex}
 .ver-banner .vb-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ver-banner .vb-x{flex:none;width:40px;height:34px;display:flex;align-items:center;justify-content:center;border:0;background:none;color:var(--tx3);cursor:pointer;border-radius:8px;padding:0}
+/* 14 окт 2026: плашка «Включить уведомления» — такая же строка в потоке над списком
+   чатов. Системный запрос разрешения — только по нажатию «Включить». Кнопка — цвета
+   темы (в «Монохроме» акцент светлый, белый текст на нём не читается). */
+.push-banner{display:none;align-items:center;gap:8px;margin:2px 10px 4px;padding:5px 0 5px 12px;min-height:44px;border:1px solid var(--brd);border-radius:10px;background:var(--bg3);color:var(--tx);font-size:12.5px;line-height:1.3}
+.push-banner.on{display:flex}
+.push-banner .pb-ic{flex:none;display:flex;color:var(--tx2)}
+.push-banner .pb-txt{flex:1;min-width:0}
+.push-banner .pb-on{flex:none;min-height:34px;padding:0 12px;border:1px solid var(--brd2,var(--brd));border-radius:9px;background:var(--bg4,var(--bg3));color:var(--tx);font:inherit;font-weight:700;cursor:pointer}
+.push-banner .vb-x{flex:none;width:40px;height:34px;display:flex;align-items:center;justify-content:center;border:0;background:none;color:var(--tx3);cursor:pointer;border-radius:8px;padding:0}
+.notif-sys-on{border:0;background:none;padding:0;margin-left:6px;color:var(--acc3,var(--acc));font:inherit;font-weight:600;cursor:pointer;text-decoration:underline}
 
 @media(max-width:900px){.rp{display:none}}
 @media(max-width:700px){.asb{display:none}}
@@ -2989,6 +3004,12 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <span class="vb-txt">⬡ <span id="verb-brand">Монохром</span> · сборка <span id="verb-build"></span></span>
         <button type="button" class="vb-x" aria-label="Скрыть" title="Скрыть" onclick="hideVerBanner()"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
+      <div class="push-banner" id="push-banner" role="region" aria-label="Уведомления">
+        <span class="pb-ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+        <span class="pb-txt">Включите уведомления, чтобы не пропускать сообщения</span>
+        <button type="button" class="pb-on" id="push-banner-on" onclick="pushBannerEnable()">Включить</button>
+        <button type="button" class="vb-x" aria-label="Не сейчас" title="Не сейчас" onclick="pushBannerLater()"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
       <div id="pull-archive" style="height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;transition:height .2s ease">
         <div id="pull-archive-icon" style="width:40px;height:40px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:18px;transform:scale(.5);opacity:.4;transition:transform .1s,opacity .1s,background .1s;color:var(--tx2)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg></div>
       </div>
@@ -3301,7 +3322,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
     <div class="settings-section">
       <div class="settings-section-title">Уведомления</div>
       <div class="settings-row">
-        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(var(--acc2-rgb),.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div><div><div class="settings-row-label">Push-уведомления</div></div></div>
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(var(--acc2-rgb),.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div><div><div class="settings-row-label">Push-уведомления</div><div class="settings-row-sub" id="notif-sys"></div></div></div>
         <label class="toggle"><input type="checkbox" id="notif-push" checked onchange="saveNotif()"><span class="ts"></span></label>
       </div>
       <div class="settings-row">
@@ -4054,7 +4075,10 @@ if("serviceWorker" in navigator){
   // его чат в уже открытом окне (см. sw.js, notificationclick).
   navigator.serviceWorker.addEventListener("message", (e)=>{
     const d=e && e.data;
-    if(d && d.type==="open-chat") openChatFromNotif(d.chatId, d.owner);
+    // 15 окт 2026: чата может ещё не быть в списке (первое сообщение от нового
+    // собеседника, приложение было свёрнуто) — пробуем, как checkPendingOpenChat.
+    if(d && d.type==="open-chat"){ let n=0; const попытка=()=>{ if(openChatFromNotif(d.chatId, d.owner) || ++n>12) return; setTimeout(попытка, 500); }; попытка(); }
+    if(d && d.type==="push-resync") pushSync(true);
   });
 }
 async function clearMediaCache(){
@@ -4496,6 +4520,10 @@ function switchAccount(newUid){
   if(!stashAccount()) try{ showToast("⚠️ Местные данные аккаунта не поместились в память устройства"); }catch(e){}
   accountGen++;
   try{ resetAccountRuntime(); }catch(e){ console.warn("resetAccountRuntime:", e); }
+  if(!newUid) try{ pushDropDevice(); }catch(e){}
+  // Смена на другой аккаунт без выхода (токен уже чужой — вошли в соседней вкладке):
+  // подписка прежнего снимается в браузере, новый подпишется после (pushSyncNow ждёт).
+  else if(old!=null){ const o=pushOwnerGet(); if(o==null || o!==newUid) try{ pushReleaseDevice(null, true); }catch(e){} }
   for(const k of Object.keys(S)) if(!DEVICE_FIELDS.has(k)) delete S[k];
   const def=JSON.parse(JSON.stringify(DEFAULT_STATE));
   for(const k in def) if(!DEVICE_FIELDS.has(k)) S[k]=def[k];
@@ -4559,6 +4587,8 @@ function resetAccountRuntime(){
       navigator.serviceWorker.getRegistration().then(r=>r && r.getNotifications ? r.getNotifications() : []).then(ns=>(ns||[]).forEach(n=>n.close())).catch(()=>{});
   });
   тихо(()=>hideVerBanner());
+  // Подписка устройства на push — за прежним аккаунтом; новый вход привяжет её заново.
+  тихо(()=>{ el("push-banner")?.classList.remove("on"); pushState.active=false; pushState.endpoint=null; pushState.sig=""; });
   тихо(()=>clearChatView());
 }
 // Экран открытого чата без чата: ни ленты, ни имени, ни медиа прежнего
@@ -5117,6 +5147,8 @@ document.addEventListener("visibilitychange", ()=>{
   // 8 окт 2026: изменения с другого устройства (закрепление и т.п.) — при
   // возврате в приложение, а не только при переподключении или F5.
   if(document.visibilityState === "visible" && S.loggedIn && getToken()) resyncChatListOnReturn();
+  // 14 окт 2026: разрешение на уведомления могли включить или запретить в настройках телефона.
+  if(document.visibilityState === "visible" && S.loggedIn && getToken()){ pushBannerUpdate(); pushSync(); }
 });
 // Возврат в приложение: перечитать список чатов (закрепления, архив,
 // непрочитанные, присутствие), не чаще раза в 5 с и не под пальцем.
@@ -5438,7 +5470,12 @@ function wsHandleMessage(msg){
       // видела (находка GPT).
       if(S.chat === chatId) renderMsgs();   // «прочитано» отправит msgsAdvanceSeen, когда строка правда окажется на экране
       renderChats(); saveState();
-      if(!ch?.muted && S.chat !== chatId) { showNotif(ch, prevTx); notifyRealMessage(ch, prevTx); }
+      // 14 окт 2026: чат открыт, но приложение свёрнуто — человек сообщение не видит,
+      // системное уведомление нужно и здесь.
+      if(!ch?.muted){
+        if(S.chat !== chatId) showNotif(ch, prevTx);
+        if(S.chat !== chatId || document.visibilityState === "hidden") notifyRealMessage(ch, prevTx);
+      }
       break;
     }
 
@@ -6175,6 +6212,7 @@ async function doPasswordLogin(){
     // сразу продолжаем настройку, не давая просто "войти без нее"
     if(data.requires_2fa_setup){
       _mandatory2FAData={setupToken:data.setupToken, phone};
+      await pushBeforeAccountChange(tokenUserId(data.setupToken));   // push — только у текущего аккаунта
       setToken(data.setupToken);
       showToast("🔐 Для этого аккаунта обязательна двухфакторная защита");
       try{
@@ -6196,6 +6234,7 @@ async function doPasswordLogin(){
       showToast("❌ "+(data.error||"Не удалось войти"));
       return;
     }
+    await pushBeforeAccountChange(data.user.id);   // 15 окт 2026: push — только у текущего аккаунта
     setToken(data.token);
     switchAccount(data.user.id);   // 7 окт 2026: данные — этого аккаунта, не прежнего
     S.user={
@@ -6217,6 +6256,7 @@ async function confirmMandatory2FA(){
     if(!data.success){ showToast("❌ Неверный код"); return; }
     // Бэкенд при обязательной настройке сразу довыдаёт полноценный токен и юзера
     if(data.token){
+      await pushBeforeAccountChange(data.user.id);   // 15 окт 2026: push — только у текущего аккаунта
       setToken(data.token);
       switchAccount(data.user.id);   // 7 окт 2026: данные — этого аккаунта, не прежнего
       S.user={
@@ -6283,6 +6323,7 @@ async function verifyCode(){
     }
     S.restoringAccount=false;
 
+    await pushBeforeAccountChange(data.user ? data.user.id : tokenUserId(data.token));   // 15 окт 2026: push — только у текущего аккаунта
     setToken(data.token);
 
     if(data.user){
@@ -6381,6 +6422,7 @@ function loginOK(){
   checkPendingJoinLink();
   checkPendingOpenChat();
   showVerBanner();
+  pushBannerUpdate(); pushSync(true);
   // official channel + stories bar + support bot
   setTimeout(()=>{
     // Избранное (Saved Messages) — чат "сам себе", всегда первый служебный
@@ -7556,7 +7598,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-13 выпуск 1, ред. 16: поле номера — простая модель на libphonenumber-js (max), «+код» уходит из поля сразу, код без «+» одинаково при наборе и вставке, в поле только национальная часть, номер телефона по стране и «+код», Казахстан без «8», одна поддержка, онлайн только со слов сервера, «Выйти» завершает сессию, закрепление через сервер, уведомление открывает чат поверх всего, окно удаления — на свой чат, вложение своего чата, бренд Монохром, данные и черновики по аккаунтам, удаление и превью с сервера, баннер версии, номер только взаимным";
+const BUILD_TAG = "2026-10-15 выпуск 1, ред. 17: уведомления на телефон — Web Push при свёрнутом и закрытом приложении, плашка «Включить уведомления», уведомление и в открытый чат свёрнутого приложения; поле номера — простая модель на libphonenumber-js (max), «+код» уходит из поля сразу, код без «+» одинаково при наборе и вставке, в поле только национальная часть, номер телефона по стране и «+код», Казахстан без «8», одна поддержка, онлайн только со слов сервера, «Выйти» завершает сессию, закрепление через сервер, уведомление открывает чат поверх всего, окно удаления — на свой чат, вложение своего чата, бренд Монохром, данные и черновики по аккаунтам, удаление и превью с сервера, баннер версии, номер только взаимным";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -7609,6 +7651,7 @@ function renderSettingsScreen(){
   if(el("notif-push"))el("notif-push").checked=S.notifSettings.push;
   if(el("notif-sound"))el("notif-sound").checked=S.notifSettings.sound;
   if(el("notif-preview"))el("notif-preview").checked=S.notifSettings.preview;
+  renderNotifSys();
   if(el("theme-sel"))el("theme-sel").value=(THEME_NAMES[S.theme]&&S.theme!=="amoled")?S.theme:"dark";
   applyLang();
 }
@@ -17105,17 +17148,172 @@ async function saveProfile(){
 // только сервер и только взаимным контактам без блокировок.
 function phoneVisInfo(){ showToast("Выбрать пока нельзя: номер видят только взаимные контакты, при блокировке в любую сторону он скрыт. Выбор «Все / Мои контакты / Никто» — следующим обновлением"); }
 function saveNotif(){
+  const pushWas=S.notifSettings ? S.notifSettings.push!==false : true;
   S.notifSettings={push:el("notif-push")?.checked,sound:el("notif-sound")?.checked,preview:el("notif-preview")?.checked};
+  if(S.notifSettings.push && !pushWas) delete S.pushReenable;
   saveState();
-  if(S.notifSettings.push) ensureNotifPermission();
+  // Системный запрос — только когда человек сам включил «Push-уведомления»
+  // (не при смене «Звука» или «Превью»).
+  if(S.notifSettings.push && !pushWas && notifPermission()==="default"){ pushBannerEnable(); return; }
+  pushSync(true); pushBannerUpdate(); renderNotifSys();
 }
-// Спрашиваем разрешение на системные уведомления один раз — пока браузер сам
-// не спросил (Notification.permission==="default"). Если человек уже отказал
-// раньше ("denied"), повторно не долбим — это либо навсегда, либо до ручного
-// разрешения в настройках самого браузера.
-function ensureNotifPermission(){
-  if(typeof Notification==="undefined") return;
-  if(Notification.permission==="default") Notification.requestPermission().catch(()=>{});
+// ── WEB PUSH (14 окт 2026) ──────────────────────────────────────────────────
+// Системные уведомления, когда приложение свёрнуто или закрыто: устройство
+// подписывается у браузера (PushManager) и отдаёт подписку серверу, сервер шлёт
+// push на каждое новое сообщение, показывает его sw.js. Разрешение спрашивается
+// ТОЛЬКО по нажатию — плашка «Включить уведомления» над списком чатов или
+// переключатель в настройках; не при запуске и не при входящем сообщении.
+// Пока push на устройстве не работает (браузер без PushManager, сервер без
+// миграции или ключей), уведомление показывает страница, как раньше.
+const pushState={active:false, endpoint:null, sig:"", at:0, busy:null, again:false, releasing:null, afterSwitch:false};
+const PUSH_BANNER_LATER_KEY="push_banner_later";            // «Не сейчас» — на этом устройстве
+const PUSH_BANNER_LATER_MS=7*24*3600e3;                    // плашка вернётся через 7 дней
+// 15 окт 2026: push получает только текущий аккаунт устройства. Чья подписка
+// браузера сейчас (id аккаунта, без токенов) — чтобы при смене аккаунта снять
+// подписку прежнего до того, как подписать новый.
+const PUSH_OWNER_KEY="push_sub_owner";
+function pushOwnerGet(){ try{ return localStorage.getItem(PUSH_OWNER_KEY); }catch(e){ return null; } }
+function pushOwnerSet(uid){ try{ if(uid==null) localStorage.removeItem(PUSH_OWNER_KEY); else localStorage.setItem(PUSH_OWNER_KEY, String(uid)); }catch(e){} }
+const pushWithin=(p, ms)=>Promise.race([Promise.resolve(p).catch(()=>{}), new Promise((r)=>setTimeout(r, ms))]);
+// Снять подписку устройства: на сервере — запросом с токеном прежнего аккаунта (если
+// он ещё есть; результат не ждём дольше 2,5 с), в браузере — unsubscribe() с
+// ожиданием, независимо от ответа сервера. Не дошла серверная отписка — служба push
+// ответит на адрес 404/410, и сервер удалит строку сам. Снятия идут по очереди;
+// новая подписка (pushSyncNow) ждёт их окончания. Токен — только в заголовке запроса.
+function pushReleaseDevice(oldTok, forSwitch, fromSync){
+  if(forSwitch) pushState.afterSwitch=true;
+  pushState.active=false; pushState.endpoint=null; pushState.sig="";
+  const prev=(pushState.releasing || Promise.resolve()).catch(()=>{});
+  const job=prev.then(async()=>{
+    if(!fromSync && pushState.busy) await pushWithin(pushState.busy, 5000);   // подписка, начатая прежним аккаунтом, — дождаться и снять
+    let sub=null;
+    try{ const reg=await navigator.serviceWorker?.getRegistration(); sub=reg && reg.pushManager ? await reg.pushManager.getSubscription() : null; }catch(e){}
+    if(sub && oldTok) await pushWithin(fetch(API_URL+"/api/push/subscription", {method:"DELETE", headers:{"Content-Type":"application/json","Authorization":"Bearer "+oldTok}, body:JSON.stringify({endpoint:sub.endpoint}), keepalive:true}), 2500);
+    if(sub) await pushWithin(sub.unsubscribe(), 3000);
+    pushOwnerSet(null);
+    pushState.active=false; pushState.endpoint=null; pushState.sig="";
+  });
+  const p=pushState.releasing=job.finally(()=>{ if(pushState.releasing===p) pushState.releasing=null; });
+  return p;
+}
+// Смена аккаунта при входе (до замены токена): подписка прежнего аккаунта снимается
+// с его токеном, и только потом входит новый. newUid — id входящего (null — неизвестен).
+async function pushBeforeAccountChange(newUid){
+  const cur=S.owner!=null ? String(S.owner) : null;
+  const prev=pushOwnerGet() || cur;
+  if(prev==null || (newUid!=null && String(prev)===String(newUid))) return;
+  let tok=S.loggedIn && cur!=null && String(prev)===cur ? getToken() : null;
+  const чей=tok ? tokenUserId(tok) : null;
+  if(чей && чей!==String(prev)) tok=null;
+  await pushReleaseDevice(tok, true);
+}
+// Подписка для вошедшего аккаунта не создалась — вход не мешаем: Push показан
+// выключенным, плашка и строка в настройках предлагают включить снова.
+function pushOfferReenable(){
+  if(!S.notifSettings) S.notifSettings={push:true,sound:true,preview:true};
+  S.notifSettings.push=false; S.pushReenable=true; saveState();
+  if(el("notif-push")) el("notif-push").checked=false;
+  pushBannerUpdate(); renderNotifSys();
+}
+function notifPermission(){ return typeof Notification==="undefined" ? "unsupported" : Notification.permission; }
+function pushSupported(){ return typeof Notification!=="undefined" && "serviceWorker" in navigator && typeof window.PushManager!=="undefined"; }
+function pushB64ToBytes(s){ s=String(s||"").replace(/-/g,"+").replace(/_/g,"/"); while(s.length%4) s+="="; const b=atob(s), u=new Uint8Array(b.length); for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u; }
+function pushSameKey(a, b){ if(!a || !b) return false; const x=new Uint8Array(a); if(x.length!==b.length) return false; for(let i=0;i<x.length;i++) if(x[i]!==b[i]) return false; return true; }
+// Привести подписку устройства к настройкам. Уведомления включены и разрешены —
+// подписка есть, и сервер знает её за текущим аккаунтом вместе с «Превью» и
+// «Звуком»; выключены или запрещены — подписки нет. Без force — не чаще раза в
+// 10 минут, если ничего не менялось (подтверждение подписки продлевает и срок
+// входа на сервере). Любая ошибка — push на устройстве считается неработающим:
+// тогда уведомления снова показывает страница.
+function pushSync(force){
+  if(pushState.busy){ if(force) pushState.again=true; return pushState.busy; }
+  pushState.busy=pushSyncNow(force).catch(()=>{ pushState.active=false; pushState.sig=""; renderNotifSys(); }).finally(()=>{ pushState.busy=null; if(pushState.again){ pushState.again=false; pushSync(true); } });
+  return pushState.busy;
+}
+// Выход без токена (истёкшая сессия, бан, удаление аккаунта): подписку устройства
+// снимаем в браузере — служба push отвечает 410, и сервер удаляет строку сам.
+function pushDropDevice(){ return pushReleaseDevice(null, false); }
+async function pushSyncNow(force){
+  if(pushState.releasing) await pushState.releasing;   // снятие подписки прежнего аккаунта — сначала
+  if(!pushSupported() || !S.loggedIn || !getToken()){ pushState.active=false; return; }
+  const want=!!S.notifSettings?.push && Notification.permission==="granted";
+  const sig=[S.owner, want, S.notifSettings?.preview!==false, S.notifSettings?.sound!==false].join("|");
+  if(!force && sig===pushState.sig && Date.now()-pushState.at<10*60e3) return;
+  const afterSwitch=pushState.afterSwitch; pushState.afterSwitch=false;
+  const g=accountGen;
+  const reg=await navigator.serviceWorker.ready;
+  let sub=await reg.pushManager.getSubscription();
+  // Подписка в браузере — чужого аккаунта (смена без выхода, прежняя сборка):
+  // снять и подписаться заново, а не передавать её новому.
+  if(sub && pushOwnerGet()!==String(S.owner)){ await pushReleaseDevice(null, false, true); if(g!==accountGen) return; sub=await reg.pushManager.getSubscription(); }
+  if(!want){
+    if(sub){ try{ await apiDelete("/api/push/subscription", {endpoint:sub.endpoint}); }catch(e){} try{ await sub.unsubscribe(); }catch(e){} pushOwnerSet(null); }
+    if(g!==accountGen) return;
+    pushState.active=false; pushState.endpoint=null; pushState.sig=sig; pushState.at=Date.now(); renderNotifSys(); return;
+  }
+  const cfg=await apiGet("/api/push/config");
+  if(g!==accountGen) return;
+  if(!cfg || !cfg.enabled || !cfg.publicKey){ pushState.active=false; pushState.sig=sig; pushState.at=Date.now(); renderNotifSys(); return; }
+  const key=pushB64ToBytes(cfg.publicKey);
+  if(sub && !pushSameKey(sub.options && sub.options.applicationServerKey, key)){ try{ await sub.unsubscribe(); }catch(e){} sub=null; }
+  let j=null, r=null;
+  try{
+    if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:key});
+    j=sub.toJSON();
+    r=await apiPost("/api/push/subscription", {endpoint:j.endpoint, keys:j.keys, preview:S.notifSettings.preview!==false, silent:S.notifSettings.sound===false}, true);
+  }catch(e){ if(afterSwitch && g===accountGen) pushOfferReenable(); throw e; }
+  if(g!==accountGen) return;
+  pushState.active=!!(r && r.ok); pushState.endpoint=pushState.active ? j.endpoint : null;
+  if(pushState.active){ pushOwnerSet(S.owner); if(S.pushReenable){ delete S.pushReenable; saveState(); } }
+  else if(afterSwitch) pushOfferReenable();
+  pushState.sig=sig; pushState.at=Date.now(); renderNotifSys();
+}
+// «Выйти»: подписка устройства больше не за этим аккаунтом. Токен ещё есть, запрос
+// keepalive — перезагрузка его не оборвёт (и уходит раньше завершения сессии). Не
+// дошёл — сервер всё равно не шлёт push по завершённой сессии.
+function pushOnLogout(tok){
+  const ep=pushState.endpoint;
+  if(ep && tok){ try{ fetch(API_URL+"/api/push/subscription", {method:"DELETE", headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok}, body:JSON.stringify({endpoint:ep}), keepalive:true}).catch(()=>{}); }catch(e){} }
+  return pushReleaseDevice(null, false);
+}
+// Плашка «Включить уведомления»: пока разрешение не спрашивали, уведомления в
+// настройках включены и человек не нажал «Не сейчас» за последние 7 дней.
+function pushBannerUpdate(){
+  const b=el("push-banner"); if(!b) return;
+  let later=0; try{ later=+localStorage.getItem(PUSH_BANNER_LATER_KEY)||0; }catch(e){}
+  // 15 окт 2026: или подписка вошедшего аккаунта не создалась (разрешение уже есть) — предложить снова.
+  const снова=!!S.pushReenable && notifPermission()==="granted" && pushSupported();
+  const show=!!S.loggedIn && !!getToken() && ((notifPermission()==="default" && S.notifSettings?.push!==false) || снова) && Date.now()-later>PUSH_BANNER_LATER_MS;
+  b.classList.toggle("on", show);
+}
+// «Включить» — системный запрос (в Android-приложении — диалог Android 13+). Только
+// из нажатия: браузер без жеста человека запрос молча отклоняет.
+function pushBannerEnable(){
+  if(typeof Notification==="undefined"){ showToast("Этот браузер не умеет показывать уведомления"); return; }
+  let p=null;
+  try{ p=Notification.requestPermission(); }catch(e){}
+  Promise.resolve(p).then((res)=>{
+    res=res||Notification.permission;
+    if(res==="granted"){
+      if(!S.notifSettings) S.notifSettings={push:true,sound:true,preview:true};
+      S.notifSettings.push=true; delete S.pushReenable; saveState();
+      if(el("notif-push")) el("notif-push").checked=true;
+      showToast("🔔 Уведомления включены");
+      pushSync(true);
+    } else if(res==="denied") showToast("Уведомления запрещены. Включить: настройки телефона → Приложения → Монохром → Уведомления");
+    pushBannerUpdate(); renderNotifSys();
+  }).catch(()=>pushBannerUpdate());
+}
+function pushBannerLater(){ try{ localStorage.setItem(PUSH_BANNER_LATER_KEY, String(Date.now())); }catch(e){} pushBannerUpdate(); }
+// Строка под «Push-уведомления» в настройках: что с системным разрешением.
+function renderNotifSys(){
+  const e=el("notif-sys"); if(!e) return;
+  const p=notifPermission();
+  if(p==="granted" && S.pushReenable && !pushState.active){ e.textContent="Не включились для этого аккаунта"; const b=document.createElement("button"); b.type="button"; b.className="notif-sys-on"; b.textContent="Включить"; b.onclick=(ev)=>{ ev.preventDefault(); ev.stopPropagation(); pushBannerEnable(); }; e.appendChild(b); }
+  else if(p==="granted") e.textContent=pushState.active ? "Приходят и при закрытом приложении" : "Разрешены";
+  else if(p==="denied") e.textContent="Запрещены в настройках телефона или браузера";
+  else if(p==="default"){ e.textContent="Не разрешены"; const b=document.createElement("button"); b.type="button"; b.className="notif-sys-on"; b.textContent="Разрешить"; b.onclick=(ev)=>{ ev.preventDefault(); ev.stopPropagation(); pushBannerEnable(); }; e.appendChild(b); }
+  else e.textContent="Недоступны в этом браузере";
 }
 // Короткий двухтональный "динь" синтезируется на лету (Web Audio) — без
 // отдельного mp3-файла, чтобы не тащить бинарник в единственный index.html.
@@ -17143,17 +17341,19 @@ function playNotifSound(){
 // приложение не в фокусе. Через ServiceWorkerRegistration.showNotification()
 // (а не голый конструктор Notification — на части мобильных браузеров он
 // не поддерживается напрямую со страницы) работает, пока процесс вкладки
-// жив, включая свёрнутое состояние. НЕ работает, если вкладка/приложение
-// закрыты полностью — для этого нужен настоящий push с сервера (VAPID,
-// подписки, отдельная задача, договорились делать позже).
+// жив, включая свёрнутое состояние. Закрытое приложение уведомляет Web Push
+// с сервера (sw.js, раздел WEB PUSH ниже).
 function notifyRealMessage(chat, previewText){
   if(!S.notifSettings?.push || !chat) return;
+  // 14 окт 2026: push на устройстве работает, а приложение свёрнуто — уведомление
+  // покажет sw.js по push с сервера (иначе было бы два). Разрешение здесь больше не
+  // спрашивается: только по нажатию (pushBannerEnable).
+  if(pushState.active && document.visibilityState==="hidden") return;
   if(S.notifSettings.sound!==false) playNotifSound();
-  ensureNotifPermission();
   if(typeof Notification==="undefined" || Notification.permission!=="granted") return;
   const title=chat.nm||BRAND_RU;
   const body=S.notifSettings.preview===false ? "Новое сообщение" : (previewText||"Новое сообщение");
-  const opts={body, icon:"icon-192.png", badge:"icon-192.png", tag:"chat-"+chat.id, data:{chatId:chat.id, owner:String(S.owner??"")}};
+  const opts={body, icon:"icon-192.png", badge:"icon-monochrome-96.png", tag:"chat-"+chat.id, data:{chatId:chat.id, owner:String(S.owner??"")}};
   const showViaConstructor=()=>{
     try{
       const n=new Notification(title, opts);
@@ -17533,6 +17733,9 @@ function endServerSession(){
     while(p.length%4) p+="=";
     sid=JSON.parse(atob(p)).sessionId||null;
   }catch(e){}
+  // Подписку устройства — раньше сессии: после завершения сессии запрос с её токеном
+  // сервер уже не примет.
+  try{ pushOnLogout(tok); }catch(e){}
   if(sid){
     try{ fetch(API_URL+"/api/auth/sessions/"+encodeURIComponent(sid), {method:"DELETE", headers:{"Authorization":"Bearer "+tok}, keepalive:true}).catch(()=>{}); }catch(e){}
   }
@@ -19829,11 +20032,14 @@ if(S.loggedIn){
     // смена настроек другим админом, и т.д.) не доходило без полного
     // выхода и повторного входа — тот же класс бага, что был у ботов.
     loadChatsFromDB();
-    if(S.notifSettings?.push) ensureNotifPermission();
+    pushBannerUpdate(); pushSync();
   }
 } else {
   el("auth-welcome").classList.add("on");
   updateLogoText();
+  // 15 окт 2026: выход перезагружает страницу сразу — отписка в браузере могла не
+  // успеть. Без входа подписки на устройстве быть не должно: снимаем остаток.
+  try{ pushDropDevice(); }catch(e){}
 }
 
 // Повторные попытки получить актуальный баланс/VIP после возврата с оплаты.
