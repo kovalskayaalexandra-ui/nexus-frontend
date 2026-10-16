@@ -137,6 +137,17 @@ button,input,textarea,select{font-family:inherit}
 .od:focus{border-color:var(--acc);background:var(--bg4)}
 .otimer{text-align:center;font-size:12.5px;color:var(--tx3);margin-bottom:14px}
 .otimer span{color:var(--cr);font-weight:600}
+/* 16 окт 2026: повтор кода — после отсчёта вместо таймера; строка ответа сервера под ним. */
+.otp-resend{display:block;margin:-4px auto 14px;min-height:40px;padding:9px 18px;border:1px solid var(--brd2);border-radius:12px;background:none;color:var(--acc2);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
+.otp-resend:hover:not(:disabled){border-color:var(--acc2)}
+.otp-resend:disabled{opacity:.6;cursor:default}
+/* Светлая тема: --acc2 на светлой карточке ~2.7:1 — нужен тёмный акцент (~5.8:1). */
+html[data-theme="light"] .otp-resend{color:#4f46e5}
+html[data-theme="light"] .otp-resend:hover:not(:disabled){border-color:#4f46e5}
+.otp-note{text-align:center;font-size:12.5px;line-height:1.4;color:var(--tx2);margin:-6px 0 12px}
+/* Пустая строка — нулевой высоты, но остаётся в дереве доступности: живой регион озвучит новый текст. */
+.otp-note:empty{margin:0}
+.otp-note.err{color:var(--rd)}
 
 /* ═══ LANG PICKER ═══ */
 .lpick{position:fixed;inset:0;z-index:960;background:rgba(0,0,0,.72);display:none;align-items:flex-end;
@@ -1766,6 +1777,37 @@ html[data-theme] select{
 html[data-theme] input:focus,
 html[data-theme] textarea:focus{border-color:var(--field-focus) !important;
   box-shadow:0 0 0 3px var(--field-ring)}
+/* ── Раскрывающиеся списки (16 окт 2026) ─────────────────────────────────
+   Фон поля полупрозрачный (--field-bg), а у пунктов <option> своих цветов не было: раскрытый список
+   рисовался на белом системном фоне светлым текстом темы — читался только выделенный пункт. Пункты
+   получают непрозрачные цвета темы, select — color-scheme темы. ПК-браузер рисует раскрытый список
+   по этим цветам. Системный список Chrome на Android цвета страницы не берёт — там вместо него
+   открывается свой список (.selpop, см. selPopOpen). */
+:root,
+html[data-theme="dark"],
+html[data-theme="amoled"]{--opt-bg:#1e2332;--opt-fg:#eef0f6;--opt-sel-bg:#3b3780;--opt-sel-fg:#ffffff;--opt-dis:#8a90a8;--opt-active:#a78bfa}
+html[data-theme="mono"]{--opt-bg:#1b1f29;--opt-fg:#eef2f7;--opt-sel-bg:#3a4152;--opt-sel-fg:#ffffff;--opt-dis:#8b92a5;--opt-active:#c7d3e3}
+html[data-theme="light"]{--opt-bg:#ffffff;--opt-fg:#24262f;--opt-sel-bg:#e7e5ff;--opt-sel-fg:#1d1b4a;--opt-dis:#7d8292;--opt-active:#6c63ff}
+select{color-scheme:dark}
+html[data-theme="light"] select{color-scheme:light}
+select option,
+select optgroup{background-color:var(--opt-bg) !important;color:var(--opt-fg) !important}
+select option:checked{background-color:var(--opt-sel-bg) !important;color:var(--opt-sel-fg) !important}
+select option:disabled{color:var(--opt-dis) !important}
+html[data-theme] select:hover:not(:disabled){border-color:var(--field-focus) !important}
+html[data-theme] select:focus{border-color:var(--field-focus) !important;box-shadow:0 0 0 3px var(--field-ring)}
+html[data-theme] select:disabled{opacity:.55;cursor:not-allowed}
+.selpop-scrim{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:flex-end;justify-content:center;background:rgba(5,7,12,.55)}
+.selpop{width:min(560px,100%);max-height:min(72vh,600px);display:flex;flex-direction:column;background:var(--opt-bg);color:var(--opt-fg);
+  border:1px solid var(--brd2);border-bottom:0;border-radius:22px 22px 0 0;box-shadow:0 -12px 40px rgba(0,0,0,.35);padding-bottom:env(safe-area-inset-bottom)}
+.selpop-title{padding:16px 22px 8px;font-size:15px;font-weight:600;color:var(--opt-fg)}
+.selpop-list{overflow-y:auto;overscroll-behavior:contain;padding:4px 10px 14px;outline:none}
+.selpop-opt{display:flex;align-items:center;gap:10px;min-height:48px;padding:10px 14px;border-radius:12px;font-size:16px;line-height:1.3;color:var(--opt-fg);cursor:pointer;user-select:none}
+.selpop-opt[aria-selected="true"]{background:var(--opt-sel-bg);color:var(--opt-sel-fg);font-weight:600}
+.selpop-opt.active{box-shadow:inset 0 0 0 2px var(--opt-active)}
+.selpop-opt[aria-disabled="true"]{color:var(--opt-dis);cursor:default}
+.selpop-tick{margin-left:auto;font-weight:700}
+.selpop-group{padding:12px 14px 4px;font-size:12.5px;font-weight:600;color:var(--opt-dis)}
 /* Главная кнопка действия. Опасные действия остаются красными: это смысл,
    а не украшение. */
 html[data-theme] .abtn{
@@ -2838,7 +2880,9 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
       <input class="od" maxlength="1" id="o3" oninput="oNext(3)" onkeydown="oBk(event,3)">
       <input class="od" maxlength="1" id="o4" oninput="oNext(4)" onkeydown="oBk(event,4)">
     </div>
-    <div class="otimer">Повторная отправка через <span id="otc">60</span> сек.</div>
+    <div class="otimer" id="otp-timer">Повторная отправка через <span id="otc">60</span> сек.</div>
+    <button type="button" class="otp-resend" id="otp-resend" onclick="otpResend()" style="display:none">Отправить код повторно</button>
+    <div class="otp-note" id="otp-note" role="status" aria-live="polite"></div>
     <button class="abtn" onclick="verifyCode()">Подтвердить</button>
     <button class="abtn sec" onclick="showA('auth-phone')">← Назад</button>
   </div>
@@ -4312,6 +4356,9 @@ function loadState(){
   // иначе панель выделения не появится, а правый клик/долгое нажатие останутся заблокированы.
   S.selectMode = false;
   S.selectedMsgs = [];
+  // 16 окт 2026: восстановление удалённого аккаунта — режим экрана кода, не сохранённое состояние:
+  // залипший флаг слал бы все следующие входы по SMS в /restore-account.
+  S.restoringAccount = false;
 
   // Разовая чистка демо-персонажей (Алекс Смирнов, Мария Козлова, Dev Team, Игорь Петров,
   // Tech News, Семья) — они были захардкожены как заглушка для показа UI и никак не связаны
@@ -4514,6 +4561,7 @@ function switchAccount(newUid){
   if(S.owner==null) S.owner=accountIdOf(S.user);
   const old = S.owner!=null ? String(S.owner) : null;
   if(newUid===old) return false;
+  try{ stopOTP(); }catch(e){}   // 16 окт 2026: смена аккаунта — отсчёт повтора кода снят
   // Номер, набранный на экране входа, — того, кто входит сейчас.
   const carryPhone = old==null ? S.phone : undefined;
   if(old!=null) try{ markInFlightFailed(); }catch(e){}
@@ -4750,7 +4798,13 @@ function updateLogoText(){
   const fb=el("footer-brand"); if(fb) fb.textContent = brand;
 }
 
-function showA(id){ document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on")); el(id)&&el(id).classList.add("on"); updateLogoText(); }
+function showA(id){
+  // 16 окт 2026: ушли с экрана кода — отсчёт снят, ответы его запросов больше не применяются (otpGen),
+  // режим восстановления удалённого аккаунта закончен. Флаги запросов и отклонённый код — того экрана:
+  // поздний ответ их уже не снимет (он отброшен), а следующий вход не должен о них спотыкаться.
+  if(id!=="auth-otp") try{ stopOTP(); otpGen++; otpVerifying=false; otpResending=false; otpRejected=null; S.restoringAccount=false; }catch(e){}
+  document.querySelectorAll(".auth").forEach(a=>a.classList.remove("on")); el(id)&&el(id).classList.add("on"); updateLogoText();
+}
 
 function fillCSEL(){
   const s=el("csel1"); if(!s) return;
@@ -6086,6 +6140,19 @@ async function apiPost(path, body, auth=false){
   return checkBannedResponse(data);
 }
 
+// 16 окт 2026: запросы экрана входа по коду (send-code, verify-code, restore-account) — ответ вместе со
+// статусом и Retry-After; общий apiPost не меняется. Входа ещё нет, поэтому принудительного выхода по
+// banned/accountDeleted (checkBannedResponse) здесь нет: такие ответы экран входа разбирает сам. Раньше
+// verify-code шёл через apiPost, и ответ «аккаунт удалён» сразу перезагружал страницу — восстановление
+// удалённого аккаунта не открывалось. Retry-After страница получит, лишь если сервер разрешит его в
+// Access-Control-Expose-Headers (сейчас нет) — тогда null, и отсчёт считается по-другому (otpCooldownWait).
+async function apiPostCode(path, body){
+  const res=await fetch(API_URL+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  let data={}; try{ data=await res.json() || {}; }catch(e){ data={}; }
+  const raw=res.headers.get("Retry-After"), n=raw!=null && /^\s*\d+\s*$/.test(raw) ? +raw : NaN;
+  return { data, status:res.status, retryAfter:Number.isFinite(n) ? Math.min(Math.max(n,1),3600) : null };
+}
+
 async function apiPatch(path, body, auth=false){
   const headers = {"Content-Type":"application/json"};
   const t = auth ? getToken() : null, g=accountGen;
@@ -6136,29 +6203,30 @@ async function sendCode(){
   const ps=phoneSubmit("phinp","csel1");
   if(ps.error){ showToast("❌ "+ps.msg); return; }
   const c=phoneCountry("csel1");
+  const прежний=S.phone;
   S.phone=ps.phone; S.phoneCountry=ps.iso; phoneRememberCountry(ps.iso, true);
+  S.restoringAccount=false;   // 16 окт 2026: новый вход с экрана номера — не восстановление
 
   const btn=el("t-btnsnd");
   if(btn){ btn.disabled=true; btn.textContent="⏳ Отправка..."; }
 
   try {
-    const data = await apiPost("/api/auth/send-code", { phone: S.phone, country: c.cc });
-    if(!data.success){ showToast("❌ "+(data.error||"Ошибка")); if(btn){btn.disabled=false;btn.textContent=T("btnsnd");} return; }
-    if(data.phone) S.phone=data.phone;     // номер, на который сервер отправил код
-
-    // Dev режим — автоподставляем код в поля
-    if(data.dev_code){
-      showToast("🔧 DEV: код "+data.dev_code);
-      setTimeout(()=>{
-        const digits=data.dev_code.toString().split("");
-        digits.forEach((d,i)=>{ const inp=el("o"+i); if(inp) inp.value=d; });
-      }, 400);
+    const r = await apiPostCode("/api/auth/send-code", { phone: S.phone, country: c.cc });
+    const data = r.data;
+    // 16 окт 2026: код на этот номер уже ушёл меньше минуты назад (sms_cooldown) — экран кода и
+    // отсчёт до повтора, а не тупик на экране номера. Если этот код здесь уже проверяли (сервер его
+    // погасил), «введите его» не пишем.
+    if(!data.success && data.code==="sms_cooldown"){
+      const погашен = otpCodeUsed && otpPhone===S.phone && прежний===S.phone;
+      otpOpen(otpCooldownWait(r), погашен ? "Новый код можно запросить, когда закончится отсчёт."
+        : "Код уже отправлен на этот номер — введите его. Новый можно запросить, когда закончится отсчёт.");
+      return;
     }
-
-    el("otpph").textContent=fmtPhone(S.phone);
-    el("phinp")?.blur();      // повтор Enter, удержанной в поле номера, не уйдёт вторым запросом
-    showA("auth-otp"); startOTP();
-    setTimeout(()=>el("o0")&&el("o0").focus(),50);
+    if(!data.success){ showToast("❌ "+otpErrorText(data)); return; }
+    if(data.phone) S.phone=data.phone;     // номер, на который сервер отправил код
+    otpCodeUsed=false; otpSendSeq++;
+    otpUseDevCode(data);
+    otpOpen(OTP_RESEND_S, "");
   } catch(e){
     showToast("❌ Нет связи с сервером");
   } finally {
@@ -6166,28 +6234,112 @@ async function sendCode(){
   }
 }
 
-// Отдельно от sendCode() — та читает номер из поля ввода на экране
-// "телефон", а здесь мы уже на экране кода, номер уже известен в S.phone
-async function sendRestoreCode(){
-  showToast("📱 Отправляем новый код для подтверждения...");
-  try{
-    const data=await apiPost("/api/auth/send-code", { phone: S.phone });
-    if(!data.success){ showToast("❌ "+(data.error||"Ошибка")); S.restoringAccount=false; return; }
-    if(data.dev_code){
-      showToast("🔧 DEV: код "+data.dev_code);
-      setTimeout(()=>{
-        const digits=data.dev_code.toString().split("");
-        digits.forEach((d,i)=>{ const inp=el("o"+i); if(inp) inp.value=d; });
-      }, 400);
-    }
-    for(let i=0;i<5;i++){ const inp=el("o"+i); if(inp) inp.value=""; }
-    startOTP();
-    setTimeout(()=>el("o0")&&el("o0").focus(),50);
-  }catch(e){ showToast("❌ Нет связи с сервером"); S.restoringAccount=false; }
+// Экран кода после отправки: номер, пустые поля, отсчёт до повтора, фокус в первое поле. Новый номер
+// экрана (otpGen): ответы запросов, отправленных с прежнего экрана кода, сюда уже не попадут.
+function otpOpen(seconds, note){
+  el("otpph").textContent=fmtPhone(S.phone);
+  el("phinp")?.blur();      // повтор Enter, удержанной в поле номера, не уйдёт вторым запросом
+  otpClearInputs();
+  showA("auth-otp");
+  otpGen++; otpResending=false; otpVerifying=false;
+  const vb=document.querySelector("#auth-otp .abtn:not(.sec)"); if(vb){ vb.disabled=false; vb.textContent=T("btnvfy"); }
+  startOTP(seconds); otpNote(note);
+  setTimeout(()=>el("o0")&&el("o0").focus(),50);
 }
 
-function startOTP(){ let t=60; clearInterval(otmr); el("otc").textContent=t; otmr=setInterval(()=>{t--;if(el("otc"))el("otc").textContent=t;if(t<=0)clearInterval(otmr);},1000); }
-function oNext(i){ if(el("o"+i).value&&i<4)el("o"+(i+1)).focus(); chkOTP(); }
+// Восстановление удалённого аккаунта: новый код на тот же S.phone (номер уже известен, из поля
+// не разбирается). Код входа сервер уже погасил (verify-code ответил accountDeleted), а раньше
+// минуты новый не отправит (sms_cooldown) — тогда отсчёт, восстановление продолжается кнопкой
+// «Отправить код повторно». Режим восстановления живёт, пока открыт экран кода: уход с него (showA)
+// и новый вход с экрана номера (sendCode) его снимают — иначе он сохранился бы в S и все следующие
+// входы по SMS на устройстве уходили бы в /restore-account.
+async function sendRestoreCode(){
+  showToast("📱 Отправляем новый код для подтверждения...");
+  await otpRequestCode("Код для восстановления аккаунта отправлен");
+}
+
+// ── Отсчёт до повтора кода (16 окт 2026) ──────────────────────────────────
+// Раньше startOTP уменьшал число раз в секунду и на нуле просто останавливался: «0 сек.» и
+// никакой кнопки. Теперь срок абсолютный (Date.now()), остаток считается на каждом тике и при
+// возвращении во вкладку (в фоне таймеры замедляются). На нуле таймер скрыт, видна «Отправить код
+// повторно». Интервал один: его снимают новый запуск, уход с экрана кода (showA), вход (loginOK) и
+// смена аккаунта (switchAccount). Проверка кода (верная или нет) отсчёт не трогает.
+const OTP_RESEND_S=60;
+// otpGen — номер экрана кода: растёт при каждом открытии и уходе; ответ запроса, отправленного с
+// прежнего экрана (другой номер, «Назад»), отбрасывается. otpCodeUsed — последний код для otpPhone
+// сервер уже проверил (и погасил); otpSendSeq — номер этого кода (растёт с каждой удачной отправкой).
+let otpDeadline=0, otpPhone=null, otpResending=false, otpVerifying=false, otpRejected=null, otpGen=0, otpCodeUsed=false, otpSendSeq=0;
+function otpLeft(){ return Math.max(0, Math.ceil((otpDeadline-Date.now())/1000)); }
+function otpRender(){
+  const left=otpLeft(), c=el("otc"), t=el("otp-timer"), b=el("otp-resend");
+  if(c) c.textContent=String(left);
+  if(t) t.style.display = left>0 ? "" : "none";
+  // Пока идёт проверка кода, новый код не запрашивается: он заменил бы проверяемый на сервере.
+  if(b){ b.style.display = left>0 ? "none" : ""; b.disabled=otpResending || otpVerifying; b.textContent = otpResending ? "Отправляем…" : "Отправить код повторно"; }
+  if(left<=0) stopOTP();
+}
+function startOTP(seconds){
+  stopOTP();
+  otpDeadline=Date.now()+Math.max(1, Math.round(seconds||OTP_RESEND_S))*1000; otpPhone=S.phone;
+  otmr=setInterval(otpRender, 500); otpRender();
+}
+function stopOTP(){ if(otmr){ clearInterval(otmr); otmr=null; } }
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible" && el("auth-otp")?.classList.contains("on")) otpRender(); });
+function otpClearInputs(){ otpRejected=null; for(let i=0;i<5;i++){ const inp=el("o"+i); if(inp) inp.value=""; } }
+function otpNote(text, err){ const n=el("otp-note"); if(!n) return; n.textContent=text||""; n.classList.toggle("err", !!err); }
+// Сколько ждать после sms_cooldown: Retry-After, если браузер его отдал; иначе — остаток нашего
+// отсчёта для этого же номера (сервер считает минуту от той же отправки); иначе — минута.
+function otpCooldownWait(r){ return (r && r.retryAfter) || (otpPhone===S.phone ? otpLeft() : 0) || OTP_RESEND_S; }
+const OTP_ERR={
+  sms_rate_limited:"Слишком много запросов кода. Попробуйте позже.",
+  sms_region_unsupported:"SMS-вход пока доступен только для мобильных номеров России.",
+  sms_provider_rejected:"Оператор не принял SMS. Проверьте номер или попробуйте позже.",
+  sms_not_configured:"Отправка SMS временно недоступна. Попробуйте позже.",
+  sms_test_mode_forbidden:"Отправка SMS временно недоступна. Попробуйте позже.",
+  sms_unavailable:"Не удалось отправить код. Попробуйте позже.",
+  sms_timeout:"SMS-сервис не ответил вовремя. Попробуйте ещё раз.",
+  sms_network_error:"Не удалось связаться с SMS-сервисом. Попробуйте ещё раз.",
+};
+function otpErrorText(d){ return (d && OTP_ERR[d.code]) || (d && typeof d.error==="string" && d.error) || "Не удалось отправить код. Попробуйте ещё раз."; }
+// dev_code сервер присылает только в разработке; на опубликованной странице код не показывается и
+// не подставляется, даже если поле пришло.
+function devCodeAllowed(){ return /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname); }
+function otpUseDevCode(d){
+  if(!d || !d.dev_code || !devCodeAllowed()) return;
+  const code=String(d.dev_code); showToast("🔧 DEV: код "+code);
+  setTimeout(()=>{ code.split("").forEach((x,i)=>{ const inp=el("o"+i); if(inp) inp.value=x; }); }, 400);
+}
+// Новый код на уже известный номер — «Отправить код повторно» и восстановление аккаунта. Один
+// запрос за раз. true — код ушёл (поля очищены, фокус в первое, снова минута); "wait" — сервер
+// просит подождать (отсчёт запущен); false — ошибка (кнопка остаётся, можно повторить); null — не
+// отправляли (запрос уже идёт).
+async function otpRequestCode(successNote){
+  if(otpResending || otpVerifying || !S.phone) return null;
+  const g=otpGen, ph=S.phone, свой=()=>g===otpGen && S.phone===ph;
+  otpResending=true; otpNote(""); otpRender();
+  try{
+    const r=await apiPostCode("/api/auth/send-code", S.phoneCountry ? {phone:S.phone, country:S.phoneCountry} : {phone:S.phone});
+    if(!свой()) return null;   // пока шёл запрос, ушли с этого экрана кода — ответ не наш
+    const d=r.data||{};
+    if(d.success){
+      if(d.phone){ S.phone=d.phone; el("otpph").textContent=fmtPhone(S.phone); }
+      otpCodeUsed=false; otpSendSeq++;
+      otpUseDevCode(d);
+      otpClearInputs(); startOTP(OTP_RESEND_S); otpNote(successNote);
+      setTimeout(()=>el("o0")&&el("o0").focus(),50);
+      return true;
+    }
+    if(d.code==="sms_cooldown"){ startOTP(otpCooldownWait(r)); otpNote("Новый код можно запросить, когда закончится отсчёт."); return "wait"; }
+    otpNote(otpErrorText(d), true);
+    return false;
+  }catch(e){
+    if(!свой()) return null;
+    otpNote("Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.", true); return false;
+  }
+  finally{ if(g===otpGen){ otpResending=false; otpRender(); } }
+}
+async function otpResend(){ if(otpLeft()>0 || otpVerifying) return; await otpRequestCode("Новый код отправлен"); }
+function oNext(i){ otpRejected=null; if(el("o"+i).value&&i<4)el("o"+(i+1)).focus(); chkOTP(); }
 function oBk(e,i){ if(e.key==="Backspace"&&!el("o"+i).value&&i>0)el("o"+(i-1)).focus(); }
 function chkOTP(){ let c="";for(let i=0;i<5;i++)c+=el("o"+i).value; if(c.length===5)setTimeout(verifyCode,200); }
 
@@ -6287,16 +6439,30 @@ function openPasswordLogin(){
 }
 
 async function verifyCode(){
+  if(otpVerifying) return;   // 16 окт 2026: автопроверка по пятой цифре и кнопка — один запрос
   let c=""; for(let i=0;i<5;i++) c+=el("o"+i).value;
   if(c.length<5){showToast("❌ "+T("otptit"));return;}
-  clearInterval(otmr);
+  // Этот же код сервер уже отклонил (кнопка нажата раньше, чем сработала автопроверка, или наоборот) —
+  // второй запрос сжёг бы ещё одну попытку из пяти. После правки полей проверка снова доступна.
+  if(c===otpRejected){ otpNote("Этот код уже отклонён — исправьте цифры или запросите новый код.", true); return; }
+  // 16 окт 2026: отсчёт до повтора здесь не останавливается — неверный код или сбой сети
+  // оставляют экран кода; таймер снимают уход с экрана (showA), вход (loginOK), смена аккаунта.
+  // g — номер экрана кода: если, пока шла проверка, с него ушли, ответ сюда уже не относится.
+  // seq и ph — какой код проверяется: погашен он или нет, запоминается и после ухода с экрана.
+  const g=otpGen, seq=otpSendSeq, ph=S.phone;
+  otpVerifying=true; otpRender();
 
   const btn=document.querySelector("#auth-otp .abtn");
   if(btn){ btn.disabled=true; btn.textContent="⏳..."; }
 
   try {
     const endpoint = S.restoringAccount ? "/api/auth/restore-account" : "/api/auth/verify-code";
-    const data = await apiPost(endpoint, { phone: S.phone, code: c, language: S.lang });
+    const data = (await apiPostCode(endpoint, { phone: S.phone, code: c, language: S.lang })).data;
+    // Код сервер проверил: кроме «неверный код» любой ответ значит, что этого кода больше нет
+    // (вход, удалённый аккаунт, 2FA, истёк, исчерпаны попытки). Отмечается, даже если с экрана
+    // ушли («Назад»): иначе при новом входе на тот же номер экран звал бы ввести погашенный код.
+    if(seq===otpSendSeq && S.phone===ph) otpCodeUsed = !(data.code==="sms_code_invalid" || data.attempts_left!=null);
+    if(g!==otpGen) return;
     if(!data.success){
       if(data.requires_password_login){
         showToast("🛡️ На этом аккаунте включена 2FA — войдите по паролю");
@@ -6313,13 +6479,15 @@ async function verifyCode(){
         if(btn){btn.disabled=false;btn.textContent=T("btnvfy");}
         if(confirm("Этот аккаунт был удалён. Восстановить его?")){
           S.restoringAccount=true;
+          otpVerifying=false; otpRender();   // проверка закончена — теперь запрос кода для восстановления
           await sendRestoreCode();
         } else {
           S.restoringAccount=false;
         }
         return;
       }
-      showToast("❌ "+(data.error||"Неверный код")); if(btn){btn.disabled=false;btn.textContent=T("btnvfy");} return;
+      if(data.error) otpRejected=c;   // сервер ответил по существу (неверный, устарел…) — тот же код не отправляем снова
+      showToast("❌ "+(data.error||"Не удалось проверить код. Попробуйте ещё раз.")); if(btn){btn.disabled=false;btn.textContent=T("btnvfy");} return;
     }
     S.restoringAccount=false;
 
@@ -6350,8 +6518,11 @@ async function verifyCode(){
       saveState(); loginOK();
     }
   } catch(e){
+    if(g!==otpGen) return;
     showToast("❌ Нет связи с сервером");
     if(btn){ btn.disabled=false; btn.textContent=T("btnvfy"); }
+  } finally {
+    if(g===otpGen){ otpVerifying=false; otpRender(); }
   }
 }
 
@@ -6404,6 +6575,7 @@ async function doReg(){
 function showVerBanner(){ const b=el("ver-banner"); if(!b) return; const t=el("verb-build"); if(t) t.textContent=String(BUILD_TAG).split(":")[0]; b.classList.add("on"); }
 function hideVerBanner(){ el("ver-banner")?.classList.remove("on"); }
 function loginOK(){
+  try{ stopOTP(); }catch(e){}   // 16 окт 2026: вход выполнен — отсчёт повтора кода снят
   S.loggedIn=true; saveState();
   // Следующая истёкшая сессия должна обрабатываться снова.
   _sessionExpiredShown=false;
@@ -7598,7 +7770,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-15 выпуск 1, ред. 17: уведомления на телефон — Web Push при свёрнутом и закрытом приложении, плашка «Включить уведомления», уведомление и в открытый чат свёрнутого приложения; поле номера — простая модель на libphonenumber-js (max), «+код» уходит из поля сразу, код без «+» одинаково при наборе и вставке, в поле только национальная часть, номер телефона по стране и «+код», Казахстан без «8», одна поддержка, онлайн только со слов сервера, «Выйти» завершает сессию, закрепление через сервер, уведомление открывает чат поверх всего, окно удаления — на свой чат, вложение своего чата, бренд Монохром, данные и черновики по аккаунтам, удаление и превью с сервера, баннер версии, номер только взаимным";
+const BUILD_TAG = "2026-10-16 выпуск 1, ред. 18: повторная отправка SMS-кода (кнопка после отсчёта, отсчёт по сроку), читаемые раскрывающиеся списки, инструкция для запрещённых уведомлений; уведомления на телефон — Web Push при свёрнутом и закрытом приложении, плашка «Включить уведомления», уведомление и в открытый чат свёрнутого приложения; поле номера — простая модель на libphonenumber-js (max), «+код» уходит из поля сразу, код без «+» одинаково при наборе и вставке, в поле только национальная часть, номер телефона по стране и «+код», Казахстан без «8», одна поддержка, онлайн только со слов сервера, «Выйти» завершает сессию, закрепление через сервер, уведомление открывает чат поверх всего, окно удаления — на свой чат, вложение своего чата, бренд Монохром, данные и черновики по аккаунтам, удаление и превью с сервера, баннер версии, номер только взаимным";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -17300,9 +17472,19 @@ function pushBannerEnable(){
       if(el("notif-push")) el("notif-push").checked=true;
       showToast("🔔 Уведомления включены");
       pushSync(true);
-    } else if(res==="denied") showToast("Уведомления запрещены. Включить: настройки телефона → Приложения → Монохром → Уведомления");
+    } else if(res==="denied") showToast("Уведомления запрещены. Как включить — в Настройках, под «Push-уведомления»");
     pushBannerUpdate(); renderNotifSys();
   }).catch(()=>pushBannerUpdate());
+}
+// 16 окт 2026: запрещено — снова спросить страница не может (браузер и Android второй раз диалог не
+// покажут); включить можно только вручную. Куда идти — зависит от того, где открыта страница.
+function notifDeniedHelp(){
+  const ua=navigator.userAgent||"", android=/Android/i.test(ua), ios=/iPhone|iPad|iPod/i.test(ua);
+  let app=false; try{ app=matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches; }catch(e){}
+  if(android && app) return "Включить: настройки Android → Приложения → Монохром → Уведомления.";
+  if(android) return "Включить: значок слева от адреса сайта → Разрешения → Уведомления (или Chrome → ⋮ → Настройки → Настройки сайтов → Уведомления).";
+  if(ios) return "Включить: настройки iPhone → Уведомления → Монохром.";
+  return "Включить: значок слева от адреса сайта → Уведомления → Разрешить, затем обновите страницу.";
 }
 function pushBannerLater(){ try{ localStorage.setItem(PUSH_BANNER_LATER_KEY, String(Date.now())); }catch(e){} pushBannerUpdate(); }
 // Строка под «Push-уведомления» в настройках: что с системным разрешением.
@@ -17311,7 +17493,7 @@ function renderNotifSys(){
   const p=notifPermission();
   if(p==="granted" && S.pushReenable && !pushState.active){ e.textContent="Не включились для этого аккаунта"; const b=document.createElement("button"); b.type="button"; b.className="notif-sys-on"; b.textContent="Включить"; b.onclick=(ev)=>{ ev.preventDefault(); ev.stopPropagation(); pushBannerEnable(); }; e.appendChild(b); }
   else if(p==="granted") e.textContent=pushState.active ? "Приходят и при закрытом приложении" : "Разрешены";
-  else if(p==="denied") e.textContent="Запрещены в настройках телефона или браузера";
+  else if(p==="denied") e.textContent="Запрещены. "+notifDeniedHelp();
   else if(p==="default"){ e.textContent="Не разрешены"; const b=document.createElement("button"); b.type="button"; b.className="notif-sys-on"; b.textContent="Разрешить"; b.onclick=(ev)=>{ ev.preventDefault(); ev.stopPropagation(); pushBannerEnable(); }; e.appendChild(b); }
   else e.textContent="Недоступны в этом браузере";
 }
@@ -17891,7 +18073,7 @@ async function startPhoneChange(){
     const data=await apiPost("/api/auth/change-phone/request", {newPhone, hasOldAccess}, true);
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось начать смену номера")); return; }
     phoneChangeStep=data.step;
-    if(data.dev_code) showToast("🔧 DEV: код "+data.dev_code);
+    if(data.dev_code && devCodeAllowed()) showToast("🔧 DEV: код "+data.dev_code);
     el("cp-code").value="";
     el("cp-code-hint").textContent = data.step==="old_phone"
       ? "Введите код, отправленный на ваш ТЕКУЩИЙ номер"
@@ -17911,7 +18093,7 @@ async function confirmPhoneChangeCode(){
     if(data.step==="new_phone"){
       // Первый код (со старого номера) подтверждён — теперь ждём код с нового
       phoneChangeStep="new_phone";
-      if(data.dev_code) showToast("🔧 DEV: код "+data.dev_code);
+      if(data.dev_code && devCodeAllowed()) showToast("🔧 DEV: код "+data.dev_code);
       el("cp-code").value="";
       el("cp-code-hint").textContent="Старый номер подтверждён ✓. Теперь введите код, отправленный на НОВЫЙ номер"+(data.newPhone?" "+fmtPhone(data.newPhone):"");
       showToast("✅ Старый номер подтверждён, код отправлен на новый");
@@ -18936,6 +19118,143 @@ function closeLayerViaStack(id){
 function navTopModalId(){
   const f=navStack[navStack.length-1];
   return (f && f.navModalId) || null;
+}
+
+// ── Раскрывающиеся списки на сенсорных экранах (16 окт 2026) ──────────────
+// Системное окно <select> в Chrome на Android рисуется темой Android, а не страницы: цвета пунктов
+// оттуда не берутся, и на тёмной теме пункты выходили почти белыми на белом. Там, где указатель —
+// палец (pointer: coarse), вместо системного окна открывается свой список того же <select>.
+// Значение по-прежнему хранит сам <select>; выбор — обычные события input и change, поэтому всё, что
+// слушает select (страна номера, тема и т. д.), работает как раньше. Открытие — тем же mousedown,
+// который открыл бы системное окно (его действие по умолчанию отменяется). На ПК остаётся системный
+// список, его цвета задаёт CSS. Доступность: role dialog/listbox/option, стрелки, Home/End,
+// PageUp/PageDown, Enter и пробел, Escape, поиск по первым буквам; «назад» на Android закрывает
+// список (openLayer), а не экран под ним.
+const selPop={sel:null, scrim:null, list:null, items:[], active:-1, typed:"", typedAt:0};
+function selPopWanted(s){
+  return !!s && s.tagName==="SELECT" && !s.multiple && !(s.size>1) && !s.disabled &&
+    !!window.matchMedia && matchMedia("(pointer: coarse)").matches;
+}
+document.addEventListener("mousedown", (e)=>{
+  const s=e.target && e.target.closest ? e.target.closest("select") : null;
+  if(!selPopWanted(s) || e.button!==0) return;
+  e.preventDefault();
+  if(selPop.sel===s) return;
+  try{ s.focus({preventScroll:true}); }catch(x){}
+  selPopOpen(s);
+}, true);
+document.addEventListener("keydown", (e)=>{
+  const s=e.target;
+  if(e.repeat || selPop.sel || !selPopWanted(s)) return;   // удержанная клавиша не открывает список заново
+  if(e.key===" " || e.key==="Enter" || e.key==="F4" || (e.altKey && (e.key==="ArrowDown" || e.key==="ArrowUp"))){ e.preventDefault(); selPopOpen(s); }
+}, true);
+function selPopLabel(s){
+  const own=s.getAttribute("aria-label"); if(own) return own;
+  const byFor=s.id ? document.querySelector('label[for="'+s.id.replace(/["\\]/g, "")+'"]') : null;
+  if(byFor && byFor.textContent.trim()) return byFor.textContent.trim();
+  const fl=s.closest(".fg")?.querySelector(".fl"); if(fl && fl.textContent.trim()) return fl.textContent.trim();
+  const row=s.closest(".settings-row")?.querySelector(".settings-row-label"); if(row && row.textContent.trim()) return row.textContent.trim();
+  return "Выберите вариант";
+}
+function selPopOpen(s){
+  selPopRemove(false);
+  const scrim=document.createElement("div"); scrim.className="selpop-scrim";
+  const box=document.createElement("div"); box.className="selpop";
+  box.setAttribute("role","dialog"); box.setAttribute("aria-modal","true"); box.setAttribute("aria-labelledby","selpop-title");
+  const title=document.createElement("div"); title.className="selpop-title"; title.id="selpop-title"; title.textContent=selPopLabel(s);
+  const list=document.createElement("div"); list.className="selpop-list"; list.id="selpop-list";
+  list.setAttribute("role","listbox"); list.setAttribute("aria-labelledby","selpop-title"); list.tabIndex=-1;
+  const items=[];
+  const add=(o, groupOff)=>{
+    const it=document.createElement("div"), i=items.length, off=!!(o.disabled || groupOff);
+    it.className="selpop-opt"; it.id="selpop-opt-"+i; it.setAttribute("role","option"); it.dataset.i=String(i);
+    it.setAttribute("aria-selected", o.selected ? "true" : "false"); if(off) it.setAttribute("aria-disabled","true");
+    const t=document.createElement("span"); t.textContent=o.textContent; it.appendChild(t);
+    if(o.selected){ const k=document.createElement("span"); k.className="selpop-tick"; k.setAttribute("aria-hidden","true"); k.textContent="✓"; it.appendChild(k); }
+    items.push({o, it, off}); list.appendChild(it);
+  };
+  for(const ch of Array.from(s.children)){
+    if(ch.tagName==="OPTGROUP"){
+      const g=document.createElement("div"); g.className="selpop-group"; g.setAttribute("role","presentation"); g.textContent=ch.label||""; list.appendChild(g);
+      for(const o of Array.from(ch.children)) if(o.tagName==="OPTION") add(o, ch.disabled);
+    } else if(ch.tagName==="OPTION") add(ch, false);
+  }
+  list.addEventListener("click", (e)=>{ const it=e.target.closest(".selpop-opt"); const x=it && items[+it.dataset.i]; if(x && !x.off) selPopChoose(x); });
+  list.addEventListener("keydown", selPopKey);
+  // Касание внутри окна (заголовок, поля, отключённый пункт) не уводит фокус со списка — клавиатура работает дальше.
+  box.addEventListener("mousedown", (e)=>e.preventDefault());
+  scrim.addEventListener("click", (e)=>{ if(e.target===scrim) selPopClose(); });
+  box.append(title, list); scrim.appendChild(box); document.body.appendChild(scrim);
+  const inst={};   // запись истории закрывает только свой список, а не открытый после него
+  Object.assign(selPop, {sel:s, scrim, list, items, active:-1, typed:"", typedAt:0, inst});
+  s.setAttribute("aria-expanded","true"); s.setAttribute("aria-controls","selpop-list");
+  let start=items.findIndex((x)=>x.o.selected && !x.off); if(start<0) start=items.findIndex((x)=>!x.off);
+  selPopSetActive(start, "center");
+  try{ list.focus({preventScroll:true}); }catch(e){}
+  openLayer("selpop", ()=>{ if(selPop.inst===inst) selPopRemove(true); });
+}
+function selPopSetActive(i, block){
+  const prev=selPop.items[selPop.active]; if(prev) prev.it.classList.remove("active");
+  selPop.active=i;
+  const x=selPop.items[i];
+  if(!x){ selPop.list && selPop.list.removeAttribute("aria-activedescendant"); return; }
+  x.it.classList.add("active"); selPop.list.setAttribute("aria-activedescendant", x.it.id);
+  try{ x.it.scrollIntoView({block:block||"nearest"}); }catch(e){}
+}
+function selPopStep(from, dir){
+  const n=selPop.items.length;
+  for(let i=from+dir; i>=0 && i<n; i+=dir) if(!selPop.items[i].off) return i;
+  return from;
+}
+function selPopKey(e){
+  const n=selPop.items.length, a=selPop.active;
+  let to=null;
+  switch(e.key){
+    case "ArrowDown": to=selPopStep(a<0 ? -1 : a, 1); break;
+    case "ArrowUp": to=selPopStep(a<0 ? n : a, -1); break;
+    case "Home": to=selPopStep(-1, 1); break;
+    case "End": to=selPopStep(n, -1); break;
+    case "PageDown": { let i=a; for(let k=0;k<6;k++) i=selPopStep(i, 1); to=i; break; }
+    case "PageUp": { let i=a; for(let k=0;k<6;k++) i=selPopStep(i, -1); to=i; break; }
+    case "Enter": case " ": { e.preventDefault(); const x=selPop.items[a]; if(x && !x.off) selPopChoose(x); return; }
+    case "Escape": e.preventDefault(); e.stopPropagation(); selPopClose(); return;
+    case "Tab": e.preventDefault(); selPopClose(); return;
+    default: {
+      if(e.key.length!==1 || e.ctrlKey || e.metaKey || e.altKey) return;
+      const now=Date.now();
+      selPop.typed=(now-selPop.typedAt<800 ? selPop.typed : "")+e.key.toLowerCase(); selPop.typedAt=now;
+      const name=(x)=>x.o.textContent.replace(/^[^\p{L}\p{N}]+/u, "").toLowerCase();
+      for(let k=1;k<=n;k++){
+        const i=((a<0 ? -1 : a)+k+(selPop.typed.length>1 ? n-1 : 0))%n, x=selPop.items[i];
+        if(x && !x.off && name(x).startsWith(selPop.typed)){ to=i; break; }
+      }
+      if(to===null) return;
+    }
+  }
+  e.preventDefault();
+  if(to!==null && to>=0) selPopSetActive(to);
+}
+function selPopChoose(x){
+  const s=selPop.sel; if(!s) return;
+  const changed=!x.o.selected;
+  x.o.selected=true;
+  selPopClose();
+  if(changed){ s.dispatchEvent(new Event("input", {bubbles:true})); s.dispatchEvent(new Event("change", {bubbles:true})); }
+}
+// Закрыть самим (выбор, Escape, мимо списка): окно уходит сразу, запись истории — через стек.
+function selPopClose(){
+  if(!selPop.sel) return;
+  selPopRemove(true);
+  // Запись истории ещё не легла (список открыли, пока «назад» был в полёте) — снимаем отложенную,
+  // иначе в истории осталась бы пустая запись. Иначе — уходим через стек.
+  if(typeof _navPendingLayer!=="undefined" && _navPendingLayer && _navPendingLayer.id==="selpop") _navPendingLayer=null;
+  else closeLayerViaStack("selpop");
+}
+function selPopRemove(focusBack){
+  const s=selPop.sel;
+  if(selPop.scrim) selPop.scrim.remove();
+  if(s){ s.setAttribute("aria-expanded","false"); s.removeAttribute("aria-controls"); if(focusBack) try{ s.focus({preventScroll:true}); }catch(e){} }
+  Object.assign(selPop, {sel:null, scrim:null, list:null, items:[], active:-1, inst:null});
 }
 // viaBack=true — нас уже позвал обработчик popstate, историю трогать не надо.
 function closeM(id, viaBack){
