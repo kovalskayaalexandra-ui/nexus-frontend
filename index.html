@@ -646,7 +646,7 @@ body.select-mode .msel-check{display:flex}
 .bub.reply-armed{transform:translateX(14px)}
 .mrow.in .bub{background:var(--in);border-bottom-left-radius:3px}
 .mrow.out .bub{background:var(--out);border-bottom-right-radius:3px}
-.bub.edited::after{content:" (ред.)";font-size:10px;color:rgba(255,255,255,.4)}
+/* 21 окт 2026 (этап C): «(ред.)» отдельной строкой под пузырём снято — отметка «изм.» теперь внутри .mt. */
 .mt{font-size:var(--fs-1);color:rgba(255,255,255,.35);margin-top:3px;display:flex;align-items:center;gap:3px}
 /* 30 июля 2026: время+галочки над фото/альбомом без подписи — как в
    Telegram, полупрозрачная плашка поверх правого нижнего угла фото, а не
@@ -691,7 +691,18 @@ body.select-mode .msel-check{display:flex}
    между фото). Просила максимально убрать рамку в обычном виде, но она
    ДОПУСТИМА как признак выбора — поэтому зазор в 0 (фото вплотную друг к
    другу), а рамка появляется только у .grp-cell.selected. */
-.grp-img-grid{display:grid;gap:0;overflow:hidden;border-radius:12px;margin:0 calc(-1 * var(--sp-3)) 0;width:260px;max-width:calc(74vw - 24px)}
+/* 20 окт 2026 (партия 1.2, проверка на телефоне): плотная мозаика как в Telegram вместо сетки по колонкам.
+   Строки по количеству фото (3→3, 4→2+2, 5→2+3, 6→3+3, 7→3+4, 8→3+5, 9→3+3+3, 10→3+4+3), высота
+   строки задаётся её aspect-ratio (из ширины альбома, а не из размеров фото: одинаково до загрузки,
+   после перезагрузки и на любом устройстве), миниатюры обрезаются (object-fit:cover) — оригинал без
+   обрезки открывается в просмотрщике. Прежняя сетка держала у каждой клетки пропорцию её фото, и под
+   низкими клетками оставались пустые участки цвета пузыря (до 40% площади альбома). Зазор 2px; у
+   альбома без подписи фон пузыря снят (#msgs .bub.alb-bare), и в зазорах виден фон чата. */
+.grp-img-grid{display:flex;flex-direction:column;gap:2px;overflow:hidden;border-radius:12px;margin:0 calc(-1 * var(--sp-3)) 0;width:260px;max-width:calc(74vw - 24px)}
+.grp-img-grid.e-top{border-top-left-radius:inherit;border-top-right-radius:inherit}
+.grp-img-grid.e-bot{border-bottom-left-radius:inherit;border-bottom-right-radius:inherit}
+.alb-row{display:flex;gap:2px;min-height:0;overflow:hidden}
+#msgs .mrow .bub.alb-bare{background:none!important;background-color:transparent!important;background-image:none!important;box-shadow:none!important}
 /* 30 июля 2026: было aspect-ratio:1 — при 2 колонках это сжимало каждое
    фото в квадрат ~130×130, заметно мельче и "не такого размера", как
    одиночное фото рядом (то растянуто под свою реальную пропорцию, вплоть до
@@ -702,7 +713,9 @@ body.select-mode .msel-check{display:flex}
    ближе по ощущению к одиночному фото. Точная поштучная раскладка как в
    настоящем Telegram — отдельная более крупная доработка (нужно сохранять
    исходные пропорции фото при загрузке).*/
-.grp-cell{position:relative;cursor:pointer;aspect-ratio:4/5;min-width:0}
+.grp-cell{position:relative;cursor:pointer;flex:1 1 0;min-width:0;overflow:hidden}
+.grp-cell .msg-img-wrap{position:absolute;inset:0}
+.grp-cell .msg-img-wrap .msg-img{object-fit:cover}
 /* 30 июля 2026: рамка выделения и анимация — как в Telegram, Александра
    явно попросила: при выборе КОНКРЕТНОГО фото в альбоме само фото чуть
    уменьшается (transform:scale), и ровно вокруг НЕГО (не всей ячейки сетки)
@@ -725,6 +738,11 @@ body.select-mode .msel-check{display:flex}
    номером быть не должно (в Telegram кружок остаётся без заливки в любом
    состоянии) — меняем только цвет обводки на акцентный, без background. */
 .grp-cell.selected .grp-cell-check{border-color:var(--acc)}
+/* 20 окт 2026: у выбранной строки альбома общее правило .mrow.selected .msel-check заливало кружки ВСЕХ
+   фото альбома — у кружков альбома заливки нет ни в каком состоянии (решение 30 июля). Акцентная обводка —
+   только у выбранного фото, у остальных фото той же строки она белая. */
+.mrow.selected .grp-cell-check{background:none}
+.mrow.selected .grp-cell:not(.selected) .grp-cell-check{border-color:rgba(255,255,255,.85)}
 
 /* Анимация кристалльного подарка — 5 секунд, парящие кристаллики + вспышка числа */
 .crystal-gift-fx{position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:20}
@@ -781,8 +799,29 @@ body.select-mode .msel-check{display:flex}
 .rsx{cursor:pointer;color:var(--tx3);padding:3px;font-size:14px}
 .rsx:hover{color:var(--tx)}
 .estrip{display:none;padding:6px 13px 0;background:var(--bg2)}
-.estrip.on{display:flex;align-items:center;gap:7px}
+.estrip.on{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 .esb{border-left:3px solid var(--am);padding:3px 7px;flex:1;font-size:11px;color:var(--am)}
+/* 21 окт 2026 (этап C): лента вложений редактируемого сообщения — превью замены до подтверждения,
+   ход загрузки, отмена выбора. Кнопки не мельче 32px по высоте (пальцем на телефоне). */
+.es-status{margin-left:8px;color:var(--tx3);font-size:10.5px}
+.es-media{flex-basis:100%;display:none;gap:10px;overflow-x:auto;padding:6px 0 4px}
+.es-media.on{display:flex}
+.es-item{position:relative;flex:0 0 auto;width:68px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.es-thumb{width:64px;height:64px;border-radius:10px;overflow:hidden;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:22px;position:relative;color:var(--tx2)}
+.es-thumb img,.es-thumb video{width:100%;height:100%;object-fit:cover;display:block}
+.es-item.picked .es-thumb{outline:2px solid var(--acc);outline-offset:-2px}
+.es-item.error .es-thumb{outline:2px solid var(--rd);outline-offset:-2px}
+.es-badge{position:absolute;left:3px;bottom:3px;font-size:9px;background:rgba(0,0,0,.62);color:#fff;border-radius:6px;padding:1px 4px;pointer-events:none}
+.es-btn{min-height:32px;font-size:11px;color:var(--acc);background:none;border:0;padding:4px 6px;cursor:pointer}
+.es-btn:disabled{opacity:.4;cursor:default}
+.es-undo{position:absolute;top:-6px;right:-4px;width:24px;height:24px;border-radius:50%;background:var(--bg4);color:var(--tx);border:1px solid var(--brd);font-size:12px;line-height:22px;cursor:pointer;padding:0}
+.es-prog{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);color:#fff;font-size:11px;font-weight:600}
+body.edit-busy .sndbtn{opacity:.5;pointer-events:none}
+/* Отметка правки — внутри плашки времени (как в Telegram), а не отдельной строкой под пузырём. */
+.mt-edited{margin-right:4px;opacity:.85}
+/* Видео в сетке альбома (после замены позиции): кадр-обложка обрезается так же, как фото. */
+.grp-cell .grp-video{width:100%;height:100%;object-fit:cover;display:block;background:#000}
+.grp-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;pointer-events:none;color:#fff}
 .attach-preview{display:none;padding:8px 13px;background:var(--bg2);gap:10px;align-items:center}
 .attach-preview.on{display:flex}
 .ap-thumb{width:44px;height:44px;border-radius:9px;overflow:hidden;background:var(--bg3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px}
@@ -2055,8 +2094,11 @@ html[data-theme="mono"] .scbuy{background:rgba(255,255,255,.09) !important;color
 .ctx-head{padding:7px 13px 9px;font-size:11.5px;color:var(--tx3);display:none;letter-spacing:.02em}
 .ctx.has-edited .ctx-head{display:block}
 /* Строки, которые показываются только по ситуации. */
-.ctx-own-item,.ctx-other-item,.ctx-text-item{display:none}
+.ctx-own-item,.ctx-other-item,.ctx-text-item,.ctx-edit-item{display:none}
 .ctx.own-msg .ctx-own-item{display:flex}
+/* 21 окт 2026 (этап C): «Редактировать» — только когда правку разрешит сервер (своё в 48 ч,
+   публикации канала по праву, «Избранное»); сервер всё равно проверяет сам. */
+.ctx.can-edit .ctx-edit-item{display:flex}
 .ctx.other-msg .ctx-other-item{display:flex}
 .ctx.has-text .ctx-text-item{display:flex}
 .ctx-pin-item{display:none}
@@ -2195,6 +2237,12 @@ body.mobile-mode .ctxi svg{width:17px;height:17px}
 .msg-video-wrap{position:relative;margin-bottom:4px;border-radius:12px;overflow:hidden;max-width:260px;background:#000}
 .msg-video{display:block;width:100%;max-height:320px;border-radius:12px}
 .msg-video-wrap.uploading .msg-video{filter:brightness(.5)}
+/* 21 окт 2026: одиночное видео занимает место ещё до метаданных — рамка с постоянной
+   пропорцией (aspect-ratio в разметке, см. videoBoxAr), ролик вписан внутрь на чёрном фоне.
+   Раньше до метаданных у ролика был размер по умолчанию (2:1), потом рамка вырастала до
+   своей пропорции, и лента сдвигалась под пальцем. */
+.msg-video-wrap.vres{width:260px;max-width:100%;max-height:320px}
+.msg-video-wrap.vres .msg-video{position:absolute;inset:0;width:100%;height:100%;max-height:none;object-fit:contain}
 .msg-audio-wrap{margin-bottom:4px;max-width:260px}
 .msg-audio-wrap audio{width:100%;height:36px}
 .poll-wrap{min-width:220px;max-width:280px}
@@ -3124,9 +3172,12 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <div class="rsx" onclick="cancelReply()">✕</div>
       </div>
       <div class="estrip" id="estrip">
-        <div class="esb">✏️ Редактирование</div>
-        <div class="rsx" onclick="cancelEdit()">✕</div>
+        <div class="esb">✏️ Редактирование<span class="es-status" id="estrip-status"></span></div>
+        <div class="rsx" onclick="cancelEdit(true)" aria-label="Отменить правку">✕</div>
+        <!-- 21 окт 2026 (этап C): вложения редактируемого сообщения (у альбома — все позиции) с «Заменить» -->
+        <div class="es-media" id="estrip-media"></div>
       </div>
+      <input type="file" id="edit-replace-inp" style="display:none" onchange="onEditReplacePicked(this)">
 
       <div class="attach-preview" id="attach-preview">
         <div class="ap-thumb" id="ap-thumb"></div>
@@ -3341,6 +3392,11 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(248,113,113,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#f87171" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg></div><div><div class="settings-row-label">Безопасность</div><div class="settings-row-sub" id="security-sub">Пароль, двухфакторная защита</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
+      <!-- 18 окт 2026: только в Android-приложении (мост MonochromeAndroid) — открывает экран приложения; показывает renderSettingsScreen -->
+      <div class="settings-row" id="app-lock-row" style="display:none" onclick="openAppLockSettings()">
+        <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(248,113,113,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#f87171" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><div><div class="settings-row-label">PIN-код и отпечаток</div><div class="settings-row-sub">Блокировка приложения на этом устройстве</div></div></div>
+        <div class="settings-row-arrow">›</div>
+      </div>
     </div>
 
     <div class="settings-section">
@@ -3429,7 +3485,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(var(--acc2-rgb),.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 8 0 1 0 0 16c1.5 0 2-1 1-2s-.3-2 1-2h2a4 4 0 0 0 4-4c0-4.4-3.9-8-8-8z"/><circle cx="8" cy="11" r=".9" fill="#a78bfa" stroke="none"/><circle cx="12" cy="8" r=".9" fill="#a78bfa" stroke="none"/><circle cx="16" cy="11" r=".9" fill="#a78bfa" stroke="none"/></svg></div><div><div class="settings-row-label">Свой стикерпак</div><div class="settings-row-sub">Загрузить и отправить на модерацию</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
-      <div class="settings-row" onclick="exportData()">
+      <div class="settings-row" id="export-row" onclick="exportData()">
         <div class="settings-row-left"><div class="settings-row-ico" style="background:rgba(52,211,153,.1)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div><div><div class="settings-row-label">Экспорт данных</div><div class="settings-row-sub">Сохранить историю чатов</div></div></div>
         <div class="settings-row-arrow">›</div>
       </div>
@@ -3705,7 +3761,7 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
   <div class="ctxi ctx-bulk-item rd" onclick="selDeleteAll()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13"/></svg> Удалить выделенные у всех</div>
   <div class="ctxsep ctx-bulk-item"></div>
   <div class="ctxi" onclick="ctxReply()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 6l-6 6 6 6"/><path d="M21 8v3a4 4 0 0 1-4 4H5"/></svg> Ответить</div>
-  <div class="ctxi ctx-own-item" onclick="ctxEdit()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4L16 5l3 3L8 19l-4 1z"/><path d="M14 7l3 3"/></svg> Редактировать</div>
+  <div class="ctxi ctx-edit-item" onclick="ctxEdit()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4L16 5l3 3L8 19l-4 1z"/><path d="M14 7l3 3"/></svg> Редактировать</div>
   <div class="ctxi ctx-media-item" onclick="ctxDownload()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Скачать</div>
   <div class="ctxi ctx-text-item" onclick="ctxCopy()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="13" rx="1.5"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h3"/></svg> Копировать</div>
   <div class="ctxi ctx-pin-item" onclick="ctxPin()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 15v5"/></svg> Закрепить</div>
@@ -4109,6 +4165,32 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 
 const APP_VERSION = "2.1.0";
 
+// 18 окт 2026: Android-приложение «Монохром» (WebView): мост MonochromeAndroid есть только там
+// (его встраивает приложение, addWebMessageListener). Через мост не передаются ни токен, ни номер,
+// ни данные аккаунта — только признак входа и просьбы открыть что-то снаружи. В обычном браузере и в
+// прежнем TWA моста нет — всё ниже ничего не делает.
+function appBridge(){ try{ const b=window.MonochromeAndroid; return b&&typeof b.postMessage==="function"?b:null; }catch(e){ return null; } }
+function isInAndroidApp(){ return !!appBridge(); }
+function appPost(type, extra){ const b=appBridge(); if(!b) return false; try{ b.postMessage(JSON.stringify(Object.assign({v:1,type:type}, extra||{}))); return true; }catch(e){ return false; } }
+// Вошли / вышли — одно сообщение на загрузку страницы и по одному на каждую смену (то же повторно не шлётся).
+let _androidAuthSent=null;
+function androidAuthChanged(loggedIn, reason){ const v=loggedIn===true; if(v===_androidAuthSent) return; if(appPost("AUTH_STATE_CHANGED",{state:v?"logged_in":"logged_out",reason:reason})) _androidAuthSent=v; }
+// Ссылка наружу: в приложении — внешний браузер (через мост), иначе как раньше — новая вкладка.
+// В приложении ссылку на само приложение (приглашение ?join=…) мост наружу не отдаёт (url_rejected) — открываем
+// её здесь же, как и обычную ссылку в тексте; файл, который ещё отправляется (blob:/data:), — подсказка.
+function openOutside(url){
+  if(isInAndroidApp()){ try{ const u=new URL(String(url), location.href);
+    if(u.protocol!=="https:" && u.protocol!=="http:"){ showToast("⏳ Файл ещё отправляется — откройте после загрузки"); return; }
+    if(u.origin===location.origin && u.pathname.startsWith(location.pathname.replace(/[^/]*$/,""))){ location.href=u.href; return; } }catch(e){} }
+  // 20 окт 2026: noopener — внешняя страница не получает window.opener (и не подменит вкладку Монохрома).
+  if(!appPost("OPEN_EXTERNAL_URL",{url:String(url)})) window.open(url,"_blank","noopener,noreferrer");
+}
+// Ответы приложения. Важен один: страницу оплаты открыть не удалось — ожидание оплаты снимаем,
+// окно покупки возвращаем в исходное состояние (можно попробовать снова).
+try{ const b=appBridge(); if(b&&typeof b.addEventListener==="function") b.addEventListener("message",(ev)=>{ let d=null; try{ d=JSON.parse(ev.data); }catch(e){ return; }
+  // rate_limited — повторное нажатие в ту же секунду: первая страница оплаты уже открыта, ожидание не снимаем.
+  if(d&&d.type==="RESULT"&&d.for==="OPEN_PAYMENT"&&d.ok===false&&d.error!=="rate_limited"){ try{ stopTinkoffPolling(); resetBuyModalUI(); resetVipDirectModalUI(); }catch(e){} showToast("❌ Не удалось открыть страницу оплаты"); } }); }catch(e){}
+
 // Локальное кэширование медиафайлов (голосовые/видео/кружочки/файлы/фото) —
 // как в Telegram, скачали один раз, дальше берём из браузера, не с сервера
 if("serviceWorker" in navigator){
@@ -4329,6 +4411,9 @@ function loadState(){
       // должны переживать перезагрузку в принципе — всегда сбрасываем.
       S.chatSelectMode = false;
       S.selectedChats = [];
+      // 21 окт 2026 (этап C): режим правки тоже временный — сеанс правки после перезапуска не
+      // восстанавливается, а оставшийся editingId заставил бы «Отправить» вести себя как правка.
+      S.editingId = null;
       // Эти каталоги ВСЕГДА берутся из кода (не из localStorage),
       // чтобы обновления подарков/планов сразу появлялись у всех пользователей.
       // Пользовательские данные (баланс, мои подарки, чаты) при этом сохраняются.
@@ -4501,6 +4586,12 @@ function deepMerge(defaults, saved){
 const DEVICE_FIELDS=new Set(["version","lang","theme","currency","rate","playbackSpeed","recHintShown","sbWidth","mpMode","tab","notifSettings","gifts_catalog","packs","coinPkgs","vip_plans","draftsByUser","owner"]);
 const ACCOUNT_STORE_PREFIX="nexus_v2_u_";
 let accountGen=0;
+// 20 окт 2026: кто в контактах — по списку сервера (GET /api/contacts), а не по местной пометке
+// ch.isContact: на новом устройстве (и в Android-приложении) её нет, и у давних контактов появлялись
+// «Добавить в контакты» и «Пожаловаться и заблокировать». Пока список не пришёл — этих кнопок нет;
+// «Удалить» у пустого чата — только когда сервер подтвердил, что сообщений в нём нет.
+let contactIdsReady=false, contactIds=new Set(), _contactsRetryT=0, _contactsRetryN=0, _contactsSeq=0, _contactsApplied=0;
+const _historyChecked=new Set();
 function accountIdOf(u){ const id=u && u.id; return id!=null && id!=="" ? String(id) : null; }
 function accountChangedError(){ const e=new Error("Аккаунт на устройстве сменился"); e.accountChanged=true; return e; }
 function accountSlice(){ const o={}; for(const k in S) if(!DEVICE_FIELDS.has(k)) o[k]=S[k]; return o; }
@@ -4601,6 +4692,7 @@ function switchAccount(newUid){
 function resetAccountRuntime(){
   const тихо=(f)=>{ try{ f(); }catch(e){} };
   тихо(()=>{ _readQueue=new Map(); _dwellSince=new Map(); clearTimeout(_dwellTimer); _dwellTimer=null; });
+  тихо(()=>{ contactIdsReady=false; contactIds=new Set(); clearTimeout(_contactsRetryT); _contactsRetryT=0; _contactsRetryN=0; _historyChecked.clear(); _linkCache.clear(); });
   тихо(()=>{ presenceByUser.clear(); presenceWsAt.clear(); });
   тихо(()=>{ _viewedThisSession=new Set(); storySeenNow.clear(); });
   тихо(()=>{ _lastRenderedChat=null; _lastMsgCount={}; _msgByIdAt=null; });
@@ -4612,6 +4704,7 @@ function resetAccountRuntime(){
   тихо(()=>{ if(srchResults.length || el("srch-overlay")?.classList.contains("on")) closeChatSearchNow(); });
   тихо(()=>{ myReceivedGifts=[]; myGiftGroups=[]; uiProfileGifts=[]; mpProfileGifts=[]; birthdayNotifQueue=[]; officialPersonalMessages=[]; });
   тихо(()=>{ giftVipRecipient=null; giftRecipient=null; curMemberId=null; reportState=null; crystalGiftTargetMsg=null; supportChatId=null; botFatherState=null; });
+  тихо(()=>{ crystalGiftLost=null; vipBuyLost=null; vipBuyBusy=false; _rxnQueue.clear(); });
   тихо(()=>{ if(storyState && storyState.timer){ clearTimeout(storyState.timer); clearInterval(storyState.timer); } storyState={items:[], index:0, timer:null, progress:0}; });
   тихо(()=>{ document.body.classList.remove("select-mode","chat-select-mode"); el("select-bar")?.classList.remove("on"); el("chat-select-bar")?.classList.remove("on"); });
   // Форма входа, регистрации и 2FA: номер, пароль, коды, секрет TOTP и
@@ -4651,6 +4744,7 @@ function clearChatView(){
   const ra=el("rpav"); if(ra){ ra.innerHTML=""; ra.style.background=""; }
   const rs=el("rpst"); if(rs) rs.textContent="";
   ["rp-media","rp-stickers"].forEach(id=>{ const x=el(id); if(x) x.innerHTML=""; });
+  try{ renderUnknownBar(null); }catch(e){}   // 20 окт 2026: кнопки контакта прежнего собеседника
   document.querySelector(".layout")?.classList.remove("chat-open");
   el("rp")?.classList.remove("mobile-open");
 }
@@ -4669,10 +4763,12 @@ function unwindAllWindows(){
   navStack.length=0;
   selNavCount=0; selNavDrain=0; _selNavReplaceTop=false;
   _navPendingOpen=null; _navPendingLayer=null; _navPendingSelectExit=false; _navPendingFn=null; _rootTabPending=null; _navAfterDrain=null;
+  _fmPending=null;   // запись закрытого касанием меню «не отправлено» снята вместе со всеми
   // 9 окт 2026: слив уже летит (второй сброс в его окне — например, конец
   // сессии сразу после тапа по уведомлению): его popstate снимет всё сам,
   // ещё один переход увёл бы за первую запись — со страницы.
-  const шагов=_navDrainAll ? 0 : navLive-(_navBackInFlight?1:0);
+  // 20 окт 2026: в полёте может быть и несколько шагов сразу (navBackSteps — меню с палитрой реакций).
+  const шагов=_navDrainAll ? 0 : navLive-(_navBackInFlight?Math.max(1,_navBackSteps):0);
   if(шагов>0){ _navDrainAll=true; _navBackInFlight=true; history.go(-шагов); }
   document.querySelectorAll(".movl.on").forEach(w=>{ clearTimeout(w._closeMTimer); w.classList.remove("on","closing"); w.querySelector(".modal")?.classList.remove("closing"); });
   document.querySelectorAll(".screen.on").forEach(s=>{ if(s.id!=="screen-main") s.classList.remove("on","closing"); });
@@ -4713,7 +4809,11 @@ function nextId(){ return ++_idSeq; }
 // не подходит — это просто локальный счётчик, не защищённый от совпадений
 // между разными вкладками/устройствами.
 function genClientMsgId(){
-  return (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36)+Math.random().toString(36).slice(2)));
+  if(crypto.randomUUID) return crypto.randomUUID();
+  // Старый WebView без randomUUID: тот же формат UUID v4 из getRandomValues (сервер принимает только UUID).
+  const b=crypto.getRandomValues(new Uint8Array(16)); b[6]=(b[6]&0x0f)|0x40; b[8]=(b[8]&0x3f)|0x80;
+  const h=[...b].map(x=>x.toString(16).padStart(2,"0")).join("");
+  return h.slice(0,8)+"-"+h.slice(8,12)+"-"+h.slice(12,16)+"-"+h.slice(16,20)+"-"+h.slice(20);
 }
 function colBg(i){ return COLS[i%COLS.length]; }
 // Для CSS-свойства color (текст) градиент из COLS не подходит — браузер
@@ -5347,11 +5447,33 @@ function wsHandleMessage(msg){
         try{
           const открыт=S.chats.find(c=>c.id===S.chat);
           if(открыт && peerOf(открыт)) refreshChatPeerInfo(открыт);
-          if((S.contacts||[]).length) loadContacts();
+          if((S.contacts||[]).length || !contactIdsReady) loadContacts();
         }catch(e){}
       }
       wsHasAuthedOnce = true;
+      // 21 окт 2026 (этап C): правки, пропущенные без связи, — по журналу событий
+      // сервера (курсор), при каждом подтверждённом входе сокета, включая первый.
+      syncEditsCatchUp();
       break;
+
+    // 21 окт 2026 (этап C): правка сообщения (текст и/или вложение). Шлёт ТОЛЬКО сервер,
+    // после записи, на все устройства всех, кто видит сообщение, — в том числе автору.
+    // Применяется по ревизии: позднее старое событие не откатывает более новую версию.
+    case "message.edited": {
+      const p=msg.payload||{};
+      if(p.chatId==null) break;
+      // Сообщений чата в памяти нет (на этом устройстве его не открывали) — превью всё равно обновляем.
+      const changed=S.messages[p.chatId] ? applyServerMsgState(p.chatId, p) : false;
+      let превью=false;
+      if(p.lastMessage!==undefined){ const ch=S.chats.find(c=>c.id===p.chatId); if(ch && ch.prev!==p.lastMessage){ ch.prev=p.lastMessage; превью=true; } }
+      if(changed || превью){
+        saveState();
+        if(changed && S.chat===p.chatId) renderMsgs();
+        renderChats();
+        if(changed && editSession){ editAdoptServerText(editSession, p.id); renderEditStrip(); }
+      }
+      break;
+    }
 
     // Прикладной кадр живости от сервера (раз в 30 секунд). Сам факт его
     // получения и есть доказательство, что путь жив. Первый такой кадр и
@@ -5461,6 +5583,7 @@ function wsHandleMessage(msg){
         time: time ? new Date(time).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : now(),
         ts: time ? new Date(time).getTime() : Date.now(),
         read: S.chat === chatId,
+        rev: 0,   // этап C: новое сообщение ещё не правилось
         groupId: groupId || null
       };
       // "Переслано от X" — раньше вообще не долетало вживую (только после
@@ -5538,6 +5661,16 @@ function wsHandleMessage(msg){
     // при обычной отправке), это событие идёт только самому автору, потому
     // что у отложенного сообщения нет локальной оптимистичной копии — оно
     // не показывалось в ленте до этого момента вообще.
+    // 21 окт 2026: отложенное сообщение не опубликовано — у автора к сроку не осталось права
+    // писать в этот чат (исключили, блокировка, запрет, чат закрыт); сервер его снял.
+    case "message.scheduled_failed": {
+      const { chatId } = msg.payload||{};
+      const ch=S.chats.find(c=>c.id===chatId);
+      showToast("🕓 Отложенное сообщение"+(ch?" в «"+chatDisplayName(ch)+"»":"")+" не отправлено: писать в этот чат сейчас нельзя");
+      if(S.scheduledModalChatId===chatId) renderScheduledList();
+      break;
+    }
+
     case "message.scheduled_delivered": {
       const { chatId, id, text, time, mediaUrl, mediaType, fileName, fileSize, spoiler, waveform } = msg.payload;
       if(!S.messages[chatId]) S.messages[chatId]=[];
@@ -6576,7 +6709,7 @@ function showVerBanner(){ const b=el("ver-banner"); if(!b) return; const t=el("v
 function hideVerBanner(){ el("ver-banner")?.classList.remove("on"); }
 function loginOK(){
   try{ stopOTP(); }catch(e){}   // 16 окт 2026: вход выполнен — отсчёт повтора кода снят
-  S.loggedIn=true; saveState();
+  S.loggedIn=true; saveState(); androidAuthChanged(true,"login");   // 18 окт 2026: Android-приложению — вошли (пароль, 2FA, код, регистрация)
   // Следующая истёкшая сессия должна обрабатываться снова.
   _sessionExpiredShown=false;
   const заметкаСессии=el("auth-session-note"); if(заметкаСессии) заметкаСессии.style.display="none";
@@ -7179,6 +7312,18 @@ async function loadChatsFromDB(){
       const existing = S.chats.find(c => c.id === dbChat.id);
       const mutedFromServer = !!(dbChat.muted_until && new Date(dbChat.muted_until) > new Date());
       if(existing){
+        // 22 окт 2026: тип чата — с сервера. Первое живое сообщение неизвестного чата (message.new) создаёт
+        // заготовку «личный чат с автором» (type "personal", withUserId — автор). Для группы и канала она
+        // исправляется здесь: иначе группа так и выглядела бы личным чатом с автором, а личная блокировка автора
+        // (loadBlockedUsers сверяет withUserId) прятала бы всю группу.
+        if(dbChat.type && existing.type!==dbChat.type){
+          existing.type=dbChat.type;
+          if(!isPersonal){
+            delete existing.withUserId; existing.blocked=false;
+            existing.nm=dbChat.name||existing.nm; existing.ini=(existing.nm||"Ч").slice(0,2).toUpperCase(); existing.avatar="";
+            if(!existing.dbId) existing.dbId=dbChat.id;
+          }
+        }
         // 7 окт 2026: '' с сервера — «все сообщения удалены», а не «нет
         // данных»: раньше пустое превью оставляло на экране удалённый текст.
         existing.prev = dbChat.last_message!=null ? dbChat.last_message : existing.prev;
@@ -7423,6 +7568,158 @@ async function markChatAsRead(chatId, ids){
   }
 }
 
+// ══════════════════════════════════════════════════════════════════
+// 21 окт 2026 (этап C): правка сообщений — источник истины сервер (правило 16).
+// Любое серверное состояние сообщения (ответ на правку, событие message.edited,
+// история, догон по журналу) применяется ОДНОЙ функцией по ревизии: более старое
+// никогда не перезаписывает более новое. m.rev — серверная ревизия (edit_revision).
+// ══════════════════════════════════════════════════════════════════
+const EDIT_WINDOW_MS=48*3600*1000;   // личные чаты и группы; сервер проверяет сам
+function msgServerRev(m){ return Number.isFinite(m && m.rev) ? m.rev : -1; }
+function msgMediaUrl(m){ return (m && (m.img || m.video || (m.audio&&m.audio.url) || (m.file&&m.file.url) || (m.voice&&m.voice.url) || (m.videoCircle&&m.videoCircle.url))) || null; }
+// Строка истории (GET /api/messages/:chatId) → состояние в том же виде, что у события.
+function stateFromDbRow(r){
+  return { id:r.id, revision:Number(r.edit_revision)||0, editedAt:r.edited_at||null, text:r.text||"", msgType:r.type||"text",
+    mediaUrl:r.media_url||null, mediaType:r.media_type||null, fileName:r.file_name||null, fileSize:r.file_size==null?null:Number(r.file_size),
+    spoiler:!!r.spoiler, groupId:r.group_id||null };
+}
+// Поля вложения сообщения — заново по состоянию сервера (тот же разбор, что у истории).
+// Сервер принял сообщение (первая отправка или повтор): ревизия — с сервера, местная отметка
+// «изм.» (правка 1.2 неотправленного сообщения) снимается — сервер правку не подтверждал.
+function adoptSentMessage(m, row){
+  if(!m || !row || !row.id) return;
+  m.dbId=row.id;
+  if(!(Number(row.edit_revision)>0)){ m.rev=0; m.edited=!!row.edited_at; m.editedAt=row.edited_at||null; }
+}
+function applyMediaFields(m, st){
+  const прежнийГолос=m.voice;
+  ["img","video","audio","voice","videoCircle","file","spoiler","spoilerRevealed","imgW","imgH","vidW","vidH"].forEach(k=>{ delete m[k]; });
+  _vidBoxAr.delete(String(m.id));
+  if(!st.mediaUrl) return;
+  const t=st.mediaType;
+  if(t==="image"){ m.img=st.mediaUrl; if(st.spoiler) m.spoiler=true; }
+  else if(t==="video"){ m.video=st.mediaUrl; if(st.spoiler) m.spoiler=true; }
+  else if(t==="audio") m.audio={url:st.mediaUrl, name:st.fileName||"Аудио"};
+  else if(t==="voice") m.voice={url:st.mediaUrl, duration:recDurationFromName(st.fileName), waveform:(прежнийГолос&&прежнийГолос.waveform)||null, size:st.fileSize||0};
+  else if(t==="videoCircle") m.videoCircle={url:st.mediaUrl, duration:recDurationFromName(st.fileName)};
+  else m.file={name:st.fileName||"Файл", url:st.mediaUrl, size:st.fileSize||0};
+}
+// 22 окт 2026: сервер отдал сообщение (история, догон) — значит, этому человеку оно видно. Пометку «удалено у
+// меня», которую поставила сверка истории, снимаем: прежний сервер прятал от заблокировавшего сообщения участника
+// и в ГРУППЕ (правило: личная блокировка общую историю группы не меняет), и устройство, открывавшее группу при нём,
+// иначе так и не показало бы их. Своё удаление «у меня» на этом устройстве (m._delMine) не трогаем: его запрос мог
+// ещё не дойти до сервера. true — сообщение снова видно.
+function unhideIfServerShows(m){
+  if(!m || !m._deletedForMe || m._deletedForAll || m._delMine) return false;
+  delete m._deletedForMe; return true;
+}
+// true — сообщение изменилось (нужна перерисовка и сохранение).
+function applyServerMsgState(chatId, st){
+  const list=S.messages[chatId]; if(!list || !st || !st.id) return false;
+  const m=list.find(x=>x.dbId===st.id); if(!m) return false;
+  const rev=Number(st.revision)||0, cur=msgServerRev(m);
+  if(rev<=cur) return false;   // старое или то же — не трогаем (позднее событие не откатывает новое)
+  // Ревизия на этом устройстве неизвестна, а на сервере сообщение не правилось:
+  // локальная копия и есть оригинал — только запоминаем ревизию. Правка, сделанная
+  // раньше лишь на устройстве (до этапа C), при этом сбрасывается к серверной.
+  if(cur===-1 && rev===0 && !m.edited){ m.rev=0; return false; }
+  m.rev=rev;
+  if(m.t!=="sk" && m.t!=="gift" && m.t!=="sys" && !m.poll && !m.contact){
+    if(st.msgType==="e2e"){
+      m.e2e=true; m.tx="🔐 …";
+      decryptE2EText(chatId, st.text).then(plain=>{
+        if(msgServerRev(m)!==rev) return;   // пока расшифровывали, пришла ещё более новая версия
+        m.tx=plain!=null ? plain : "🔒 Сообщение недоступно на этом устройстве"; m.e2eFailed=(plain==null);
+        if(S.chat===chatId) renderMsgs(); saveState();
+      });
+    } else m.tx=st.text||"";
+  } else if(cur===-1 && m.edited && (m.poll || m.contact)) m.tx=st.text||"";   // местная «правка» 1.2 под опросом/контактом
+  if((st.mediaUrl||null)!==msgMediaUrl(m) || (!!st.spoiler)!==(!!m.spoiler)) applyMediaFields(m, st);
+  m.edited=!!st.editedAt; m.editedAt=st.editedAt||null;
+  return true;
+}
+// Состояния и «удалённые» из догона: применить, удалённые — спрятать, как это делает сверка истории.
+function applySyncStates(states, gone){
+  const затронуты=new Set();
+  const поDb=new Map();
+  for(const [cid, list] of Object.entries(S.messages||{})) for(const m of (list||[])) if(m && m.dbId) поDb.set(m.dbId, cid);
+  for(const st of (states||[])){
+    const cid=st.chatId!=null && S.messages[st.chatId] ? st.chatId : поDb.get(st.id);
+    if(cid==null) continue;
+    if(unhideIfServerShows((S.messages[cid]||[]).find(x=>x.dbId===st.id))) затронуты.add(String(cid));
+    if(applyServerMsgState(cid, st)) затронуты.add(String(cid));
+  }
+  for(const id of (gone||[])){
+    const cid=поDb.get(id); if(cid==null) continue;
+    const m=(S.messages[cid]||[]).find(x=>x.dbId===id);
+    if(m && !m._deletedForMe && !m._deletedForAll){ m._deletedForMe=true; затронуты.add(String(cid)); }
+  }
+  if(затронуты.size){ saveState(); if(S.chat!=null && затронуты.has(String(S.chat))) renderMsgs(); renderChats(); if(editSession) renderEditStrip(); }
+  return затронуты.size;
+}
+// Догон правок, пропущенных без связи: журнал событий сервера с курсором S.editCursor.
+// Курсор старше очищенного журнала — reset: сверяем ревизии всех сообщений в памяти.
+let _editSyncRunning=false;
+// Есть ли правка на сервере: null — ещё не знаем, true — журнал ответил, false — старый сервер
+// (404) или миграция не выполнена (disabled). Без true «Редактировать» в серверных чатах не показывается.
+let editServerOk=null;
+async function syncEditsCatchUp(){
+  if(_editSyncRunning || !getToken() || !S.loggedIn) return;
+  _editSyncRunning=true; const g=accountGen;
+  try{
+    for(let i=0;i<30;i++){
+      const since=S.editCursor;
+      const первый = since==null || since==="";
+      const r=await apiEditRequest("GET", "/api/messages/sync/updates"+(первый?"":("?since="+encodeURIComponent(since)+"&limit=200")));
+      if(g!==accountGen) return;
+      if(r.status===404){ editServerOk=false; return; }
+      const d=r.data;
+      if(r.status!==200 || !d) return;                      // сеть, 5xx — узнаем при следующем входе
+      if(d.disabled){ editServerOk=false; return; }
+      editServerOk=true;
+      // Сверка не завершилась (ошибка сервера на пачке, обрыв) — курсор не сохраняем: следующий вход
+      // повторит её (первая — только для ещё не сверенных сообщений).
+      if(d.reset){ const ok=await revalidateCachedMessages(g, false); if(g!==accountGen || !ok) return; S.editCursor=d.cursor; saveState(); return; }
+      // Первый курсор (обновление с 1.2 или новый вход): журнал не говорит, что менялось раньше, —
+      // один раз сверяем ревизии всего, что лежит в памяти.
+      if(первый){ const ok=await revalidateCachedMessages(g, true); if(g!==accountGen || !ok) return; }
+      applySyncStates(d.messages, d.gone);
+      if(d.cursor!=null){ S.editCursor=String(d.cursor); saveState(); }
+      if(!d.more) break;
+    }
+  }catch(e){ if(!(e && e.accountChanged)) console.warn("sync edits:", e && e.message); }
+  finally{ _editSyncRunning=false; }
+}
+// → true, если все пачки сверены. onlyUnknown — только сообщения с неизвестной ревизией (первая
+// сверка: после обрыва повтор продолжает с непроверенных, проверенные уже знают ревизию).
+async function revalidateCachedMessages(g, onlyUnknown){
+  const ids=[];
+  for(const [cid, list] of Object.entries(S.messages||{})) if(isServerChatId(cid)) for(const m of (list||[])) if(m && m.dbId && !m._deletedForAll && !m._deletedForMe && (!onlyUnknown || msgServerRev(m)===-1)) ids.push(m.dbId);
+  for(let i=0;i<ids.length;i+=500){
+    const d=await apiPostRaw("/api/messages/sync/revisions", {ids:ids.slice(i, i+500)});
+    if(g!==accountGen) return false;
+    if(!(d.status===200 && d.data && !d.data.disabled)) return false;   // пачка не сверена — не считаем сверку завершённой
+    applySyncStates(d.data.messages, d.data.gone);
+  }
+  return true;
+}
+// Запрос со статусом ответа (правке нужно различать 409/403/сеть); 401 и смена аккаунта — как у apiPost.
+async function apiEditRequest(method, path, body){
+  const t=getToken(), g=accountGen;
+  const headers={"Authorization":"Bearer "+(t||"")}; if(body!==undefined) headers["Content-Type"]="application/json";
+  const ctl=(typeof AbortController==="function") ? new AbortController() : null;
+  const тайм=ctl ? setTimeout(()=>{ try{ ctl.abort(); }catch(e){} }, 30000) : null;
+  let res;
+  try{ res=await fetch(API_URL+path, {method, headers, body: body!==undefined ? JSON.stringify(body) : undefined, signal: ctl ? ctl.signal : undefined}); }
+  finally{ if(тайм) clearTimeout(тайм); }
+  if(res.status===401) onAuthorizedRequest401(path, t);
+  let data=null; try{ data=await res.json(); }catch(e){ data=null; }
+  if(t && g!==accountGen) throw accountChangedError();
+  if(data) checkBannedResponse(data);
+  return { status:res.status, data:data||{} };
+}
+const apiPostRaw=(path, body)=>apiEditRequest("POST", path, body);
+
 async function loadMessagesFromDB(chatId){
   if(!chatId || chatId === 99999 || chatId === 88888 || chatId === 77777 || chatId === FEEDBACK_CHAT_ID) return;
   if(S.chat===chatId){ _awaitingDb=chatId; _awaitingDbAt=performance.now(); armSettleTimer(chatId); }   // 15 сен 2026: пока ждём — «новые влезают в экран» не решаем
@@ -7453,6 +7750,7 @@ async function loadMessagesFromDB(chatId){
     if(!data.messages || !data.messages.length){
       // 7 окт 2026: «сообщений нет» — известные устройству удалены на сервере.
       if(Array.isArray(data.messages)){
+        markChatHistoryChecked(chatId);   // 20 окт 2026: сервер подтвердил — пустой чат
         let скрыто=false;
         for(const m of (S.messages[chatId]||[])) if(m.dbId && известныеДо.has(m.dbId) && m.t!=="sys" && !m._deletedForAll && !m._deletedForMe){ m._deletedForMe=true; скрыто=true; }
         if(скрыто){ saveState(); if(S.chat===chatId) renderMsgs(); }
@@ -7499,8 +7797,14 @@ async function loadMessagesFromDB(chatId){
     // мы открывали такой чат на две тысячи пикселей выше с числом во всю
     // историю (одиннадцатый круг, races F4). Сама опора снята до запроса, выше.
     for(const dbMsg of data.messages){
-      // Не дублируем уже загруженные
-      if(S.messages[chatId].find(m => m.dbId === dbMsg.id)) continue;
+      // Не дублируем уже загруженные. 21 окт 2026 (этап C): но правку (текст или вложение),
+      // сделанную на другом устройстве или пока это было не в сети, применяем — по ревизии.
+      const known=S.messages[chatId].find(m => m.dbId === dbMsg.id);
+      if(known){
+        if(unhideIfServerShows(known)) changedAnything=true;   // 22 окт 2026: см. unhideIfServerShows
+        if(applyServerMsgState(chatId, stateFromDbRow(dbMsg))) changedAnything=true;
+        continue;
+      }
       const isMe = dbMsg.user_id === S.user?.id;
       // 🔒 E2E-рукопожатие — не показываем как сообщение, только (если это
       // не наше собственное) считаем по нему общий секрет шифрования —
@@ -7555,6 +7859,7 @@ async function loadMessagesFromDB(chatId){
         read: isMe ? !!dbMsg.read_at : true,
         edited: !!dbMsg.edited_at,
         editedAt: dbMsg.edited_at || null,
+        rev: Number(dbMsg.edit_revision)||0,   // этап C: серверная ревизия правок
         groupId: dbMsg.group_id || null
       };
       // forwarded_author_name/forwarded_from_chat_* приходят пустыми с сервера,
@@ -7702,12 +8007,13 @@ async function loadMessagesFromDB(chatId){
         arr.sort((a,b)=>{ const x=idx.get(a), y=idx.get(b); return (key[x]-key[y])||(x-y); });
       }
     }
+    _historyChecked.add(String(chatId));   // 20 окт 2026: история с сервера получена (панель — ниже, в renderMsgs)
     const unreadJump = S.chat===chatId && afterChatDbLoad(chatId, addedKeys, (data.messages||[]).filter(r=>r && r.created_at).length);
     if(_openLoadChat===chatId) _openLoadChat=null;
     if(changedAnything){ saveState(); if(S.chat===chatId) renderMsgs(); }
     else if(unreadJump) renderMsgs();
     else if(S.chat===chatId) _forceBottomRendersLeft=0;
-    if(S.chat===chatId){ updateE2EButton(ch); const mc=el("msgs"); if(mc) msgsUnreadSettle(mc); }
+    if(S.chat===chatId){ updateE2EButton(ch); renderUnknownBar(ch); const mc=el("msgs"); if(mc) msgsUnreadSettle(mc); }
   } catch(e){
     console.warn("loadMessagesFromDB error:", e);
     if(_awaitingDb===chatId){ _awaitingDb=null; const mc=S.chat===chatId && el("msgs"); if(mc) msgsUnreadSettle(mc); }
@@ -7770,7 +8076,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-16 выпуск 1, ред. 18: повторная отправка SMS-кода (кнопка после отсчёта, отсчёт по сроку), читаемые раскрывающиеся списки, инструкция для запрещённых уведомлений; уведомления на телефон — Web Push при свёрнутом и закрытом приложении, плашка «Включить уведомления», уведомление и в открытый чат свёрнутого приложения; поле номера — простая модель на libphonenumber-js (max), «+код» уходит из поля сразу, код без «+» одинаково при наборе и вставке, в поле только национальная часть, номер телефона по стране и «+код», Казахстан без «8», одна поддержка, онлайн только со слов сервера, «Выйти» завершает сессию, закрепление через сервер, уведомление открывает чат поверх всего, окно удаления — на свой чат, вложение своего чата, бренд Монохром, данные и черновики по аккаунтам, удаление и превью с сервера, баннер версии, номер только взаимным";
+const BUILD_TAG = "2026-10-22 выпуск 1, ред. 25 (локально): Android-приложение на WebView, групповая история — сообщения участника, которого вы заблокировали, в группе видны и после перезагрузки (снимается прежняя пометка «удалено у меня»), группа не прячется как личный чат автора; финальная проверка — подарок списывается только при отправке, повтор покупок без второго списания, реакции и голоса без повторов; защитная партия — отказ в отправке при блокировке и без права писать (без автоповторов), снятое отложенное сообщение, одиночное видео с зарезервированным местом; этап C — правка сообщений на сервере (текст и подписи, замена фото/видео/файла/музыки и позиций альбома, 48 часов, публикации каналов по праву), догон правок по журналу событий; правки 1.2 — плотная мозаика альбома (строки 2+3, 3+4…, обрезка миниатюр), окно «Удалить» больше не гаснет под меню, «?» и кружок выбора в альбоме на телефоне, меню «не отправлено» закрывается «назад», одно фото альбома — в своей пропорции, местные пометки контактов не затираются; правки 1.1 — контакты по списку сервера (без лишних «Добавить в контакты»), ссылки www.… и домен.зона в сообщениях; мост MonochromeAndroid (вход и выход, PIN-код и отпечаток, оплата и ссылки во внешнем браузере, загрузки); сайт и TWA без изменений; повторная отправка SMS-кода (кнопка после отсчёта, отсчёт по сроку), читаемые раскрывающиеся списки, инструкция для запрещённых уведомлений; уведомления на телефон — Web Push при свёрнутом и закрытом приложении, плашка «Включить уведомления», уведомление и в открытый чат свёрнутого приложения; поле номера — простая модель на libphonenumber-js (max), «+код» уходит из поля сразу, код без «+» одинаково при наборе и вставке, в поле только национальная часть, номер телефона по стране и «+код», Казахстан без «8», одна поддержка, онлайн только со слов сервера, «Выйти» завершает сессию, закрепление через сервер, уведомление открывает чат поверх всего, окно удаления — на свой чат, вложение своего чата, бренд Монохром, данные и черновики по аккаунтам, удаление и превью с сервера, баннер версии, номер только взаимным";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -7796,7 +8102,11 @@ function renderSettingsScreen(){
   if(el("settings-bio"))el("settings-bio").textContent=u.bio||"";
   if(el("settings-phone"))el("settings-phone").textContent=u.phone||S.phone||"";
   if(el("settings-ph-disp"))el("settings-ph-disp").textContent=u.phone||S.phone||"";
-  if(el("build-tag-disp"))el("build-tag-disp").textContent=BUILD_TAG;
+  // 18 окт 2026: в Android-приложении — пометка к сборке (видно, что мост на месте), строка PIN-кода
+  // и отпечатка; «Экспорт данных» скрыт (файл blob: приложение сохранить не может). display, не hidden:
+  // .settings-row{display:flex} перебивает атрибут hidden.
+  if(el("build-tag-disp"))el("build-tag-disp").textContent=BUILD_TAG+(isInAndroidApp()?" · приложение Android":"");
+  { const r=el("app-lock-row"); if(r) r.style.display=isInAndroidApp()?"":"none"; const x=el("export-row"); if(x) x.style.display=isInAndroidApp()?"none":""; }
   // Строка отладки не должна ломать экран настроек ни при каком состоянии.
   try{ if(el("stories-diag-disp")){
     const узлы=[...document.querySelectorAll("#stories-row .story-av-wrap")];
@@ -8178,7 +8488,8 @@ function openChat(id,opts){
   // старте приложения отметка уходила даже за чат, лежащий ЗА списком чатов.
   // Теперь прочитанными становятся только сообщения, которые правда побывали
   // на экране (см. msgsTrackDwell).
-  if(id !== 99999 && id !== 88888 && typeof id === "string") { loadMessagesFromDB(id); refreshChatPeerInfo(ch); }
+  // 20 окт 2026: «чат пуст» — заново по ответу этой загрузки (пока чат был закрыт, в него могли написать).
+  if(id !== 99999 && id !== 88888 && typeof id === "string") { _historyChecked.delete(String(id)); loadMessagesFromDB(id); refreshChatPeerInfo(ch); }
   // И счётчик непрочитанных больше не обнуляем «на всякий случай»: остаток
   // должен быть правдивым, иначе при выходе из чата он мигал бы 0 → N.
   // Уменьшаем его ровно настолько, сколько сообщений сервер подтвердил
@@ -8335,11 +8646,45 @@ let navStack=[];
 // history.back(), когда своей записи уже не было. На Android такой «назад»
 // уходит мимо страницы — приложение сворачивается.
 let navLive=0;
+// 20 окт 2026 (партия 1.2): запись меню сообщения (своя обёртка на каждое открытие, см. showCtx).
+let ctxNavFn=null;
+// 20 окт 2026: запись меню «не отправлено», которое уже закрыли касанием мимо него (см. showFailedMsgMenu):
+// ждёт, снимется ли через историю или её заберёт следующее окно (долгое нажатие, правый клик).
+let _fmPending=null;
 function pushNavEntry(closeFn){
   if(typeof chatLpAbort==="function") chatLpAbort();   // смена экрана — касание строки больше не долгое нажатие
+  // Меню «не отправлено» закрыто касанием, с которого началось это окно (выбор долгим нажатием, меню
+  // сообщения правой кнопкой): окно забирает его запись, как ниже у меню сообщения.
+  if(_fmPending && !_navBackInFlight && !_navDrainAll && navLive>0 && navStack[navStack.length-1]===_fmPending){
+    navStack[navStack.length-1]=closeFn; _fmPending=null;
+    return;
+  }
+  // Меню сообщения открыто и его запись наверху, а пункт меню открывает следующее окно («Удалить»,
+  // «Переслать», «Пожаловаться», 💎): окно ЗАБИРАЕТ запись меню, меню закрывается сразу, без истории.
+  // Раньше окно клало свою запись поверх, а меню затем закрывалось через history.back(): асинхронный
+  // popstate снимал верхнюю запись — то есть только что открытое окно (оно гасло само, меню оставалось).
+  // Здесь нет ни back(), ни pushState, ни таймера: запись истории та же, «назад» закроет окно, следующее — чат.
+  // Палитра реакций — часть меню, она ложится поверх, как раньше.
+  if(ctxNavFn && closeFn!==ctxNavFn && closeFn.navModalId!=="rxn-expanded" && closeFn.navModalId!=="rxn-picker"
+     && !_navBackInFlight && !_navDrainAll && navLive>0 && navStack[navStack.length-1]===ctxNavFn && el("ctx")?.classList.contains("on")){
+    navStack[navStack.length-1]=closeFn;
+    ctxNavFn.navSpent=true;
+    closeCtx();
+    const rp=el("rxn-picker");   // капсула не доигрывает исчезновение поверх окна
+    if(rp){ if(typeof cancelCloseMotion==="function") cancelCloseMotion(rp); rp.classList.remove("on","expanded"); }
+    return;
+  }
   navStack.push(closeFn);
   history.pushState({nexusNav:navStack.length},"");
   navLive++;
+}
+// Снять сразу n верхних записей одним переходом истории (меню + раскрытая палитра реакций):
+// один popstate закрывает всю группу. Своих записей в истории меньше n — закрыть напрямую.
+let _navBackSteps=0;
+function navBackSteps(n){
+  if(n<=1){ popNavEntry(); return; }
+  if(navLive<n){ for(let k=0;k<n && navStack.length;k++){ const f=navStack.pop(); if(f && !f.navSpent) f(); } navLive=Math.min(navLive, navStack.length); return; }
+  _navBackInFlight=true; _navBackSteps=n; history.go(-n);
 }
 // Кнопки "← Назад" в интерфейсе зовут именно эту функцию, а не закрывают
 // экран напрямую — просто уходим на шаг назад в истории браузера; настоящее
@@ -8372,7 +8717,7 @@ function popNavEntry(){
 }
 window.addEventListener("popstate",()=>{
   if(_navDrainAll){
-    _navDrainAll=false; navLive=0; _navBackInFlight=false;
+    _navDrainAll=false; navLive=0; _navBackInFlight=false; _navBackSteps=0;   // слив поглотил и шаги в полёте
     const f=_navAfterDrain; _navAfterDrain=null;
     // 9 окт 2026: слив ради перехода из уведомления — сначала чат, затем то,
     // что человек успел открыть, пока слив летел (вкладка, «Новый чат»…):
@@ -8381,12 +8726,16 @@ window.addEventListener("popstate",()=>{
     if(f){ f(); navRunPending(); } else navDropPending();
     return;
   }
-  navLive=Math.max(0, navLive-1);
+  // 20 окт 2026: переход на несколько шагов (navBackSteps) — снять столько же записей.
+  const шагов=Math.max(1, _navBackSteps); _navBackSteps=0;
+  navLive=Math.max(0, navLive-шагов);
   _navBackInFlight=false;
-  const closeFn=navStack.pop();
-  // navSpent — окно этой записи уже закрыли напрямую (см. closeM). Вызывать
-  // нечего, иначе закрыли бы то, что лежит под ним.
-  if(closeFn && !closeFn.navSpent) closeFn();
+  for(let k=0;k<шагов;k++){
+    const closeFn=navStack.pop();
+    // navSpent — окно этой записи уже закрыли напрямую (см. closeM). Вызывать
+    // нечего, иначе закрыли бы то, что лежит под ним.
+    if(closeFn && !closeFn.navSpent) closeFn();
+  }
   navRunPending();
 });
 function navDropPending(){
@@ -9024,15 +9373,200 @@ window.matchMedia(MOBILE_BREAKPOINT_MQ).addEventListener("change",applyMobileMod
 window.addEventListener("resize",applyMobileModeClass);
 applyMobileModeClass();
 
+// ── ССЫЛКИ В ТЕКСТЕ СООБЩЕНИЯ ─────────────────────────────────────
+// 20 окт 2026: кроме http(s)://… — www.… и «домен.зона» с обычной зоной (example.com, t.me/…, пример.рф,
+// путь и запрос после домена). Ищем по сырому тексту; разметка — только из экранированных кусков,
+// адрес — только http/https после разбора new URL (javascript:, data: и прочее ссылкой не станет).
+// Знак препинания в конце предложения в ссылку не входит, закрывающая скобка — только парная.
+// Слова с точкой без известной зоны (т.е., file.txt, v1.2.3, index.html) остаются текстом.
+// Разбор линейный: текст длиннее LINK_MAX_SCAN дальше не разбирается, адрес длиннее LINK_MAX_LEN —
+// не ссылка, больше LINK_MAX_COUNT ссылок в одном сообщении не ищется (иначе одно присланное сообщение
+// из тысяч скобок, точек или адресов подвешивало чат).
+const LINK_TLDS=new Set(("com net org info biz io dev tv gg xyz online site store shop tech pro cloud live news blog "+
+  "edu gov club space website art games studio digital agency academy travel museum wiki "+
+  "ru su ua by kz uz kg ge az tj tm ee lv lt cz sk de ch fr es nl uk ie ca eu se dk fi il tr gr ro bg hu "+
+  "cn jp kr br ar mx au nz sg hk tw vn ae sa za eg "+
+  // Не ссылки: «г.Москва», «Hello.It», «main.py», «file.zip»…
+  "рф рус бел укр").split(" "));
+// Зоны, которые часто оказываются концом слова или расширением файла («logo.ai», «model.pt», «script.pl»,
+// «readme.md», «to.be», «I.am»): ссылка — только с путём (youtu.be/…, bit.ly/…, t.me/…), с www. или со схемой.
+const LINK_TLDS_PATH=new Set("me co it ai pt pl app ly be us so fm md am cc gl to at in is no my rs".split(" "));
+const LINK_MAX_SCAN=20000, LINK_MAX_LEN=2048, LINK_MAX_COUNT=200;
+const LINK_CHARS="[^\\s<>\"`«»\\u200B\\u202A-\\u202E\\u2066-\\u2069]";
+const LINK_SCHEME_RE=new RegExp("https?:\\/\\/"+LINK_CHARS+"+","giu");
+// Голый домен ищется только в начале «слова» (непрерывной цепочки букв, цифр, точек, дефисов и
+// подчёркиваний): сначала линейный поиск слов, затем один привязанный (sticky) разбор домена в его начале.
+// Метки — латиница или кириллица (не вперемешку в одной метке), не больше 10; кириллическая ветка — только
+// если в метке есть кириллическая буква (иначе метка из цифр подходила обеим веткам и откат рос как 2^10 —
+// сообщение в 2 КБ из «000…0.» подвешивало чат). Без lookbehind: его нет в Safari до 16.4.
+const LINK_WORD_RE=/[\p{L}\p{N}._\-]+/gu;
+const LINK_HOST_RE=/(?:(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?|(?=[0-9-]{0,62}[а-яё])[а-яё0-9](?:[а-яё0-9-]{0,61}[а-яё0-9])?)\.){1,10}(?:[a-z]{2,24}|[а-яё]{2,24})/iuy;
+// Невидимый символ форматирования (U+200B…, U+00AD) внутри домена: «evil.com​.bank.ru» выглядит как
+// одно имя, а ссылкой стала бы только его часть — такой домен не ссылка вовсе.
+const LINK_INVISIBLE_RE=/[\p{Cf}­]/u;
+const LINK_REST_RE=new RegExp("(?::\\d{1,5})?(?:[/?#]"+LINK_CHARS+"*)?","uy");
+// Хвост, не входящий в ссылку: знаки препинания, кавычки, разметка (**, __, ~~, ||), непарная скобка.
+// Скобки считаются один раз, дальше только уменьшаются счётчики.
+function trimLinkTail(c){
+  const пара={")":"(","]":"[","}":"{"}, n0={"(":0,"[":0,"{":0,")":0,"]":0,"}":0};
+  for(let i=0;i<c.length;i++){ const z=c[i]; if(z in n0) n0[z]++; }
+  let n=c.length;
+  while(n){
+    const z=c[n-1];
+    if(/[.,:;!?…»"'”’*_~|]/.test(z)){ n--; continue; }
+    if(пара[z] && n0[z]>n0[пара[z]]){ n0[z]--; n--; continue; }
+    break;
+  }
+  return c.slice(0,n);
+}
+function linkTldOk(host, withPath){
+  const tld=String(host).toLowerCase().split(".").pop();
+  if(/^www\./i.test(host)) return /^(?:[a-z]{2,24}|[а-яё]{2,24})$/.test(tld);
+  return LINK_TLDS.has(tld) || (withPath && LINK_TLDS_PATH.has(tld));
+}
+// Домен адреса со схемой — один проход: кончается на первом знаке, которого в доменах не бывает
+// (https://example.com,и → до запятой) и там, где латиница домена с известной зоной встречает кириллицу
+// (https://example.comпривет) или наоборот. Логин в адресе (https://user@…) — не ссылка вовсе.
+function cutMixedHost(cand, hostStart){
+  let lastDot=-1;
+  for(let i=hostStart;i<cand.length;i++){
+    const ch=cand[i];
+    if(ch==="/"||ch==="?"||ch==="#"||ch===":") return cand;
+    if(ch==="@") return cand.slice(0,hostStart);
+    if(ch==="."){ lastDot=i; continue; }
+    if(!/[\p{L}\p{N}_-]/u.test(ch)){
+      if(LINK_INVISIBLE_RE.test(ch) && /[.\p{L}\p{N}]/u.test(cand[i+1]||"")) return cand.slice(0,hostStart);
+      return cand.slice(0,i);
+    }
+    if(lastDot>hostStart && i-lastDot-1>=2 && i-lastDot-1<=24){
+      const a=cand[i-1];
+      const смена=(/[a-z0-9]/i.test(a) && /[а-яё]/i.test(ch)) || (/[а-яё0-9]/i.test(a) && /[a-z]/i.test(ch));
+      if(смена){ const tld=cand.slice(lastDot+1,i).toLowerCase(); if(LINK_TLDS.has(tld) || LINK_TLDS_PATH.has(tld)) return cand.slice(0,i); }
+    }
+  }
+  return cand;
+}
+function linkHref(text){
+  try{
+    const u=new URL(/^https?:\/\//i.test(text) ? text : "https://"+text);
+    if((u.protocol!=="https:" && u.protocol!=="http:") || u.username || u.password) return null;
+    if(!u.hostname.includes(".") && u.hostname!=="localhost") return null;
+    return u.href;
+  }catch(e){ return null; }
+}
+// Все ссылки текста: [{start, end, text, href, md, label, spoiler, preview}] по порядку, без пересечений.
+// Код `…` пропускается; [подпись](https://…) — ссылка с подписью (md:true). preview — годится для карточки
+// под сообщением (не Markdown, не в ||спойлере||, у голого домена — только с путём).
+// Результат кэшируется по тексту: renderMsgs пересобирает ленту часто, а превью и текст берут одно и то же.
+const _linkCache=new Map();
+function findMessageLinks(raw){
+  // Без символов-заглушек — как в formatMsgText (иначе превью и текст разбирали бы разные строки).
+  const key=String(raw||"").replace(/[]/g,"");
+  const hit=_linkCache.get(key); if(hit) return hit;
+  const res=Object.freeze(разобратьСсылки(key));
+  if(_linkCache.size>=400) _linkCache.delete(_linkCache.keys().next().value);
+  _linkCache.set(key,res);
+  return res;
+}
+function разобратьСсылки(full){
+  const s=full.length>LINK_MAX_SCAN ? full.slice(0,LINK_MAX_SCAN) : full, out=[];
+  const занято=new Uint8Array(s.length+1);
+  const свободно=(a,b)=>{ for(let i=a;i<b;i++) if(занято[i]) return false; return true; };
+  const занять=(a,b)=>{ занято.fill(1,a,b); };
+  s.replace(/`[^`]+`/g, (m,pos)=>{ занять(pos,pos+m.length); return m; });
+  s.replace(/\[([^\]\[\n]{1,300})\]\((https?:\/\/[^\s)\[]{1,2048})\)/g, (m,label,url,pos)=>{
+    if(out.length>=LINK_MAX_COUNT || !свободно(pos,pos+m.length)) return m;
+    const href=linkHref(url); if(!href) return m;
+    out.push({start:pos, end:pos+m.length, text:url, href, md:true, label, preview:false}); занять(pos,pos+m.length); return m;
+  });
+  LINK_SCHEME_RE.lastIndex=0; let m;
+  while(out.length<LINK_MAX_COUNT && (m=LINK_SCHEME_RE.exec(s))){
+    const pos=m.index, prev=pos>0 ? s[pos-1] : "", host0=m[0].indexOf("//")+2;
+    if(/[a-z0-9]/i.test(prev) || m[0].length>LINK_MAX_LEN) continue;   // «xhttps://» — не начало; кириллица перед ссылкой — можно
+    // Адрес оборвался на невидимом символе посреди домена («https://evil.com​.bank.ru») — не ссылка.
+    const после=pos+m[0].length;
+    if(!/[/?#]/.test(m[0].slice(host0)) && LINK_INVISIBLE_RE.test(s[после]||"") && /[.\p{L}\p{N}]/u.test(s[после+1]||"")) continue;
+    const cand=trimLinkTail(cutMixedHost(m[0], host0));
+    // Следующий поиск — сразу за ссылкой: в «https://a.com,https://b.com» вторая не теряется.
+    LINK_SCHEME_RE.lastIndex=pos+Math.max(cand.length, host0);
+    const href=cand.length>host0+1 ? linkHref(cand) : null;
+    if(!href || !свободно(pos,pos+cand.length)) continue;
+    out.push({start:pos, end:pos+cand.length, text:cand, href, md:false, preview:true}); занять(pos,pos+cand.length);
+  }
+  LINK_WORD_RE.lastIndex=0;
+  while(out.length<LINK_MAX_COUNT && (m=LINK_WORD_RE.exec(s))){
+    let pos=m.index;
+    const prev=pos>0 ? s[pos-1] : "";
+    // Слово после «@», «/», «\» — почта, путь или часть другой ссылки; после невидимого символа внутри слова —
+    // обман (см. LINK_INVISIBLE_RE).
+    if(prev==="@" || prev==="/" || prev==="\\") continue;
+    if(LINK_INVISIBLE_RE.test(prev) && /[.\p{L}\p{N}]/u.test(s[pos-2]||"")) continue;
+    // «__курсив__» вокруг домена — домен после «__».
+    if(s.startsWith("__",pos) && (pos===0 || /\s/.test(prev))) pos+=2;
+    LINK_HOST_RE.lastIndex=pos;
+    const hm=LINK_HOST_RE.exec(s); if(!hm) continue;
+    const host=hm[0], hostEnd=pos+host.length, next=s[hostEnd]||"";
+    const кирЗона=/[а-яё]$/i.test(host);
+    const закрытиеКурсива=s.startsWith("__", hostEnd);
+    if(!закрытиеКурсива && (кирЗона ? /[\p{L}\p{N}_\-@]/u.test(next) : /[a-z0-9_\-@]/i.test(next))) continue;
+    if(LINK_INVISIBLE_RE.test(next) && /[.\p{L}\p{N}]/u.test(s[hostEnd+1]||"")) continue;
+    // «Hello.It», «No.It's», «Ok.Ru» — граница предложения, а не домен: зона с заглавной после строчной.
+    const точка=host.lastIndexOf(".");
+    if(!/^www\./i.test(host) && /\p{Ll}/u.test(host[точка-1]) && /\p{Lu}/u.test(host[точка+1])) continue;
+    // Имя до зоны — одной письменностью («сайт.com», «example.рф» — можно; «Привет.example.com» — слитный текст).
+    const имя=host.slice(0,точка).replace(/^www\./i,"");
+    if(/[a-z]/i.test(имя) && /[а-яё]/i.test(имя)) continue;
+    LINK_REST_RE.lastIndex=hostEnd;
+    const rest=(LINK_REST_RE.exec(s)||[""])[0];
+    // Путь целиком — одна ссылка (или ни одной), повторно не разбирается.
+    LINK_WORD_RE.lastIndex=Math.max(LINK_WORD_RE.lastIndex, hostEnd+rest.length);
+    if(host.length+rest.length>LINK_MAX_LEN) continue;
+    const cand=trimLinkTail(host+rest);
+    const сПутём=cand.length>host.length && /^[/?#:]/.test(cand.slice(host.length));
+    if(!linkTldOk(host, сПутём)) continue;
+    const href=linkHref(cand);
+    if(!href || !свободно(pos,pos+cand.length)) continue;
+    out.push({start:pos, end:pos+cand.length, text:cand, href, md:false, preview:сПутём || /^www\./i.test(host)}); занять(pos,pos+cand.length);
+  }
+  // ||Спойлер|| — по той же строке, что увидит formatMsgText: код и ссылки там уже заменены заглушками
+  // (без «|»), поэтому «|» внутри адреса или кода спойлер не открывает и не закрывает.
+  const спойлер=new Uint8Array(s.length+1);
+  if(s.indexOf("||")>=0){
+    let маска=""; for(let i=0;i<s.length;i++) маска+=занято[i] ? "x" : s[i];
+    маска.replace(/\|\|[^|]+\|\|/g, (mm,pos)=>{ спойлер.fill(1,pos,pos+mm.length); return mm; });
+  }
+  for(const l of out){ l.spoiler=спойлер[l.start]===1; if(l.spoiler) l.preview=false; }
+  return out.sort((a,b)=>a.start-b.start);
+}
+// Нажатие на ссылку: в Android-приложении — внешний браузер через мост; в браузере — как раньше, новая вкладка.
+// Ссылка в нераскрытом ||спойлере|| сначала только раскрывает его.
+function openMsgLink(e,a){
+  try{ e.stopPropagation(); }catch(x){}
+  const спойлер=a && a.closest ? a.closest(".spoiler:not(.revealed)") : null;
+  if(спойлер){ try{ e.preventDefault(); }catch(x){} спойлер.classList.add("revealed"); return false; }
+  if(isInAndroidApp()){ try{ e.preventDefault(); }catch(x){} openOutside(a.href); return false; }
+  return true;
+}
+function msgLinkHtml(href, inner){
+  return `<a href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" class="msg-link" onclick="return openMsgLink(event,this)">${inner}</a>`;
+}
+
 function formatMsgText(raw){
-  let safe = escHtml(raw);
-  // Ссылки [текст](url)
-  safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m,txt,url)=>`<a href="${url}" target="_blank" class="msg-link" onclick="event.stopPropagation()">${txt}</a>`);
-  // Голые ссылки — просто вставленный URL без спец-разметки. Не трогаем то, что уже
-  // превратилось в <a> на предыдущем шаге (там URL идёт сразу после кавычки, не пробела)
-  safe = safe.replace(/(^|[\s])(https?:\/\/[^\s<]+)/g, (m,pre,url)=>`${pre}<a href="${url}" target="_blank" class="msg-link" onclick="event.stopPropagation()">${url}</a>`);
-  // Код `текст`
-  safe = safe.replace(/`([^`]+)`/g, (m,inner)=>`<code class="msg-code">${inner}</code>`);
+  // Ссылки и `код` — заглушками (символы частного использования), чтобы оформление **…**, __…__,
+  // ~~…~~, ||…|| ниже не попадало внутрь адреса; затем заглушки заменяются готовой разметкой.
+  const s=String(raw||"").replace(/[]/g,"");
+  const куски=[], вставки=[];
+  const заглушка=(html)=>{ вставки.push(html); return ""+(вставки.length-1)+""; };
+  const ссылки=findMessageLinks(s);
+  let i=0;
+  const текст=(a,b)=>{ const t=s.slice(a,b); куски.push(escHtml(t).replace(/`([^`]+)`/g, (m,inner)=>заглушка(`<code class="msg-code">${inner}</code>`))); };
+  for(const l of ссылки){
+    текст(i,l.start);
+    куски.push(заглушка(msgLinkHtml(l.href, escHtml(l.md ? l.label : l.text))));
+    i=l.end;
+  }
+  текст(i,s.length);
+  let safe=куски.join("");
   // Жирный **текст**
   safe = safe.replace(/\*\*([^*]+)\*\*/g, (m,inner)=>`<b>${inner}</b>`);
   // Курсив __текст__
@@ -9041,7 +9575,7 @@ function formatMsgText(raw){
   safe = safe.replace(/~~([^~]+)~~/g, (m,inner)=>`<s>${inner}</s>`);
   // Спойлеры ||текст|| → размытый блок, открывается по клику
   safe = safe.replace(/\|\|([^|]+)\|\|/g, (m,inner)=>`<span class="spoiler" onclick="this.classList.add('revealed')">${inner}</span>`);
-  return safe;
+  return safe.replace(/(\d+)/g, (m,n)=>вставки[+n]||"");
 }
 
 // Одна серая галочка — отправлено, две синие — прочитано (как в Telegram)
@@ -9056,9 +9590,26 @@ function ticksHTML(m){
 }
 
 // ── Меню "не отправлено" — повтор или удаление, как в Telegram ────────
+// 20 окт 2026 (партия 1.2): меню — слой стека «назад» (openLayer). Системная «Назад» закрывает его, а не
+// чат под ним (раньше меню оставалось висеть над списком чатов, и «Отправить повторно» уже не находило
+// сообщение). Закрытие действием — пункт меню, тап мимо — снимает его запись тем же путём, что и «назад».
+let _failedMenuDocClose=null;
+function closeFailedMsgMenuNow(){
+  document.querySelectorAll(".failed-msg-menu").forEach(m=>m.remove());
+  if(_failedMenuDocClose){ document.removeEventListener("click",_failedMenuDocClose); _failedMenuDocClose=null; }
+}
+function closeFailedMsgMenu(){
+  if(!document.querySelector(".failed-msg-menu")) return;
+  closeLayerViaStack("failed-msg-menu");   // запись наверху — уходим через историю; не наверху — помечена отработавшей
+  closeFailedMsgMenuNow();
+}
 function showFailedMsgMenu(e, msgId){
   e.stopPropagation();
-  document.querySelectorAll(".failed-msg-menu").forEach(m=>m.remove());
+  // Меню уже открыто у другого сообщения и его запись наверху — новое меню занимает ту же запись.
+  const было=!!document.querySelector(".failed-msg-menu");
+  const своя=было && navTopModalId()==="failed-msg-menu";
+  if(было && !своя) closeLayerViaStack("failed-msg-menu");
+  closeFailedMsgMenuNow();
   const menu=document.createElement("div");
   menu.className="failed-msg-menu";
   menu.innerHTML=`
@@ -9069,12 +9620,44 @@ function showFailedMsgMenu(e, msgId){
   const rect=e.currentTarget.getBoundingClientRect();
   menu.style.left=Math.min(rect.left, window.innerWidth-190)+"px";
   menu.style.top=(rect.bottom+6)+"px";
-  const closeMenu=(ev)=>{ if(!menu.contains(ev.target)){ menu.remove(); document.removeEventListener("click",closeMenu); } };
-  setTimeout(()=>document.addEventListener("click",closeMenu), 0);
+  const closeMenu=(ev)=>{ if(!menu.contains(ev.target)) closeFailedMsgMenu(); };
+  _failedMenuDocClose=closeMenu;
+  setTimeout(()=>{ if(_failedMenuDocClose===closeMenu) document.addEventListener("click",closeMenu); }, 0);
+  if(!своя) openLayer("failed-msg-menu", closeFailedMsgMenuNow);
 }
+// 20 окт 2026 (вторая проверка агентами): касание мимо открытого меню «не отправлено» только закрывает
+// меню, кнопка под ним не срабатывает — как у обычных всплывающих меню. Закрываем уже на pointerdown,
+// до обработчиков цели. Раньше меню закрывал click на document — после них, и кнопка шапки, крестик
+// поиска, долгое нажатие или правый клик успевали положить или снять свою запись «назад» мимо записи
+// меню: одно «Назад» потом уходило впустую. Запись меню снимается по click этого же касания (он
+// поглощается) или по отпусканию без click; окно, открытое этим же касанием (выбор долгим нажатием,
+// меню сообщения правой кнопкой), забирает её (pushNavEntry).
+let _fmSwallowClick=false;
+function fmRelease(){
+  const f=_fmPending; _fmPending=null;
+  if(f && navStack[navStack.length-1]===f) popNavEntry();
+}
+document.addEventListener("pointerdown", e=>{
+  _fmSwallowClick=false;
+  const menu=document.querySelector(".failed-msg-menu");
+  if(!menu || menu.contains(e.target)) return;
+  const top=navStack[navStack.length-1];
+  if(top && top.navModalId==="failed-msg-menu" && !top.navSpent && !_navBackInFlight){ top.navSpent=true; _fmPending=top; }
+  else closeLayerViaStack("failed-msg-menu");
+  closeFailedMsgMenuNow();
+  _fmSwallowClick=true;
+}, true);
+document.addEventListener("click", e=>{
+  if(!_fmSwallowClick) return;
+  _fmSwallowClick=false;
+  e.stopPropagation(); e.preventDefault();
+  fmRelease();
+}, true);
+document.addEventListener("pointerup", ()=>{ if(_fmPending) setTimeout(fmRelease, 0); }, true);
+document.addEventListener("pointercancel", ()=>{ if(_fmPending) fmRelease(); }, true);
 
 function retryFailedMsg(msgId){
-  document.querySelectorAll(".failed-msg-menu").forEach(m=>m.remove());
+  closeFailedMsgMenu();
   const m=(S.messages[S.chat]||[]).find(x=>x.id===msgId); if(!m) return;
   m.failed=false;
   const ch=S.chats.find(c=>c.id===S.chat);
@@ -9110,16 +9693,45 @@ function retryFailedMsg(msgId){
 // и показать "?" — как в Telegram: сначала пробует незаметно сама,
 // пользователя беспокоит только после нескольких неудач подряд
 const AUTO_RETRY_DELAYS=[1500, 3000, 6000];
+// 21 окт 2026 (защитная партия): сервер отказал в отправке по праву писать (личная блокировка,
+// не участник, чат закрыт, канал или режим «только админы», запрет писать) — код из
+// services/chatAccess.js. Повторять бессмысленно: сообщение сразу «не отправлено», один тост
+// с текстом сервера (кто кого заблокировал, он не говорит).
+// 22 окт 2026: и отказы подарка — экземпляра нет в коллекции, неизвестный подарок, отложенный подарок.
+const SEND_REFUSED_CODES=new Set(["blocked","not_member","chat_blocked","channel_readonly","restricted","muted","voice_blocked","gift_not_owned","gift_invalid","gift_not_schedulable"]);
+function sendRefused(d){ return !!(d && !d.success && SEND_REFUSED_CODES.has(d.code)); }
+function sendRefusedError(d){ const e=new Error((d && d.error) || "Сообщение не отправлено"); e.sendRefused=true; e.code=d && d.code; return e; }
+// Один и тот же отказ (альбом, пересылка нескольких) — один тост, а не по тосту на каждое сообщение.
+let _lastSendRefusedToast={t:"", at:0};
+function showSendRefusedToast(t){
+  const now=Date.now();
+  if(_lastSendRefusedToast.t===t && now-_lastSendRefusedToast.at<4000) return;
+  _lastSendRefusedToast={t, at:now};
+  showToast("❌ "+t);
+}
 async function attemptWithAutoRetry(m, doAttempt){
   // 7 окт 2026: аккаунт на устройстве сменился — сообщение прежнего не
   // уходит с токеном следующего.
   const g=accountGen;
+  m._refused=false;
   for(let i=0;i<=AUTO_RETRY_DELAYS.length;i++){
     if(m._cancelled || g!==accountGen) return false;           // отправку отменили с самого сообщения
     try{
       const ok=await doAttempt();
       if(ok) return true;
-    }catch(e){ if(e && e.accountChanged) return false; console.warn("send attempt failed:",e); }
+    }catch(e){
+      if(e && e.accountChanged) return false;
+      if(e && e.sendRefused){
+        if(m._cancelled || g!==accountGen) return false;
+        m.uploading=false; m.failed=true; m._refused=true;
+        // Служебная отправка без участия человека (ответ ключом E2E при загрузке истории) — без тоста.
+        if(m._silent) return false;
+        renderMsgs(); saveState();
+        showSendRefusedToast(e.message);
+        return false;
+      }
+      console.warn("send attempt failed:",e);
+    }
     if(m._cancelled || g!==accountGen) return false;
     if(i<AUTO_RETRY_DELAYS.length){
       await new Promise(r=>setTimeout(r, AUTO_RETRY_DELAYS[i]));
@@ -9141,9 +9753,9 @@ async function retrySimpleMsg(m, chatId, ch, memberIds, postBody, wsExtra){
   if(!m.clientMsgId) m.clientMsgId=genClientMsgId();
   await attemptWithAutoRetry(m, async ()=>{
     const d=await apiPost("/api/messages", {...postBody, clientMsgId:m.clientMsgId}, true);
-    if(!d || !d.success) return false;
+    if(!d || !d.success){ if(sendRefused(d)) throw sendRefusedError(d); return false; }
     const dbId=d?.message?.id||null;
-    if(dbId){ m.dbId=dbId; saveState(); }
+    if(dbId){ adoptSentMessage(m, d.message); saveState(); }
     // Как в Telegram: не долетает заблокировавшему, но у нас всё равно
     // "отправлено" — см. sendTextToServer для подробного комментария
     const wsMemberIds = d.blockedFromRecipientId ? memberIds.filter(id=>id!==d.blockedFromRecipientId) : memberIds;
@@ -9196,9 +9808,9 @@ async function retryAttachmentMsg(m, chatId, ch, memberIds){
     // не понесут это поле вообще, ничего не меняется для существующих
     // одиночных фото/видео/аудио/файлов/голосовых/видео-кружочков.
     const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:имяФайла,fileSize:размерФайла,spoiler:!!att.spoiler,waveform:att.waveform||null,groupId:m.groupId||undefined,clientMsgId:m.clientMsgId},true);
-    if(!d || !d.success) return false;
+    if(!d || !d.success){ if(sendRefused(d)) throw sendRefusedError(d); return false; }
     const dbId=d?.message?.id||null;
-    if(dbId){ m.dbId=dbId; saveState(); }
+    if(dbId){ adoptSentMessage(m, d.message); saveState(); }
     applyServerTime(m, d?.message?.created_at, ch);   // время — серверное (правило 16)
     const wsMemberIds = d.blockedFromRecipientId ? memberIds.filter(id=>id!==d.blockedFromRecipientId) : memberIds;
     if(сПрогрессом && att.previewUrl && String(att.previewUrl).startsWith("blob:")){ const u=att.previewUrl; setTimeout(()=>URL.revokeObjectURL(u), 4000); }
@@ -9210,7 +9822,7 @@ async function retryAttachmentMsg(m, chatId, ch, memberIds){
 }
 
 function deleteFailedMsg(msgId){
-  document.querySelectorAll(".failed-msg-menu").forEach(m=>m.remove());
+  closeFailedMsgMenu();
   const arr=S.messages[S.chat]||[];
   const idx=arr.findIndex(x=>x.id===msgId);
   if(idx>-1){ arr.splice(idx,1); renderMsgs(); saveState(); }
@@ -9900,7 +10512,7 @@ function imgSizePending(img){ return !img.complete && !img.naturalWidth && !img.
 // удержание разделителя слетало). Видео без preload (iOS, экономия трафика)
 // метаданные не грузит вовсе (NETWORK_IDLE) — такое не ждём, иначе граница и
 // удержание встали бы навсегда.
-function videoSizePending(v){ return v.readyState<1 && !v.error && v.networkState!==1; }
+function videoSizePending(v){ return !v.closest(".vres") && v.readyState<1 && !v.error && v.networkState!==1; }
 // В строке есть фото или видео, чья высота ещё не окончательная.
 function rowMediaPending(r){
   for(const img of r.querySelectorAll("img.msg-img")) if(imgSizePending(img)) return true;
@@ -10432,13 +11044,76 @@ el("minput")?.addEventListener("focusout", ()=>{
 // aspect-ratio вообще, остаётся безопасный CSS-дефолт (.grp-cell{aspect-
 // ratio:4/5}). 14 сен 2026: диагностический тост «⚠️ аномальное фото» снят
 // (ни разу не срабатывал), сама защита — выход без правки aspect-ratio — осталась.
+// 20 окт 2026 (партия 1.2): раскладка альбома — строки по количеству фото, как в Telegram.
+// Клетка постоянной формы ALBUM_CELL_AR (3:4, родная пропорция фото с телефона): высота строки = ширина
+// альбома / (k·3/4), то есть известна до загрузки картинок и одинакова на всех устройствах (размеры фото
+// сервер не хранит; пропорции, узнанные этим устройством, в раскладку не идут — иначе после загрузки или
+// на другом устройстве сетка менялась). Альбом из одного фото (остальные удалены, не дошли или ещё
+// приходят по одному) — как одиночное фото: своя пропорция (размер, узнанный этим устройством, —
+// m.imgW/imgH, иначе 3:4 до загрузки), горизонтальное не обрезается, высокое — не выше 3:4, панорама —
+// не шире 3:1.
+// Больше 10 — по 3 в строке, остаток 4 — как 2+2.
+const ALBUM_ROWS={1:[1],2:[2],3:[3],4:[2,2],5:[2,3],6:[3,3],7:[3,4],8:[3,5],9:[3,3,3],10:[3,4,3]};
+const ALBUM_CELL_AR=0.75;
+function albumRowSplit(n){
+  if(ALBUM_ROWS[n]) return ALBUM_ROWS[n];
+  const r=[]; let l=n;
+  while(l>4){ r.push(3); l-=3; }
+  if(l===4) r.push(2,2); else if(l) r.push(l);
+  return r;
+}
+function albumRowsHTML(members, cellHTML){
+  const n=members.length;
+  let i=0;
+  return albumRowSplit(n).map(k=>{
+    const part=members.slice(i, i+=k);
+    const ar=n===1 ? albumOneAr(part[0] && part[0].imgW, part[0] && part[0].imgH) : k*ALBUM_CELL_AR;
+    return `<div class="alb-row${n===1?" alb-one":""}" style="aspect-ratio:${ar.toFixed(4)}">${part.map(cellHTML).join("")}</div>`;
+  }).join("");
+}
+// Пропорция строки альбома из одного фото: своя, но в пределах от 3:4 (высокое) до 3:1 (панорама);
+// неизвестна — 3:4.
+function albumOneAr(w, h){
+  const r=(w && h) ? w/h : 0;
+  return r>0 ? Math.min(3, Math.max(ALBUM_CELL_AR, r)) : ALBUM_CELL_AR;
+}
+// Одна отметка на альбом: не отправилось хоть одно фото — «?» с меню повтора именно его (после повтора
+// отметка покажет следующее неотправленное); иначе две галочки, только когда прочитаны все фото.
+function albumTicksHTML(members){
+  const неудача=members.find(x=>x && x.failed);
+  if(неудача) return ticksHTML(неудача);
+  return ticksHTML({read: members.length>0 && members.every(x=>x && x.read)});
+}
+// 21 окт 2026: одиночное видео — рамка постоянной пропорции, пока чат открыт: до метаданных — 260×320
+// (родная для ролика с телефона), узнанный размер (m.vidW/vidH, переживает перезапуск вместе с
+// S.messages) — со следующего открытия чата. Во время просмотра пропорция не меняется — лента не
+// сдвигается под пальцем, когда браузер узнаёт размер ролика. Альбомы (и альбом из одного ролика)
+// партия не меняет — у них свои правила раскладки.
+const VIDEO_BOX_DEFAULT_AR=260/320;
+const _vidBoxAr=new Map();   // ключ строки → пропорция, с которой видео нарисовано в этом открытии чата
+function stableVideoAr(key, m, compute){
+  if(_vidBoxAr.has(key)) return _vidBoxAr.get(key);
+  const ar=compute(m.vidW>0 && m.vidH>0 ? m.vidW/m.vidH : 0);
+  _vidBoxAr.set(key, ar);
+  return ar;
+}
+function videoBoxAr(m){ return stableVideoAr(String(m.id), m, r=>r>0 ? Math.min(3, Math.max(VIDEO_BOX_DEFAULT_AR, r)) : VIDEO_BOX_DEFAULT_AR); }
+// Метаданные ролика пришли — размер запоминаем на сообщении (рамку не трогаем).
+function rememberVideoDims(v){
+  if(!v || !v.videoWidth || !v.videoHeight) return;
+  const holder=v.closest(".grp-cell") || v.closest(".mrow"); if(!holder) return;
+  const byId=(_msgByIdAt && _msgByIdAt.chat===S.chat) ? _msgByIdAt.map : null; if(!byId) return;
+  const m=byId.get(holder.dataset.msgId);
+  if(m && (m.vidW!==v.videoWidth || m.vidH!==v.videoHeight)){ m.vidW=v.videoWidth; m.vidH=v.videoHeight; }
+}
+// 20 окт 2026: фото загрузилось — у альбома из одного фото строка принимает его пропорцию (в альбоме из
+// нескольких клетки постоянной формы, пропорция фото на раскладку не влияет).
 function applyGrpCellAspect(img){
-  const w=img.naturalWidth, h=img.naturalHeight;
+  // Фото — naturalWidth/Height, видео (позиция, заменённая видео) — videoWidth/Height.
+  const w=img.naturalWidth||img.videoWidth, h=img.naturalHeight||img.videoHeight;
   if(!w || !h) return;
-  const r=w/h;
-  if(r<0.3 || r>3) return;
-  const cell=img.closest(".grp-cell");
-  if(cell) cell.style.aspectRatio=w+"/"+h;
+  const row=img.closest(".alb-row.alb-one");
+  if(row) row.style.aspectRatio=albumOneAr(w, h).toFixed(4);
 }
 function renderMsgs(){
   const c=el("msgs");
@@ -10448,6 +11123,7 @@ function renderMsgs(){
   // всегда внизу («новый чат — всегда начинаем у низа»).
   let restore=null;
   if(switchedChat){
+    _vidBoxAr.clear();   // новое открытие чата — видео с узнанным размером рисуются в своей пропорции
     setMsgsScrollTop(c.scrollTop);   // плавная прокрутка прошлого чата не должна докатиться по новому
     _unreadDivider=null; _msgsLiveAnchor=null; _unreadTarget=null;
     // Жест в прошлом чате — не жест в этом (15 сен 2026: раньше он ещё до 1,2 с
@@ -10622,6 +11298,7 @@ function renderMsgs(){
       h+=`<div class="vbub" oncontextmenu="showCtx(event,${m.id})"><div class="pbtn" onclick="tPlay(this)"><svg width="11" height="11" fill="white" viewBox="0 0 24 24"><path d="m5 3 14 9-14 9V3z"/></svg></div><div class="wf">${bars}</div><div class="vd">${m.dur||"0:00"}</div></div>`;
     }else{
       let bc="";
+      let albBare=false;   // 20 окт 2026: альбом без подписи, шапки и реакций — пузырь без фона
       // 30 июля 2026: фото/альбом БЕЗ подписи — время+галочки накладываем
       // прямо на фото полупрозрачной плашкой, как в Telegram, а не оставляем
       // отдельной строкой на фоне пузыря под фото (см. .mt-photo-overlay
@@ -10673,9 +11350,9 @@ function renderMsgs(){
       // сетка того же общего вида, что и в Telegram для типичных count.
       if(isGrpImg){
         const cnt=groupMembers.length;
-        const cols = cnt===1?1 : cnt===2?2 : cnt===3?3 : cnt===4?2 : 3;
         const noHeaderAbove = bc==="";
-        const cellsHTML=groupMembers.map(gm=>{
+        albBare = noHeaderAbove && isPhotoOnlyMt && !(m.rxn && m.rxn.length) && !(m.crystalTotal>0);
+        const cellHTML=(gm)=>{
           const isSp=gm.spoiler && !gm.spoilerRevealed;
           const touchAttrs=gm.uploading?"":` oncontextmenu="showCtx(event,${gm.id})" ontouchstart="msgTouchStart(event,${gm.id},this)" ontouchend="msgTouchEnd(event,${gm.id})" ontouchmove="msgTouchMove(event)"`;
           // 30 июля 2026: Александра прислала скриншот — одно фото (высокий
@@ -10687,12 +11364,20 @@ function renderMsgs(){
           // Вместо хранения width/height на бэкенде (отдельная миграция)
           // берём РЕАЛЬНУЮ пропорцию прямо у самого <img> в момент загрузки
           // — работает для старых и новых фото одинаково, без изменений в БД.
-          const cellAr=(gm.imgW&&gm.imgH&&gm.imgW/gm.imgH>=0.3&&gm.imgW/gm.imgH<=3)?` style="aspect-ratio:${gm.imgW}/${gm.imgH}"`:"";
-          return `<div class="grp-cell${S.selectedMsgs.includes(gm.id)?" selected":""}" data-msg-id="${gm.id}"${cellAr}${touchAttrs}><div class="msg-img-wrap${gm.uploading?" uploading":""}${isSp?" spoiler":""}"><img class="msg-img" src="${gm.img}" loading="lazy" onload="applyGrpCellAspect(this)" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer('${gm.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${gm.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${gm.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${S.selectMode?`<div class="msel-check grp-cell-check">${selBadge(gm.id)}</div>`:""}</div></div>`;
-        }).join("");
-        bc+=`<div class="grp-img-grid" style="grid-template-columns:repeat(${cols},1fr)${noHeaderAbove?";margin-top:calc(-1 * var(--sp-2))":""}${isPhotoOnlyMt?";margin-bottom:calc(-1 * var(--sp-2))":""}">${cellsHTML}</div>`;
+          // 20 окт 2026: пропорция фото больше не задаёт размер клетки — клетка заполняет свою долю строки,
+          // фото в ней обрезается (cover). Высоту строки задаёт строка (albumRowsHTML); onload нужен только
+          // альбому из одного фото (applyGrpCellAspect).
+          // 21 окт 2026 (этап C): позицию альбома можно заменить видео — клетка показывает кадр
+          // (обрезка как у фото) со значком воспроизведения, тап открывает видео в просмотрщике.
+          const клетка = gm.video
+            ? `<video class="msg-img grp-video" src="${escHtml(gm.video)}" preload="metadata" muted playsinline onloadedmetadata="applyGrpCellAspect(this)" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openVideoViewer(this.getAttribute('src'))"`)}></video><div class="grp-play"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>`
+            : `<img class="msg-img" src="${gm.img}" loading="lazy" onload="applyGrpCellAspect(this)" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer('${gm.img}')"`)}>`;
+          return `<div class="grp-cell${S.selectedMsgs.includes(gm.id)?" selected":""}" data-msg-id="${gm.id}"${touchAttrs}><div class="msg-img-wrap${gm.uploading?" uploading":""}${isSp?" spoiler":""}">${клетка}${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${gm.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${gm.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${S.selectMode?`<div class="msel-check grp-cell-check">${selBadge(gm.id)}</div>`:""}</div></div>`;
+        };
+        bc+=`<div class="grp-img-grid${noHeaderAbove?" e-top":""}${isPhotoOnlyMt?" e-bot":""}" style="${noHeaderAbove?"margin-top:calc(-1 * var(--sp-2))":""}${isPhotoOnlyMt?";margin-bottom:calc(-1 * var(--sp-2))":""}">${albumRowsHTML(groupMembers, cellHTML)}</div>`;
       }
-      if(m.video){
+      // В альбоме видео уже нарисовано клеткой сетки (этап C) — отдельный плеер под сеткой не нужен.
+      if(m.video && !isGrpImg){
         const isSp=m.spoiler && !m.spoilerRevealed;
         const showCtrl=!m.uploading && !isSp;
         // ⚠️ Раньше у входящего видео при плохом/пропавшем интернете не было
@@ -10707,7 +11392,7 @@ function renderMsgs(){
         // гарантия сработать даже если сеть просто "тихо" ничего не отдаёт,
         // не вызывая явных событий подвисания вообще.
         const dlEvents=showDownloadSpin?`onloadstart="showMediaLoading(this)" onloadeddata="hideMediaLoading(this)" oncanplay="hideMediaLoading(this)" onplaying="hideMediaLoading(this)" onwaiting="showMediaLoading(this)" onstalled="showMediaLoading(this)" onerror="failMediaLoading(this)"`:"";
-        bc+=`<div class="msg-video-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}"><video class="msg-video" src="${m.video}" ${showCtrl?"controls":""} playsinline ${isSp?`onclick="revealSpoiler(${m.id})"`:""} ${dlEvents}></video>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${showDownloadSpin?MEDIA_LOADING_HTML:""}</div>`;
+        bc+=`<div class="msg-video-wrap vres${m.uploading?" uploading":""}${isSp?" spoiler":""}" style="aspect-ratio:${videoBoxAr(m).toFixed(4)}"><video class="msg-video" src="${m.video}" ${showCtrl?"controls":""} playsinline preload="metadata" onloadedmetadata="rememberVideoDims(this)" ${isSp?`onclick="revealSpoiler(${m.id})"`:""} ${dlEvents}></video>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${showDownloadSpin?MEDIA_LOADING_HTML:""}</div>`;
       }
       if(m.audio){
         bc+=`<div class="msg-audio-wrap"><div style="font-size:12px;color:var(--tx2);margin-bottom:3px">🎵 ${escHtml(m.audio.name||"Аудио")}${m.uploading?" · загрузка…":""}</div><audio src="${m.audio.url}" ${m.uploading?"":"controls"}></audio></div>`;
@@ -10756,13 +11441,14 @@ function renderMsgs(){
         bc+=`<div class="contact-item" style="background:var(--bg1)" onclick="startChatWithUser('${m.contact.userId}','${escHtml(m.contact.nm).replace(/'/g,"\\'")}',${m.contact.col||0})"><div class="contact-av" style="background:${colBg(m.contact.col||0)}">${(m.contact.nm||"?")[0]}</div><div><div class="contact-nm">${escHtml(m.contact.nm)}</div>${m.contact.uname?`<div class="contact-ph">@${m.contact.uname}</div>`:'<div class="contact-ph">Контакт</div>'}</div></div>`;
       }
       if(m.file){
-        bc+=`<div class="msg-file" ${m.file.url&&!m.uploading?`onclick="window.open('${m.file.url}','_blank')"`:""}><div class="msg-file-ico">📄</div><div><div class="msg-file-nm">${escHtml(m.file.name)}</div><div class="msg-file-sz">${m.uploading?"загрузка…":(m.file.size?(m.file.size/1024).toFixed(1)+" KB":"")}</div></div></div>`;
+        bc+=`<div class="msg-file" ${m.file.url&&!m.uploading?`onclick="openOutside('${m.file.url}','_blank')"`:""}><div class="msg-file-ico">📄</div><div><div class="msg-file-nm">${escHtml(m.file.name)}</div><div class="msg-file-sz">${m.uploading?"загрузка…":(m.file.size?(m.file.size/1024).toFixed(1)+" KB":"")}</div></div></div>`;
       }
       if(m.tx)bc+=`<span class="mtx">${m.e2e?`<span title="${m.e2eFailed?"Не удалось расшифровать на этом устройстве":"Сквозное шифрование"}" style="margin-right:3px">🔒</span>`:""}${formatMsgText(m.tx)}</span>`;
       // link preview — только для "голых" ссылок, не для оформленных [текст](url)
-      const rawForPreview=(m.tx||"").replace(/\[[^\]]+\]\(https?:\/\/[^\s)]+\)/g,"");
-      const urlMatch=rawForPreview.match(/https?:\/\/[^\s]+/);
-      if(urlMatch)bc+=`<div class="lnkprev" style="cursor:pointer" onclick="window.open('${urlMatch[0].replace(/'/g,"%27")}','_blank')"><div class="lnktitle">🔗 ${urlMatch[0].replace(/https?:\/\//,"").slice(0,40)}</div><div class="lnkdesc">Открыть ссылку</div></div>`;
+      // 20 окт 2026: та же находка ссылок, что и в тексте; адрес — в data-атрибуте, подпись — экранирована
+      // (раньше адрес из текста вставлялся в onclick и в разметку как есть).
+      const первая=m.tx ? findMessageLinks(m.tx).find(l=>l.preview) : null;
+      if(первая)bc+=`<div class="lnkprev" style="cursor:pointer" data-href="${escHtml(первая.href)}" onclick="event.stopPropagation();openOutside(this.dataset.href)"><div class="lnktitle">🔗 ${escHtml(первая.text.replace(/^https?:\/\//i,"").slice(0,40))}</div><div class="lnkdesc">Открыть ссылку</div></div>`;
       const viewsHTML = (curCh?.type==="channels" && m.dbId) ? ` · 👁 <span data-views-for="${m.dbId}">${(m.views||0).toLocaleString("ru")}</span>` : "";
       // Счётчик пересылок — как в Telegram, показываем на ИСХОДНОМ
       // сообщении (том, которое переслали), а не на новых пересланных
@@ -10776,7 +11462,9 @@ function renderMsgs(){
       // всегда сам канал (см. sender-name-tag выше) — подпись это ДОПОЛНЕНИЕ
       // внизу рядом со временем, как в реальном Telegram, а не замена.
       const signatureHTML = (curCh?.type==="channels" && curCh?.signMessages && m.authorName && !m.asChannel) ? `${escHtml(m.authorName)}, ` : "";
-      bc+=`<div class="mt${isPhotoOnlyMt?" mt-photo-overlay":""}">${signatureHTML}${m.time||""}${viewsHTML}${fwdCountHTML}${m.t==="out"?ticksHTML(m):""}</div>`;
+      // 21 окт 2026 (этап C): «изм.» — внутри плашки времени; у альбома — если правили любую позицию.
+      const правлено = isGrpImg ? groupMembers.some(x=>x && x.edited) : !!m.edited;
+      bc+=`<div class="mt${isPhotoOnlyMt?" mt-photo-overlay":""}">${правлено?'<span class="mt-edited">изм.</span>':""}${signatureHTML}${m.time||""}${viewsHTML}${fwdCountHTML}${m.t==="out"?(isGrpImg?albumTicksHTML(groupMembers):ticksHTML(m)):""}</div>`;
       if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${r.e} ${r.c}</div>`).join("")}</div>`;
       if(m.crystalTotal>0)bc+=`<div class="rxns"><div class="rxn crystal-total-badge" onclick="quickAddCrystal(${m.id})" title="Нажмите, чтобы подарить ещё 1 💎">💎 ${m.crystalTotal.toLocaleString()}</div></div>`;
       if(m.edited)bc+='';
@@ -10787,7 +11475,7 @@ function renderMsgs(){
       // перезапишет lpTimer с чужим id, долгое нажатие на 2-е/3-е фото будет
       // выделять не то сообщение.
       const bubTouchAttrs = isGrpImg ? "" : `oncontextmenu="showCtx(event,${m.id})" ontouchstart="msgTouchStart(event,${m.id},this)" ontouchend="msgTouchEnd(event,${m.id})" ontouchmove="msgTouchMove(event)"`;
-      h+=`<div class="bub${m.edited?" edited":""}${m.videoCircle?" vc-bub":""}" ${bubTouchAttrs}>${bc}</div>`;
+      h+=`<div class="bub${m.edited?" edited":""}${m.videoCircle?" vc-bub":""}${albBare?" alb-bare":""}" ${bubTouchAttrs}>${bc}</div>`;
     }
     row.innerHTML=h; c.appendChild(row);
   });
@@ -11924,7 +12612,7 @@ async function handleIncomingE2EHandshake(chatId, peerPublicKeyB64, fromUserId, 
     if(!hadOwnKeyBefore){
       const pubB64=await e2eExportPublicKey(kp.publicKey);
       const memberIds=getChatMemberIds(ch);
-      await retrySimpleMsg({id:nextId(),failed:false}, chatId, ch, memberIds, {chatId, text:pubB64, type:"e2e_handshake"}, {text:pubB64, msgType:"e2e_handshake"});
+      await retrySimpleMsg({id:nextId(),failed:false,_silent:true}, chatId, ch, memberIds, {chatId, text:pubB64, type:"e2e_handshake"}, {text:pubB64, msgType:"e2e_handshake"});
     }
   }catch(e){ console.warn("e2e handshake error:", e); }
 }
@@ -11966,6 +12654,13 @@ function updateE2EButton(ch){
 }
 
 async function sendMsg(){
+  // 21 окт 2026 (этап C): в режиме правки кнопка — «сохранить»: правка на сервере (submitEdit).
+  // Раньше ветка правки стояла после вложений: файл, прикреплённый во время правки, уходил
+  // новым сообщением, а подпись у фото без текста сохранить было нечем.
+  if(S.editingId){
+    if(editSession){ submitEdit(); return; }
+    cancelEdit(true);
+  }
   const inp=el("minput"); const txt=getInputText();
   // 24 сен 2026 (W2): проверяем "есть ли хоть что-то кроме пробелов", а не сам
   // текст — getInputText() больше не обрезает концы, и без этой проверки
@@ -11997,18 +12692,6 @@ async function sendMsg(){
     setInputText(""); aResize(inp);
     sendWithAttachment(txt);
     return;
-  }
-  // 5 окт 2026: правка завершается в ЛЮБОМ чате — раньше в «Избранном» и
-  // чатах ботов Enter отправлял новое сообщение, а режим правки оставался.
-  if(S.editingId){
-    // EDIT mode
-    const ms=S.messages[S.chat]||[]; const m=ms.find(x=>x.id===S.editingId);
-    // Время правки запоминаем настоящее, а не выдумываем его при показе.
-    // ⚠️ На сервер правка пока не уходит вовсе (отдельная задача, F16),
-    // поэтому здесь местное время правки; из истории берётся серверное
-    // edited_at (см. загрузку сообщений, поле editedAt).
-    if(m){m.tx=txt;m.edited=true;m.editedAt=new Date().toISOString();}
-    cancelEdit(); aResize(inp); renderMsgs(); saveState(); return;   // cancelEdit вернёт отложенный черновик
   }
 
   // ── Избранное (Saved Messages) — просто сохраняем, без ответов ──
@@ -12166,10 +12849,10 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds, msgType){
   if(typeof chatId === "string" && chatId.length > 10){
     const ok=await attemptWithAutoRetry(msg, async ()=>{
       const d=await apiPost("/api/messages", {chatId, text: txt, type: msgType, asChannel: msg.asChannel||null, clientMsgId: msg.clientMsgId}, true);
-      if(!d || !d.success) return false;
+      if(!d || !d.success){ if(sendRefused(d)) throw sendRefusedError(d); return false; }
       dbId=d?.message?.id||null;
       blockedFromRecipientId=d?.blockedFromRecipientId||null;
-      if(dbId){ msg.dbId=dbId; }
+      if(dbId){ adoptSentMessage(msg, d.message); }
       // 24 сен 2026: время подтверждённого сообщения берём с СЕРВЕРА (created_at),
       // а не с часов телефона. Раньше в ленте стояло местное время отправителя,
       // а после перезагрузки — серверное (см. загрузку истории, там ts и time
@@ -12531,6 +13214,9 @@ document.addEventListener("click", e=>{ if(!e.target.closest(".sndbtn") && !e.ta
 
 function pickAttach(e,kind){
   e.stopPropagation();
+  // 21 окт 2026 (этап C): во время правки новый файл не прикрепляется (раньше он уходил новым
+  // сообщением с текстом правки) — для вложения редактируемого сообщения есть «Заменить».
+  if(S.editingId){ showToast("✏️ Идёт правка: чтобы поменять вложение, нажмите «Заменить»"); return; }
   const inp=el("file-inp");
   if(kind==="media") inp.accept="image/*,video/*";
   else if(kind==="gif") inp.accept="image/gif";
@@ -12620,6 +13306,10 @@ async function votePoll(msgId,optId){
     return;
   }
 
+  // 22 окт 2026: сервер теперь отказывает тем, кто не может голосовать (исключён, блокировка в личном
+  // чате, закрытый чат), — тогда откатывается только свой голос: счётчики поправляются на разницу, чужие
+  // голоса, пришедшие за это время, остаются.
+  const myBefore=[...(p.myVotes||[])];
   // ── Локальный оптимистичный апдейт — сразу видно свой тап ──
   if(!p.multi && p.myVotes.length && !already){
     const prevOpt=p.options.find(o=>o.id===p.myVotes[0]);
@@ -12644,7 +13334,7 @@ async function votePoll(msgId,optId){
   if(!m.dbId) return;
 
   try{
-    const data=await apiPatch("/api/messages/"+m.dbId+"/vote", {optionId:optId}, true);
+    const data=await apiPatch("/api/messages/"+m.dbId+"/vote", {optionId:optId, selected:!already}, true);
     if(data.error) throw new Error(data.error);
     // Подтягиваем точные цифры с сервера (на случай гонки с другим голосующим)
     const myVotes=data.myVotes||p.myVotes;
@@ -12656,6 +13346,15 @@ async function votePoll(msgId,optId){
     wsSend({type:"poll.vote",payload:{chatId,msgId:m.dbId,poll:data.poll,memberIds}});
   }catch(err){
     console.warn("vote error:",err);
+    const cur=m.poll; const now_=cur.myVotes||[];
+    for(const o of cur.options||[]){
+      if(now_.includes(o.id) && !myBefore.includes(o.id)) o.votes=Math.max(0,(o.votes||0)-1);
+      if(!now_.includes(o.id) && myBefore.includes(o.id)) o.votes=(o.votes||0)+1;
+    }
+    if(now_.length && !myBefore.length) cur.totalVotes=Math.max(0,(cur.totalVotes||0)-1);
+    if(!now_.length && myBefore.length) cur.totalVotes=(cur.totalVotes||0)+1;
+    cur.myVotes=myBefore;
+    renderMsgs(); saveState();
     showToast("❌ "+(err.message||"Не удалось проголосовать"));
   }
 }
@@ -12702,7 +13401,25 @@ function buildImgViewerList(){
   const msgs=S.messages[S.chat]||[];
   imgViewerList=msgs.filter(m=>m.img && !m._deletedForAll && !m._deletedForMe && !(m.spoiler&&!m.spoilerRevealed)).map(m=>m.img);
 }
+// 21 окт 2026 (этап C): видео из сетки альбома открывается в том же просмотрщике целиком.
+function viewerStopVideo(){
+  const v=el("imgview-video"); if(!v) return;
+  try{ v.pause(); }catch(e){}
+  v.removeAttribute("src"); try{ v.load(); }catch(e){}
+  v.style.display="none";
+}
+function openVideoViewer(url){
+  if(!url) return;
+  const v=el("imgview-video"), i=el("imgview-img"); if(!v) return;
+  imgViewerList=[]; imgViewerIdx=-1;
+  i.style.display="none"; i.removeAttribute("src");
+  v.style.display=""; v.src=url;
+  el("m-imgview").classList.add("on");
+  pushNavEntry(closeImgViewer);
+  try{ const p=v.play(); if(p && p.catch) p.catch(()=>{}); }catch(e){}
+}
 function openImgViewer(url){
+  viewerStopVideo(); el("imgview-img").style.display="";
   buildImgViewerList();
   imgViewerIdx=imgViewerList.indexOf(url);
   el("imgview-img").src=url;
@@ -12715,7 +13432,7 @@ function openImgViewer(url){
   // другого модального окна в этом файле — свой closeFn в общем стеке.
   pushNavEntry(closeImgViewer);
 }
-function closeImgViewer(){ closeWithMotion(el("m-imgview")); setTimeout(msgsFeedShownAgain, 260); }
+function closeImgViewer(){ viewerStopVideo(); el("imgview-img").style.display=""; closeWithMotion(el("m-imgview")); setTimeout(msgsFeedShownAgain, 260); }
 function closeImgViewerViaBackStack(){
   if(el("m-imgview").classList.contains("on")) popNavEntry();
 }
@@ -12726,6 +13443,8 @@ function imgViewerNav(dir){
 }
 let imgViewerTouch=null;
 function imgViewerTouchStart(e){
+  // По самому видео тап — его кнопки (пуск, перемотка), а не «закрыть просмотрщик».
+  if(e.target && e.target.closest && e.target.closest("#imgview-video")){ imgViewerTouch=null; return; }
   const t=e.touches[0];
   imgViewerTouch={x0:t.clientX,y0:t.clientY,moved:false};
 }
@@ -13936,6 +14655,7 @@ async function attachFile(inp){
   const files=[...inp.files];
   if(!files.length)return;
   inp.value=""; // сбрасываем, чтобы можно было выбрать тот же файл ещё раз
+  if(S.editingId){ showToast("✏️ Идёт правка: чтобы поменять вложение, нажмите «Заменить»"); return; }   // этап C
   // 9 окт 2026: чат — тот, где файл ВЫБРАЛИ: чтение файла занимает время, и
   // открытый за это время другой чат не должен получить вложение.
   const chatAtPick=S.chat;
@@ -14001,13 +14721,19 @@ async function attachFile(inp){
   syncComposerEmptyClass();
 }
 
+// 21 окт 2026: размер своего ролика известен ещё в превью — пузырь сразу в своей пропорции.
+function notePendingVideoDims(v){
+  if(pendingAttach && pendingAttach.kind==="video" && v && v.videoWidth && v.videoHeight && v.getAttribute("src")===pendingAttach.previewUrl){
+    pendingAttach.vidW=v.videoWidth; pendingAttach.vidH=v.videoHeight;
+  }
+}
 function renderAttachPreview(){
   const wrap=el("attach-preview");
   if(!pendingAttach){ wrap.classList.remove("on"); return; }
   wrap.classList.add("on");
   const thumb=el("ap-thumb");
   if(pendingAttach.kind==="image") thumb.innerHTML=`<img src="${pendingAttach.previewUrl}">`;
-  else if(pendingAttach.kind==="video") thumb.innerHTML=`<video src="${pendingAttach.previewUrl}" muted></video>`;
+  else if(pendingAttach.kind==="video") thumb.innerHTML=`<video src="${pendingAttach.previewUrl}" muted preload="metadata" onloadedmetadata="notePendingVideoDims(this)"></video>`;
   else if(pendingAttach.kind==="videoCircle") thumb.innerHTML=`<video src="${pendingAttach.previewUrl}" muted style="border-radius:50%"></video>`;
   else if(pendingAttach.kind==="audio") thumb.innerHTML=`🎵`;
   else if(pendingAttach.kind==="voice") thumb.innerHTML=`🎤`;
@@ -14099,7 +14825,7 @@ async function sendWithAttachment(caption){
   const msg={id:localId,t:"out",time:tm,read:false,uploading:true,tx:caption||""};
   msg._retryAtt=att; msg._retryCaption=caption; // для повторной отправки, если что-то не долетит
   if(att.kind==="image"){ msg.img=att.previewUrl; if(att.spoiler) msg.spoiler=true; }
-  else if(att.kind==="video"){ msg.video=att.previewUrl; if(att.spoiler) msg.spoiler=true; }
+  else if(att.kind==="video"){ msg.video=att.previewUrl; if(att.spoiler) msg.spoiler=true; if(att.vidW>0 && att.vidH>0){ msg.vidW=att.vidW; msg.vidH=att.vidH; } }
   else if(att.kind==="audio") msg.audio={url:att.previewUrl,name:att.file.name};
   else if(att.kind==="voice") msg.voice={url:att.previewUrl,duration:att.duration||0,waveform:att.waveform||null,size:att.file?.size||0};
   else if(att.kind==="videoCircle") msg.videoCircle={url:att.previewUrl,duration:att.duration||0};
@@ -14156,6 +14882,12 @@ async function sendImageGroup(caption){
   for(const m of msgs){
     if(g!==accountGen) break;   // 7 окт 2026: аккаунт сменился — остальные фото не уходят от следующего
     await retryAttachmentMsg(m, chatId, ch, memberIds);
+    // 21 окт 2026: сервер отказал по праву писать — остальные фото не грузим, им откажут так же.
+    if(m._refused){
+      for(const x of msgs) if(x!==m && x.uploading){ x.uploading=false; x.failed=true; }
+      renderMsgs(); saveState();
+      break;
+    }
   }
 }
 
@@ -14339,20 +15071,353 @@ function insEmoji(e){
 // ── REPLY / EDIT ──────────────────────────────────────────────
 function setReply(id){ const m=(S.messages[S.chat]||[]).find(x=>x.id===id);if(!m||m.t==="date"||m.t==="sys")return; S.reply={id,fr:m.frName||m.fr||"Вы",tx:m.tx||"🎙"}; el("rsnm").textContent=S.reply.fr; el("rstx").textContent=S.reply.tx; el("rstrip").classList.add("on"); el("minput").focus(); }
 function cancelReply(){ S.reply=null; el("rstrip").classList.remove("on"); }
+// ══════════════════════════════════════════════════════════════════
+// 21 окт 2026 (этап C): правка сообщения — на СЕРВЕРЕ (правило 16).
+// Текст/подпись и замена вложения уходят PATCH /api/messages/:id с opId и ожидаемой
+// ревизией; файл для замены — POST /api/messages/:id/edit-upload (сервер сам проверяет
+// тип по содержимому и кладёт объект). Раньше правка меняла только m.tx на этом
+// устройстве: собеседник её не видел никогда, после переустановки она пропадала.
+// Режим правки — слой стека «назад»: системная «Назад» закрывает правку, а не чат.
+// Состояние сеанса — вне S (не попадает в localStorage): превью замены, ход загрузки.
+// «Избранное» (77777) пока локальное (этап A не сделан): там правка текста — как было,
+// без замены вложений и без имитации сервера.
+// ══════════════════════════════════════════════════════════════════
+let editSession=null;
+// Мои права в чате (perms из списка участников; по умолчанию — по роли).
+function myChatPerms(ch){
+  const me=(ch && ch.members || []).find(x=>String(x.id)===String(S.user?.id));
+  return (me && me.perms) || null;
+}
+// Можно ли править (показывать «Редактировать»). Сервер проверяет то же самое сам.
+function canEditMsg(m, ch){
+  if(!m || !ch) return false;
+  if(ch.id===77777) return msgIsOut(m);                                // «Избранное» — локально, как в 1.2
+  if(m.t==="sys" || m.t==="date" || m.t==="gift" || m.t==="sk") return false;
+  if(m.poll || m.contact || m.voice || m.videoCircle) return false;   // ни подписи, ни замены
+  if(m.fwd) return false;                                              // пересланная копия — снимок
+  if(m.uploading || m.failed) return false;
+  if(m.e2eFailed) return false;                                        // не расшифровано — в поле попала бы заглушка
+  if(msgServerRev(m)===-1 && m.edited) return false;                   // местная правка 1.2 ещё не сверена с сервером
+  if(isSystemChat(ch.id) || !isServerChatId(ch.id) || !m.dbId) return false;
+  // Сервер подтвердил, что правка у него есть (журнал отвечает, миграция выполнена). Старый
+  // сервер принял бы текст без ревизии и без события — кнопку тогда не показываем вовсе.
+  if(editServerOk!==true) return false;
+  if(ch.type==="channels"){
+    if(ch.myRole==="owner") return true;
+    if(ch.myRole==="admin") return String(m.authorId||"")===String(S.user?.id||"") || msgIsOut(m) || !!(myChatPerms(ch)||{}).editMsg;
+    return false;
+  }
+  if(!msgIsOut(m)) return false;
+  return Number.isFinite(m.ts) && (Date.now()-m.ts) < EDIT_WINDOW_MS;
+}
+function editKindOf(m){ if(!m) return null; if(m.img || m.video) return "visual"; if(m.audio) return "audio"; if(m.file) return "file"; return null; }
+function editItemOf(es, msgId){ return es && es.items.find(i=>i.msgId===msgId); }
+
 // Правка сообщения временно занимает поле ввода: черновик откладывается и
 // возвращается после правки (раньше текст правки становился черновиком, а
 // настоящий черновик терялся).
-function startEdit(id){ const m=(S.messages[S.chat]||[]).find(x=>x.id===id);if(!m||m.t!=="out")return;
+function startEdit(id){
+  const list=S.messages[S.chat]||[]; const ch=S.chats.find(c=>c.id===S.chat);
+  let m=list.find(x=>x.id===id);
+  if(!m || !canEditMsg(m, ch)) return;
+  // Альбом: подпись живёт у первого элемента, в ленте правки — все позиции.
+  let members=[m];
+  if(m.groupId){ members=list.filter(x=>x.groupId===m.groupId && !x._deletedForAll && !x._deletedForMe); if(members.length) m=members[0]; }
+  if(!canEditMsg(m, ch)) return;
+  if(editSession) editAbortUploads(editSession);
   if(!S.editingId) draftStash={chatId:composerChatId, text:getInputText()};
-  S.editingId=id; setInputText(m.tx||""); el("estrip").classList.add("on"); el("minput").focus(); }
-function cancelEdit(){
+  const local = S.chat===77777;
+  const e2e = !!(ch && ch.e2eActive) || members.some(x=>x.e2e);
+  S.editingId=m.id;
+  // baseRev — ревизия каждой позиции НА МОМЕНТ НАЧАЛА правки: её сервер и ожидает. Если, пока
+  // человек правил, сообщение изменили на другом устройстве, сохранение не затрёт ту правку
+  // молча — сервер ответит конфликтом, и человек увидит новую версию.
+  const baseRev={}; for(const x of members) baseRev[x.id]=msgServerRev(x);
+  // origText — текст на момент начала правки: «изменён ли текст» сравнивается с ним, а не с
+  // последней серверной версией (иначе нетронутое поле затёрло бы правку с другого устройства).
+  editSession={ chatId:S.chat, captionId:m.id, local, e2e, busy:false, committing:false, status:"", textOpId:null, textOpFor:undefined, encCache:null, origText:m.tx||"", pickFor:-1, baseRev,
+    items: local ? [] : members.filter(x=>editKindOf(x)).map(x=>({ msgId:x.id, kind:editKindOf(x),
+      allowed: !e2e && canEditMsg(x, ch), file:null, preview:null, newKind:null, opId:null, opFor:undefined, phase:"idle", progress:0, xhr:null })) };
+  setInputText(m.tx||""); el("estrip").classList.add("on");
+  renderEditStrip(); syncComposerState();
+  // Своя запись «назад». Из меню сообщения она забирает запись меню (pushNavEntry).
+  if(!navStack.some(f=>f && f.navModalId==="edit-mode" && !f.navSpent)) openLayer("edit-mode", ()=>cancelEdit(false, true));
+  // Подпись есть или сообщение текстовое — сразу к полю ввода; у фото без подписи клавиатуру не открываем.
+  if(m.tx || !editKindOf(m)) el("minput").focus();
+}
+// userAction: ✕, «Назад», завершение сохранения — запись стека снимается тем же путём, что и «назад».
+// Из кода (смена чата, аккаунта) — запись только помечается отработавшей: history.back()
+// сразу после открытия другого экрана снял бы не ту запись.
+function cancelEdit(userAction, fromBack){
+  const es=editSession;
+  if(es && es.busy && (es.committing || es.items.some(i=>i.phase==="committing")) && userAction && !fromBack){
+    showToast("⏳ Изменение уже отправлено — дождитесь ответа"); return;
+  }
   const былаПравка=!!S.editingId;
+  if(es) editAbortUploads(es);
+  editSession=null; document.body.classList.remove("edit-busy");
   S.editingId=null; el("estrip").classList.remove("on");
+  const media=el("estrip-media"); if(media){ media.innerHTML=""; media.classList.remove("on"); }
+  const st=el("estrip-status"); if(st) st.textContent="";
+  if(!fromBack){
+    if(userAction) closeLayerViaStack("edit-mode");
+    else for(let i=navStack.length-1;i>=0;i--){ const f=navStack[i]; if(f && f.navModalId==="edit-mode"){ f.navSpent=true; break; } }
+  }
+  syncComposerState();
   if(!былаПравка) return;
   const отложено=draftStash; draftStash=null;
   // Поле всё ещё у того же чата — возвращаем его черновик (или пусто).
   if(отложено && String(отложено.chatId)===String(composerChatId)) setInputText(отложено.text);
   else setInputText(composerOwner===draftOwner() ? getChatDraft(composerChatId) : "");
+}
+// Остановить незавершённые загрузки сеанса; загруженное, но не подтверждённое — удалить на сервере сразу.
+function editAbortUploads(es){
+  for(const it of es.items){
+    if(it.xhr){ try{ it.xhr.abort(); }catch(e){} it.xhr=null; }
+    const m=(S.messages[es.chatId]||[]).find(x=>x.id===it.msgId);
+    if(it.opId && it.phase!=="done" && it.phase!=="committing" && m && m.dbId) apiEditRequest("DELETE", "/api/messages/"+m.dbId+"/edit-upload/"+it.opId).catch(()=>{});
+    if(it.preview){ try{ URL.revokeObjectURL(it.preview); }catch(e){} it.preview=null; }
+  }
+}
+function renderEditStrip(){
+  const es=editSession; const box=el("estrip-media"), st=el("estrip-status");
+  if(!box) return;
+  if(!es){ box.innerHTML=""; box.classList.remove("on"); if(st) st.textContent=""; return; }
+  if(st) st.textContent=es.status ? " · "+es.status : "";
+  document.body.classList.toggle("edit-busy", !!es.busy);
+  const list=S.messages[es.chatId]||[];
+  const items=es.items.filter(i=>list.some(x=>x.id===i.msgId));
+  if(!items.length || !items.some(i=>i.allowed)){ box.innerHTML=""; box.classList.remove("on"); return; }
+  box.classList.add("on");
+  box.innerHTML=items.map(it=>{
+    const m=list.find(x=>x.id===it.msgId); const idx=es.items.indexOf(it);
+    let thumb;
+    if(it.preview && it.newKind==="video") thumb=`<video src="${escHtml(it.preview)}" muted playsinline preload="metadata"></video>`;
+    else if(it.preview && it.newKind==="image") thumb=`<img src="${escHtml(it.preview)}" alt="">`;
+    else if(it.file) thumb=`<span>${it.kind==="audio"?"🎵":"📄"}</span>`;
+    else if(m.img) thumb=`<img src="${escHtml(m.img)}" alt="">`;
+    else if(m.video) thumb=`<video src="${escHtml(m.video)}" muted playsinline preload="metadata"></video>`;
+    else thumb=`<span>${it.kind==="audio"?"🎵":"📄"}</span>`;
+    const имя = it.file ? it.file.name : (m.audio ? m.audio.name : (m.file ? m.file.name : ""));
+    const prog = (it.phase==="uploading") ? `<div class="es-prog" data-es-prog="${idx}">${it.progress||0}%</div>`
+      : (it.phase==="committing" ? `<div class="es-prog">…</div>` : "");
+    const badge = it.phase==="done" ? `<span class="es-badge">✓</span>` : (it.file ? `<span class="es-badge">новое</span>` : "");
+    const undo = (it.file && !es.busy) ? `<button type="button" class="es-undo" onclick="editUndoPick(${idx})" aria-label="Отменить замену">✕</button>` : "";
+    const btn = it.allowed ? `<button type="button" class="es-btn" onclick="editPickReplace(${idx})" ${es.busy?"disabled":""}>${it.file?"Другой":"Заменить"}</button>` : "";
+    return `<div class="es-item${it.file?" picked":""}${it.phase==="error"?" error":""}${it.phase==="done"?" done":""}" data-es-idx="${idx}"><div class="es-thumb">${thumb}${badge}${prog}</div>${undo}${btn}${имя?`<div style="font-size:9.5px;color:var(--tx3);max-width:66px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(имя)}</div>`:""}</div>`;
+  }).join("");
+}
+function editPickReplace(idx){
+  const es=editSession; if(!es || es.busy) return;
+  const it=es.items[idx]; if(!it || !it.allowed) return;
+  es.pickFor=idx;
+  const inp=el("edit-replace-inp"); if(!inp) return;
+  inp.value="";
+  inp.multiple=false;
+  // Сетка (фото/видео) — галерея с камерой; музыка — музыка; документ — любой файл.
+  inp.accept = it.kind==="visual" ? "image/*,video/*" : (it.kind==="audio" ? "audio/*" : "");
+  inp.click();
+}
+function onEditReplacePicked(inp){
+  const es=editSession; const f=inp.files && inp.files[0]; inp.value="";
+  if(!es || !f || es.busy) return;
+  const it=es.items[es.pickFor]; if(!it) return;
+  const type=String(f.type||"").toLowerCase();
+  let newKind=null;
+  if(it.kind==="visual"){
+    if(/^image\/(heic|heif)/.test(type)){ showToast("❌ Формат HEIC не поддерживается — выберите JPEG или PNG"); return; }
+    if(type.startsWith("image/")) newKind="image";
+    else if(type.startsWith("video/")) newKind="video";
+    else { showToast("❌ Здесь можно заменить только на фото или видео"); return; }
+  } else if(it.kind==="audio"){
+    if(!type.startsWith("audio/")){ showToast("❌ Музыку можно заменить только музыкальным файлом"); return; }
+    newKind="audio";
+  } else newKind="file";
+  if(it.preview){ try{ URL.revokeObjectURL(it.preview); }catch(e){} }
+  it.file=f; it.newKind=newKind; it.preview=(newKind==="image"||newKind==="video") ? URL.createObjectURL(f) : null;
+  it.opId=null; it.phase="picked"; it.progress=0; es.status="";
+  renderEditStrip(); syncComposerState();
+}
+function editUndoPick(idx){
+  const es=editSession; if(!es || es.busy) return;
+  const it=es.items[idx]; if(!it) return;
+  const m=(S.messages[es.chatId]||[]).find(x=>x.id===it.msgId);
+  if(it.opId && m && m.dbId) apiEditRequest("DELETE", "/api/messages/"+m.dbId+"/edit-upload/"+it.opId).catch(()=>{});
+  if(it.preview){ try{ URL.revokeObjectURL(it.preview); }catch(e){} }
+  it.file=null; it.preview=null; it.newKind=null; it.opId=null; it.phase="idle"; it.progress=0;
+  renderEditStrip(); syncComposerState();
+}
+function editSessionHasPick(es){ return !!(es && es.items.some(i=>i.file && i.phase!=="done")); }
+// Загрузка файла под операцию правки — XHR ради хода загрузки и отмены.
+function editUploadFile(it, dbId, opId){
+  return new Promise(resolve=>{
+    const t=getToken(), g=accountGen;
+    const fd=new FormData();
+    fd.append("opId", opId); fd.append("fileName", it.file.name || "file"); fd.append("file", it.file, it.file.name || "file");
+    const xhr=new XMLHttpRequest(); it.xhr=xhr;
+    xhr.open("POST", API_URL+"/api/messages/"+encodeURIComponent(dbId)+"/edit-upload");
+    xhr.setRequestHeader("Authorization", "Bearer "+(t||""));
+    xhr.upload.onprogress=(ev)=>{ if(ev.lengthComputable){ it.progress=Math.min(99, Math.round(ev.loaded/ev.total*100)); const p=document.querySelector(`[data-es-prog="${editSession?editSession.items.indexOf(it):-1}"]`); if(p) p.textContent=it.progress+"%"; } };
+    xhr.onload=()=>{
+      it.xhr=null;
+      if(g!==accountGen) return resolve({ok:false, aborted:true});
+      if(xhr.status===401) onAuthorizedRequest401("/api/messages/edit-upload", t);
+      let d={}; try{ d=JSON.parse(xhr.responseText||"{}"); }catch(e){ d={}; }
+      if(xhr.status===200 && d.success) resolve({ok:true});
+      else resolve({ok:false, status:xhr.status, code:d.code, message:d.error || "Не удалось загрузить файл"});
+    };
+    xhr.onerror=()=>{ it.xhr=null; resolve({ok:false, message:"Нет связи — файл не загружен"}); };
+    xhr.onabort=()=>{ it.xhr=null; resolve({ok:false, aborted:true, message:"Загрузка отменена"}); };
+    xhr.send(fd);
+  });
+}
+const EDIT_FATAL=new Set(["edit_expired","no_rights","not_author","forwarded","not_found","chat_blocked","text_not_editable","not_replaceable","scheduled","caption_on_first","restricted","muted","blocked"]);
+// Одна серверная операция: замена вложения (с подписью, если она у этого же сообщения) или
+// только подпись/текст. → "ok" | "retry" (режим остаётся, можно нажать ещё раз) | "fatal".
+// Поле правки не трогали — подставляем серверный текст (событие с другого устройства, 409):
+// иначе «Сохранить» отправило бы старый текст из поля и затёрло бы чужую правку.
+function editAdoptServerText(es, dbId){
+  if(!es || es!==editSession) return;
+  const cap=(S.messages[es.chatId]||[]).find(x=>x.id===es.captionId);
+  if(!cap || (dbId && cap.dbId!==dbId)) return;
+  if(getInputText()!==es.origText) return;
+  es.origText=cap.tx||""; setInputText(es.origText); syncComposerState();
+}
+async function runEditJob(es, job){
+  const m=job.m;
+  if(!m || !m.dbId){ es.status="Сообщение удалено"; showToast("❌ Сообщение удалено — изменение не сохранено"); return "fatal"; }
+  const it=job.item;
+  // opId — ключ ОДНОЙ операции: тот же запрос при повторе после обрыва связи. Изменилось
+  // содержимое (другой текст или подпись) — это уже новая операция с новым ключом.
+  if(it && it.opId && it.opFor!==job.text) it.opId=null;
+  if(it && !it.opId){ it.opId=genClientMsgId(); it.opFor=job.text; }
+  if(!it && es.textOpId && es.textOpFor!==job.text) es.textOpId=null;
+  if(!it && !es.textOpId){ es.textOpId=genClientMsgId(); es.textOpFor=job.text; }
+  let opId = it ? it.opId : es.textOpId;
+  if(it){
+    let up;
+    for(let попытка=0; попытка<2; попытка++){
+      it.phase="uploading"; it.progress=0; es.status="Загружаем…"; renderEditStrip();
+      up=await editUploadFile(it, m.dbId, it.opId);
+      if(editSession!==es) return "fatal";
+      // Прежняя загрузка этой операции отменена или не удалась на сервере — сразу новая операция.
+      if(!up.ok && up.code==="upload_expired"){ it.opId=genClientMsgId(); it.opFor=job.text; continue; }
+      break;
+    }
+    if(!up.ok){
+      if(up.aborted){ it.phase="picked"; return "retry"; }
+      it.phase="error"; es.status=up.message; showToast("❌ "+up.message);
+      // Сервер отказал — следующая попытка будет новой операцией. При обрыве связи (ответа нет)
+      // opId остаётся: файл мог дойти, и повтор не загрузит его второй раз.
+      if(up.status && up.code!=="upload_in_progress") it.opId=null;
+      return EDIT_FATAL.has(up.code) ? "fatal" : "retry";
+    }
+    opId=it.opId;
+    it.phase="committing";
+  }
+  let text=job.text;
+  if(text!==undefined && m.e2e){
+    // Шифротекст каждый раз новый: повтор той же операции отправляет прежний, иначе сервер
+    // принял бы повтор за другое содержимое.
+    const c=es.encCache;
+    if(c && c.msgId===m.id && c.opId===opId && c.plain===text) text=c.enc;
+    else {
+      const enc=await encryptE2EText(es.chatId, text);
+      if(!enc){ showToast("🔒 Ключ шифрования недоступен на этом устройстве — изменить нельзя"); es.status="Нет ключа шифрования"; return "fatal"; }
+      es.encCache={msgId:m.id, opId, plain:text, enc}; text=enc;
+    }
+  }
+  es.status="Применяется…"; es.committing=true; renderEditStrip();
+  let r;
+  try{
+    const base=Number.isFinite(es.baseRev[m.id]) ? es.baseRev[m.id] : msgServerRev(m);
+    const body={opId, expectedRevision:Math.max(0, base)};
+    if(text!==undefined) body.text=text;
+    if(it) body.media=true;
+    // prevSent — что ушло в прошлый раз без ответа (обрыв): по нему видно, что «конфликт» — своё же дошедшее.
+    es.prevSent=es.lastSent; es.lastSent=job.text;
+    r=await apiEditRequest("PATCH", "/api/messages/"+encodeURIComponent(m.dbId), body);
+  }catch(e){
+    es.committing=false;
+    if(e && e.accountChanged) return "fatal";
+    if(editSession!==es){ showToast("❌ Нет связи — изменение могло не сохраниться"); return "fatal"; }
+    // Ответ потерян: правка могла примениться. Повтор с тем же opId сервер не применит дважды.
+    if(it) it.phase="picked";
+    es.status="Нет связи — изменение не подтверждено"; showToast("❌ Нет связи — изменение не подтверждено. Нажмите «Сохранить» ещё раз");
+    return "retry";
+  }
+  es.committing=false;
+  const d=r.data||{};
+  // Режим правки могли закрыть («Назад»), пока шёл запрос: успех всё равно применяем, об отказе — говорим.
+  const live=editSession===es;
+  if(r.status===200 && d.message){
+    if(applyServerMsgState(es.chatId, d.message)){ saveState(); if(S.chat===es.chatId) renderMsgs(); renderChats(); }
+    es.baseRev[m.id]=Number(d.message.revision)||0;
+    if(job.text!==undefined) es.origText=job.text;
+    es.lastSent=undefined;
+    if(it){ it.phase="done"; it.file=null; if(it.preview){ try{ URL.revokeObjectURL(it.preview); }catch(e){} it.preview=null; } it.opId=null; it.opFor=undefined; }
+    else { es.textOpId=null; es.textOpFor=undefined; }
+    return "ok";
+  }
+  if(r.status===200 && d.success && !d.message){
+    // Сервер без правки (не обновлён) — больше не пробуем.
+    editServerOk=false; showToast("❌ Редактирование заработает после обновления сервера"); return "fatal";
+  }
+  if(r.status===409 && (d.code==="revision_conflict" || d.code==="op_payload_mismatch")){
+    // Сообщение изменили на другом устройстве (или прежнее «Сохранить» всё-таки дошло): показываем
+    // серверную версию; выбор пользователя (новый текст в поле, выбранный файл) не теряем.
+    if(d.message && applyServerMsgState(es.chatId, d.message)){ saveState(); if(S.chat===es.chatId) renderMsgs(); renderChats(); }
+    // Человек увидел новую версию — следующее «Сохранить» осознанно идёт поверх неё.
+    if(d.message) es.baseRev[m.id]=Number(d.message.revision)||0;
+    if(d.code==="op_payload_mismatch"){ if(it){ it.opId=null; it.opFor=undefined; } else { es.textOpId=null; es.textOpFor=undefined; } }
+    if(!live){ showToast("❌ Изменение не сохранено: сообщение уже изменено"); return "fatal"; }
+    editAdoptServerText(es, m.dbId);
+    if(it) it.phase="picked";
+    // На сервере ровно то, что это устройство отправило перед обрывом связи, — значит, дошло своё.
+    const своёДошло = d.code==="op_payload_mismatch" || (!m.e2e && d.message && es.prevSent!==undefined && d.message.text===es.prevSent);
+    const другое = !своёДошло;
+    es.status = другое ? "Изменено на другом устройстве" : "Прежнее сохранение уже применено";
+    showToast(другое ? "⚠️ Сообщение уже изменили на другом устройстве — проверьте и сохраните ещё раз" : "⚠️ Прежнее сохранение уже применено — проверьте и сохраните ещё раз");
+    return "retry";
+  }
+  if(!live){ showToast("❌ Изменение не сохранено"+(d.error ? ": "+d.error : "")); return "fatal"; }
+  if(r.status===409 && d.code==="upload_missing"){ if(it){ it.opId=null; it.phase="picked"; } es.status="Файл не дошёл — сохраните ещё раз"; showToast("❌ "+(d.error||"Файл для замены не найден")); return "retry"; }
+  if(it) it.phase="error";
+  es.status=d.error || "Не удалось сохранить";
+  showToast("❌ "+(d.error || (r.status===503 ? "Редактирование пока недоступно" : "Не удалось сохранить изменение")));
+  return EDIT_FATAL.has(d.code) ? "fatal" : "retry";
+}
+async function submitEdit(){
+  const es=editSession; if(!es || es.busy) return;
+  const list=S.messages[es.chatId]||[];
+  const cap=list.find(x=>x.id===es.captionId);
+  if(!cap){ showToast("❌ Сообщение удалено — правка закрыта"); cancelEdit(true); return; }
+  const txt=getInputText();
+  if(es.local){
+    if(!hasRealText(txt) && !editKindOf(cap)){ showToast("❌ Сообщение не может быть пустым"); return; }
+    // «Избранное» — как было: только на этом устройстве (серверного «Избранного» ещё нет, этап A).
+    cap.tx=txt; cap.edited=true; cap.editedAt=new Date().toISOString();
+    cancelEdit(true); aResize(el("minput")); renderMsgs(); saveState(); return;
+  }
+  const textChanged = txt!==es.origText;
+  if(textChanged && !hasRealText(txt) && !editKindOf(cap)){ showToast("❌ Сообщение не может быть пустым"); return; }
+  const jobs=[];
+  const capItem=es.items.find(i=>i.msgId===cap.id && i.file && i.phase!=="done");
+  if(capItem) jobs.push({item:capItem, m:cap, text:textChanged ? txt : undefined});
+  else if(textChanged) jobs.push({item:null, m:cap, text:txt});
+  for(const it of es.items) if(it!==capItem && it.file && it.phase!=="done") jobs.push({item:it, m:list.find(x=>x.id===it.msgId), text:undefined});
+  if(!jobs.length){ cancelEdit(true); return; }
+  es.busy=true; es.status="Сохраняем…"; renderEditStrip(); syncComposerState();
+  let итог="ok";
+  for(const job of jobs){
+    итог=await runEditJob(es, job);
+    if(editSession!==es) return;          // режим закрыли или сменили чат, пока шёл запрос
+    if(итог!=="ok") break;
+  }
+  es.busy=false; document.body.classList.remove("edit-busy");
+  if(итог==="ok"){ es.status=""; cancelEdit(true); aResize(el("minput")); return; }
+  if(итог==="fatal"){ cancelEdit(true); return; }
+  renderEditStrip(); syncComposerState();
 }
 
 // ── CTX MENU ──────────────────────────────────────────────────
@@ -14387,6 +15452,8 @@ function showCtx(e,id){
   // Раньше все строки были всегда, и тап по неприменимой выдавал ошибку.
   const своё = msgObj ? msgObj.t==="out" : false;
   m.classList.toggle("own-msg", !!msgObj && своё);
+  // 21 окт 2026 (этап C): «Редактировать» — по тем же правилам, что проверит сервер.
+  m.classList.toggle("can-edit", !!msgObj && canEditMsg(msgObj, S.chats.find(c=>c.id===S.chat)));
   m.classList.toggle("other-msg", !!msgObj && !своё);
   m.classList.toggle("has-text", !!(msgObj && msgObj.tx && msgObj.tx.trim()));
   // Верхняя информационная строка — только если сообщение правили. Время
@@ -14443,7 +15510,9 @@ function showCtx(e,id){
   // меню открытым). Не пушим повторно, если меню уже было открыто и просто
   // переоткрывается для другого сообщения — это один и тот же диалог с
   // точки зрения пользователя, не два вложенных.
-  if(!wasOpen) pushNavEntry(closeCtx);
+  // 20 окт 2026: своя обёртка на каждое открытие — по ней pushNavEntry узнаёт запись меню на вершине
+  // (и передаёт её следующему окну), а closeCtxViaBackStack — сколько записей лежит поверх неё.
+  if(!wasOpen){ const f=()=>closeCtx(); f.navModalId="ctx"; ctxNavFn=f; pushNavEntry(f); }
 }
 // Строка «изменено …» для верха меню. Время только настоящее: серверное
 // edited_at или местное время правки. Если отметки нет — без времени.
@@ -14716,7 +15785,13 @@ function closeCtxViaBackStack(){
   // через стек (addRxn), а тот же click затем доходил до общего обработчика
   // документа — и вместе с меню закрывался сам чат.
   if(_navBackInFlight) return;
-  if(el("ctx").classList.contains("on")) popNavEntry();
+  if(!el("ctx").classList.contains("on")) return;
+  // 20 окт 2026: запись меню может быть не наверху (поверх — раскрытая палитра реакций) или её уже
+  // нет в стеке. Тогда «назад» на один шаг снял бы чужую запись: группу снимаем целиком, а меню без
+  // записи закрываем напрямую.
+  const i=ctxNavFn ? navStack.lastIndexOf(ctxNavFn) : -1;
+  if(i<0){ closeCtx(); return; }
+  navBackSteps(navStack.length-i);
 }
 
 // Долгое нажатие на мобильных
@@ -14794,7 +15869,16 @@ document.addEventListener("visibilitychange",()=>{
 // оба случая: захват идёт "сверху вниз" РАНЬШЕ, чем встроенные onclick на
 // самой картинке и т.п. (те в фазе всплытия), поэтому можно погасить клик
 // целиком до того, как что-то внутри успеет сработать.
+let msgsTouchStartAt=null;
+el("msgs")?.addEventListener("touchstart", function(e){ msgsTouchStartAt={ target:e.target, t:Date.now() }; }, {capture:true, passive:true});
+const MSG_OWN_ACTION_SEL="img.msg-img,video.grp-video,.msg-video,.voice-msg,.video-circle-wrap,.msg-file,.lnkprev,a.msg-link,.spoiler-overlay";
 el("msgs")?.addEventListener("click", function(e){
+  {
+    const ts=msgsTouchStartAt; msgsTouchStartAt=null;
+    const начало=ts && Date.now()-ts.t<1000 ? ts.target : null;
+    const своё=начало && начало.closest ? начало.closest(MSG_OWN_ACTION_SEL) : null;
+    if(своё && !S.selectMode && !(своё===e.target || своё.contains(e.target))){ e.stopPropagation(); e.preventDefault(); return; }
+  }
   // 30 июля 2026: клик МИМО пузыря (пустое место рядом с сообщением) на
   // самом деле не обрабатывался НИКЕМ вне режима выбора — расчёт был на
   // row.onclick, а он назначается ТОЛЬКО когда S.selectMode уже true (см.
@@ -14812,7 +15896,17 @@ el("msgs")?.addEventListener("click", function(e){
   {
     const sheet=[el("attach-menu"), el("mpanel"), el("send-opts-menu"), el("format-bar")].find(x=>x&&x.classList.contains("on"));
     if(sheet){ e.stopPropagation(); e.preventDefault(); if(sheet.id==="mpanel") closeMPanel(); else dismissSheet(sheet); return; }
+    // 20 окт 2026: открыто меню «не отправлено» — тап по ленте только закрывает его (как лист выше),
+    // а не открывает под ним меню сообщения или фото.
+    if(document.querySelector(".failed-msg-menu")){ e.stopPropagation(); e.preventDefault(); closeFailedMsgMenu(); return; }
   }
+  // 20 окт 2026: красный «?» (не отправлено) — своё меню повтора; раньше на телефоне тап по нему открывал
+  // меню сообщения (у стикера «?» вне пузыря, поэтому проверка — до всего остального). В режиме выбора
+  // тап по «?», как по любому месту сообщения, только переключает выбор (ветка ниже).
+  if(!S.selectMode && e.target.closest(".mtick-failed")) return;
+  // Кружок выбора на фото альбома переключает именно это фото (раньше всплывал до строки и выделял весь альбом).
+  const чекАльбома=S.selectMode ? e.target.closest(".grp-cell-check") : null;
+  if(чекАльбома){ const клетка=чекАльбома.closest(".grp-cell[data-msg-id]"); if(клетка){ e.stopPropagation(); e.preventDefault(); toggleMsgSelect(+клетка.dataset.msgId); return; } }
   if(e.target.closest(".mav,.msel-check")) return; // аватар и чекбокс — своя роль, не трогаем
   const bub=e.target.closest(".bub, .vbub, .skbub, .gift-bubble");
   const row=(bub||e.target).closest(".mrow");
@@ -14825,6 +15919,7 @@ el("msgs")?.addEventListener("click", function(e){
   const msgId=cell ? +cell.dataset.msgId : +row.dataset.msgId;
   if(S.selectMode){
     e.stopPropagation(); // не даём сработать фото/видео/голосовому и т.д. поверх выбора
+    if(e.target.closest("a")) e.preventDefault();   // 20 окт 2026: и ссылке — только выбор, без перехода
     // 30 июля 2026: клик по ПУСТОМУ месту в строке альбома (cell===row, а не
     // конкретный .grp-cell) должен выделять/снимать ВЕСЬ альбом разом, как в
     // Telegram — иначе резолвится в id первого фото группы (row.dataset.msgId),
@@ -14850,7 +15945,9 @@ el("msgs")?.addEventListener("click", function(e){
   // Не в режиме выбора — если клик пришёлся на что-то со своим собственным
   // действием (фото/видео/голосовое/опрос/контакт/спойлер/файл/пересланное/
   // реакция), не мешаем ему работать как раньше
-  if(bub && e.target.closest("img.msg-img,.msg-video,.voice-msg,.video-circle-wrap,.poll-opt,.contact-item,.spoiler-overlay,.as-channel-tag,.msg-file,.gift-bubble,.lnkprev,.rxn")) return;
+  // 20 окт 2026: и ссылка в тексте (a.msg-link) — раньше тап по ней на телефоне открывал меню сообщения,
+  // а её собственный обработчик (внешний браузер через мост приложения) не вызывался.
+  if(bub && e.target.closest("img.msg-img,video.grp-video,.msg-video,.voice-msg,.video-circle-wrap,.poll-opt,.contact-item,.spoiler-overlay,.as-channel-tag,.msg-file,.gift-bubble,.lnkprev,.rxn,a.msg-link")) return;
   // Короткий тап по обычному тексту/пустой части сообщения — открываем то
   // же меню действий, что раньше открывалось долгим нажатием. Гасим клик,
   // иначе он же долетит до document и глобальный обработчик выше немедленно
@@ -15183,7 +16280,7 @@ function selDeleteForMe(){
   S.selectedMsgs.forEach(id=>{
     const m=ms.find(x=>x.id===id);
     if(m){
-      m._deletedForMe=true;
+      m._deletedForMe=true; m._delMine=true;
       if(isRealChat && m.dbId) apiDelete("/api/messages/"+m.dbId).catch(()=>{});
     }
   });
@@ -15233,7 +16330,14 @@ function selForwardAll(){
   requestExitSelectMode();
   openForward();
 }
-function ctxEdit(){ const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m||m.t!=="out"){showToast("❌ Только свои сообщения");return;} startEdit(S.ctxId); }
+function ctxEdit(){
+  const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId), ch=S.chats.find(c=>c.id===S.chat);
+  if(!m || !canEditMsg(m, ch)){
+    showToast(m && msgIsOut(m) && ch && ch.type!=="channels" && Number.isFinite(m.ts) && Date.now()-m.ts>=EDIT_WINDOW_MS ? "⏱ Срок редактирования (48 часов) истёк" : "❌ Это сообщение изменить нельзя");
+    return;
+  }
+  startEdit(S.ctxId);
+}
 function ctxCopy(){ const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId);if(m?.tx)navigator.clipboard.writeText(m.tx).catch(()=>{});showToast("📋 Скопировано"); }
 // ⚠️ Раньше закреп был полностью локальным (S.pinnedByChat только в
 // localStorage) — другие участники чата (и то же устройство после
@@ -15285,7 +16389,7 @@ function renderPinbar(){
   const curId=validPins[S.pinViewIdx];
   const pm=ms.find(x=>x.id===curId);
   if(pinbar)pinbar.style.display="flex";
-  if(el("pintxt"))el("pintxt").innerHTML=`<span style="color:var(--acc2);font-weight:600">📌 ${validPins.length>1?`(${S.pinViewIdx+1}/${validPins.length}) `:""}</span>${pm?(pm.tx||pm.sk||"Стикер"):"—"}`;
+  if(el("pintxt"))el("pintxt").innerHTML=`<span style="color:var(--acc2);font-weight:600">📌 ${validPins.length>1?`(${S.pinViewIdx+1}/${validPins.length}) `:""}</span>${pm?escHtml(pm.tx||pm.sk||"Стикер"):"—"}`;
 }
 
 // Клик по pinbar — листает закреплённые и скроллит к ним
@@ -15476,6 +16580,12 @@ function isComposerEmpty(){
 // голосового или кружка подписи не имеет и сюда как вложение не попадает:
 // её отправляет сама панель записи.
 function composerCanSend(){
+  // 21 окт 2026 (этап C): в правке «сохранить» доступно и с пустым полем, если у сообщения есть
+  // вложение (подпись можно стереть) или выбрана замена.
+  if(editSession){
+    const cap=(S.messages[editSession.chatId]||[]).find(x=>x.id===editSession.captionId);
+    return !isInputEmpty() || editSessionHasPick(editSession) || !!editKindOf(cap);
+  }
   const запись = !!(rec && (rec.phase==="paused" || rec.phase==="locked"));
   return !isInputEmpty() || !!pendingAttach || !!(pendingAttachGroup && pendingAttachGroup.length) || запись;
 }
@@ -15752,7 +16862,7 @@ function delForMe(){
   const i=ms.findIndex(x=>x.id===S.ctxId);
   if(i!==-1){
     const m=ms[i];
-    m._deletedForMe=true;
+    m._deletedForMe=true; m._delMine=true;
     if(m.dbId && typeof S.chat==="string"){
       apiDelete("/api/messages/"+m.dbId).catch(e=>console.warn("delete for me error:",e));
     }
@@ -15785,10 +16895,23 @@ function tPlay(btn){ const p=btn.dataset.p==="1"; btn.innerHTML=p?'<svg width="1
 // локально сразу же (не дожидаясь ответа, для отзывчивости), рассылает
 // другим участникам чата по WebSocket. Раньше реакции были полностью
 // локальными — их не видел никто, кроме того, кто поставил.
+// 22 окт 2026: реакции одного сообщения уходят на сервер по очереди (иначе «поставить» и «снять» при двойном
+// нажатии могли бы обработаться в обратном порядке). Отказ сервера (не участник, блокировка, реакции выключены)
+// или обрыв — свои реакции возвращаются к последнему состоянию, подтверждённому сервером; чужие, пришедшие
+// кадрами за это время, не трогаются; следующие нажатия этой очереди уже не отправляются.
+const _rxnQueue=new Map();
+function rxnSetMine(m, mine){
+  if(!m.rxn) m.rxn=[];
+  for(const r of m.rxn){ if(r.m && !mine.includes(r.e)){ r.m=false; r.c=Math.max(0,r.c-1); } }
+  for(const e of mine){ const r=m.rxn.find(x=>x.e===e); if(r){ if(!r.m){ r.m=true; r.c++; } } else m.rxn.push({e,c:1,m:true}); }
+  m.rxn=m.rxn.filter(x=>x.c>0);
+}
 async function sendReactionToggle(m, emoji){
   if(!m.dbId){ showToast("⏳ Подождите, сообщение ещё сохраняется"); return; }
   if(!isReactionAllowed(S.chat, emoji)){ showToast("🔒 Эта реакция здесь запрещена"); return; }
   if(!m.rxn)m.rxn=[];
+  const gen=accountGen;
+  const mineNow=m.rxn.filter(x=>x.m).map(x=>x.e);   // очереди ещё нет — это и есть подтверждённое состояние
   let ex=m.rxn.find(r=>r.e===emoji);
   const wasMine=ex && ex.m;
 
@@ -15812,13 +16935,29 @@ async function sendReactionToggle(m, emoji){
   m.rxn=m.rxn.filter(x=>x.c>0);
   renderMsgs(); saveState();
 
-  try{
-    const data=await apiPost("/api/messages/"+m.dbId+"/reactions", {emoji}, true);
-    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось сохранить реакцию")); return; }
-    const curCh=S.chats.find(c=>c.id===S.chat);
-    const memberIds=getChatMemberIds(curCh);
-    wsSendReliable({type:"reaction.update", payload:{chatId:S.chat, messageId:m.dbId, emoji, userId:S.user.id, action:data.action, memberIds}});
-  }catch(e){ showToast("❌ Нет связи с сервером"); }
+  const action = wasMine ? "remove" : "add";
+  const chatOfTap=S.chat;
+  let q=_rxnQueue.get(m.dbId);
+  if(!q){ q={n:0, confirmed:mineNow, refused:false, p:Promise.resolve()}; _rxnQueue.set(m.dbId, q); }
+  q.n++;
+  q.p=q.p.then(async ()=>{
+    if(q.refused || gen!==accountGen) return;
+    try{
+      const data=await apiPost("/api/messages/"+m.dbId+"/reactions", {emoji, action}, true);
+      if(!data || !data.success){ q.refused=true; showToast("❌ "+(data&&data.error||"Не удалось сохранить реакцию")); return; }
+      // Подтверждённое сервером: без VIP новая реакция заменяет прежнюю.
+      if(data.action==="removed") q.confirmed=q.confirmed.filter(e=>e!==emoji);
+      else q.confirmed=(S.vip?.active) ? [...new Set([...q.confirmed, emoji])] : [emoji];
+      const curCh=S.chats.find(c=>c.id===chatOfTap);
+      const memberIds=getChatMemberIds(curCh);
+      wsSendReliable({type:"reaction.update", payload:{chatId:chatOfTap, messageId:m.dbId, emoji, userId:S.user.id, action:data.action, memberIds}});
+    }catch(e){ q.refused=true; showToast("❌ Нет связи с сервером"); }
+  });
+  await q.p;
+  if(--q.n===0){
+    _rxnQueue.delete(m.dbId);
+    if(q.refused && gen===accountGen){ rxnSetMine(m, q.confirmed); renderMsgs(); saveState(); }
+  }
 }
 
 function toggleRxn(msgId, ri){
@@ -15864,14 +17003,29 @@ function quickAddCrystal(msgId){
   sendCrystalGift(1);
 }
 
+// 22 окт 2026: ключ повтора (opId). Каждое нажатие — новый подарок со своим ключом; прежний ключ берётся
+// только для повтора того же подарка после «нет связи» (ответ потерян — сервер мог уже подарить, второй раз
+// он не спишет).
+let crystalGiftLost=null;
+function crystalGiftOpId(msgDbId, amount){
+  const key=msgDbId+":"+amount;
+  const id = (crystalGiftLost && crystalGiftLost.key===key) ? crystalGiftLost.id : genClientMsgId();
+  crystalGiftLost=null;
+  return {key, id};
+}
 async function sendCrystalGift(amount){
   const m=crystalGiftTargetMsg;
   if(!m || !m.dbId) return;
   if(amount>(S.bal||0)){ showToast("❌ Недостаточно Crystals на балансе"); return; }
   closeM("m-crystal-gift");
   try{
-    const data=await apiPost("/api/messages/"+m.dbId+"/crystal-gift", {amount}, true);
+    var op=crystalGiftOpId(m.dbId, amount);
+    let data;
+    try{ data=await apiPost("/api/messages/"+m.dbId+"/crystal-gift", {amount, opId: op.id}, true); }
+    catch(e){ crystalGiftLost=op; throw e; }
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось подарить")); return; }
+    // repeated — первая попытка прошла, а ответ потерялся: показываем её результат один раз; баланс — с сервера
+    if(data.repeated){ data.newBalance=S.bal; refreshBalanceFromServer(); }
     S.bal=data.newBalance; updBal();
     m.crystalTotal=(m.crystalTotal||0)+amount;
     renderMsgs(); saveState();
@@ -16716,7 +17870,7 @@ function clearHistory(){
   const doClear=(wipeForAll)=>{
     if(!S.chats.some(c=>c.id===chatId)){ showToast("Этого чата уже нет"); return; }
     if(!wipeForAll){
-      (S.messages[chatId]||[]).forEach(m=>{ m._deletedForMe=true; });
+      (S.messages[chatId]||[]).forEach(m=>{ m._deletedForMe=true; m._delMine=true; });
       renderMsgs(); renderChats();
       showToast("🗑️ История очищена у вас");
       saveState();
@@ -16847,7 +18001,7 @@ function renderRightPanelMedia(ch){
       rpMd.innerHTML=items.map(m=>{
         if(m.img) return `<div class="mth" style="padding:0;overflow:hidden" onclick="openImgViewer('${m.img}')"><img src="${m.img}" style="width:100%;height:100%;object-fit:cover"></div>`;
         const vurl=m.video||m.videoCircle.url;
-        return `<div class="mth" style="padding:0;overflow:hidden;position:relative" onclick="window.open('${vurl}','_blank')"><video src="${vurl}" muted style="width:100%;height:100%;object-fit:cover"></video><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25);color:#fff;font-size:16px">▶</div></div>`;
+        return `<div class="mth" style="padding:0;overflow:hidden;position:relative" onclick="openOutside('${vurl}','_blank')"><video src="${vurl}" muted style="width:100%;height:100%;object-fit:cover"></video><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25);color:#fff;font-size:16px">▶</div></div>`;
       }).join("");
     } else {
       rpMd.innerHTML=`<div style="grid-column:1/-1;color:var(--tx3);font-size:12px;text-align:center;padding:10px 0">Медиа пока нет</div>`;
@@ -16862,14 +18016,18 @@ function renderUnknownBar(ch){
   const hasMessages=(S.messages[ch.id]||[]).some(m=>m.t!=="date"&&m.t!=="sys");
   // Показываем панель, если человек ещё не в контактах, ИЛИ чат всё ещё пустой
   // (добавили в контакты/начали чат, но ничего не написали — должна остаться возможность отменить)
-  if(ch.isContact && hasMessages){ bar.classList.remove("on"); bar.innerHTML=""; return; }
+  // 20 окт 2026: «не в контактах» — только по пришедшему списку сервера; «пустой» — только когда
+  // история этого чата уже получена с сервера (до ответа пустая лента ещё ничего не значит).
+  const notContact=contactIdsReady && !isServerContact(ch);
+  const empty=!hasMessages && _historyChecked.has(String(ch.id));
+  if(!notContact && !empty){ bar.classList.remove("on"); bar.innerHTML=""; return; }
 
   let html="";
-  if(!ch.isContact){
+  if(notContact){
     html+=`<button class="unknown-bar-btn" onclick="addCurrentChatToContacts()">${uiIcon("plus",15)} Добавить в контакты</button>`;
     html+=`<button class="unknown-bar-btn rd" onclick="reportAndBlockCurrentChat()">${uiIcon("ban",15)} Пожаловаться и заблокировать</button>`;
   }
-  if(!hasMessages){
+  if(empty){
     html+=`<button class="unknown-bar-btn rd" onclick="deleteChatCompletely()">${uiIcon("trash",15)} Удалить</button>`;
   }
   bar.innerHTML=html;
@@ -16888,10 +18046,11 @@ async function addCurrentChatToContacts(){
     showToast("❌ Не удалось добавить в контакты: "+(e && e.message || "нет связи")); return;
   }
   ch.isContact=true;
-  renderUnknownBar(ch);
+  contactIds.add(String(ch.withUserId));   // до ответа на loadContacts ниже — кнопки уже не нужны
+  if(S.chat===ch.id) renderUnknownBar(ch);   // пока шёл запрос, могли открыть другой чат
   showToast("➕ "+ch.nm+" добавлен в контакты");
   saveState();
-  loadContacts();
+  reloadContactsFresh();
 }
 function reportAndBlockCurrentChat(){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
@@ -16906,7 +18065,7 @@ function reportAndBlockCurrentChat(){
 // прячем его в контактах сразу и сверяем список с сервером.
 function blockOnServer(userId){
   (S.contacts||[]).forEach(c=>{ if(String(c.id)===String(userId)) c.phone=""; });
-  apiPost("/api/users/"+userId+"/block", {}, true).then(()=>loadContacts()).catch(e=>console.warn("block error:",e));
+  apiPost("/api/users/"+userId+"/block", {}, true).then(()=>reloadContactsFresh()).catch(e=>console.warn("block error:",e));
 }
 // Базовые системные чаты — Избранное/Angie Official/AngieSupport/BotFather/Verify.
 // Их нельзя удалить, заблокировать или отправить в архив.
@@ -16979,7 +18138,7 @@ async function unblockUser(chatId){
   renderChats(); renderBlockedList(); saveState();
   showToast("✅ "+ch.nm+" разблокирован");
   if(ch.withUserId){
-    try{ await apiPost("/api/users/"+ch.withUserId+"/unblock", {}, true); loadContacts(); }catch(e){ console.warn("unblock error:",e); }
+    try{ await apiPost("/api/users/"+ch.withUserId+"/unblock", {}, true); reloadContactsFresh(); }catch(e){ console.warn("unblock error:",e); }
   }
 }
 // Считает реальное количество разных типов вложений в истории чата
@@ -16993,7 +18152,7 @@ function countChatContent(msgs){
     if(m.audio) c.audio++;
     if(m.t==="gift") c.gifts++;
     if(m.poll) c.polls++;
-    if(m.tx && /https?:\/\//.test(m.tx)) c.links++;
+    if(m.tx && findMessageLinks(m.tx).length) c.links++;
   });
   return c;
 }
@@ -17033,10 +18192,9 @@ function openMediaBrowse(type){
     const items=msgs.filter(m=>m.file);
     list.innerHTML=items.length?items.map(m=>`<a href="${m.file.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--brd);color:var(--tx);text-decoration:none"><span style="font-size:20px;flex-shrink:0">📎</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px">${escHtml(m.file.name||"Файл")}</span></a>`).join(""):emptyMediaMsg("файлов");
   } else if(type==="links"){
-    const urlRe=/(https?:\/\/[^\s<]+)/gi;
     const items=[];
-    msgs.forEach(m=>{ if(m.tx){ const found=m.tx.match(urlRe); if(found) items.push(...found); } });
-    list.innerHTML=items.length?items.map(u=>`<a href="${escHtml(u)}" target="_blank" rel="noopener" style="display:block;padding:10px 4px;border-bottom:1px solid var(--brd);color:var(--acc2);font-size:13px;word-break:break-all;text-decoration:none">${escHtml(u)}</a>`).join(""):emptyMediaMsg("ссылок");
+    msgs.forEach(m=>{ if(m.tx) items.push(...findMessageLinks(m.tx)); });
+    list.innerHTML=items.length?items.map(l=>`<a href="${escHtml(l.href)}" target="_blank" rel="noopener noreferrer" onclick="return openMsgLink(event,this)" style="display:block;padding:10px 4px;border-bottom:1px solid var(--brd);color:var(--acc2);font-size:13px;word-break:break-all;text-decoration:none">${escHtml(l.md ? l.label : l.text)}</a>`).join(""):emptyMediaMsg("ссылок");
   } else if(type==="voice" || type==="audio"){
     const items=msgs.filter(m=>type==="voice"?m.voice:m.audio);
     list.innerHTML=items.length?items.map(m=>{
@@ -17100,7 +18258,7 @@ function openChatInfo(){
       uiActionBtn("gift","Подарок",`closeM('m-user-info');openGifts()`),
     ].join("");
 
-    if(!isSystem && !ch.isContact) el("ui-add-contact-row").style.display="block";
+    if(!isSystem && ch.withUserId && contactIdsReady && !isServerContact(ch)) el("ui-add-contact-row").style.display="block";
 
     if(ch.withUserId){
       const presenceSince=performance.now();
@@ -17388,7 +18546,9 @@ function pushOfferReenable(){
   pushBannerUpdate(); renderNotifSys();
 }
 function notifPermission(){ return typeof Notification==="undefined" ? "unsupported" : Notification.permission; }
-function pushSupported(){ return typeof Notification!=="undefined" && "serviceWorker" in navigator && typeof window.PushManager!=="undefined"; }
+// 18 окт 2026: в Android-приложении (WebView) Web Push нет и не будет — системные уведомления придут
+// через само приложение позже; даже если WebView когда-нибудь получит эти API, подписку не создаём.
+function pushSupported(){ if(isInAndroidApp()) return false; return typeof Notification!=="undefined" && "serviceWorker" in navigator && typeof window.PushManager!=="undefined"; }
 function pushB64ToBytes(s){ s=String(s||"").replace(/-/g,"+").replace(/_/g,"/"); while(s.length%4) s+="="; const b=atob(s), u=new Uint8Array(b.length); for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u; }
 function pushSameKey(a, b){ if(!a || !b) return false; const x=new Uint8Array(a); if(x.length!==b.length) return false; for(let i=0;i<x.length;i++) if(x[i]!==b[i]) return false; return true; }
 // Привести подписку устройства к настройкам. Уведомления включены и разрешены —
@@ -17455,7 +18615,7 @@ function pushBannerUpdate(){
   let later=0; try{ later=+localStorage.getItem(PUSH_BANNER_LATER_KEY)||0; }catch(e){}
   // 15 окт 2026: или подписка вошедшего аккаунта не создалась (разрешение уже есть) — предложить снова.
   const снова=!!S.pushReenable && notifPermission()==="granted" && pushSupported();
-  const show=!!S.loggedIn && !!getToken() && ((notifPermission()==="default" && S.notifSettings?.push!==false) || снова) && Date.now()-later>PUSH_BANNER_LATER_MS;
+  const show=!isInAndroidApp() && !!S.loggedIn && !!getToken() && ((notifPermission()==="default" && S.notifSettings?.push!==false) || снова) && Date.now()-later>PUSH_BANNER_LATER_MS;
   b.classList.toggle("on", show);
 }
 // «Включить» — системный запрос (в Android-приложении — диалог Android 13+). Только
@@ -17490,6 +18650,8 @@ function pushBannerLater(){ try{ localStorage.setItem(PUSH_BANNER_LATER_KEY, Str
 // Строка под «Push-уведомления» в настройках: что с системным разрешением.
 function renderNotifSys(){
   const e=el("notif-sys"); if(!e) return;
+  // 18 окт 2026: в Android-приложении — честно: системных пока нет, звук и полоска — пока открыто.
+  if(isInAndroidApp()){ e.textContent="Системные уведомления в приложении появятся позже. Пока приложение открыто — звук и полоска сверху"; return; }
   const p=notifPermission();
   if(p==="granted" && S.pushReenable && !pushState.active){ e.textContent="Не включились для этого аккаунта"; const b=document.createElement("button"); b.type="button"; b.className="notif-sys-on"; b.textContent="Включить"; b.onclick=(ev)=>{ ev.preventDefault(); ev.stopPropagation(); pushBannerEnable(); }; e.appendChild(b); }
   else if(p==="granted") e.textContent=pushState.active ? "Приходят и при закрытом приложении" : "Разрешены";
@@ -17662,6 +18824,8 @@ function applyBlurCapability(){
   document.documentElement.classList.toggle("no-blur", слабое);
 }
 function openChangePhone(){ showToast("📱 Смена номера — введите новый номер на экране входа"); }
+// 18 окт 2026: PIN-код и отпечаток — экран самого Android-приложения (страница о них ничего не знает).
+function openAppLockSettings(){ if(!appPost("OPEN_SECURITY_SETTINGS")) showToast("Доступно только в приложении Монохром для Android"); }
 function openSecurity(){
   el("sec-current-pass-row").style.display = S.user?.has_password ? "block" : "none";
   el("sec-pass-status").textContent = S.user?.has_password ? "✅ Пароль установлен" : "⚠️ Пароль ещё не установлен — вход только по SMS";
@@ -17780,11 +18944,20 @@ function renderBlockedList(){
   `).join("");
 }
 // ── СКАЧИВАНИЕ МЕДИА (фото/видео/аудио/голосовые/кружочки/файлы) ────────────
+// 18 окт 2026: в Android-приложении blob: сохранить нельзя (загрузчик Android берёт только http/https) —
+// отдаём приложению сам адрес файла в Supabase Storage с ?download=<имя>: приложение перехватывает
+// переход и сохраняет файл в «Загрузки». Не файл хранилища (ещё отправляется: data:/blob:) — null.
+function storageDownloadHref(url, filename){ try{ const u=new URL(url, location.href);
+  if(u.protocol!=="https:" || !u.pathname.startsWith("/storage/v1/object/public/")) return null;
+  u.searchParams.set("download", String(filename||"file").slice(0,120)); return u.href; }catch(e){ return null; } }
 // Обычная ссылка <a download> не всегда срабатывает для файлов с другого домена
 // (а наши файлы лежат в Supabase, не на самом сайте) — браузер вместо скачивания
 // может просто открыть файл. Поэтому сначала загружаем как Blob, потом скачиваем его.
 async function downloadMedia(url, filename){
   if(!url) return;
+  if(isInAndroidApp()){ const href=storageDownloadHref(url, filename);
+    if(!href){ showToast("⏳ Файл ещё отправляется — скачайте после загрузки"); return; }
+    const a=document.createElement("a"); a.href=href; a.rel="noopener"; document.body.appendChild(a); a.click(); a.remove(); return; }
   try{
     showToast("⬇️ Скачивание…");
     const res=await fetch(url);
@@ -17892,7 +19065,8 @@ function ctxDownload(){
   if(!m) return;
   if(m.img) downloadMedia(m.img, "photo_"+m.id+".jpg");
   else if(m.video) downloadMedia(m.video, "video_"+m.id+".mp4");
-  else if(m.videoCircle) downloadVideoCircleRounded(m.videoCircle.url, "video_message_"+m.id);
+  // 18 окт 2026: в Android-приложении кружок скачивается как есть (оформленный — это blob:, его не сохранить).
+  else if(m.videoCircle){ if(isInAndroidApp()) downloadMedia(m.videoCircle.url, "video_message_"+m.id+".webm"); else downloadVideoCircleRounded(m.videoCircle.url, "video_message_"+m.id); }
   else if(m.voice) downloadMedia(m.voice.url, "voice_"+m.id+".webm");
   else if(m.audio) downloadMedia(m.audio.url, m.audio.name||("audio_"+m.id+".mp3"));
   else if(m.file) downloadMedia(m.file.url, m.file.name||("file_"+m.id));
@@ -17901,7 +19075,7 @@ function ctxDownload(){
 function exportData(){ const blob=new Blob([JSON.stringify({user:S.user,chats:S.chats,messages:S.messages},null,2)],{type:"application/json"}); const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="monochrome_export.json";a.click(); showToast("💾 Экспорт готов"); }
 
 function importData(){ showToast("📥 Выберите файл monochrome_export.json"); }
-function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{ try{ saveComposerDraft(); }catch(e){} endServerSession(); S.loggedIn=false;switchAccount(null);clearToken();saveState();location.reload();}; openM("m-confirm"); }
+function confirmLogout(){ el("conf-title").textContent="🚪 Выйти?"; el("conf-body").textContent="Данные останутся сохранены в браузере."; el("conf-ok").textContent="Выйти"; el("conf-ok").onclick=()=>{ try{ saveComposerDraft(); }catch(e){} endServerSession(); S.loggedIn=false;switchAccount(null);clearToken();saveState();androidAuthChanged(false,"logout");location.reload();}; openM("m-confirm"); }
 // 9 окт 2026: «Выйти» завершает свою сессию и на сервере, и соединение
 // закрывается сразу. Раньше сессия оставалась действующей (токен — 30 дней),
 // а «не в сети» держалось только на закрытии сокета при перезагрузке: если
@@ -18014,6 +19188,7 @@ function sessionExpired(){
   switchAccount(null);
   clearToken();
   saveState();
+  androidAuthChanged(false,"expired");   // 18 окт 2026: Android-приложению — сессия истекла
   // Меню сообщения лежит выше экранов входа — закрываем, чтобы не висело поверх.
   try{ if(el("ctx")?.classList.contains("on")) closeCtx(); }catch(e){}
   // Логотипы на экранах входа тоже показывали «Соединение…».
@@ -18030,7 +19205,7 @@ function forceLogoutBanned(reason){
   if(_forceLogoutShown) return; // WS и HTTP-ответ могут прилететь почти одновременно
   _forceLogoutShown=true;
   alert("🚫 "+(reason||"Ваш аккаунт заблокирован администрацией"));
-  S.loggedIn=false; switchAccount(null); clearToken(); saveState(); location.reload();
+  S.loggedIn=false; switchAccount(null); clearToken(); saveState(); androidAuthChanged(false,"banned"); location.reload();
 }
 
 // Мягкое удаление — аккаунт останется в базе год, можно восстановить при
@@ -18046,7 +19221,7 @@ function confirmDeleteAccount(){
       const data=await apiPost("/api/users/me/delete", {}, true);
       if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось удалить аккаунт")); return; }
       showToast("💀 Аккаунт удалён");
-      S.loggedIn=false; switchAccount(null); clearToken(); saveState();
+      S.loggedIn=false; switchAccount(null); clearToken(); saveState(); androidAuthChanged(false,"deleted");
       setTimeout(()=>location.reload(), 800);
     }catch(e){ showToast("❌ Нет связи с сервером"); }
   };
@@ -18337,14 +19512,16 @@ function canModerateChat(ch){
   return false;
 }
 
+// 21 окт 2026 (этап C): editMsg — «редактирование чужих публикаций» канала (свои админ правит и
+// без него); у нового админа выключено, как на сервере (DEFAULT_ADMIN_PERMS).
 function fullPerms(){
-  return {changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, addAdmins:true, anonymous:false};
+  return {changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, addAdmins:true, anonymous:false, editMsg:true};
 }
 function adminPerms(){
-  return {changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, addAdmins:false, anonymous:false};
+  return {changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, addAdmins:false, anonymous:false, editMsg:false};
 }
 function memberPerms(){
-  return {changeInfo:false, deleteMsg:false, banUsers:false, inviteLinks:false, pinMsg:false, addAdmins:false, anonymous:false};
+  return {changeInfo:false, deleteMsg:false, banUsers:false, inviteLinks:false, pinMsg:false, addAdmins:false, anonymous:false, editMsg:false};
 }
 
 const PERM_LABELS={
@@ -18354,10 +19531,11 @@ const PERM_LABELS={
   inviteLinks:"Пригласительные ссылки",
   pinMsg:"Закрепление сообщений",
   addAdmins:"Назначение администраторов",
-  anonymous:"Анонимность"
+  anonymous:"Анонимность",
+  editMsg:"Редактирование чужих публикаций"
 };
 // Какие права уже реально работают (подключены к действиям)
-const PERM_ACTIVE={changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, addAdmins:true, anonymous:false};
+const PERM_ACTIVE={changeInfo:true, deleteMsg:true, banUsers:true, inviteLinks:true, pinMsg:true, addAdmins:true, anonymous:false, editMsg:true};
 
 let curMemberId=null; // ID участника с которым работаем
 
@@ -18693,9 +19871,14 @@ function cancelPerms(){
 }
 
 function renderPermsList(member){
-  el("perms-list").innerHTML=Object.keys(PERM_LABELS).map(key=>{
+  // editMsg — только для каналов (в группах чужие сообщения не правит никто).
+  const чат=S.chats.find(c=>c.id===S.chat)||{};
+  const каналЛи=чат.type==="channels";
+  el("perms-list").innerHTML=Object.keys(PERM_LABELS).filter(key=>key!=="editMsg" || каналЛи).map(key=>{
     const on=member.perms[key];
     const soon=!PERM_ACTIVE[key]?` <span style="font-size:9px;color:var(--tx3);background:var(--bg4);padding:1px 5px;border-radius:6px;vertical-align:middle">скоро</span>`:"";
+    // Правку чужих публикаций выдаёт только владелец (сервер иначе откажет).
+    if(key==="editMsg" && чат.myRole!=="owner") return `<div class="perm-row"><span class="perm-label">${PERM_LABELS[key]} <span style="font-size:9px;color:var(--tx3);background:var(--bg4);padding:1px 5px;border-radius:6px;vertical-align:middle">выдаёт владелец</span></span><div class="perm-tgl${on?" on":""}" style="opacity:.45;pointer-events:none"></div></div>`;
     return `<div class="perm-row"><span class="perm-label">${PERM_LABELS[key]}${soon}</span><div class="perm-tgl${on?" on":""}" onclick="togglePerm('${key}',this)"></div></div>`;
   }).join("");
 }
@@ -18703,6 +19886,7 @@ function renderPermsList(member){
 function togglePerm(key,elm){
   const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
   const member=ch.members.find(m=>m.id==curMemberId); if(!member)return;
+  if(key==="editMsg" && ch.myRole!=="owner") return;
   member.perms[key]=!member.perms[key];
   elm.classList.toggle("on",member.perms[key]);
 }
@@ -18889,9 +20073,9 @@ async function sendForwardedMsg(localMsg, m, toId, toCh, hideAuthor, srcChatId){
   body.clientMsgId=localMsg.clientMsgId;
   try{
     const d=await apiPost("/api/messages", body, true);
-    if(!d || !d.success){ localMsg.failed=true; if(S.chat===toId) renderMsgs(); saveState(); return; }
+    if(!d || !d.success){ localMsg.failed=true; if(S.chat===toId) renderMsgs(); saveState(); if(sendRefused(d)) showSendRefusedToast(d.error); return; }
     const dbId=d?.message?.id||null;
-    if(dbId){ localMsg.dbId=dbId; saveState(); }
+    if(dbId){ adoptSentMessage(localMsg, d.message); saveState(); }
     const memberIds=getChatMemberIds(toCh);
     const wsMemberIds = d.blockedFromRecipientId ? memberIds.filter(id=>id!==d.blockedFromRecipientId) : memberIds;
     wsSendReliable({type:"message.send", payload:{
@@ -19427,6 +20611,16 @@ async function getTinkoffPublicKey(){
 function isRunningInTwa(){
   return document.referrer.startsWith("android-app://");
 }
+// 18 окт 2026: Android-приложение на WebView — оплата тоже во внешнем браузере, но открывает её само
+// приложение (OPEN_PAYMENT): WebView, в отличие от TWA, чужой домен наружу не передаёт, а window.open
+// после await (без нажатия) там не сработает. Результат узнаём опросом статуса, как в TWA.
+function payOutside(){ return isInAndroidApp() || isRunningInTwa(); }
+function openPaymentInApp(data){
+  if(!data || !data.paymentUrl || !appPost("OPEN_PAYMENT",{url:data.paymentUrl})) return false;
+  showToast("💳 Оплата открыта в браузере. После оплаты вернитесь в приложение");
+  if(data.orderId) pollTinkoffPaymentStatus(data.orderId, ()=>{ showToast("✅ Оплата прошла! Баланс обновится через секунду..."); pollBalanceAfterPayment(); });
+  return true;
+}
 async function startTinkoffExternalBrowserPayment(opts){
   const { productKey, summaryId, payBtnId, statusId, onDone } = opts;
   if(el(summaryId)) el(summaryId).style.display="none";
@@ -19437,7 +20631,7 @@ async function startTinkoffExternalBrowserPayment(opts){
       showToast("❌ "+(data&&data.error||"Не удалось создать платёж"));
       return;
     }
-    window.open(data.paymentUrl, "_blank");
+    if(!appPost("OPEN_PAYMENT",{url:data.paymentUrl})) window.open(data.paymentUrl, "_blank");
     if(el(statusId)) el(statusId).style.display="block";
     pollTinkoffPaymentStatus(data.orderId, ()=>{
       if(el(statusId)) el(statusId).style.display="none";
@@ -19524,7 +20718,7 @@ async function completeBuy(){
     showToast("⏳ Переход к оплате...");
     try{
       const data = await apiPost("/api/payments/create", { productKey, provider:"yookassa" }, true);
-      if(data && data.paymentUrl){ location.href = data.paymentUrl; }
+      if(data && data.paymentUrl){ if(!openPaymentInApp(data)) location.href = data.paymentUrl; }
       else { showToast("❌ "+(data&&data.error||"Не удалось создать платёж")); }
     }catch(e){ showToast("❌ Нет связи с сервером"); }
     return;
@@ -19550,17 +20744,17 @@ async function completeBuy(){
     };
     // Внутри Android-приложения — настоящий внешний браузер (см. startTinkoffExternalBrowserPayment),
     // на обычном сайте — как и раньше, встроенный виджет, форма карты/СБП остаётся на странице
-    if(isRunningInTwa()) startTinkoffExternalBrowserPayment(payOpts);
+    if(payOutside()) startTinkoffExternalBrowserPayment(payOpts);
     else startTinkoffWidgetPayment(payOpts);
     return;
   }
 
-  // INTL (Stripe) — пока обычный редирект, как и раньше
+  // INTL (Stripe) — пока обычный редирект, как и раньше (в Android-приложении — внешний браузер)
   showToast("⏳ Переход к оплате...");
   try{
     const data = await apiPost("/api/payments/create", { productKey }, true);
     if(data && data.paymentUrl){
-      location.href = data.paymentUrl;
+      if(!openPaymentInApp(data)) location.href = data.paymentUrl;
     } else {
       showToast("❌ "+(data&&data.error||"Не удалось создать платёж"));
     }
@@ -19925,10 +21119,20 @@ async function loadGiftsCatalog(){
 // Раньше S.contacts всегда был пустым локальным массивом — экран
 // контактов показывал "Не найдено" в принципе всегда, ничего не грузилось
 async function loadContacts(){
+  const gen=accountGen, seq=++_contactsSeq;
   try{
     const presenceSince=performance.now();
     const data=await apiGet("/api/contacts");
-    const rows=(data && data.contacts)||[];
+    if(gen!==accountGen) return;
+    // 20 окт 2026: ответ без списка (ошибка сервера) — не «контактов нет»: прежний список не трогаем.
+    if(!data || !Array.isArray(data.contacts)) throw new Error("contacts: нет списка в ответе");
+    // Ответ запроса, ушедшего раньше уже применённого (например, до «Добавить в контакты»), — устарел.
+    if(seq<_contactsApplied) return;
+    _contactsApplied=seq;
+    const rows=data.contacts;
+    contactIds=new Set(rows.map(u=>String(u.id)));
+    contactIdsReady=true; _contactsRetryN=0; clearTimeout(_contactsRetryT); _contactsRetryT=0;
+    applyContactIds();
     S.contacts=rows.map(u=>({
       id:u.id, nm:u.name||"?", uname:u.username||"", phone:u.phone||"",
       avatar:u.avatar_url||"", col:colorFromId(u.id), online:!!u.online,
@@ -19940,7 +21144,42 @@ async function loadContacts(){
     rows.forEach(u=>{ if(u.presence) applyPresence(u.id, {noContacts:true}); });   // «Контакты» — один раз ниже
     saveState();
     if(el("contacts-list")) renderContacts(el("contacts-search")?.value||"");
-  }catch(e){ /* не удалось — останется пустым */ }
+  }catch(e){
+    // Не удалось — прежнее остаётся. Пока список ни разу не пришёл, пробуем ещё (5 с … 1 мин).
+    if(e && e.accountChanged) return;
+    if(gen===accountGen && !contactIdsReady && S.loggedIn && !_contactsRetryT && _contactsRetryN<12){
+      const пауза=Math.min(60000, 5000*Math.pow(2, _contactsRetryN++));
+      _contactsRetryT=setTimeout(()=>{ _contactsRetryT=0; if(gen===accountGen && !contactIdsReady) loadContacts(); }, пауза);
+    }
+  }
+}
+// После своего изменения (добавили, удалили, блокировка): ответы запросов, ушедших раньше, уже устарели —
+// даже если придут раньше этого (иначе на время или до следующей загрузки возвращались прежние кнопки).
+function reloadContactsFresh(){ _contactsApplied=_contactsSeq+1; return loadContacts(); }
+// Пометки ch.isContact у личных чатов — по списку сервера; открытый чат и его карточка перерисовываются.
+function applyContactIds(){
+  // 20 окт 2026 (партия 1.2): местную пометку ch.isContact больше НЕ перезаписываем списком сервера.
+  // До 13 окт «Добавить в контакты» в чате писало только её (на сервер — нет), и для таких людей она —
+  // единственный след. Проверка 20 окт (боевая база, только чтение) подтвердила: у владельца на сервере
+  // контакт один, alex1 и Зины там нет, у них в браузере — только местная пометка. Затирать её значит
+  // потерять данные для переноса (он — отдельным шагом, с согласием по каждому человеку). Кнопки
+  // по-прежнему решает список сервера (isServerContact), пометка ни на что не влияет.
+  const открыт=(S.chats||[]).find(c=>c.id===S.chat);
+  renderUnknownBar(открыт);   // нет открытого чата — панель прячется (и не остаётся от прежнего аккаунта)
+  syncAddContactRow(открыт);
+}
+function isServerContact(ch){ return !!(ch && ch.withUserId!=null && contactIds.has(String(ch.withUserId))); }
+// Строка «Добавить в контакты» в карточке собеседника — только когда сервер сказал, что его нет в контактах.
+function syncAddContactRow(ch){
+  const row=el("ui-add-contact-row"); if(!row) return;
+  const карточка=el("m-user-info");
+  if(карточка && !карточка.classList.contains("on")) return;
+  const показать=!!(ch && ch.type==="personal" && ch.withUserId && !isSystemChat(ch.id) && contactIdsReady && !isServerContact(ch));
+  row.style.display=показать?"block":"none";
+}
+function markChatHistoryChecked(chatId){
+  _historyChecked.add(String(chatId));
+  if(S.chat===chatId){ const ch=(S.chats||[]).find(c=>c.id===chatId); if(ch) renderUnknownBar(ch); }
 }
 
 async function addToContacts(userId, name, col){
@@ -19948,7 +21187,7 @@ async function addToContacts(userId, name, col){
     const data=await apiPost("/api/contacts", {userId}, true);
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось добавить")); return; }
     showToast("✅ "+name+" добавлен(а) в контакты");
-    await loadContacts();
+    await reloadContactsFresh();
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
@@ -19958,7 +21197,7 @@ async function removeFromContacts(userId){
     const data=await apiDelete("/api/contacts/"+userId);
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось удалить")); return; }
     showToast("✅ Удалено из контактов");
-    await loadContacts();
+    await reloadContactsFresh();
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
@@ -19972,6 +21211,7 @@ async function loadBlockedUsers(){
     const newBlocked=[];
     S.chats.forEach(ch=>{
       if(!ch.withUserId) return; // системные чаты сюда не попадают вообще
+      if(ch.type && ch.type!=="personal") return; // 22 окт 2026: личная блокировка не прячет группу или канал
       const isBlocked=blockedUserIds.includes(ch.withUserId);
       ch.blocked=isBlocked;
       if(isBlocked) newBlocked.push(ch.id);
@@ -20306,6 +21546,9 @@ function syncProfileFromServer(){
     saveState();
   }
 }
+// 18 окт 2026: Android-приложению — вошли или нет, сразу после сверки и до отрисовки (сбой
+// отрисовки сообщение не съест). Один раз на загрузку; перезагрузка после выхода тоже сообщает.
+androidAuthChanged(S.loggedIn===true,"startup");
 // При наличии токена — обновляем данные с сервера в фоне
 if(S.loggedIn){
   // ⚠️ Защита: на всякий случай принудительно закрываем все полноэкранные
@@ -20512,6 +21755,24 @@ function pickGiftVipRecipient(userId, nm, col){
   openM("m-gift-vip-plan");
 }
 
+// 22 окт 2026: ключ повтора покупки VIP (opId). Новая покупка — новый ключ; прежний берётся только для
+// повтора той же покупки после «нет связи» (сервер не спишет второй раз и второго уведомления не пошлёт).
+// Пока покупка в полёте, второе нажатие ничего не делает.
+let vipBuyLost=null, vipBuyBusy=false;
+function vipBuyOpId(planId, recipientId){
+  const key=planId+":"+(recipientId||"self");
+  const id = (vipBuyLost && vipBuyLost.key===key) ? vipBuyLost.id : genClientMsgId();
+  vipBuyLost=null;
+  return {key, id};
+}
+// Свежий баланс с сервера (повтор покупки отдаёт сохранённый ответ первой попытки — его баланс мог устареть).
+async function refreshBalanceFromServer(){
+  const gen=accountGen;
+  try{
+    const r=await apiGet("/api/users/me"); const d=r && r.user;
+    if(gen===accountGen && d && d.balance_cr!=null){ S.user={...S.user, balance_cr:d.balance_cr}; S.bal=d.balance_cr; updBal(); saveState(); }
+  }catch(e){}
+}
 function confirmGiftVip(planId, price){
   if(!giftVipRecipient) return;
   if(S.bal < price){ showToast("❌ Недостаточно CR. Пополни баланс в Магазине"); return; }
@@ -20523,18 +21784,23 @@ function confirmGiftVip(planId, price){
   el("conf-ok").textContent="Подарить";
   el("conf-ok").onclick=async ()=>{
     closeM("m-confirm");
+    if(vipBuyBusy){ showToast("⏳ Покупка уже выполняется"); return; }
     showToast("⏳ Отправка подарка...");
     let data;
+    const op=vipBuyOpId(planId, recipient.userId);
+    vipBuyBusy=true;
     try{
-      data = await apiPost("/api/vip/buy-with-cr", { planId, recipientUserId: recipient.userId }, true);
+      data = await apiPost("/api/vip/buy-with-cr", { planId, recipientUserId: recipient.userId, opId: op.id }, true);
     } catch(e){
+      vipBuyLost=op;
       showToast("❌ Нет связи с сервером");
       return;
-    }
+    } finally { vipBuyBusy=false; }
     if(!data || !data.success){
       showToast("❌ "+(data&&data.error||"Не удалось подарить VIP"));
       return;
     }
+    if(data.repeated){ data.newBalance=S.bal; refreshBalanceFromServer(); }
     S.bal = data.newBalance;
     updBal(); saveState();
 
@@ -20566,18 +21832,23 @@ function buyVIP(planId, price){
   el("conf-ok").textContent = "Активировать";
   el("conf-ok").onclick = async ()=>{
     closeM("m-confirm");
+    if(vipBuyBusy){ showToast("⏳ Покупка уже выполняется"); return; }
     showToast("⏳ Активация...");
     let data;
+    const op=vipBuyOpId(planId, null);
+    vipBuyBusy=true;
     try{
-      data = await apiPost("/api/vip/buy-with-cr", { planId }, true);
+      data = await apiPost("/api/vip/buy-with-cr", { planId, opId: op.id }, true);
     } catch(e){
+      vipBuyLost=op;
       showToast("❌ Нет связи с сервером");
       return;
-    }
+    } finally { vipBuyBusy=false; }
     if(!data || !data.success){
       showToast("❌ "+(data&&data.error||"Не удалось активировать VIP"));
       return;
     }
+    if(data.repeated){ data.newBalance=S.bal; refreshBalanceFromServer(); }
     S.bal = data.newBalance; // баланс — то, что реально списал сервер, а не наша прикидка
     const until = planId==="forever" ? "Навсегда" : planId==="year"
       ? new Date(Date.now()+365*86400000).toLocaleDateString("ru")
@@ -20621,7 +21892,7 @@ async function buyVIPDirect(productKey){
         pollBalanceAfterPayment();
       }
     };
-    if(isRunningInTwa()) startTinkoffExternalBrowserPayment(payOpts);
+    if(payOutside()) startTinkoffExternalBrowserPayment(payOpts);   // 18 окт 2026: и Android-приложение
     else startTinkoffWidgetPayment(payOpts);
     return;
   }
@@ -20630,7 +21901,7 @@ async function buyVIPDirect(productKey){
   try{
     const data = await apiPost("/api/payments/create", { productKey }, true);
     if(data && data.paymentUrl){
-      location.href = data.paymentUrl;
+      if(!openPaymentInApp(data)) location.href = data.paymentUrl;
     } else {
       showToast("❌ "+(data&&data.error||"Не удалось создать платёж"));
     }
@@ -21660,18 +22931,39 @@ function openGiftModal(id){
   openM("m-gift");
 }
 
+// 21 окт 2026 (защитная партия): писать в этот чат можно? Спрашиваем сервер ДО покупки подарка и списания
+// экземпляра — иначе кристаллы и подарок ушли бы, а само сообщение сервер отклонил бы (личная блокировка,
+// не участник, запрет писать). Сервер без этой проверки (старая версия, 404) — продолжаем как раньше.
+async function giftChatWritable(chatId){
+  if(!(typeof chatId==="string" && chatId.length>10)) return true;
+  try{
+    const d=await apiGet("/api/messages/chat/"+chatId+"/can-write");
+    if(d && d.ok===false){ showToast("❌ "+(d.error||"Подарок сюда отправить нельзя")); return false; }
+  }catch(e){ if(e && e.accountChanged) return false; }
+  return true;
+}
+// Пока идёт проверка права и покупка — второе нажатие ничего не делает (раньше от двойного нажатия
+// защищала только сама покупка, а проверка права теперь идёт до неё).
+let giftSendBusy=false;
 async function sendGift(targetChatId){
+  if(giftSendBusy){ showToast("⏳ Покупка уже выполняется"); return; }
+  giftSendBusy=true;
+  try{ await sendGiftInner(targetChatId); } finally { giftSendBusy=false; }
+}
+async function sendGiftInner(targetChatId){
   const g = S.gifts_catalog.find(x=>x.id===selectedGiftId); if(!g) return;
   if(S.bal < g.price){ showToast("❌ Недостаточно CR"); return; }
   const chatId = targetChatId || S.chat;
   const ch=S.chats.find(c=>c.id===chatId);
   if(!ch){ showToast("❌ Чат не найден"); return; }
+  if(!(await giftChatWritable(chatId))) return;
 
   // Раньше списание и владение были полностью локальными — сервер вообще
   // не знал о покупке, теоретически можно было слать подарки бесплатно
   const buy = await buyGiftOnce(g);
   if(!buy.ok){ showToast("❌ "+buy.error); return; }
   const buyData = buy.data;
+  giftSendBusy=false;   // куплено — дальше списание экземпляра и отправка, второй подарок уже можно
   // Сразу используем купленный экземпляр — не оставляем его в коллекции,
   // раз дарим прямо сейчас.
   // 7 сен 2026: результат перестал игнорироваться. Раньше тут стояло
@@ -21700,19 +22992,31 @@ async function sendGift(targetChatId){
   S.messages[chatId].push(localMsg);
   ch.prev="🎁 Подарок: "+g.name; ch.time=now(); ch.lastTs=Date.now();
   updBal(); closeM("m-gift"); if(S.chat===chatId) renderMsgs(); renderChats(); renderMyGifts(); saveState();
-  showToast("🎁 Подарок «"+g.name+"» отправлен пользователю "+ch.nm+"!");
-  if(!giftUsed){
-    // Списать не удалось: экземпляр остался в коллекции. Синхронизируем её
-    // с сервером, чтобы счётчик не врал, и сообщаем — молчать нельзя,
-    // иначе пользователь увидит лишний подарок и не поймёт откуда.
-    loadGiftInventory();
-    showToast("⚠️ Экземпляр остался в коллекции — списать не удалось");
-  }
+  // 22 окт 2026: «отправлен» — только после ответа сервера (отправку могут отклонить). Экземпляр с новым сервером
+  // списывает сама отправка; результат use-from-inventory больше ничего не значит — коллекцию перечитываем после.
+  showToast("⏳ Подарок «"+g.name+"» отправляется…");
 
   // Реально сохраняем на сервере и доставляем собеседнику — раньше подарок оставался
   // только в браузере отправителя и никогда не долетал до получателя
+  const gen=accountGen;
   const memberIds=getChatMemberIds(ch);
   await retrySimpleMsg(localMsg, chatId, ch, memberIds, {chatId, text:"", gift:giftData}, {text:"", gift:giftData});
+  if(gen!==accountGen) return;
+  if(!localMsg.failed && localMsg.dbId) showToast("🎁 Подарок «"+g.name+"» отправлен пользователю "+ch.nm+"!");
+  if(!giftUsed && !localMsg.failed){ await loadGiftInventory(); renderGiftInventory(); saveState(); }
+  await giftKeptAfterFailedSend(localMsg, g.id, gen);
+}
+
+// 22 окт 2026: экземпляр подарка сервер списывает только вместе с отправленным сообщением. Отправку
+// отклонили (блокировка, исключение, запрет писать) или она не дошла — подарок остался в коллекции:
+// перечитываем её с сервера и говорим об этом (раньше в этом случае пропадали и Crystals, и подарок).
+async function giftKeptAfterFailedSend(m, giftId, gen){
+  if(!m || !m.failed) return;
+  if(gen!==undefined && gen!==accountGen) return;   // аккаунт сменился — это уже не его коллекция
+  await loadGiftInventory();
+  if(gen!==undefined && gen!==accountGen) return;
+  renderGiftInventory(); saveState();
+  if(((S.gift_inventory||{})[giftId]||0)>0) showToast("🎁 Подарок не отправлен и остался в вашей коллекции");
 }
 
 // Купить подарок в свою коллекцию, не отправляя сразу — можно подарить
@@ -21738,11 +23042,17 @@ async function buyGiftToInventory(){
 // Подарить что-то уже купленное из своей коллекции — тому же получателю,
 // на которого сейчас открыт экран подарков
 async function giftFromInventory(giftId, targetChatId){
+  if(giftSendBusy){ showToast("⏳ Подарок уже отправляется"); return; }
+  giftSendBusy=true;
+  try{ await giftFromInventoryInner(giftId, targetChatId); } finally { giftSendBusy=false; }
+}
+async function giftFromInventoryInner(giftId, targetChatId){
   const g = S.gifts_catalog.find(x=>x.id===giftId); if(!g) return;
   if(!S.gift_inventory || !S.gift_inventory[giftId]){ showToast("❌ У вас закончились эти подарки"); return; }
   const chatId = targetChatId || S.chat;
   const ch=S.chats.find(c=>c.id===chatId);
   if(!ch){ showToast("❌ Чат не найден"); return; }
+  if(!(await giftChatWritable(chatId))) return;
 
   // Раньше это было чисто локальное уменьшение счётчика — сервер вообще
   // не знал о вашей коллекции подарков
@@ -21750,6 +23060,7 @@ async function giftFromInventory(giftId, targetChatId){
     const data=await apiPost("/api/gifts/"+giftId+"/use-from-inventory", {}, true);
     if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось подарить")); return; }
   }catch(e){ showToast("❌ Нет связи с сервером"); return; }
+  giftSendBusy=false;   // экземпляр списан — дальше только отправка сообщения
 
   S.gift_inventory[giftId]--;
   if(S.gift_inventory[giftId]<=0) delete S.gift_inventory[giftId];
@@ -21762,10 +23073,14 @@ async function giftFromInventory(giftId, targetChatId){
   ch.prev="🎁 Подарок: "+g.name; ch.time=now(); ch.lastTs=Date.now();
   if(S.chat===chatId) renderMsgs();
   renderChats(); renderMyGifts(); renderGiftInventory(); saveState();
-  showToast("🎁 Подарили «"+g.name+"» пользователю "+ch.nm+"!");
+  showToast("⏳ Подарок «"+g.name+"» отправляется…");
 
+  const gen=accountGen;
   const memberIds=getChatMemberIds(ch);
   await retrySimpleMsg(localMsg, chatId, ch, memberIds, {chatId, text:"", gift:giftData}, {text:"", gift:giftData});
+  if(gen!==accountGen) return;
+  if(!localMsg.failed && localMsg.dbId) showToast("🎁 Подарили «"+g.name+"» пользователю "+ch.nm+"!");
+  await giftKeptAfterFailedSend(localMsg, g.id, gen);
 }
 
 // Выбор получателя перед дарением — раньше жёстко дарило тому чату,
@@ -23824,6 +25139,7 @@ applyTheme(S.theme||"dark", true);
     <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
   </div>
   <img id="imgview-img" src="" style="max-width:92vw;max-height:92vh;border-radius:10px;object-fit:contain">
+  <video id="imgview-video" controls playsinline style="display:none;max-width:92vw;max-height:92vh;border-radius:10px;background:#000"></video>
 </div>
 
 <!-- MODAL: MEDIA/FILES/LINKS BROWSER (профиль чата → "N фото/файлов/ссылок") -->
