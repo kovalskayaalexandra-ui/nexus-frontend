@@ -4167,6 +4167,145 @@ img.emoji{height:1.2em;width:1.2em;vertical-align:-0.2em;object-fit:contain}
 
 const APP_VERSION = "2.1.0";
 
+function escHtml(s){
+  // 25 окт 2026 (C.1.2): и одинарная кавычка — строка безопасна в тексте и в любом атрибуте в кавычках.
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+// ── Безопасные адреса и атрибуты (25 окт 2026, C.1.2) ─────────────────────────────────────────────
+// Адреса и чужие строки в атрибутах больше не вставляются в разметку: в шаблоне остаётся только номер
+// (data-ds="N"), а адрес, title и фон ставятся DOM-свойствами после проверки протокола и типа
+// (hydrateDs сразу после вставки; запасной путь — MutationObserver для любой вставки в документ).
+// Допустимо: картинки — https, data:image (png/jpeg/gif/webp, base64), blob: своего origin; видео и звук —
+// https и blob: своего origin; ссылки — https и http; файлы — https и blob: своего origin. На локальном
+// стенде (страница с http://127.0.0.1 / localhost) — ещё http того же стенда. javascript:, data:text/html и
+// прочие схемы — никогда.
+const DS_DEV_HTTP = location.protocol==="http:" && /^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname);
+function safeUrl(u, kind){
+  if(typeof u!=="string" || !u) return "";
+  if(u.startsWith("data:")) return kind==="img" && dsDataImgOk(u) ? u : "";
+  if(u.length>8192) return "";
+  let p; try{ p=new URL(u); }catch(e){ return ""; }
+  if(p.protocol==="blob:") return (kind!=="link" && u.startsWith("blob:"+location.origin+"/")) ? u : "";
+  if(p.protocol==="https:") return p.href;
+  if(p.protocol==="http:" && (kind==="link" || (DS_DEV_HTTP && /^(127\.0\.0\.1|localhost|\[::1\])$/.test(p.hostname)))) return p.href;
+  return "";
+}
+// Картинка data: — только растровые форматы, которые показывает браузер (svg — нет), base64. Превью вложения и
+// аватар могут быть на мегабайты, а проверка идёт на каждой перерисовке: результат по самой строке запоминается.
+const DS_DATA_IMG=/^data:image\/(png|jpe?g|gif|webp|avif|bmp);base64,[A-Za-z0-9+/=]+$/i, _dsDataMemo=new Map();
+function dsDataImgOk(u){
+  if(u.length<=4096) return DS_DATA_IMG.test(u);
+  let ok=_dsDataMemo.get(u);
+  if(ok===undefined){ ok=DS_DATA_IMG.test(u); if(_dsDataMemo.size>=64) _dsDataMemo.clear(); _dsDataMemo.set(u, ok); }
+  return ok;
+}
+function safeImgSrc(u){ return safeUrl(String(u||""), "img"); }
+// Реестр слотов: номер → { spec, key }. Одинаковые небольшие значения сводятся к одному номеру; большие (data:
+// превью) — нет: ключ по содержимому был бы ещё одной копией мегабайтной строки. Переполнение — убираются самые
+// давние записи (используемый номер при повторе переезжает в конец), а не весь реестр: слоты текущей вставки,
+// которые ещё не заполнены, свои данные не теряют.
+const _dsById=new Map(), _dsByKey=new Map(), DS_MAX=20000; let _dsSeq=0;
+function dsAttr(spec){
+  const big=Object.values(spec).some(v=>typeof v==="string" && v.length>2048);
+  const key=big ? null : JSON.stringify(spec);
+  let id=key!==null ? _dsByKey.get(key) : undefined;
+  if(id){ const rec=_dsById.get(id); _dsById.delete(id); _dsById.set(id, rec); }
+  else {
+    id=String(++_dsSeq); _dsById.set(id, {spec, key}); if(key!==null) _dsByKey.set(key, id);
+    if(_dsById.size>DS_MAX){
+      let n=_dsById.size-DS_MAX/2;
+      for(const [oid, rec] of _dsById){ if(n--<=0) break; _dsById.delete(oid); if(rec.key!==null && _dsByKey.get(rec.key)===oid) _dsByKey.delete(rec.key); }
+    }
+  }
+  return ` data-ds="${id}"`;
+}
+function imgAttr(u){ return dsAttr({src:String(u||""), k:"img"}); }
+function mediaAttr(u){ return dsAttr({src:String(u||""), k:"media"}); }
+function hrefAttr(u, kind){ return dsAttr({href:String(u||""), k:kind||"link"}); }
+function titleAttr(t){ return dsAttr({title:String(t??"")}); }
+function applyDs(el){
+  const id=el.getAttribute("data-ds");
+  if(!id || el._dsApplied===id) return;
+  const rec=_dsById.get(id); if(!rec) return;
+  const s=rec.spec;
+  el._dsApplied=id;
+  if(s.src!==undefined){ const u=safeUrl(s.src, s.k); if(u){ if(el.src!==u) el.src=u; } else el.removeAttribute("src"); }
+  if(s.href!==undefined){ const u=safeUrl(s.href, s.k); if(u) el.href=u; else el.removeAttribute("href"); }
+  if(s.title!==undefined) el.title=s.title;
+  if(s.alt!==undefined) el.alt=s.alt;
+  if(s.dsrc!==undefined){ const u=safeUrl(s.dsrc, s.k||"media"); if(u) el.dataset.src=u; else delete el.dataset.src; }
+  if(s.dhref!==undefined){ const u=safeUrl(s.dhref, s.k||"link"); if(u) el.dataset.href=u; else delete el.dataset.href; }
+  if(s.bg!==undefined){ const u=safeUrl(s.bg, "img"); el.style.backgroundImage = u ? 'url("'+u.replace(/["\\\n\r]/g, "")+'")' : ""; }
+}
+function hydrateDs(root){
+  if(!root || root.nodeType!==1) return root;
+  if(root.hasAttribute("data-ds")) applyDs(root);
+  root.querySelectorAll("[data-ds]").forEach(applyDs);
+  return root;
+}
+try{ new MutationObserver((ms)=>{ for(const m of ms) for(const n of m.addedNodes) if(n.nodeType===1) hydrateDs(n); })
+  .observe(document.documentElement, {childList:true, subtree:true}); }catch(e){}
+// Редкость подарка — только из известного списка (класс CSS).
+function giftRarity(r){ return ["common","rare","epic","legendary"].includes(r) ? r : "common"; }
+const UUID_LIKE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Обработчики ленты по номеру сообщения: данные — из самого сообщения, а не из строки в onclick.
+function msgOfCurChat(id){ return (S.messages[S.chat]||[]).find(x=>x.id===id)||null; }
+function openFwdSource(id){
+  const m=msgOfCurChat(id), f=m&&m.fwd; if(!f) return;
+  if(f.fromType==="channel"){ if(UUID_LIKE.test(String(f.fromChatId||""))) openForwardSourceChat(String(f.fromChatId), String(f.fromName||""), !!f.fromPrivate); return; }
+  if(UUID_LIKE.test(String(f.fromId||"")) && f.fromId!==S.user?.id) startChatWithUser(String(f.fromId), String(f.fromName||""), Number(f.fromCol)||0);
+}
+function openContactCard(id){
+  const m=msgOfCurChat(id), c=m&&m.contact; if(!c) return;
+  if(!UUID_LIKE.test(String(c.userId||""))){ showToast("Этот контакт открыть нельзя"); return; }
+  startChatWithUser(String(c.userId), String(c.nm||""), Number(c.col)||0);
+}
+function openMsgFile(id){
+  const m=msgOfCurChat(id), u=m&&m.file ? safeUrl(m.file.url, "download") : "";
+  if(u) openOutside(u, "_blank"); else showToast("⏳ Файл ещё отправляется — откройте после загрузки");
+}
+function votePollOpt(id, idx){
+  const m=msgOfCurChat(id), o=m&&m.poll&&Array.isArray(m.poll.options) ? m.poll.options[idx] : null;
+  if(o) votePoll(id, o.id);
+}
+// ── Защищённый чат (E2E), 25 окт 2026, C.1.2 ─────────────────────────────────────────────────────────────
+// Сервер принимает в защищённый чат только зашифрованный конверт (код e2e_required — иначе). Клиент заранее, без
+// сетевого запроса, не даёт отправить то, что существующий протокол не шифрует: вложения, альбомы, голосовые и кружки,
+// контакты, опросы, стикеры, подарки, правку подписи и открытых сообщений. Текст, ответ с цитатой, ручной повтор,
+// отложенный текст и пересылка текста — шифруются ключом ЭТОГО чата. Пока шифрование устанавливается (ждём ключ
+// собеседника) — ничего не отправляется.
+var E2E_UNSUPPORTED_MSG="Этот тип сообщения пока недоступен в защищённом чате";
+var E2E_PENDING_MSG="🔒 Шифрование ещё устанавливается — дождитесь ответа собеседника или выключите шифрование";
+var E2E_PREVIEW="🔒 Зашифрованное сообщение";
+// Защищён ли чат для этого устройства: только личный чат (старый признак у группы — от рукопожатий до C.1.2 — не
+// действует); включено здесь, устанавливается, сервер считает чат защищённым или включено на другом устройстве.
+// Переходные признаки шифрования — только в памяти: в сохранённом состоянии «переключается» и «уже отвечаю» пережили бы
+// перезапуск посреди запроса и заперли бы чат на этом устройстве навсегда (второе ревью C.1.2).
+const _e2eBusyIds=new Set(), _e2eAnswered=new Map();
+function e2eIsBusy(ch){ return !!(ch && _e2eBusyIds.has(ch.id)); }
+function e2eSetBusy(ch, v){ if(!ch) return; if(v) _e2eBusyIds.add(ch.id); else _e2eBusyIds.delete(ch.id); }
+// Пока шифрование переключается — тоже защищённое состояние: отправка ждёт ответа сервера.
+function chatE2E(ch){ return !!(ch && (!ch.type || ch.type==="personal") && (ch.e2eActive || ch.e2ePending || ch.e2eServer || ch.e2eElsewhere || e2eIsBusy(ch))); }
+function e2eRefuse(ch){ if(!chatE2E(ch)) return false; showToast("🔒 "+E2E_UNSUPPORTED_MSG); return true; }
+// Превью с сервера: у старых строк там мог лежать сам конверт — показываем нейтрально.
+function neutralPrev(v){ return (typeof v==="string" && /^\{"(iv|ct)":"/.test(v)) ? E2E_PREVIEW : v; }
+// Зашифрованное сообщение, которое на этом устройстве не расшифровано (или ещё расшифровывается): в m.tx заглушка.
+function e2eUnreadable(m){ return !!(m && m.e2e && (m.e2eFailed || m.tx==="🔐 …")); }
+// Пересылается в защищённый чат только текст (без вложения, контакта, опроса, стикера, подарка).
+function fwdTextOnly(m){ return !!(m && hasRealText(m.tx) && !e2eUnreadable(m) && !m.img && !m.video && !m.videoCircle && !m.voice && !m.audio && !m.file && !m.contact && !m.poll && m.t!=="sk" && m.t!=="gift"); }
+// Строки списков для обработчиков по номеру: чужие имена, ники и значения в onclick больше не вставляются.
+var _botCmdList=[], _gsUsers=[], _gsChannels=[], _shareContactList=[], _rxnQuickList=[], _ncResults=[], _giftVipList=[];
+function fillBotCommandIdx(i){ const c=_botCmdList[i]; if(c) fillBotCommand(String(c.command||"")); }
+function openSearchUser(i){ const u=_gsUsers[i]; if(!u || !UUID_LIKE.test(String(u.id||""))) return; const nm=u.name||u.username||"Пользователь"; openChatFromSearch(String(u.id), String(nm), colorFromId(u.id)); }
+function openSearchChannel(i){ const c=_gsChannels[i]; if(!c || !UUID_LIKE.test(String(c.id||""))) return; joinChannelFromSearch(String(c.id), String(c.name||"Канал"), String(c.username||""), colorFromId(c.id)); }
+function shareContactPick(i){ const c=_shareContactList[i]; if(!c) return; sendContactMsg(String(c.withUserId||c.id), String(c.nm||""), Number(c.col)||0, String(c.uname||"")); }
+function addRxnIdx(i){ const em=_rxnQuickList[i]; if(typeof em==="string") addRxn(em); }
+function ncStart(i){ const c=_ncResults[i]; if(!c) return; startChatWithUser(String(c.id), String(c.nm||""), Number(c.col)||0); closeM('m-newchat'); }
+function ncAdd(i){ const c=_ncResults[i]; if(!c) return; addToContacts(String(c.id), String(c.nm||""), Number(c.col)||0); }
+function giftVipPick(i){ const c=_giftVipList[i]; if(!c) return; pickGiftVipRecipient(String(c.id), String(c.nm||""), Number(c.col)||0); }
+// Тег картинки/видео/звука с проверенным адресом (адрес — DOM-свойством, см. выше).
+function safeImgTag(u, style, extra){ return `<img${imgAttr(u)}${style?` style="${style}"`:""}${extra||""}>`; }
+
 // 18 окт 2026: Android-приложение «Монохром» (WebView): мост MonochromeAndroid есть только там
 // (его встраивает приложение, addWebMessageListener). Через мост не передаются ни токен, ни номер,
 // ни данные аккаунта — только признак входа и просьбы открыть что-то снаружи. В обычном браузере и в
@@ -4181,6 +4320,10 @@ function androidAuthChanged(loggedIn, reason){ const v=loggedIn===true; if(v===_
 // В приложении ссылку на само приложение (приглашение ?join=…) мост наружу не отдаёт (url_rejected) — открываем
 // её здесь же, как и обычную ссылку в тексте; файл, который ещё отправляется (blob:/data:), — подсказка.
 function openOutside(url){
+  // 25 окт 2026 (C.1.2): наружу — только http/https и свои blob: (javascript:, data: и прочее — никогда).
+  const проверенный=safeUrl(String(url||""), "link") || safeUrl(String(url||""), "download");
+  if(!проверенный){ showToast("⏳ Файл ещё отправляется — откройте после загрузки"); return; }
+  url=проверенный;
   if(isInAndroidApp()){ try{ const u=new URL(String(url), location.href);
     if(u.protocol!=="https:" && u.protocol!=="http:"){ showToast("⏳ Файл ещё отправляется — откройте после загрузки"); return; }
     if(u.origin===location.origin && u.pathname.startsWith(location.pathname.replace(/[^/]*$/,""))){ location.href=u.href; return; } }catch(e){} }
@@ -4700,6 +4843,7 @@ function resetAccountRuntime(){
   тихо(()=>{ _lastRenderedChat=null; _lastMsgCount={}; _msgByIdAt=null; });
   тихо(()=>{ wsHasAuthedOnce=false; lastReconnectResyncAt=0; clearTimeout(_reconnectResyncLater); _reconnectResyncLater=null; });
   тихо(()=>{ pinBusy.clear(); pinSettledAt.clear(); prefBusy.clear(); prefSettledAt.clear(); _returnResyncAt=0; });
+  тихо(()=>e2eForgetRuntime());   // C.1.2
   тихо(()=>stopTinkoffPolling());
   тихо(()=>{ clearTimeout(_searchDebounce); clearTimeout(_usrSearchTimer); clearTimeout(_botSearchTimer); _addMemberResults=[]; });
   тихо(()=>{ const п=el("sb-search"); if(п) п.value=""; const г=el("global-search-results"); if(г) г.innerHTML=""; });
@@ -4832,8 +4976,8 @@ function colorFromId(id){
   return Math.abs(hash);
 }
 function avatarHTML(av, ini, col, size=43){
-  if(av) return `<img src="${av}" style="width:100%;height:100%;object-fit:cover">`;
-  return ini||"?";
+  if(safeImgSrc(av)) return `<img${imgAttr(av)} style="width:100%;height:100%;object-fit:cover">`;
+  return escHtml(ini||"?");
 }
 
 function applyLang(){
@@ -5467,7 +5611,7 @@ function wsHandleMessage(msg){
       // Сообщений чата в памяти нет (на этом устройстве его не открывали) — превью всё равно обновляем.
       const changed=S.messages[p.chatId] ? applyServerMsgState(p.chatId, p) : false;
       let превью=false;
-      if(p.lastMessage!==undefined){ const ch=S.chats.find(c=>c.id===p.chatId); if(ch && ch.prev!==p.lastMessage){ ch.prev=p.lastMessage; превью=true; } }
+      if(p.lastMessage!==undefined){ const ch=S.chats.find(c=>c.id===p.chatId); const lmN=neutralPrev(p.lastMessage); if(ch && ch.prev!==lmN){ ch.prev=lmN; превью=true; } }
       if(changed || превью){
         saveState();
         if(changed && S.chat===p.chatId) renderMsgs();
@@ -5511,17 +5655,19 @@ function wsHandleMessage(msg){
       if(!text && !mediaUrl && !poll && !contact && !gift) break;
       // 🔒 E2E-рукопожатие — служебное сообщение (публичный ключ ECDH),
       // не показываем как обычный текст, только считаем общий секрет
-      if(msgType==="e2e_handshake"){ handleIncomingE2EHandshake(chatId, text, senderId); break; }
+      if(msgType==="e2e_handshake"){ e2eOnLiveControl(chatId, ()=>handleIncomingE2EHandshake(chatId, text, senderId)); break; }
       // 🔒 Собеседник выключил шифрование у себя — синхронизируем замочек и
       // у нас, иначе он навсегда оставался бы "включён" на этой стороне
       if(msgType==="e2e_disabled"){
         if(senderId!==S.user?.id){
-          const ch2=S.chats.find(c=>c.id===chatId);
-          if(ch2 && (ch2.e2eActive||ch2.e2ePending)){
-            ch2.e2eActive=false; ch2.e2ePending=false; saveState();
-            if(S.chat===chatId) updateE2EButton(ch2);
-            showToast("🔓 Собеседник выключил шифрование в этом чате");
-          }
+          e2eOnLiveControl(chatId, async ()=>{
+            const ch2=S.chats.find(c=>c.id===chatId);
+            if(ch2 && (ch2.e2eActive||ch2.e2ePending)){
+              ch2.e2eActive=false; ch2.e2ePending=false; ch2.e2eServer=false; ch2.e2eElsewhere=false; saveState();
+              if(S.chat===chatId) updateE2EButton(ch2);
+              showToast("🔓 Собеседник выключил шифрование в этом чате");
+            }
+          });
         }
         break;
       }
@@ -5602,12 +5748,7 @@ function wsHandleMessage(msg){
         // расшифруется (или честно покажет, что на этом устройстве нет ключа)
         newMsg.e2e = true;
         newMsg.tx = "🔐 …";
-        decryptE2EText(chatId, text).then(plain=>{
-          newMsg.tx = plain!=null ? plain : "🔒 Сообщение недоступно на этом устройстве";
-          newMsg.e2eFailed = (plain==null);
-          if(S.chat===chatId) renderMsgs();
-          saveState();
-        });
+        e2eDecryptInto(chatId, newMsg, text);   // C.1.2: не вышло (ключ ещё не выведен) — повтор после нового ключа
       } else if(msgType==="sticker"){
         newMsg.t = "sk";
         newMsg.sk = text;
@@ -5643,6 +5784,7 @@ function wsHandleMessage(msg){
         : poll ? "📊 "+poll.question
         : contact ? "👤 "+(contact.nm||"Контакт")
         : gift ? "🎁 Подарок: "+gift.name
+        : msgType==="e2e" ? E2E_PREVIEW   // C.1.2: без шифротекста и без расшифровки
         : text;
       if(ch){ ch.prev = prevTx; ch.time=now();ch.lastTs=Date.now(); if(S.chat !== chatId) ch.unread = (ch.unread||0)+1; }
       // 20 сен 2026: пока чат закрыт полноэкранным экраном, серверу «прочитано»
@@ -5675,11 +5817,15 @@ function wsHandleMessage(msg){
     }
 
     case "message.scheduled_delivered": {
-      const { chatId, id, text, time, mediaUrl, mediaType, fileName, fileSize, spoiler, waveform, replyToId } = msg.payload;
+      const { chatId, id, text, time, mediaUrl, mediaType, fileName, fileSize, spoiler, waveform, replyToId, msgType } = msg.payload;
       if(!S.messages[chatId]) S.messages[chatId]=[];
       if(S.messages[chatId].find(m=>m.dbId===id)) break;
       const d=time?new Date(time):new Date();
       const newMsg={id:nextId(), dbId:id, t:"out", tx:text, time:d.toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}), ts:d.getTime(), read:false, replyToId:isDbMsgId(replyToId)?replyToId:null};
+      if(msgType==="e2e"){   // C.1.2: своё отложенное зашифрованное — расшифровываем у себя
+        newMsg.e2e=true; newMsg.tx="🔐 …";
+        e2eDecryptInto(chatId, newMsg, text);
+      }
       // Та же ветка по типу вложения, что и в case "message.new" — отложенным
       // можно запланировать не только текст, но и фото/видео/файл (см.
       // scheduleAttachmentSend), поэтому автору нужно показать само вложение,
@@ -5694,7 +5840,8 @@ function wsHandleMessage(msg){
       }
       if(!msgIsOut(newMsg)) newMsg._nv=1;   // итерация 11: ещё не показано человеку
       S.messages[chatId].push(newMsg);
-      const prevTx = mediaUrl ? (mediaType==="image"?"📷 Фото":mediaType==="video"?"🎥 Видео":mediaType==="videoCircle"?"⭕ Видео-кружочек":mediaType==="voice"?"🎤 Голосовое":mediaType==="audio"?"🎵 "+(fileName||"Аудио"):"📎 "+(fileName||"Файл")) : text;
+      const prevTx = mediaUrl ? (mediaType==="image"?"📷 Фото":mediaType==="video"?"🎥 Видео":mediaType==="videoCircle"?"⭕ Видео-кружочек":mediaType==="voice"?"🎤 Голосовое":mediaType==="audio"?"🎵 "+(fileName||"Аудио"):"📎 "+(fileName||"Файл"))
+        : msgType==="e2e" ? E2E_PREVIEW : neutralPrev(text);   // C.1.2: без шифротекста в списке чатов
       const ch2=S.chats.find(c=>c.id===chatId);
       if(ch2){ ch2.prev=prevTx; ch2.time=newMsg.time; ch2.lastTs=d.getTime(); }
       if(S.chat===chatId) renderMsgs();
@@ -6165,7 +6312,7 @@ function wsHandleMessage(msg){
       if("lastMessage" in p && (!m || былоПоследним)){
         const ch=S.chats.find(c=>c.id===chatId);
         if(ch){
-          ch.prev=String(p.lastMessage||"");
+          ch.prev=neutralPrev(String(p.lastMessage||""));
           if(p.lastMessageAt) ch.time=new Date(p.lastMessageAt).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"});
         }
       }
@@ -6669,7 +6816,7 @@ async function verifyCode(){
 }
 
 let regAvatarData = "";
-function previewRegAvatar(inp){ if(!inp.files[0])return; const r=new FileReader(); r.onload=e=>{regAvatarData=e.target.result;el("reg-av-btn").innerHTML=`<img src="${regAvatarData}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;};r.readAsDataURL(inp.files[0]); }
+function previewRegAvatar(inp){ if(!inp.files[0])return; const r=new FileReader(); r.onload=e=>{regAvatarData=e.target.result;el("reg-av-btn").innerHTML=`<img${imgAttr(regAvatarData)} style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;};r.readAsDataURL(inp.files[0]); }
 
 async function doReg(){
   const nm=el("rname").value.trim(); if(!nm){showToast("❌ Введите имя");return;}
@@ -6800,9 +6947,9 @@ function loginOK(){
 function updateChatAvatarDisplays(ch){
   if(!ch) return;
   const chav=el("chav");
-  if(chav){ chav.style.background=ch.avatar?"none":colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:avFallback(ch,17); }
+  if(chav){ chav.style.background=safeImgSrc(ch.avatar)?"none":colBg(ch.col); chav.innerHTML=safeImgSrc(ch.avatar)?`<img${imgAttr(ch.avatar)} style="width:100%;height:100%;object-fit:cover">`:avFallback(ch,17); }
   const rpav=el("rpav");
-  if(rpav){ rpav.style.background=ch.avatar?"none":colBg(ch.col); rpav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:avFallback(ch,26); }
+  if(rpav){ rpav.style.background=safeImgSrc(ch.avatar)?"none":colBg(ch.col); rpav.innerHTML=safeImgSrc(ch.avatar)?`<img${imgAttr(ch.avatar)} style="width:100%;height:100%;object-fit:cover">`:avFallback(ch,26); }
 }
 
 // Имя чата для отображения в шапке — с короной VIP и эмодзи-статусом,
@@ -6843,7 +6990,8 @@ async function openBotCommandMenu(){
   document.querySelectorAll(".bot-cmd-menu").forEach(m=>m.remove());
   const menu=document.createElement("div");
   menu.className="bot-cmd-menu";
-  menu.innerHTML=commands.map(c=>`<div class="bot-cmd-item" onclick="fillBotCommand('${c.command}')">/${c.command}<span>${escHtml(c.description)}</span></div>`).join("");
+  _botCmdList=commands;   // C.1.2: команда — по номеру, текст — экранирован
+  menu.innerHTML=commands.map((c,i)=>`<div class="bot-cmd-item" onclick="fillBotCommandIdx(${i})">/${escHtml(c.command)}<span>${escHtml(c.description)}</span></div>`).join("");
   document.body.appendChild(menu);
   const btn=el("bot-menu-btn");
   const rect=btn.getBoundingClientRect();
@@ -6903,7 +7051,9 @@ function applyVoiceVideoRestriction(ch){
 let curScheduleEligible=false;
 function applyScheduleButtonVisibility(ch){
   const menuBtn=el("rp-scheduled-btn");
-  let eligible = typeof ch?.id==="string" && ch.id.length>10 && !ch.e2eActive;
+  // C.1.2: в защищённом чате отложенный текст шифруется (сервер хранит и публикует конверт); пока шифрование
+  // устанавливается — нельзя.
+  let eligible = typeof ch?.id==="string" && ch.id.length>10 && !(chatE2E(ch) && !ch.e2eActive);
   if(eligible){
     const myRole=myRoleIn(ch);
     const isOwnerOrAdmin = myRole==="owner" || myRole==="admin";
@@ -7005,7 +7155,7 @@ const SYS_CHAT_ICON={77777:"star",99999:"bot",66666:"tools",55555:"shield",44444
 // 8 окт 2026: то, что стоит в кружке без фото. У служебных чатов — тот же
 // значок, что в списке; раньше в шапке и правой панели оставались инициалы
 // эпохи Nexus («NS» — NexusSupport, «NV», «NO»).
-function avFallback(ch, size){ return SYS_CHAT_ICON[ch && ch.id] ? uiIcon(SYS_CHAT_ICON[ch.id], size||19) : ((ch && ch.ini)||"?"); }
+function avFallback(ch, size){ return SYS_CHAT_ICON[ch && ch.id] ? uiIcon(SYS_CHAT_ICON[ch.id], size||19) : escHtml((ch && ch.ini)||"?"); }   // C.1.2: буквы — текстом
 const VIP_STAR_SVG = `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 2.5l2.5 5.6 6.1.6-4.6 4.1 1.3 6-5.3-3.2-5.3 3.2 1.3-6-4.6-4.1 6.1-.6z"/></svg>`;
 // Индикатор "печатает" — раньше был просто пульсирующей прозрачностью всей
 // надписи целиком, теперь три прыгающих точки (как в Telegram/WhatsApp),
@@ -7342,7 +7492,7 @@ async function loadChatsFromDB(){
         }
         // 7 окт 2026: '' с сервера — «все сообщения удалены», а не «нет
         // данных»: раньше пустое превью оставляло на экране удалённый текст.
-        existing.prev = dbChat.last_message!=null ? dbChat.last_message : existing.prev;
+        existing.prev = dbChat.last_message!=null ? neutralPrev(dbChat.last_message) : existing.prev;
         existing.time = dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : existing.time;
         // То же правило для уже известного чата: пустой чат получает время
         // создания, иначе при каждой перезагрузке он снова уезжал бы вниз.
@@ -7397,7 +7547,7 @@ async function loadChatsFromDB(){
           col: isPersonal && otherUser ? colorFromId(otherUser.userId) : colorFromId(dbChat.id),
           online: false,
           avatar: isPersonal ? (otherUser?.avatar || "") : "",
-          prev: dbChat.last_message || "",
+          prev: neutralPrev(dbChat.last_message || ""),
           time: dbChat.last_message_at ? new Date(dbChat.last_message_at).toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}) : "",
           // ⚠️ 2 октября 2026. Было: 0, если сообщений ещё не было — и свежий
         // чат падал в самый низ списка. Единое правило: пока сообщений нет,
@@ -7448,10 +7598,6 @@ async function loadChatsFromDB(){
 //
 // ⚠️ Всё, что попадает сюда (название чата, имя пригласившего), написано
 // ПОСТОРОННИМ человеком — экранируем при выводе, как и в списке чатов.
-function safeImgSrc(u){
-  const v=String(u||"");
-  return /^(https:\/\/|data:image\/)/i.test(v) ? v : "";
-}
 
 async function loadInvitesFromServer(){
   let data;
@@ -7486,7 +7632,7 @@ function inviteRowNode(inv){
   const nm=inv.chatName || (inv.chatType==="channels" ? "Канал" : "Группа");
   const ini=(nm||"?").slice(0,2).toUpperCase();
   const src=safeImgSrc(inv.chatAvatar);
-  const avHTML=src?`<img src="${escHtml(src)}" style="width:100%;height:100%;object-fit:cover">`:escHtml(ini);
+  const avHTML=src?`<img${imgAttr(src)} style="width:100%;height:100%;object-fit:cover">`:escHtml(ini);
   const what=inv.chatType==="channels"?"канал":"группу";
   d.innerHTML=`<div class="avwrap"><div class="chav" style="background:${colBg(colorFromId(inv.chatId))}">${avHTML}</div></div>
   <div class="cinfo" style="flex:1;overflow:hidden;min-width:0">
@@ -7646,11 +7792,7 @@ function applyServerMsgState(chatId, st){
   if(m.t!=="sk" && m.t!=="gift" && m.t!=="sys" && !m.poll && !m.contact){
     if(st.msgType==="e2e"){
       m.e2e=true; m.tx="🔐 …";
-      decryptE2EText(chatId, st.text).then(plain=>{
-        if(msgServerRev(m)!==rev) return;   // пока расшифровывали, пришла ещё более новая версия
-        m.tx=plain!=null ? plain : "🔒 Сообщение недоступно на этом устройстве"; m.e2eFailed=(plain==null);
-        if(S.chat===chatId) renderMsgs(); saveState();
-      });
+      e2eDecryptInto(chatId, m, st.text, null, ()=>msgServerRev(m)===rev);   // пока расшифровывали, могла прийти более новая версия
     } else m.tx=st.text||"";
   } else if(cur===-1 && m.edited && (m.poll || m.contact)) m.tx=st.text||"";   // местная «правка» 1.2 под опросом/контактом
   if((st.mediaUrl||null)!==msgMediaUrl(m) || (!!st.spoiler)!==(!!m.spoiler)) applyMediaFields(m, st);
@@ -7766,6 +7908,8 @@ async function loadMessagesFromDB(chatId){
   const известныеДо=new Set((S.messages[chatId]||[]).filter(m=>m.dbId).map(m=>m.dbId));
   try {
     const data = await apiGet("/api/messages/"+chatId);
+    // C.1.2: состояние шифрования — по серверу (applyE2EBlock); у пустой истории — тоже.
+    if(data && data.e2e && (!data.messages || !data.messages.length)) await e2eQueue(chatId, ()=>applyE2EBlock(chatId, data.e2e));
     if(!data.messages || !data.messages.length){
       // 7 окт 2026: «сообщений нет» — известные устройству удалены на сервере.
       if(Array.isArray(data.messages)){
@@ -7809,6 +7953,7 @@ async function loadMessagesFromDB(chatId){
     // пересобираем список, только если реально что-то изменилось.
     let changedAnything=false;
     const addedKeys=new Set();   // 15 сен 2026: какие сообщения добавил этот ответ (см. afterChatDbLoad)
+    let replayKey=null;   // C.1.2: общий ключ по последнему рукопожатию собеседника в окне (только для расшифровки окна)
     // Итерация 12: пометку «не показано» ставим, только если история этого чата
     // в памяти уже была и строка не старше последней известной. Окно фоновой
     // пересинхронизации у чата, который на этом телефоне ни разу не открывали, —
@@ -7833,7 +7978,9 @@ async function loadMessagesFromDB(chatId){
       // не наше собственное) считаем по нему общий секрет шифрования —
       // нужно на случай, если пропустили handshake живым WS (были офлайн)
       if(dbMsg.type==="e2e_handshake"){
-        if(!isMe) await handleIncomingE2EHandshake(chatId, dbMsg.text, dbMsg.user_id, true);
+        // C.1.2: с блоком e2e от сервера — только общий ключ по порядку строк (чтобы расшифровать строки окна), без
+        // ответа и без смены замка: итог решает блок после цикла. Без блока (старый сервер) — как раньше.
+        if(!isMe){ if(data.e2e) replayKey=(await e2eReplayKey(chatId, dbMsg.text)) || replayKey; else await handleIncomingE2EHandshake(chatId, dbMsg.text, dbMsg.user_id, true); }
         continue;
       }
       // 🔒 Кто-то выключил шифрование (не важно, мы или собеседник) — история
@@ -7855,7 +8002,7 @@ async function loadMessagesFromDB(chatId){
       }
       if(dbMsg.type==="e2e_disabled"){
         const ch2=S.chats.find(c=>c.id===chatId);
-        if(ch2){ ch2.e2eActive=false; ch2.e2ePending=false; }
+        if(ch2 && !data.e2e){ ch2.e2eActive=false; ch2.e2ePending=false; }   // C.1.2: с блоком — итог по нему
         changedAnything=true;
         continue;
       }
@@ -7915,12 +8062,7 @@ async function loadMessagesFromDB(chatId){
         // изначальный текст теряется, он хранился только в памяти)
         m.e2e=true;
         m.tx="🔐 …";
-        decryptE2EText(chatId, dbMsg.text).then(plain=>{
-          m.tx = plain!=null ? plain : "🔒 Сообщение недоступно на этом устройстве";
-          m.e2eFailed = (plain==null);
-          if(S.chat===chatId) renderMsgs();
-          saveState();
-        });
+        e2eDecryptInto(chatId, m, dbMsg.text, replayKey);   // C.1.2: ключ окна (по рукопожатию выше в окне) или сохранённый
       } else if(dbMsg.type==="sticker"){
         m.t="sk";
         m.sk=dbMsg.text;
@@ -7972,6 +8114,8 @@ async function loadMessagesFromDB(chatId){
       if(_openLoadChat===chatId && _unreadDivider && _unreadDivider.chat===chatId && _unreadDivider.ids) _unreadDivider.ids.add(String(m.id));
       changedAnything=true;
     }
+    // C.1.2: итоговое состояние шифрования — по серверу, а не по порядку строк окна.
+    if(data.e2e) await e2eQueue(chatId, ()=>applyE2EBlock(chatId, data.e2e));
     // 7 окт 2026: сообщение, известное устройству до запроса, которого в ответе
     // нет, на сервере удалено (у всех или у меня) — прячем: раньше удалённое,
     // пока устройство было не в сети, оставалось в ленте навсегда. Окно
@@ -8052,7 +8196,7 @@ async function loadMessagesFromDB(chatId){
 
 function updateUserUI(){
   const u=S.user;
-  const initEl=el("uinit"); if(initEl){ if(safeImgSrc(u.avatar)){initEl.innerHTML=`<img src="${escHtml(safeImgSrc(u.avatar))}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;}else{initEl.textContent=u.initials||"Я";} }
+  const initEl=el("uinit"); if(initEl){ if(safeImgSrc(u.avatar)){initEl.innerHTML=`<img${imgAttr(u.avatar)} style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;}else{initEl.textContent=u.initials||"Я";} }
   const nmEl=el("unm");
   if(nmEl){
     const base=u.name||(u.uname?"@"+u.uname:"dev_user");
@@ -8101,7 +8245,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-24 выпуск 1, ред. 26 — ответы и закреп через сервер (локально): Android-приложение на WebView, ответы с цитатой и закреп сообщений через сервер (по серверному id — у собеседника, на втором устройстве и после перезагрузки; заглушки для незагруженного и удалённого; ответом могут быть фото, видео, файл, альбом, стикер, опрос, контакт и отложенное сообщение); групповая история — сообщения участника, которого вы заблокировали, в группе видны и после перезагрузки (снимается прежняя пометка «удалено у меня»), группа не прячется как личный чат автора; финальная проверка — подарок списывается только при отправке, повтор покупок без второго списания, реакции и голоса без повторов; защитная партия — отказ в отправке при блокировке и без права писать (без автоповторов), снятое отложенное сообщение, одиночное видео с зарезервированным местом; этап C — правка сообщений на сервере (текст и подписи, замена фото/видео/файла/музыки и позиций альбома, 48 часов, публикации каналов по праву), догон правок по журналу событий; правки 1.2 — плотная мозаика альбома (строки 2+3, 3+4…, обрезка миниатюр), окно «Удалить» больше не гаснет под меню, «?» и кружок выбора в альбоме на телефоне, меню «не отправлено» закрывается «назад», одно фото альбома — в своей пропорции, местные пометки контактов не затираются; правки 1.1 — контакты по списку сервера (без лишних «Добавить в контакты»), ссылки www.… и домен.зона в сообщениях; мост MonochromeAndroid (вход и выход, PIN-код и отпечаток, оплата и ссылки во внешнем браузере, загрузки); сайт и TWA без изменений; повторная отправка SMS-кода (кнопка после отсчёта, отсчёт по сроку), читаемые раскрывающиеся списки, инструкция для запрещённых уведомлений; уведомления на телефон — Web Push при свёрнутом и закрытом приложении, плашка «Включить уведомления», уведомление и в открытый чат свёрнутого приложения; поле номера — простая модель на libphonenumber-js (max), «+код» уходит из поля сразу, код без «+» одинаково при наборе и вставке, в поле только национальная часть, номер телефона по стране и «+код», Казахстан без «8», одна поддержка, онлайн только со слов сервера, «Выйти» завершает сессию, закрепление через сервер, уведомление открывает чат поверх всего, окно удаления — на свой чат, вложение своего чата, бренд Монохром, данные и черновики по аккаунтам, удаление и превью с сервера, баннер версии, номер только взаимным";
+const BUILD_TAG = "2026-10-25 выпуск 1, ред. 27 — защита контента и E2E (локально): защищённый чат — только зашифрованный текст (сервер отклоняет открытый текст старых сборок; вложения, контакты, опросы, стикеры и подарки — отказ без запроса), состояние шифрования — с сервера (повторное включение без зависания, второе устройство — «включено на другом устройстве»); имена, подписи, реакции, контакты, подарки, сторис и адреса — только как текст и через проверку протокола (лента, списки, профили, поиск, Dev Panel); ред. 26 — ответы и закреп через сервер: Android-приложение на WebView, ответы с цитатой и закреп сообщений через сервер (по серверному id — у собеседника, на втором устройстве и после перезагрузки; заглушки для незагруженного и удалённого; ответом могут быть фото, видео, файл, альбом, стикер, опрос, контакт и отложенное сообщение); групповая история — сообщения участника, которого вы заблокировали, в группе видны и после перезагрузки (снимается прежняя пометка «удалено у меня»), группа не прячется как личный чат автора; финальная проверка — подарок списывается только при отправке, повтор покупок без второго списания, реакции и голоса без повторов; защитная партия — отказ в отправке при блокировке и без права писать (без автоповторов), снятое отложенное сообщение, одиночное видео с зарезервированным местом; этап C — правка сообщений на сервере (текст и подписи, замена фото/видео/файла/музыки и позиций альбома, 48 часов, публикации каналов по праву), догон правок по журналу событий; правки 1.2 — плотная мозаика альбома (строки 2+3, 3+4…, обрезка миниатюр), окно «Удалить» больше не гаснет под меню, «?» и кружок выбора в альбоме на телефоне, меню «не отправлено» закрывается «назад», одно фото альбома — в своей пропорции, местные пометки контактов не затираются; правки 1.1 — контакты по списку сервера (без лишних «Добавить в контакты»), ссылки www.… и домен.зона в сообщениях; мост MonochromeAndroid (вход и выход, PIN-код и отпечаток, оплата и ссылки во внешнем браузере, загрузки); сайт и TWA без изменений; повторная отправка SMS-кода (кнопка после отсчёта, отсчёт по сроку), читаемые раскрывающиеся списки, инструкция для запрещённых уведомлений; уведомления на телефон — Web Push при свёрнутом и закрытом приложении, плашка «Включить уведомления», уведомление и в открытый чат свёрнутого приложения; поле номера — простая модель на libphonenumber-js (max), «+код» уходит из поля сразу, код без «+» одинаково при наборе и вставке, в поле только национальная часть, номер телефона по стране и «+код», Казахстан без «8», одна поддержка, онлайн только со слов сервера, «Выйти» завершает сессию, закрепление через сервер, уведомление открывает чат поверх всего, окно удаления — на свой чат, вложение своего чата, бренд Монохром, данные и черновики по аккаунтам, удаление и превью с сервера, баннер версии, номер только взаимным";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -8121,7 +8265,7 @@ function renderSettingsScreen(){
   const u=S.user;
   if(el("priv-lastseen-value")) el("priv-lastseen-value").textContent=LAST_SEEN_LABEL[myLastSeenVisibility()];
   const sav=el("settings-av");
-  if(sav){ if(safeImgSrc(u.avatar))sav.innerHTML=`<img src="${escHtml(safeImgSrc(u.avatar))}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;else{sav.textContent=u.initials||"Я";sav.style.background=COLS[0];} }
+  if(sav){ if(safeImgSrc(u.avatar))sav.innerHTML=`<img${imgAttr(u.avatar)} style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;else{sav.textContent=u.initials||"Я";sav.style.background=COLS[0];} }
   if(el("settings-nm"))el("settings-nm").innerHTML=escHtml(u.name||"—")+(u.verified?verifiedBadgeHTML({verified:true}):"");
   if(el("settings-uname"))el("settings-uname").textContent=u.uname?"@"+u.uname:"";
   if(el("settings-bio"))el("settings-bio").textContent=u.bio||"";
@@ -8274,8 +8418,8 @@ function renderChats(filter=""){
     d.className="ci"+(ch.id===S.chat?" on":"")+(ch.pinned?" pinned":"")+(ch.muted?" muted":"")+(S.chatSelectMode&&S.selectedChats.includes(ch.id)?" selected":"");
     // Служебные чаты «Монохрома» получают контурный значок, а не эмодзи и не
     // двухбуквенные инициалы: это элементы интерфейса, а не люди.
-    const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`
-      :(SYS_CHAT_ICON[ch.id]?uiIcon(SYS_CHAT_ICON[ch.id],19):(ch.ini||"?"));
+    const avHTML=safeImgSrc(ch.avatar)?`<img${imgAttr(ch.avatar)} style="width:100%;height:100%;object-fit:cover">`
+      :(SYS_CHAT_ICON[ch.id]?uiIcon(SYS_CHAT_ICON[ch.id],19):escHtml(ch.ini||"?"));
     d.innerHTML=`<div class="avwrap"><div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>${chatPeerOnline(ch)?'<div class="odot"></div>':""}</div>
     <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
       ${/* 24 сен 2026: название, превью и черновик чата приходят от другого
@@ -8385,12 +8529,12 @@ function renderGlobalSearchResults(users, channels, query){
     wrap.innerHTML=`<div class="gsr-label">Глобальный поиск</div><div style="color:var(--tx3);font-size:12.5px;padding:4px 16px 12px">Ничего не найдено по «${escHtml(query)}»</div>`;
     return;
   }
-  let html=`<div class="gsr-label">Глобальный поиск</div>`+users.map(u=>{
-    const nm=u.name||u.username||"Пользователь";
+  _gsUsers=users; _gsChannels=channels;   // C.1.2: обработчики — по номеру результата
+  let html=`<div class="gsr-label">Глобальный поиск</div>`+users.map((u,ui)=>{
+    const nm=String(u.name||u.username||"Пользователь");
     const col=colorFromId(u.id);
-    const safeNm=escHtml(nm).replace(/'/g,"\\'");
-    const avHTML=u.avatar_url?`<img src="${u.avatar_url}" style="width:100%;height:100%;object-fit:cover">`:nm[0].toUpperCase();
-    return `<div class="ci" onclick="openChatFromSearch('${u.id}','${safeNm}',${col})">
+    const avHTML=safeImgSrc(u.avatar_url)?`<img${imgAttr(u.avatar_url)} style="width:100%;height:100%;object-fit:cover">`:escHtml(nm[0].toUpperCase());
+    return `<div class="ci" onclick="openSearchUser(${ui})">
       <div class="chav" style="background:${colBg(col)}">${avHTML}</div>
       <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
         <div class="cnm">${escHtml(nm)}</div>
@@ -8399,15 +8543,13 @@ function renderGlobalSearchResults(users, channels, query){
     </div>`;
   }).join("");
   if(channels.length){
-    html+=`<div class="gsr-label">Каналы</div>`+channels.map(c=>{
-      const nm=c.name||"Канал";
+    html+=`<div class="gsr-label">Каналы</div>`+channels.map((c,ci)=>{
+      const nm=String(c.name||"Канал");
       const col=colorFromId(c.id);
-      const safeNm=escHtml(nm).replace(/'/g,"\\'");
-      const safeUname=escHtml(c.username||"").replace(/'/g,"\\'");
-      const avHTML=c.avatar_url?`<img src="${c.avatar_url}" style="width:100%;height:100%;object-fit:cover">`:nm[0].toUpperCase();
+      const avHTML=safeImgSrc(c.avatar_url)?`<img${imgAttr(c.avatar_url)} style="width:100%;height:100%;object-fit:cover">`:escHtml(nm[0].toUpperCase());
       const cnt=parseInt(c.member_count,10)||0;
       const sub=(c.username?"@"+escHtml(c.username)+" · ":"")+cnt+" "+pluralSubs(cnt);
-      return `<div class="ci" onclick="joinChannelFromSearch('${c.id}','${safeNm}','${safeUname}',${col})">
+      return `<div class="ci" onclick="openSearchChannel(${ci})">
         <div class="chav" style="background:${colBg(col)}">${avHTML}</div>
         <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
           <div class="cnm">${escHtml(nm)}${c.is_verified?verifiedBadgeHTML({verified:true}):""}</div>
@@ -8457,7 +8599,7 @@ function globalSearch(v){
     const d=document.createElement("div");
     d.className="ci"+(ch.id===S.chat?" on":"");
     d.onclick=()=>openChat(ch.id);
-    d.innerHTML=`<div class="chav" style="background:${colBg(ch.col)}">${ch.ini||"?"}</div>
+    d.innerHTML=`<div class="chav" style="background:${colBg(ch.col)}">${escHtml(ch.ini||"?")}</div>
     <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)"><div class="cnm">${escHtml(ch.nm)}</div><div class="cprev">${escHtml(ch.prev)}</div></div>
     <div class="cmeta"><div class="ctime">${ch.time}</div></div>`;
     c.appendChild(d);
@@ -8525,7 +8667,7 @@ function openChat(id,opts){
   updateAttachMenuForChat(ch);
   applyBotMenuButton(ch.peerIsBot ? ch.withUserId : null);
 
-  const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:avFallback(ch,17);}
+  const chav=el("chav"); if(chav){chav.style.background=colBg(ch.col); chav.innerHTML=safeImgSrc(ch.avatar)?`<img${imgAttr(ch.avatar)} style="width:100%;height:100%;object-fit:cover">`:avFallback(ch,17);}
   if(el("chnm"))el("chnm").innerHTML=escHtml(chatDisplayName(ch))+vipBadgeHTML(ch)+verifiedBadgeHTML(ch);
   { const st=el("chst"); if(st) st.classList.remove("typ"); }
   renderChatHeaderStatus(ch);   // «онлайн» / время захода — с сервера, с приватностью владельца
@@ -8575,7 +8717,7 @@ function openChat(id,opts){
     S.sendAsChannel=null; // сбрасываем при выходе из подходящего чата
   }
 
-  const rpav=el("rpav"); if(rpav){rpav.style.background=colBg(ch.col); rpav.innerHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:avFallback(ch,26);}
+  const rpav=el("rpav"); if(rpav){rpav.style.background=colBg(ch.col); rpav.innerHTML=safeImgSrc(ch.avatar)?`<img${imgAttr(ch.avatar)} style="width:100%;height:100%;object-fit:cover">`:avFallback(ch,26);}
   if(el("rpnm"))el("rpnm").textContent=ch.nm;
   if(el("rpst"))el("rpst").textContent="● "+presenceText(ch);
 
@@ -9294,9 +9436,6 @@ function safeColor(c){
   const v=String(c||"").trim();
   return /^#[0-9a-fA-F]{3,8}$/.test(v) || /^rgba?\([0-9.,\s%]+\)$/.test(v) || /^[a-zA-Z]{3,20}$/.test(v) ? v : "";
 }
-function escHtml(s){
-  return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-}
 // Twemoji: подменяет emoji-символы на картинки (одинаковый вид на любой ОС,
 // как в Telegram). ВСЕГДА вызывать на DOM-узле (после innerHTML), НЕ на сырой
 // строке — twemoji.parse(строка) регэкспом проходит по всему тексту вообще без
@@ -9618,7 +9757,8 @@ function openMsgLink(e,a){
   return true;
 }
 function msgLinkHtml(href, inner){
-  return `<a href="${escHtml(href)}" target="_blank" rel="noopener noreferrer" class="msg-link" onclick="return openMsgLink(event,this)">${inner}</a>`;
+  // 25 окт 2026 (C.1.2): адрес — DOM-свойством после проверки схемы (http/https), не строкой в атрибуте.
+  return `<a${hrefAttr(href)} target="_blank" rel="noopener noreferrer" class="msg-link" onclick="return openMsgLink(event,this)">${inner}</a>`;
 }
 
 function formatMsgText(raw){
@@ -9749,7 +9889,7 @@ function retryFailedMsg(msgId){
     const srcM=src.dbId ? list.find(x=>x.dbId===src.dbId) : list.find(x=>x.id===src.localId);
     // Пересылка зашифрованного сообщения несёт его расшифрованный текст (сервер шифротекст не
     // пересылает) — повтор её не отправляет: открытый текст E2E-чата не уйдёт в сеть ещё раз.
-    if(src.e2e || (srcM && (srcM.e2e || srcM.e2eIntent))){
+    if(!chatE2E(ch) && (src.e2e || (srcM && (srcM.e2e || srcM.e2eIntent)))){   // C.1.2: в защищённый чат — шифруется заново
       m.failed=true; renderMsgs(); saveState();
       showToast("🔒 Пересылка зашифрованного сообщения повторно не отправляется");
       return;
@@ -9793,7 +9933,10 @@ function retryFailedMsg(msgId){
       showToast("Это сообщение не отправить повторно — перешлите или отправьте его заново");
       return;
     }
-    if(m.e2e || m.e2eIntent || (ch && ch.e2eActive)){ retryE2EText(m, chatId, ch, memberIds); return; }
+    // C.1.2: пока шифрование устанавливается — не отправляется ничего (как и первая отправка); в защищённом чате —
+    // только шифротекст (ключа нет — повтор не уходит в сеть).
+    if(chatE2E(ch) && (e2eIsBusy(ch) || !ch.e2eActive)){ m.failed=true; renderMsgs(); saveState(); showToast(e2eNotReadyMsg(ch)); return; }
+    if(m.e2e || m.e2eIntent || chatE2E(ch)){ retryE2EText(m, chatId, ch, memberIds); return; }
     sendTextToServer(m, m.tx, chatId, ch, m.time, memberIds);
   }
 }
@@ -9817,6 +9960,7 @@ async function retryE2EText(m, chatId, ch, memberIds){
     showToast("🔒 Ключа шифрования на этом устройстве нет — сообщение не отправлено. Включите шифрование заново");
     return;
   }
+  if(enc.length>E2E_ENVELOPE_MAX){ m.failed=true; renderMsgs(); saveState(); showToast(E2E_TOO_LONG_MSG); return; }   // C.1.2
   m.e2e=true; saveState();
   sendTextToServer(m, enc, chatId, ch, m.time, memberIds, "e2e");
 }
@@ -9832,7 +9976,7 @@ const AUTO_RETRY_DELAYS=[1500, 3000, 6000];
 // services/chatAccess.js. Повторять бессмысленно: сообщение сразу «не отправлено», один тост
 // с текстом сервера (кто кого заблокировал, он не говорит).
 // 22 окт 2026: и отказы подарка — экземпляра нет в коллекции, неизвестный подарок, отложенный подарок.
-const SEND_REFUSED_CODES=new Set(["sticker_invalid","reply_invalid","blocked","not_member","chat_blocked","channel_readonly","restricted","muted","voice_blocked","gift_not_owned","gift_invalid","gift_not_schedulable"]);
+const SEND_REFUSED_CODES=new Set(["e2e_required","e2e_invalid","sticker_invalid","reply_invalid","blocked","not_member","chat_blocked","channel_readonly","restricted","muted","voice_blocked","gift_not_owned","gift_invalid","gift_not_schedulable"]);
 function sendRefused(d){ return !!(d && !d.success && SEND_REFUSED_CODES.has(d.code)); }
 function sendRefusedError(d){ const e=new Error((d && d.error) || "Сообщение не отправлено"); e.sendRefused=true; e.code=d && d.code; return e; }
 // Один и тот же отказ (альбом, пересылка нескольких) — один тост, а не по тосту на каждое сообщение.
@@ -9878,6 +10022,10 @@ async function attemptWithAutoRetry(m, doAttempt){
 }
 
 async function retrySimpleMsg(m, chatId, ch, memberIds, postBody, wsExtra){
+  // C.1.2: стикер, опрос, контакт, подарок — не в защищённый чат; ключ и выключение шифрования — можно.
+  if(chatE2E(ch) && !["e2e_handshake","e2e_disabled"].includes(postBody && postBody.type)){
+    m.failed=true; renderMsgs(); saveState(); if(!m._silent) showToast("🔒 "+E2E_UNSUPPORTED_MSG); return;
+  }
   renderMsgs(); saveState();
   if(!(typeof chatId==="string" && chatId.length>10)) return;
   // 3 авг 2026: переиспользуем тот же clientMsgId, что уже был сгенерирован
@@ -9901,6 +10049,8 @@ async function retrySimpleMsg(m, chatId, ch, memberIds, postBody, wsExtra){
 // Повтор для медиа-вложений — файл уже когда-то выбрали, просто заново
 // пробуем загрузить и отправить с тем же файлом и подписью
 async function retryAttachmentMsg(m, chatId, ch, memberIds){
+  // C.1.2: вложение в защищённый чат не отправляется (ни файл, ни подпись) — до загрузки.
+  if(chatE2E(ch)){ m.failed=true; renderMsgs(); saveState(); showToast("🔒 "+E2E_UNSUPPORTED_MSG); return; }
   const att=m._retryAtt, caption=m._retryCaption;
   // Имя и размер файла — отдельными полями: после перезагрузки File в
   // сохранённом состоянии пустой, а имя несёт длительность записи.
@@ -11411,7 +11561,7 @@ function renderMsgs(){
     // Чекбокс для режима выделения — для фотоальбома НЕ рисуем общий на всю
     // строку, у каждого фото в сетке свой собственный (см. .grp-cell-check)
     if(m.t!=="date"&&m.t!=="sys"&&!isGrpImg)h+=`<div class="msel-check">${selBadge(m.id)}</div>`;
-    if(m.t!=="out" && !(m.t==="gift"&&m.out) && !(m.t==="sk"&&m.out))h+=`<div class="mav" style="background:${safeImgSrc(m.frAvatar)?"none":colBg(m.col||0)};padding:0;overflow:hidden${groupsWithPrev?";visibility:hidden":""}">${safeImgSrc(m.frAvatar)?`<img src="${escHtml(safeImgSrc(m.frAvatar))}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml(m.fr?String(m.fr)[0]:"?")}</div>`;
+    if(m.t!=="out" && !(m.t==="gift"&&m.out) && !(m.t==="sk"&&m.out))h+=`<div class="mav" style="background:${safeImgSrc(m.frAvatar)?"none":colBg(m.col||0)};padding:0;overflow:hidden${groupsWithPrev?";visibility:hidden":""}">${safeImgSrc(m.frAvatar)?`<img${imgAttr(m.frAvatar)} style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml(m.fr?String(m.fr)[0]:"?")}</div>`;
     if(m.t==="sk"){
       const skRq=replyQuoteOf(S.chat, m, curCh);
       h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="msgTouchStart(event,${m.id},this)" ontouchend="msgTouchEnd(event,${m.id})" ontouchmove="msgTouchMove(event)">${skRq?replyQuoteHTML(m,skRq):""}${stickerHTML(m.sk,"width:150px;height:150px;object-fit:contain")}</div>${m.t==="sk"&&(m.failed||m.out)?`<div class="mt" style="justify-content:center">${m.time||""}${m.out?ticksHTML(m):""}</div>`:""}`;
@@ -11422,7 +11572,7 @@ function renderMsgs(){
       // поэтому уже показанный подарок при следующем открытии чата не "выпрыгивает".
       const giftIsNew = !m.giftSeen;
       if(giftIsNew) m.giftSeen = true;
-      h+=`<div class="gift-bubble r-${m.rarity||"common"}${giftIsNew?" is-new":""}" onclick="replayGiftAnim(this)">`
+      h+=`<div class="gift-bubble r-${giftRarity(m.rarity)}${giftIsNew?" is-new":""}" onclick="replayGiftAnim(this)">`
         +`<div class="gift-bub-ico">${giftVisual(m)}</div>`
         +`<div><div class="gift-bub-nm">🎁 ${escHtml(m.name||"")}</div>`
         +`<div class="gift-bub-sub" style="color:${rc[m.rarity]||"var(--tx2)"}">→ ${escHtml(m.to||"")}</div>`
@@ -11456,9 +11606,8 @@ function renderMsgs(){
       if(m.fwd){
         const isChanSrc = m.fwd.fromType==="channel";
         const clickable = isChanSrc ? !!m.fwd.fromChatId : (m.fwd.fromId && m.fwd.fromId!==S.user?.id);
-        const clickJS = isChanSrc
-          ? `openForwardSourceChat('${m.fwd.fromChatId}','${escHtml(m.fwd.fromName).replace(/'/g,"\\'")}',${m.fwd.fromPrivate?"true":"false"})`
-          : `startChatWithUser('${m.fwd.fromId}','${escHtml(m.fwd.fromName).replace(/'/g,"\\'")}',${m.fwd.fromCol||0})`;
+        // 25 окт 2026 (C.1.2): обработчик — по номеру сообщения; имя и id берутся из m.fwd в коде, а не из строки в onclick.
+        const clickJS = `openFwdSource(${m.id})`;
         bc+=`<div class="as-channel-tag" style="opacity:.8${clickable?";cursor:pointer":""}"${clickable?` onclick="event.stopPropagation();${clickJS}"`:""}>↪️ Переслано от <b style="margin-left:3px${clickable?";text-decoration:underline":""}">${escHtml(m.fwd.fromName)}</b></div>`;
       }
       { const rm=isGrpImg ? (groupMembers.find(g=>g.replyToId||g.reply)||m) : m; const rq=replyQuoteOf(S.chat, rm, curCh); if(rq) bc+=replyQuoteHTML(rm, rq); }
@@ -11471,7 +11620,7 @@ function renderMsgs(){
         // приёмом, см. чуть ниже). Гасим слева/справа всегда, сверху — если
         // над фото в этом пузыре ничего нет (имя/пересылка/ответ).
         const noHeaderAboveImg=bc==="";
-        bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}" style="margin:${noHeaderAboveImg?"calc(-1 * var(--sp-2))":"0"} calc(-1 * var(--sp-3)) ${isPhotoOnlyMt?"calc(-1 * var(--sp-2))":"4px"}"><img class="msg-img${m.imgW>0&&m.imgH>0?" dims":""}" src="${m.img}" loading="lazy"${m.imgW>0&&m.imgH>0?` style="aspect-ratio:${m.imgW|0}/${m.imgH|0};--iw:${m.imgW|0}px;--ih:${m.imgH|0}px"`:""} ${m.uploading?"":(isSp?`onclick="revealSpoiler(${m.id})"`:`onclick="openImgViewer('${m.img}')"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
+        bc+=`<div class="msg-img-wrap${m.uploading?" uploading":""}${isSp?" spoiler":""}" style="margin:${noHeaderAboveImg?"calc(-1 * var(--sp-2))":"0"} calc(-1 * var(--sp-3)) ${isPhotoOnlyMt?"calc(-1 * var(--sp-2))":"4px"}"><img class="msg-img${m.imgW>0&&m.imgH>0?" dims":""}"${imgAttr(m.img)} loading="lazy"${m.imgW>0&&m.imgH>0?` style="aspect-ratio:${m.imgW|0}/${m.imgH|0};--iw:${m.imgW|0}px;--ih:${m.imgH|0}px"`:""} ${m.uploading?"":(isSp?`onclick="revealSpoiler(${m.id})"`:`onclick="openImgViewer(this.src)"`)}>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}</div>`;
       }
       // Сетка альбома (side-by-side, как в Telegram) — вместо стопки
       // одинаковых пузырей. 30 июля 2026: раньше всегда 2 колонки для
@@ -11505,8 +11654,8 @@ function renderMsgs(){
           // 21 окт 2026 (этап C): позицию альбома можно заменить видео — клетка показывает кадр
           // (обрезка как у фото) со значком воспроизведения, тап открывает видео в просмотрщике.
           const клетка = gm.video
-            ? `<video class="msg-img grp-video" src="${escHtml(gm.video)}" preload="metadata" muted playsinline onloadedmetadata="applyGrpCellAspect(this)" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openVideoViewer(this.getAttribute('src'))"`)}></video><div class="grp-play"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>`
-            : `<img class="msg-img" src="${gm.img}" loading="lazy" onload="applyGrpCellAspect(this)" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer('${gm.img}')"`)}>`;
+            ? `<video class="msg-img grp-video"${mediaAttr(gm.video)} preload="metadata" muted playsinline onloadedmetadata="applyGrpCellAspect(this)" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openVideoViewer(this.getAttribute('src'))"`)}></video><div class="grp-play"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>`
+            : `<img class="msg-img"${imgAttr(gm.img)} loading="lazy" onload="applyGrpCellAspect(this)" ${gm.uploading?"":(isSp?`onclick="revealSpoiler(${gm.id})"`:`onclick="openImgViewer(this.src)"`)}>`;
           return `<div class="grp-cell${S.selectedMsgs.includes(gm.id)?" selected":""}" data-msg-id="${gm.id}"${touchAttrs}><div class="msg-img-wrap${gm.uploading?" uploading":""}${isSp?" spoiler":""}">${клетка}${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${gm.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${gm.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${S.selectMode?`<div class="msel-check grp-cell-check">${selBadge(gm.id)}</div>`:""}</div></div>`;
         };
         bc+=`<div class="grp-img-grid${noHeaderAbove?" e-top":""}${isPhotoOnlyMt?" e-bot":""}" style="${noHeaderAbove?"margin-top:calc(-1 * var(--sp-2))":""}${isPhotoOnlyMt?";margin-bottom:calc(-1 * var(--sp-2))":""}">${albumRowsHTML(groupMembers, cellHTML)}</div>`;
@@ -11527,10 +11676,10 @@ function renderMsgs(){
         // гарантия сработать даже если сеть просто "тихо" ничего не отдаёт,
         // не вызывая явных событий подвисания вообще.
         const dlEvents=showDownloadSpin?`onloadstart="showMediaLoading(this)" onloadeddata="hideMediaLoading(this)" oncanplay="hideMediaLoading(this)" onplaying="hideMediaLoading(this)" onwaiting="showMediaLoading(this)" onstalled="showMediaLoading(this)" onerror="failMediaLoading(this)"`:"";
-        bc+=`<div class="msg-video-wrap vres${m.uploading?" uploading":""}${isSp?" spoiler":""}" style="aspect-ratio:${videoBoxAr(m).toFixed(4)}"><video class="msg-video" src="${m.video}" ${showCtrl?"controls":""} playsinline preload="metadata" onloadedmetadata="rememberVideoDims(this)" ${isSp?`onclick="revealSpoiler(${m.id})"`:""} ${dlEvents}></video>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${showDownloadSpin?MEDIA_LOADING_HTML:""}</div>`;
+        bc+=`<div class="msg-video-wrap vres${m.uploading?" uploading":""}${isSp?" spoiler":""}" style="aspect-ratio:${videoBoxAr(m).toFixed(4)}"><video class="msg-video"${mediaAttr(m.video)} ${showCtrl?"controls":""} playsinline preload="metadata" onloadedmetadata="rememberVideoDims(this)" ${isSp?`onclick="revealSpoiler(${m.id})"`:""} ${dlEvents}></video>${isSp?`<div class="spoiler-overlay" onclick="revealSpoiler(${m.id})">🫥 Нажми, чтобы посмотреть</div>`:""}${m.uploading?'<div class="msg-img-spin"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><circle cx="12" cy="12" r="9" stroke-opacity=".3"/><path d="M21 12a9 9 0 0 0-9-9"/></svg></div>':""}${showDownloadSpin?MEDIA_LOADING_HTML:""}</div>`;
       }
       if(m.audio){
-        bc+=`<div class="msg-audio-wrap"><div style="font-size:12px;color:var(--tx2);margin-bottom:3px">🎵 ${escHtml(m.audio.name||"Аудио")}${m.uploading?" · загрузка…":""}</div><audio src="${m.audio.url}" ${m.uploading?"":"controls"}></audio></div>`;
+        bc+=`<div class="msg-audio-wrap"><div style="font-size:12px;color:var(--tx2);margin-bottom:3px">🎵 ${escHtml(m.audio.name||"Аудио")}${m.uploading?" · загрузка…":""}</div><audio${mediaAttr(m.audio.url)} ${m.uploading?"":"controls"}></audio></div>`;
       }
       if(m.voice){
         if(m.uploading){
@@ -11539,17 +11688,17 @@ function renderMsgs(){
         } else {
           const barsHTML=renderWaveBars(m.voice.waveform);
           const isUnplayed = m.t!=="out" && !m.voicePlayed;
-          bc+=`<div class="voice-msg" onclick="toggleVoicePlay(this,'${m.voice.url}')" data-msg-id="${m.id}"><div class="voice-play-btn">▶${isUnplayed?'<div class="voice-unplayed-dot"></div>':''}</div><div class="voice-track"><div class="voice-wave-wrap" onmousedown="seekVoice(event,this.closest('.voice-msg'))" ontouchstart="seekVoice(event,this.closest('.voice-msg'))"><div class="voice-wave-bars">${barsHTML}</div><div class="voice-wave-bars voice-wave-progress" style="clip-path:inset(0 100% 0 0)">${barsHTML}</div></div><div class="voice-dur">${formatDur(m.voice.duration)}${m.voice.size?" · "+formatFileSize(m.voice.size):""}</div></div><div class="voice-speed-btn" onclick="cycleSpeed(event,this,this.closest('.voice-msg').querySelector('audio'))">${(S.playbackSpeed||1)}x</div><audio preload="metadata" data-src="${escHtml(m.voice.url||"")}"></audio></div>`;
+          bc+=`<div class="voice-msg" onclick="toggleVoicePlay(this)" data-msg-id="${m.id}"><div class="voice-play-btn">▶${isUnplayed?'<div class="voice-unplayed-dot"></div>':''}</div><div class="voice-track"><div class="voice-wave-wrap" onmousedown="seekVoice(event,this.closest('.voice-msg'))" ontouchstart="seekVoice(event,this.closest('.voice-msg'))"><div class="voice-wave-bars">${barsHTML}</div><div class="voice-wave-bars voice-wave-progress" style="clip-path:inset(0 100% 0 0)">${barsHTML}</div></div><div class="voice-dur">${formatDur(m.voice.duration)}${m.voice.size?" · "+formatFileSize(m.voice.size):""}</div></div><div class="voice-speed-btn" onclick="cycleSpeed(event,this,this.closest('.voice-msg').querySelector('audio'))">${(S.playbackSpeed||1)}x</div><audio preload="metadata"${dsAttr({dsrc:String(m.voice.url||""), k:"media"})}></audio></div>`;
         }
       }
       if(m.videoCircle){
         const длит=m.videoCircle.duration||0;
-        const адрес=escHtml(m.videoCircle.url||"");
+        const адрес=mediaAttr(m.videoCircle.url||"");   // C.1.2: адрес — слотом (атрибут src ставит hydrateDs)
         if(m.uploading){
-          bc+=`<div class="video-circle-wrap uploading" data-msg-id="${m.id}" data-dur="${длит}"><div class="vc-clip"><video class="video-circle" src="${адрес}" muted loop playsinline preload="auto"></video></div><svg class="vc-up-ring" viewBox="0 0 106 106">${upRingHTML(m,50,314.16)}</svg><button type="button" class="vc-up-x" onclick="cancelUpload(event,${m.id})" aria-label="Отменить отправку"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>${длит?`<div class="vc-dur-badge">${formatDur(длит)}</div>`:""}</div>`;
+          bc+=`<div class="video-circle-wrap uploading" data-msg-id="${m.id}" data-dur="${длит}"><div class="vc-clip"><video class="video-circle"${адрес} muted loop playsinline preload="auto"></video></div><svg class="vc-up-ring" viewBox="0 0 106 106">${upRingHTML(m,50,314.16)}</svg><button type="button" class="vc-up-x" onclick="cancelUpload(event,${m.id})" aria-label="Отменить отправку"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>${длит?`<div class="vc-dur-badge">${formatDur(длит)}</div>`:""}</div>`;
         } else {
           bc+=`<div class="video-circle-wrap" data-msg-id="${m.id}" data-dur="${длит}" onclick="vcTap(event,this)">
-            <div class="vc-clip"><video class="video-circle" src="${адрес}" muted loop playsinline preload="metadata" onloadstart="showMediaLoading(this)" onloadeddata="hideMediaLoading(this)" oncanplay="hideMediaLoading(this)" onplaying="hideMediaLoading(this)" onwaiting="showMediaLoading(this)" onstalled="showMediaLoading(this)" onerror="failMediaLoading(this)"></video></div>
+            <div class="vc-clip"><video class="video-circle"${адрес} muted loop playsinline preload="metadata" onloadstart="showMediaLoading(this)" onloadeddata="hideMediaLoading(this)" oncanplay="hideMediaLoading(this)" onplaying="hideMediaLoading(this)" onwaiting="showMediaLoading(this)" onstalled="showMediaLoading(this)" onerror="failMediaLoading(this)"></video></div>
             <svg class="vc-ring" viewBox="0 0 100 100" onmousedown="seekVideoCircle(event,this.closest('.video-circle-wrap'))" ontouchstart="seekVideoCircle(event,this.closest('.video-circle-wrap'))">
               <circle class="vc-ring-bg" cx="50" cy="50" r="47"></circle>
               <circle class="vc-ring-progress" cx="50" cy="50" r="47"></circle>
@@ -11564,26 +11713,31 @@ function renderMsgs(){
       }
       if(m.poll){
         const p=m.poll;
-        const voted=p.myVotes && p.myVotes.length>0;
-        const optsHtml=p.options.map(o=>{
-          const pct=p.totalVotes?Math.round(o.votes/p.totalVotes*100):0;
-          const mine=p.myVotes && p.myVotes.includes(o.id);
-          return `<div class="poll-opt${mine?" mine":""}" onclick="votePoll(${m.id},${o.id})"><div class="poll-opt-bar" style="width:${voted?pct:0}%"></div><div class="poll-opt-row"><span>${mine?"✓ ":""}${escHtml(o.text)}</span>${voted?`<span class="poll-opt-pct">${pct}%</span>`:""}</div></div>`;
+        // C.1.2: опрос с сервера — как пришёл (форму сервер раньше не проверял): кривой вариант или голоса не
+        // должны ронять всю ленту — строка с исключением и все строки после неё не дорисовывались.
+        const myV=Array.isArray(p.myVotes)?p.myVotes:[];
+        const voted=myV.length>0;
+        const всегоГолосов=Number(p.totalVotes)||0;   // C.1.2: числа опроса — числами, вариант — по номеру
+        const optsHtml=(Array.isArray(p.options)?p.options:[]).map((o,oi)=>{
+          if(!o || typeof o!=="object") return "";
+          const pct=всегоГолосов?Math.round((Number(o.votes)||0)/всегоГолосов*100):0;
+          const mine=myV.includes(o.id);
+          return `<div class="poll-opt${mine?" mine":""}" onclick="votePollOpt(${m.id},${oi})"><div class="poll-opt-bar" style="width:${voted?pct:0}%"></div><div class="poll-opt-row"><span>${mine?"✓ ":""}${escHtml(o.text)}</span>${voted?`<span class="poll-opt-pct">${pct}%</span>`:""}</div></div>`;
         }).join("");
-        bc+=`<div class="poll-wrap"><div class="poll-q">📊 ${escHtml(p.question)}</div><div class="poll-sub">${p.anon?"Анонимный опрос":"Опрос"}${p.multi?" · неск. ответов":""}</div><div class="poll-opts">${optsHtml}</div><div class="poll-votes">${p.totalVotes} ${voteWord(p.totalVotes)}</div></div>`;
+        bc+=`<div class="poll-wrap"><div class="poll-q">📊 ${escHtml(p.question)}</div><div class="poll-sub">${p.anon?"Анонимный опрос":"Опрос"}${p.multi?" · неск. ответов":""}</div><div class="poll-opts">${optsHtml}</div><div class="poll-votes">${всегоГолосов} ${voteWord(всегоГолосов)}</div></div>`;
       }
       if(m.contact){
-        bc+=`<div class="contact-item" style="background:var(--bg1)" onclick="startChatWithUser('${m.contact.userId}','${escHtml(m.contact.nm).replace(/'/g,"\\'")}',${m.contact.col||0})"><div class="contact-av" style="background:${colBg(m.contact.col||0)}">${(m.contact.nm||"?")[0]}</div><div><div class="contact-nm">${escHtml(m.contact.nm)}</div>${m.contact.uname?`<div class="contact-ph">@${m.contact.uname}</div>`:'<div class="contact-ph">Контакт</div>'}</div></div>`;
+        bc+=`<div class="contact-item" style="background:var(--bg1)" onclick="openContactCard(${m.id})"><div class="contact-av" style="background:${colBg(Number(m.contact.col)||0)}">${escHtml(String(m.contact.nm||"?")[0])}</div><div><div class="contact-nm">${escHtml(m.contact.nm)}</div>${m.contact.uname?`<div class="contact-ph">@${escHtml(m.contact.uname)}</div>`:'<div class="contact-ph">Контакт</div>'}</div></div>`;
       }
       if(m.file){
-        bc+=`<div class="msg-file" ${m.file.url&&!m.uploading?`onclick="openOutside('${m.file.url}','_blank')"`:""}><div class="msg-file-ico">📄</div><div><div class="msg-file-nm">${escHtml(m.file.name)}</div><div class="msg-file-sz">${m.uploading?"загрузка…":(m.file.size?(m.file.size/1024).toFixed(1)+" KB":"")}</div></div></div>`;
+        bc+=`<div class="msg-file" ${m.file.url&&!m.uploading?`onclick="openMsgFile(${m.id})"`:""}><div class="msg-file-ico">📄</div><div><div class="msg-file-nm">${escHtml(m.file.name)}</div><div class="msg-file-sz">${m.uploading?"загрузка…":(m.file.size?(m.file.size/1024).toFixed(1)+" KB":"")}</div></div></div>`;
       }
       if(m.tx)bc+=`<span class="mtx">${m.e2e?`<span title="${m.e2eFailed?"Не удалось расшифровать на этом устройстве":"Сквозное шифрование"}" style="margin-right:3px">🔒</span>`:""}${formatMsgText(m.tx)}</span>`;
       // link preview — только для "голых" ссылок, не для оформленных [текст](url)
       // 20 окт 2026: та же находка ссылок, что и в тексте; адрес — в data-атрибуте, подпись — экранирована
       // (раньше адрес из текста вставлялся в onclick и в разметку как есть).
       const первая=m.tx ? findMessageLinks(m.tx).find(l=>l.preview) : null;
-      if(первая)bc+=`<div class="lnkprev" style="cursor:pointer" data-href="${escHtml(первая.href)}" onclick="event.stopPropagation();openOutside(this.dataset.href)"><div class="lnktitle">🔗 ${escHtml(первая.text.replace(/^https?:\/\//i,"").slice(0,40))}</div><div class="lnkdesc">Открыть ссылку</div></div>`;
+      if(первая)bc+=`<div class="lnkprev" style="cursor:pointer"${dsAttr({dhref:String(первая.href||""), k:"link"})} onclick="event.stopPropagation();if(this.dataset.href)openOutside(this.dataset.href)"><div class="lnktitle">🔗 ${escHtml(первая.text.replace(/^https?:\/\//i,"").slice(0,40))}</div><div class="lnkdesc">Открыть ссылку</div></div>`;
       const viewsHTML = (curCh?.type==="channels" && m.dbId) ? ` · 👁 <span data-views-for="${m.dbId}">${(m.views||0).toLocaleString("ru")}</span>` : "";
       // Счётчик пересылок — как в Telegram, показываем на ИСХОДНОМ
       // сообщении (том, которое переслали), а не на новых пересланных
@@ -11600,7 +11754,7 @@ function renderMsgs(){
       // 21 окт 2026 (этап C): «изм.» — внутри плашки времени; у альбома — если правили любую позицию.
       const правлено = isGrpImg ? groupMembers.some(x=>x && x.edited) : !!m.edited;
       bc+=`<div class="mt${isPhotoOnlyMt?" mt-photo-overlay":""}">${правлено?'<span class="mt-edited">изм.</span>':""}${signatureHTML}${m.time||""}${viewsHTML}${fwdCountHTML}${m.t==="out"?(isGrpImg?albumTicksHTML(groupMembers):ticksHTML(m)):""}</div>`;
-      if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${r.e} ${r.c}</div>`).join("")}</div>`;
+      if(m.rxn&&m.rxn.length)bc+=`<div class="rxns">${m.rxn.map((r,ri)=>`<div class="rxn${r.m?" m":""}" onclick="toggleRxn(${m.id},${ri})">${escHtml(r.e)} ${escHtml(String(r.c??""))}</div>`).join("")}</div>`;
       if(m.crystalTotal>0)bc+=`<div class="rxns"><div class="rxn crystal-total-badge" onclick="quickAddCrystal(${m.id})" title="Нажмите, чтобы подарить ещё 1 💎">💎 ${m.crystalTotal.toLocaleString()}</div></div>`;
       if(m.edited)bc+='';
       // Фотоальбом: у каждого фото в сетке уже своя пара oncontextmenu/touch-
@@ -11612,7 +11766,7 @@ function renderMsgs(){
       const bubTouchAttrs = isGrpImg ? "" : `oncontextmenu="showCtx(event,${m.id})" ontouchstart="msgTouchStart(event,${m.id},this)" ontouchend="msgTouchEnd(event,${m.id})" ontouchmove="msgTouchMove(event)"`;
       h+=`<div class="bub${m.edited?" edited":""}${m.videoCircle?" vc-bub":""}${albBare?" alb-bare":""}" ${bubTouchAttrs}>${bc}</div>`;
     }
-    row.innerHTML=h; c.appendChild(row);
+    row.innerHTML=h; hydrateDs(row); c.appendChild(row);   // C.1.2: адреса — сразу (живые медиа ниже сверяются по src)
   });
   emojifyEl(c);
   renderPinbar();   // 24 окт 2026 (этап C.1)
@@ -12131,7 +12285,7 @@ function openChannelSettings(){
   const avBtn=el("chset-av-btn");
   if(avBtn){
     const fileInput=avBtn.querySelector("input");
-    avBtn.innerHTML = ch.avatar ? `<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0">` : "⬡";
+    avBtn.innerHTML = safeImgSrc(ch.avatar) ? `<img${imgAttr(ch.avatar)} style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0">` : "⬡";
     if(fileInput) avBtn.appendChild(fileInput);
     avBtn.style.background = ch.avatar ? "none" : colBg(ch.col);
   }
@@ -12456,7 +12610,7 @@ function previewChSetAvatar(inp){
     chSetAvatarData=e.target.result;
     const avBtn=el("chset-av-btn");
     const fileInput=avBtn.querySelector("input");
-    avBtn.innerHTML=`<img src="${chSetAvatarData}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0">`;
+    avBtn.innerHTML=`<img${imgAttr(chSetAvatarData)} style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0">`;
     if(fileInput) avBtn.appendChild(fileInput);
     avBtn.style.background="none";
   };
@@ -12651,6 +12805,16 @@ async function e2eDbGet(key){
     req.onerror=()=>reject(req.error);
   });
 }
+// C.1.2: две записи одной транзакцией — общий ключ и отметка «по каким ключам выведен» не расходятся.
+async function e2eDbSetPair(k1, v1, k2, v2){
+  const db=await e2eOpenDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(E2E_STORE,"readwrite");
+    const st=tx.objectStore(E2E_STORE); st.put(v1,k1); st.put(v2,k2);
+    tx.oncomplete=()=>resolve();
+    tx.onerror=()=>reject(tx.error); tx.onabort=()=>reject(tx.error);
+  });
+}
 async function e2eDbSet(key,value){
   const db=await e2eOpenDb();
   return new Promise((resolve,reject)=>{
@@ -12660,7 +12824,8 @@ async function e2eDbSet(key,value){
     tx.onerror=()=>reject(tx.error);
   });
 }
-function e2eBufToB64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+// C.1.2: по частям — разворот всего буфера в аргументы падал на длинном тексте (~120 КБ, переполнение стека).
+function e2eBufToB64(buf){ const a=new Uint8Array(buf); let s=""; for(let i=0;i<a.length;i+=0x8000) s+=String.fromCharCode.apply(null, a.subarray(i, i+0x8000)); return btoa(s); }
 function e2eB64ToBuf(b64){ const bin=atob(b64); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i); return arr.buffer; }
 
 // Пара ключей ECDH для конкретного чата — создаётся один раз на устройство,
@@ -12688,32 +12853,63 @@ async function e2eDeriveSharedKey(myPrivateKey, peerPublicKeyB64){
 // Пользователь включил шифрование для этого чата — генерируем свою пару и
 // шлём публичный ключ собеседнику. Шифрование становится активным только
 // ПОСЛЕ ответа собеседника (общий секрет нужен от обеих сторон).
+// C.1.2 (после ревью): включение и выключение меняют замок только по ответу сервера (блок e2e) — раньше флаги
+// ставились до запроса, и неудачный запрос оставлял замок, которого на сервере нет. Пока запрос в пути — отправка
+// ждёт (E2E_BUSY_MSG). Включение из «включено на другом устройстве» переносит шифрование сюда (с предупреждением).
+// Повторное включение при известном ключе собеседника включается сразу (applyE2EBlock), не ожидая ответа.
+async function e2ePostControl(ch, body){
+  const b={...body, chatId:ch.id, clientMsgId:genClientMsgId()};
+  for(let i=0;i<3;i++){   // тот же clientMsgId — повтор не создаст второй строки
+    let d=null; try{ d=await e2eNet(apiPost("/api/messages", b, true)); }catch(e){ d=null; }
+    if(d && (d.success || d.error)) return d;
+    await new Promise(r=>setTimeout(r, 800*(i+1)));
+  }
+  return null;
+}
+// Блок из ответа на свой служебный кадр; повтор того же clientMsgId (ответ потерялся) отдаётся без блока — тогда
+// состояние перечитывается. null — сервер блоков не знает (старый).
+async function e2eBlockAfterPost(ch, d){
+  if(d && d.e2e){ _e2eBlocksSeen=true; return d.e2e; }
+  const b=await fetchE2EBlock(ch.id);
+  return b || null;
+}
 async function toggleE2EChat(){
   const ch=S.chats.find(c=>c.id===S.chat);
   if(!ch || ch.type!=="personal"){ showToast("🔒 Доступно только для личных чатов"); return; }
   if(!(typeof ch.id==="string" && ch.id.length>10)){ showToast("❌ Доступно только для настоящих чатов"); return; }
+  if(e2eIsBusy(ch)){ showToast(E2E_BUSY_MSG); return; }
   if(ch.e2eActive || ch.e2ePending){
-    // Выключить — забываем ключи на этом устройстве, дальше обычный незашифрованный текст
     if(!confirm("Выключить шифрование в этом чате? Уже отправленные зашифрованные сообщения останутся нечитаемыми, если включите заново позже.")) return;
-    ch.e2eActive=false; ch.e2ePending=false; saveState();
-    updateE2EButton(ch);
-    showToast("🔓 Шифрование выключено");
-    // ⚠️ Раньше это было чисто локальное действие — собеседник ничего не
-    // узнавал, у него замочек так и оставался "включён" навсегда. Включение
-    // работает правильно только потому, что там ЕСТЬ рукопожатие (оно же и
-    // уведомляет), а выключение своего сообщения не имело вообще — теперь
-    // явно уведомляем собеседника отдельным служебным сообщением.
-    const memberIds=getChatMemberIds(ch);
-    retrySimpleMsg({id:nextId(),failed:false}, ch.id, ch, memberIds, {chatId:ch.id, text:"e2e_off", type:"e2e_disabled"}, {text:"e2e_off", msgType:"e2e_disabled"});
+    e2eSetBusy(ch,true); updateE2EButton(ch);
+    await e2eQueue(ch.id, async ()=>{
+      // ⚠️ Раньше выключение было чисто локальным — собеседник ничего не узнавал. Служебная строка e2e_disabled.
+      const d=await e2ePostControl(ch, {text:"e2e_off", type:"e2e_disabled"});
+      e2eSetBusy(ch,false);
+      if(d && d.success){
+        const blk=await e2eBlockAfterPost(ch, d);
+        if(blk) await applyE2EBlock(ch.id, blk, {answer:false});
+        else { ch.e2eActive=false; ch.e2ePending=false; ch.e2eElsewhere=false; ch.e2eServer=false; saveState(); }
+        showToast("🔓 Шифрование выключено");
+      } else showToast("❌ Не удалось выключить шифрование — "+((d && d.error) || "нет связи с сервером"));
+      updateE2EButton(ch);
+    });
     return;
   }
-  const kp=await e2eGetOrCreateKeyPair(ch.id);
-  const pubB64=await e2eExportPublicKey(kp.publicKey);
-  ch.e2ePending=true; saveState();
-  updateE2EButton(ch);
+  if(ch.e2eElsewhere && !confirm("Шифрование в этом чате включено на другом вашем устройстве. Включить его здесь? На том устройстве новые зашифрованные сообщения читаться не будут.")) return;
+  e2eSetBusy(ch,true); updateE2EButton(ch);
   showToast("🔐 Отправляю запрос на шифрование…");
-  const memberIds=getChatMemberIds(ch);
-  await retrySimpleMsg({id:nextId(),failed:false}, ch.id, ch, memberIds, {chatId:ch.id, text:pubB64, type:"e2e_handshake"}, {text:pubB64, msgType:"e2e_handshake"});
+  await e2eQueue(ch.id, async ()=>{
+    let d=null;
+    try{ const kp=await e2eKeyPairLocked(ch.id); d=await e2ePostControl(ch, {text:await e2eExportPublicKey(kp.publicKey), type:"e2e_handshake"}); }catch(e){ d=null; }
+    e2eSetBusy(ch,false);
+    if(d && d.success){
+      const blk=await e2eBlockAfterPost(ch, d);
+      if(blk) await applyE2EBlock(ch.id, blk, {answer:false});
+      else { ch.e2ePending=true; ch.e2eElsewhere=false; saveState(); }   // старый сервер — как раньше: ждём ответа
+      if(ch.e2eActive) showToast("🔒 Шифрование включено");
+    } else showToast("❌ Не удалось включить шифрование — "+((d && d.error) || "нет связи с сервером"));
+    updateE2EButton(ch);
+  });
 }
 
 // Пришёл handshake (свой публичный ключ) от собеседника — либо мы сами это
@@ -12730,10 +12926,13 @@ async function handleIncomingE2EHandshake(chatId, peerPublicKeyB64, fromUserId, 
   try{
     const ch=S.chats.find(c=>c.id===chatId);
     if(!ch || fromUserId===S.user?.id) return; // не обрабатываем эхо своего же handshake
+    // C.1.2: шифрование — только в личном чате и только с собеседником (раньше любой участник группы включал его
+    // всем остальным своим ключом).
+    if(ch.type!=="personal" || (ch.withUserId && fromUserId && String(fromUserId)!==String(ch.withUserId))) return;
     const hadOwnKeyBefore = !!(await e2eDbGet("kp:"+chatId));
     const kp=await e2eGetOrCreateKeyPair(chatId);
     const sharedKey=await e2eDeriveSharedKey(kp.privateKey, peerPublicKeyB64);
-    await e2eDbSet("shared:"+chatId, sharedKey);
+    await e2eDbSetPair("shared:"+chatId, sharedKey, "sharedFrom:"+chatId, null);
     ch.e2eActive=true; ch.e2ePending=false; saveState();
     if(!isReplay){
       if(S.chat===chatId) updateE2EButton(ch);
@@ -12762,14 +12961,213 @@ async function encryptE2EText(chatId, plaintext){
 }
 // Расшифровывает — возвращает текст либо null, если на ЭТОМ устройстве нет
 // нужного ключа (другое устройство/чат не был здесь активирован)
-async function decryptE2EText(chatId, payload){
+// C.1.2: key — ключ для этой строки (окно истории расшифровывается ключами по порядку своих рукопожатий, не трогая
+// сохранённый общий ключ); без него — сохранённый.
+async function decryptE2EText(chatId, payload, key=null){
   try{
-    const sharedKey=await e2eDbGet("shared:"+chatId);
+    const sharedKey=key || await e2eDbGet("shared:"+chatId);
     if(!sharedKey) return null;
     const {iv, ct}=JSON.parse(payload);
     const dec=await crypto.subtle.decrypt({name:"AES-GCM", iv:e2eB64ToBuf(iv)}, sharedKey, e2eB64ToBuf(ct));
     return new TextDecoder().decode(dec);
   }catch(e){ console.warn("e2e decrypt error:", e); return null; }
+}
+
+// ── Состояние шифрования — с сервера (25 окт 2026, C.1.2, после ревью) ─────────────────────────────────────────
+// Раньше устройство решало всё само по порядку строк в окне истории (50 последних) и по тому, есть ли у него пара
+// ключей: после «выключить → включить» собеседник с уже имеющейся парой не отвечал, и защита не восстанавливалась
+// никогда (а запрос висел «устанавливается»); второе устройство молча меняло ключ и ломало первое; старое
+// рукопожатие из истории после выключения включало шифрование снова. Теперь сервер присылает блок e2e (история,
+// can-write, ответ на служебный кадр): кто из двоих прислал ключ после последнего выключения, последние ключи обоих,
+// защищён ли чат и версию состояния (asOf). Устройство по нему:
+//  • никто в раунде — выключено;
+//  • собеседник в раунде, мой пользователь нет — отвечаю один раз (рукопожатие с replyToId = его рукопожатие; сервер
+//    пишет ответ, только пока он к месту, иначе 409 e2e_stale);
+//  • мой пользователь в раунде ключом ЭТОГО устройства — держатель: есть ключ собеседника → включено (так повторное
+//    включение не ждёт ответа: собеседник со своей прежней парой получит тот же общий ключ), нет — «устанавливается»;
+//    собеседник прислал новый запрос (не ответ) позже моего ключа — отвечаю ещё раз (старые сборки так просят снова);
+//  • мой пользователь в раунде ключом ДРУГОГО устройства — «включено на другом устройстве»: здесь не шифруется и не
+//    отправляется, пока не включить шифрование здесь явно.
+// Все события чата (живые кадры, загрузка истории, свои переключения, ответы) идут по одной очереди на чат; блок
+// старее уже применённого (asOf) не применяется. Без блока (старый сервер) — прежняя логика.
+// Ключа здесь нет: шифрование включили на другом устройстве этого аккаунта или данные устройства очищены.
+var E2E_ELSEWHERE_MSG="🔒 Шифрование в этом чате включено, а ключа на этом устройстве нет — нажмите замок в шапке чата, чтобы включить шифрование здесь";
+var E2E_BUSY_MSG="🔒 Шифрование переключается — подождите секунду";
+var E2E_ENVELOPE_MAX=300000;   // как ENVELOPE_MAX на сервере (services/e2eGuard.js)
+var E2E_TOO_LONG_MSG="🔒 Сообщение слишком длинное для защищённого чата — разделите его на части";
+function e2eNotReadyMsg(ch){
+  if(ch && e2eIsBusy(ch)) return E2E_BUSY_MSG;
+  if(ch && ch.e2ePending && !ch.e2eActive) return E2E_PENDING_MSG;
+  return E2E_ELSEWHERE_MSG;
+}
+const _e2eChains=new Map();
+function e2eQueue(chatId, fn){
+  const p=(_e2eChains.get(chatId)||Promise.resolve()).then(()=>fn()).catch(e=>{ console.warn("e2e:", e); });
+  _e2eChains.set(chatId, p); return p;
+}
+// Сетевой шаг очереди — с пределом времени: зависший запрос не держит очередь чата (и загрузку истории) бесконечно.
+function e2eNet(p, ms=15000){ return Promise.race([p, new Promise((_, rej)=>setTimeout(()=>rej(new Error("e2e: нет ответа")), ms))]); }
+// Видели ли мы блок e2e от этого сервера (тогда отсутствие ответа — сбой сети, а не старый сервер).
+let _e2eBlocksSeen=false;
+// Расшифровать в сообщение. Конверт лежит на сообщении (_ct), пока его не удалось расшифровать: после нового общего
+// ключа (applyE2EBlock) e2eRedecrypt пробует снова — раньше строка, пришедшая раньше ключа, оставалась «недоступно»
+// навсегда. guard() — расшифровка ещё к месту (не пришла более новая версия).
+function e2eDecryptInto(chatId, m, payload, key=null, guard=null){
+  m._ct=payload;
+  return decryptE2EText(chatId, payload, key).then(plain=>{
+    if(guard && !guard()) return;
+    m.tx = plain!=null ? plain : "🔒 Сообщение недоступно на этом устройстве";
+    m.e2eFailed=(plain==null);
+    if(plain!=null) delete m._ct;
+    if(S.chat===chatId) renderMsgs();
+    saveState();
+  });
+}
+async function e2eRedecrypt(chatId){
+  let changed=false;
+  const key=await e2eDbGet("shared:"+chatId); if(!key) return;
+  for(const m of (S.messages[chatId]||[])){
+    if(!m._ct) continue;
+    if(m._deletedForAll || m._deletedForMe){ delete m._ct; changed=true; continue; }   // удалённые — не расшифровываем
+    if(!m.e2e || !(m.e2eFailed || m.tx==="🔐 …")) continue;
+    const ct=m._ct;
+    const plain=await decryptE2EText(chatId, ct, key);
+    if(plain!=null && m._ct===ct){ m.tx=plain; m.e2eFailed=false; delete m._ct; changed=true; }   // пока ждали — не пришла ли новая версия
+  }
+  if(changed){ if(S.chat===chatId) renderMsgs(); saveState(); }
+}
+// Повтор обновления состояния, если ответ не ушёл (сеть, сбой устройства) или состояние не удалось получить:
+// «устанавливается» иначе держалось бы, пока чат не открыть заново. Не больше 5 попыток с растущей паузой и одна
+// ждущая на чат; счётчик сбрасывает только настоящее событие (открытие чата, кадр, переключение), а не состояние,
+// полученное самим повтором, — иначе предел не работал бы. Отказ сервера (403 и т. п.) не повторяется.
+const _e2eRetry=new Map(), _e2eRetryT=new Map();
+function e2eScheduleRefresh(chatId){
+  if(_e2eRetryT.has(chatId)) return;
+  const n=(_e2eRetry.get(chatId)||0)+1;
+  if(n>5){ _e2eRetry.set(chatId, 6); return; }   // предел: ждём настоящего события или возврата сети («online» сбросит)
+  _e2eRetry.set(chatId, n);
+  _e2eRetryT.set(chatId, setTimeout(()=>{ _e2eRetryT.delete(chatId);
+    e2eQueue(chatId, async ()=>{
+      const b=await fetchE2EBlock(chatId);
+      // Состояние получено, а новых повторов оно не потребовало — бюджет заново (иначе следующий эпизод начинался бы с остатка).
+      if(b){ await applyE2EBlock(chatId, b, {live:true, refresh:true}); if(!_e2eRetryT.has(chatId)) _e2eRetry.delete(chatId); }
+      else if(b===undefined) e2eScheduleRefresh(chatId);
+    });
+  }, 3000*Math.pow(2, n-1)));
+}
+try{ window.addEventListener("online", ()=>{ for(const id of [..._e2eRetry.keys()]){ _e2eRetry.set(id, 0); e2eScheduleRefresh(id); } }); }catch(e){}
+// Смена аккаунта без перезагрузки — переходное состояние шифрования прежнего аккаунта не переносится.
+// Недоступные строки перечитываются хотя бы раз за сеанс (на случай, если прошлый сеанс прервался посреди перечитывания).
+const _e2eRedecryptedOnce=new Set();
+function e2eForgetRuntime(){ for(const tm of _e2eRetryT.values()) clearTimeout(tm); _e2eRetryT.clear(); _e2eRetry.clear(); _e2eAnswered.clear(); _e2eBusyIds.clear(); _e2eRedecryptedOnce.clear(); }
+// Пара ключей создаётся под блокировкой (две вкладки одного устройства не создадут две разные пары).
+function e2eKeyPairLocked(chatId){
+  try{ if(navigator.locks && navigator.locks.request) return navigator.locks.request("e2e-kp:"+chatId, ()=>e2eGetOrCreateKeyPair(chatId)); }catch(e){}
+  return e2eGetOrCreateKeyPair(chatId);
+}
+async function e2eMyPub(chatId){ const kp=await e2eDbGet("kp:"+chatId); return kp ? await e2eExportPublicKey(kp.publicKey) : null; }
+// Состояние с сервера (can-write). → блок; null — сервер ответил без блока и блоков от него не было (старый сервер);
+// undefined — не удалось узнать (сеть): тогда ничего не меняем (прежний обработчик откатил бы новые защиты).
+async function fetchE2EBlock(chatId){
+  for(let i=0;i<2;i++){
+    try{
+      const d=await e2eNet(apiGet("/api/messages/chat/"+chatId+"/can-write"));
+      if(d && typeof d==="object" && "ok" in d){   // у отказа 500 и проверки входа «ok» нет — это сбой, не старый сервер
+        if(d.e2e){ _e2eBlocksSeen=true; return d.e2e; }
+        return _e2eBlocksSeen ? undefined : null;
+      }
+    }catch(e){}
+    await new Promise(r=>setTimeout(r, 1200));
+  }
+  return undefined;
+}
+// Общий ключ по рукопожатию из окна истории — только для расшифровки строк окна по порядку; сохранённый ключ не
+// трогает (его меняет только applyE2EBlock в очереди чата), своей пары не создаёт.
+async function e2eReplayKey(chatId, peerKeyB64){
+  try{ const kp=await e2eDbGet("kp:"+chatId); return kp ? await e2eDeriveSharedKey(kp.privateKey, peerKeyB64) : null; }catch(e){ return null; }
+}
+// Применить блок e2e. opts.live — по живому событию (показать тост о перемене); opts.answer=false — не отвечать.
+async function applyE2EBlock(chatId, b, opts={}){
+  const ch=S.chats.find(c=>c.id===chatId);
+  if(!ch || !b || ch.type!=="personal"){ _e2eRetry.delete(chatId); return; }
+  if(ch.e2eAsOf && b.asOf && b.asOf<ch.e2eAsOf) return;   // снимок старее уже применённого
+  _e2eBlocksSeen=true;
+  const was=chatE2E(ch) && !!ch.e2eActive;
+  const me=b.me||{}, peer=b.peer||{};
+  if(!opts.refresh) _e2eRetry.delete(chatId);   // настоящее событие — повторы заново
+  ch.e2eAsOf=b.asOf||ch.e2eAsOf||"";
+  ch.e2eServer=!!b.protected;
+  if(!me.inRound && !peer.inRound){ ch.e2eActive=false; ch.e2ePending=false; ch.e2eElsewhere=false; }
+  else if(!me.inRound){
+    // Собеседник ждёт ответа — отвечаю (один раз на его рукопожатие). Пока ответ не записан (или не удался) —
+    // «устанавливается»: отправка ждёт; раньше на это время чат считался открытым, а замок мог остаться зелёным.
+    ch.e2eActive=false; ch.e2ePending=true; ch.e2eElsewhere=false;
+    saveState(); if(S.chat===chatId) updateE2EButton(ch);
+    if(opts.answer!==false && peer.id && peer.key && _e2eAnswered.get(ch.id)!==peer.id){ await e2eAnswer(ch, peer, opts); return; }
+  } else {
+    const pub=await e2eMyPub(chatId);
+    if(pub && pub===me.key){
+      ch.e2eElsewhere=false;
+      const wasActive=!!ch.e2eActive;
+      if(peer.key){
+        // По какому ключу собеседника и своему выведен сохранённый общий ключ — в IndexedDB рядом с ним (общий для
+        // вкладок): тот же — не выводим и не перечитываем строки на каждом применении состояния.
+        const from=peer.key+"|"+pub;
+        if((await e2eDbGet("sharedFrom:"+chatId))!==from || !(await e2eDbGet("shared:"+chatId))){
+          const kp=await e2eDbGet("kp:"+chatId);
+          await e2eDbSetPair("shared:"+chatId, await e2eDeriveSharedKey(kp.privateKey, peer.key), "sharedFrom:"+chatId, from);
+          _e2eRedecryptedOnce.add(chatId);
+          await e2eRedecrypt(chatId);   // строки, пришедшие раньше ключа
+        } else if(!_e2eRedecryptedOnce.has(chatId)){ _e2eRedecryptedOnce.add(chatId); await e2eRedecrypt(chatId); }   // раз за сеанс
+        ch.e2eActive=true; ch.e2ePending=false;
+        // Собеседник просит снова (новый запрос, не ответ, позже моего ключа, а здесь шифрование уже было включено) —
+        // отвечаю, иначе его старая сборка так и ждала бы ответа. Первый ответ старой сборки на мой запрос тоже без
+        // отметки, но тогда здесь было «устанавливается» — отвечать на него не нужно.
+        if(opts.answer!==false && wasActive && peer.inRound && !peer.answer && peer.id && peer.at && me.at && peer.at>me.at && _e2eAnswered.get(ch.id)!==peer.id){
+          saveState(); await e2eAnswer(ch, peer, opts); return;
+        }
+      } else { ch.e2eActive=false; ch.e2ePending=true; }
+    } else { ch.e2eActive=false; ch.e2ePending=false; ch.e2eElsewhere=true; }
+  }
+  saveState();
+  if(S.chat===chatId) updateE2EButton(ch);
+  if(opts.live){
+    const now=chatE2E(ch) && !!ch.e2eActive;
+    if(!was && now) showToast("🔒 Шифрование в чате «"+ch.nm+"» включено");
+    else if(was && !chatE2E(ch)) showToast("🔓 Собеседник выключил шифрование в этом чате");
+  }
+}
+// Ответ на рукопожатие собеседника: своя пара (создаётся при необходимости), общий ключ, рукопожатие с отметкой
+// replyToId. Состояние — по ответу сервера; опоздавший ответ (409 e2e_stale) не пишется, состояние перечитывается.
+async function e2eAnswer(ch, peer, opts={}){
+  _e2eAnswered.set(ch.id, peer.id);
+  let d=null;
+  try{
+    const kp=await e2eKeyPairLocked(ch.id);
+    const pub=await e2eExportPublicKey(kp.publicKey);
+    await e2eDbSetPair("shared:"+ch.id, await e2eDeriveSharedKey(kp.privateKey, peer.key), "sharedFrom:"+ch.id, peer.key+"|"+pub);
+    _e2eRedecryptedOnce.add(ch.id); await e2eRedecrypt(ch.id);
+    const body={chatId:ch.id, text:pub, type:"e2e_handshake", replyToId:peer.id, clientMsgId:genClientMsgId()};
+    for(let i=0;i<2 && !(d && (d.success || d.error));i++){   // тот же clientMsgId — повтор не создаст второй строки
+      try{ d=await e2eNet(apiPost("/api/messages", body, true)); }catch(e){ d=null; await new Promise(r=>setTimeout(r, 1000)); }
+    }
+  }catch(e){ d=null; }
+  if(d && d.success){ const blk=await e2eBlockAfterPost(ch, d); if(blk){ await applyE2EBlock(ch.id, blk, {...opts, answer:false}); return; } }
+  if(d && d.code==="e2e_stale"){ const b=await fetchE2EBlock(ch.id); if(b) await applyE2EBlock(ch.id, b, {...opts, answer:false}); else if(b===undefined) e2eScheduleRefresh(ch.id); return; }
+  // Не ушёл (сеть, сбой устройства, ошибка сервера без кода) — повторится сам через несколько секунд; отказ сервера с
+  // кодом (нет доступа, блокировка и т. п.) — при следующем событии. До тех пор «устанавливается».
+  _e2eAnswered.delete(ch.id);
+  if(S.chat===ch.id) updateE2EButton(ch);
+  if(!d || !d.code) e2eScheduleRefresh(ch.id);
+}
+// Живой служебный кадр (рукопожатие или выключение собеседника): состояние перечитывается с сервера. Старый сервер
+// (ответ без блока, а блоков от него не было) — прежний обработчик; сбой сети — ничего не меняем (состояние придёт
+// со следующей загрузкой истории или кадром), иначе прежний обработчик откатил бы новые защиты.
+function e2eOnLiveControl(chatId, legacy){
+  e2eQueue(chatId, async ()=>{
+    const b=await fetchE2EBlock(chatId);
+    if(b) await applyE2EBlock(chatId, b, {live:true}); else if(b===null) await legacy(); else { _e2eRetry.delete(chatId); e2eScheduleRefresh(chatId); }   // живой кадр — настоящее событие
+  });
 }
 
 // Кнопка замка в шапке чата — видна только в личных чатах, отражает текущее
@@ -12780,8 +13178,13 @@ function updateE2EButton(ch){
     btn.style.display="none"; return;
   }
   btn.style.display="flex";
-  if(ch.e2eActive){ btn.innerHTML=uiIcon("lock",14); btn.title="Шифрование включено — нажмите, чтобы выключить"; btn.style.color="var(--gr)"; }
+  if(e2eIsBusy(ch)){ btn.innerHTML=uiIcon("lock",14); btn.title="Шифрование переключается…"; btn.style.color="var(--am)"; }
+  else if(ch.e2eActive){ btn.innerHTML=uiIcon("lock",14); btn.style.color="var(--gr)";
+    // C.1.2: ваши сообщения шифруются, но сервер чат защищённым ещё не считает (собеседник не подтвердил ключ — например,
+    // у него старая версия приложения): его повторы и вложения сервер не отклоняет.
+    btn.title = ch.e2eServer ? "Шифрование включено — нажмите, чтобы выключить" : "Ваши сообщения шифруются; собеседник ещё не подтвердил шифрование (возможно, старая версия приложения) — нажмите, чтобы выключить"; }
   else if(ch.e2ePending){ btn.innerHTML=uiIcon("lock",14); btn.title="Устанавливаем шифрование…"; btn.style.color="var(--am)"; }
+  else if(ch.e2eElsewhere){ btn.innerHTML=uiIcon("lock",14); btn.title="Шифрование включено на другом вашем устройстве — нажмите, чтобы включить здесь"; btn.style.color="var(--am)"; }   // C.1.2
   else { btn.innerHTML=uiIcon("lockOpen",14); btn.title="Включить сквозное шифрование"; btn.style.color="var(--tx2)"; }
   applyScheduleButtonVisibility(ch);
 }
@@ -12799,6 +13202,12 @@ async function sendMsg(){
   // текст — getInputText() больше не обрезает концы, и без этой проверки
   // сообщение из одних пробелов отправилось бы как настоящее.
   if(!hasRealText(txt) && !pendingAttach && !(pendingAttachGroup&&pendingAttachGroup.length)) return;
+  { const ch0=S.chats.find(c=>c.id===S.chat);   // C.1.2: защищённый чат — до любого сетевого запроса
+    if(chatE2E(ch0)){
+      if(pendingAttach || (pendingAttachGroup&&pendingAttachGroup.length)){ showToast("🔒 "+E2E_UNSUPPORTED_MSG); return; }
+      // Устанавливается, переключается, включено на другом устройстве или ключа здесь нет — текст остаётся в поле.
+      if(e2eIsBusy(ch0) || !ch0.e2eActive){ showToast(e2eNotReadyMsg(ch0)); return; }
+    } }
 
   // ── Фотоальбом (несколько фото разом) — своя ветка, до pendingAttach ──
   if(pendingAttachGroup && pendingAttachGroup.length){
@@ -12926,7 +13335,7 @@ async function sendMsg(){
   takeReplyInto(msg);
   S.messages[S.chat].push(msg);
   const ch=S.chats.find(c=>c.id===S.chat);
-  if(ch){ch.prev=txt;ch.time=tm;ch.lastTs=Date.now();clearChatDraft(ch.id);}
+  if(ch){ch.prev=ch.e2eActive?E2E_PREVIEW:txt;ch.time=tm;ch.lastTs=Date.now();clearChatDraft(ch.id);}   // C.1.2: превью E2E — нейтральное
   setInputText(""); aResize(inp); renderMsgs(); renderChats(); saveState();
 
   // Сохраняем сообщение в БД (получаем настоящий id) и уже с ним рассылаем через WebSocket
@@ -12936,10 +13345,17 @@ async function sendMsg(){
   // уходит ТОЛЬКО шифротекст, локально (msg.tx) остаётся настоящий текст,
   // чтобы у самого отправителя он показывался как обычно.
   let sendType="text", sendText=txt;
-  if(ch?.e2eActive){
+  if(chatE2E(ch)){
     // C.1.1: сообщение задумано зашифрованным — повтор (в том числе ручной) не уйдёт открытым текстом.
     msg.e2eIntent=true;
-    const enc=await encryptE2EText(chatId, txt);
+    let enc=null;
+    try{ enc=ch.e2eActive ? await encryptE2EText(chatId, txt) : null; }catch(e){ enc=null; }   // C.1.2: сбой шифрования — как нет ключа
+    if(enc && enc.length>E2E_ENVELOPE_MAX){
+      // C.1.2: сервер принимает конверт до E2E_ENVELOPE_MAX символов — длиннее отклонил бы с непонятной причиной.
+      showToast(E2E_TOO_LONG_MSG);
+      msg.failed=true; renderMsgs(); saveState();
+      return;
+    }
     if(enc){
       sendType="e2e"; sendText=enc; msg.e2e=true;
       renderMsgs();
@@ -12949,7 +13365,9 @@ async function sendMsg(){
       // НЕЛЬЗЯ молча отправить как обычный текст под видом "зашифровано",
       // это была бы та же ложная защищённость, что мы убирали у тумблера.
       // Честно останавливаем отправку и просим включить шифрование заново.
-      ch.e2eActive=false; updateE2EButton(ch); saveState();
+      // C.1.2: и чат остаётся защищённым для этого устройства («ключа здесь нет»): раньше признак снимался, и
+      // следующее сообщение, вложение или повтор уходили открытыми.
+      if(ch.e2eActive){ ch.e2eActive=false; ch.e2eElsewhere=true; updateE2EButton(ch); saveState(); }
       showToast("🔒 Ключ шифрования утрачен на этом устройстве — включите шифрование заново");
       msg.failed=true; renderMsgs();
       return;
@@ -12984,7 +13402,13 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds, msgType){
   let blockedFromRecipientId=null;
   if(typeof chatId === "string" && chatId.length > 10){
     const ok=await attemptWithAutoRetry(msg, async ()=>{
-      const d=await apiPost("/api/messages", {chatId, text: txt, type: msgType, asChannel: msg.asChannel||null, replyToId: replyIdForPost(msg), clientMsgId: msg.clientMsgId}, true);
+      let d=await apiPost("/api/messages", {chatId, text: txt, type: msgType, asChannel: msg.asChannel||null, replyToId: replyIdForPost(msg), clientMsgId: msg.clientMsgId}, true);
+      // C.1.2: чат защищён на сервере, а это устройство шлёт открытый текст (ключа здесь нет) — понятная подсказка.
+      if(d && !d.success && d.code==="e2e_required" && msgType==="text"){
+        d={...d, error:"🔒 В этом чате включено шифрование, а ключа на этом устройстве нет — включите шифрование в чате заново"};
+        // C.1.2: сервер считает чат защищённым — это устройство тоже (дальше без сетевых запросов); состояние — с сервера.
+        if(ch && !ch.e2eServer){ ch.e2eServer=true; saveState(); if(S.chat===chatId) updateE2EButton(ch); e2eQueue(chatId, async ()=>{ const b=await fetchE2EBlock(chatId); if(b) await applyE2EBlock(chatId, b); }); }
+      }
       if(!d || !d.success){ if(sendRefused(d)) throw sendRefusedError(d); return false; }
       dbId=d?.message?.id||null;
       blockedFromRecipientId=d?.blockedFromRecipientId||null;
@@ -13061,11 +13485,21 @@ async function confirmScheduleSend(){
   const txt=getInputText();
   if(!hasRealText(txt)) return;
   const chatId=S.chat, owner=draftOwner();
+  // C.1.2: защищённый чат — отложенный текст шифруется ключом этого чата; без ключа — не планируется.
+  const schCh=S.chats.find(c=>c.id===chatId);
+  let schType="text", schText=txt;
+  if(chatE2E(schCh)){
+    if(e2eIsBusy(schCh) || !schCh.e2eActive){ closeM("m-schedule"); showToast(e2eNotReadyMsg(schCh)); return; }
+    let enc=null; try{ enc=await encryptE2EText(chatId, txt); }catch(e){ enc=null; }
+    if(!enc){ closeM("m-schedule"); showToast("🔒 Ключа шифрования на этом устройстве нет — сообщение не запланировано"); return; }
+    if(enc.length>E2E_ENVELOPE_MAX){ closeM("m-schedule"); showToast(E2E_TOO_LONG_MSG); return; }
+    schType="e2e"; schText=enc;
+  }
   const rep={}, savedReply=S.reply; takeReplyInto(rep, chatId);   // этап C.1: отложенный ответ
   closeM("m-schedule");
   setInputText(""); aResize(el("minput"));
   let d=null;
-  try{ d=await apiPost("/api/messages", {chatId, text:txt, type:"text", replyToId: replyIdForPost(rep), scheduledAt: when.toISOString(), clientMsgId: genClientMsgId()}, true); }
+  try{ d=await apiPost("/api/messages", {chatId, text:schText, type:schType, replyToId: replyIdForPost(rep), scheduledAt: when.toISOString(), clientMsgId: genClientMsgId()}, true); }
   catch(e){ d={error:"Нет связи с сервером"}; }   // 24 окт 2026: обрыв сети — текст и ответ возвращаются, как при отказе
   if(!d || !d.success){
     showToast("❌ "+(d&&d.error||"Не удалось запланировать"));
@@ -13080,6 +13514,7 @@ async function confirmScheduleSend(){
 // реально грузится и сохраняется на сервере сразу, но остаётся невидимым
 // (как и текстовое отложенное) до момента публикации.
 async function scheduleAttachmentSend(when){
+  if(chatE2E(S.chats.find(c=>c.id===S.chat))){ closeM("m-schedule"); showToast("🔒 "+E2E_UNSUPPORTED_MSG); return; }   // C.1.2
   const att=pendingAttach;
   if(att && att.chatId!==undefined && att.chatId!==S.chat){ cancelPendingAttach(); closeM("m-schedule"); showToast("❌ Вложение было выбрано в другом чате — выберите заново"); return; }
   const caption=getInputText();
@@ -13166,13 +13601,13 @@ async function renderScheduledList(){
   }catch(e){}
   box.innerHTML = items.length ? items.map(m=>{
     const when=new Date(m.scheduled_at).toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
-    const mediaLabel = m.media_type==="image"?"📷 Фото":m.media_type==="video"?"🎥 Видео":m.media_type==="videoCircle"?"⭕ Видео-кружочек":m.media_type==="audio"?"🎵 "+(m.file_name||"Аудио"):m.media_type?"📎 "+(m.file_name||"Файл"):"";
-    const thumbHTML = (m.media_type==="image"&&m.media_url) ? `<img src="${m.media_url}" style="max-width:100%;max-height:140px;border-radius:8px;display:block;margin-bottom:8px;object-fit:cover">` : "";
+    const mediaLabel = m.media_type==="image"?"📷 Фото":m.media_type==="video"?"🎥 Видео":m.media_type==="videoCircle"?"⭕ Видео-кружочек":m.media_type==="audio"?"🎵 "+escHtml(m.file_name||"Аудио"):m.media_type?"📎 "+escHtml(m.file_name||"Файл"):"";
+    const thumbHTML = (m.media_type==="image"&&m.media_url) ? `<img${imgAttr(m.media_url)} style="max-width:100%;max-height:140px;border-radius:8px;display:block;margin-bottom:8px;object-fit:cover">` : "";
     return `<div style="border:1px solid var(--brd);border-radius:10px;padding:10px 12px">
       <div style="font-size:11.5px;color:var(--acc);font-weight:600;margin-bottom:5px">🕓 ${when}</div>
       ${thumbHTML}
       ${mediaLabel?`<div style="font-size:12.5px;color:var(--tx2);margin-bottom:4px">${mediaLabel}</div>`:""}
-      ${m.text?`<div style="font-size:13.5px;margin-bottom:10px;word-break:break-word;white-space:pre-wrap">${escHtml(m.text)}</div>`:`<div style="margin-bottom:10px"></div>`}
+      ${m.text?`<div style="font-size:13.5px;margin-bottom:10px;word-break:break-word;white-space:pre-wrap">${escHtml(m.type==="e2e"?E2E_PREVIEW:m.text)}</div>`:`<div style="margin-bottom:10px"></div>`}
       <div style="display:flex;gap:6px">
         <button class="rp-action-btn" style="width:auto;flex:1;justify-content:center" onclick="sendScheduledNow('${m.id}')">Отправить сейчас</button>
         <button class="rp-action-btn rd" style="width:auto;flex:1;justify-content:center" onclick="cancelScheduled('${m.id}')">Отменить</button>
@@ -13194,6 +13629,7 @@ async function cancelScheduled(id){
 }
 
 async function sendSticker(sk){
+  if(e2eRefuse(S.chats.find(c=>c.id===S.chat))) return;   // C.1.2
   if(!S.messages[S.chat])S.messages[S.chat]=[];
   const tm=now(); const id=nextId();
   const localMsg={id,t:"sk",sk,out:true,time:tm};
@@ -13386,6 +13822,7 @@ function openPollCreate(e){
   e.stopPropagation();
   el("attach-menu").classList.remove("on");
   if(S.chat===77777||S.chat===99999||S.chat===FEEDBACK_CHAT_ID){ showToast("📊 Опросы здесь недоступны"); return; }
+  if(e2eRefuse(S.chats.find(c=>c.id===S.chat))) return;   // C.1.2
   el("poll-q").value="";
   pollOptionCount=2;
   el("poll-options-list").innerHTML=`
@@ -13402,6 +13839,7 @@ function addPollOption(){
   pollOptionCount++;
 }
 async function submitPoll(){
+  if(e2eRefuse(S.chats.find(c=>c.id===S.chat))){ closeM("m-poll"); return; }   // C.1.2
   const q=el("poll-q").value.trim();
   if(!q){ showToast("❌ Введите вопрос"); return; }
   const opts=[];
@@ -13450,6 +13888,9 @@ async function votePoll(msgId,optId){
   const m=(S.messages[chatId]||[]).find(x=>x.id===msgId);
   if(!m||!m.poll)return;
   const p=m.poll;
+  // C.1.2: опрос, записанный до проверки формы на сервере, — null среди вариантов, голоса не массивом.
+  if(!Array.isArray(p.myVotes)) p.myVotes=[];
+  if(!Array.isArray(p.options)) return;
   const already=p.myVotes.includes(optId);
 
   // Автор опроса запретил менять голос после первого выбора
@@ -13464,12 +13905,12 @@ async function votePoll(msgId,optId){
   const myBefore=[...(p.myVotes||[])];
   // ── Локальный оптимистичный апдейт — сразу видно свой тап ──
   if(!p.multi && p.myVotes.length && !already){
-    const prevOpt=p.options.find(o=>o.id===p.myVotes[0]);
+    const prevOpt=p.options.find(o=>o && o.id===p.myVotes[0]);
     if(prevOpt) prevOpt.votes=Math.max(0,prevOpt.votes-1);
     p.totalVotes=Math.max(0,p.totalVotes-1);
     p.myVotes=[];
   }
-  const opt=p.options.find(o=>o.id===optId);
+  const opt=p.options.find(o=>o && o.id===optId);
   if(!opt)return;
   if(already){
     opt.votes=Math.max(0,opt.votes-1);
@@ -13516,16 +13957,19 @@ function openShareContact(e){
   e.stopPropagation();
   el("attach-menu").classList.remove("on");
   if(S.chat===77777||S.chat===99999||S.chat===FEEDBACK_CHAT_ID){ showToast("👤 Отправка контактов здесь недоступна"); return; }
+  if(e2eRefuse(S.chats.find(c=>c.id===S.chat))) return;   // C.1.2
   const list=(S.contacts||[]).length ? S.contacts : S.chats.filter(c=>c.withUserId);
+  _shareContactList=list;   // C.1.2: контакт — по номеру, имя и ник — экранированы
   el("share-contact-list").innerHTML = list.length
-    ? list.map(c=>{
-        const id=c.withUserId||c.id, nm=c.nm, col=c.col||0, uname=c.uname||"";
-        return `<div class="contact-item" onclick="sendContactMsg('${id}','${escHtml(nm).replace(/'/g,"\\'")}',${col},'${uname}')"><div class="contact-av" style="background:${colBg(col)}">${(nm||"?")[0]}</div><div><div class="contact-nm">${nm}</div>${uname?`<div class="contact-ph">@${uname}</div>`:""}</div></div>`;
+    ? list.map((c,i)=>{
+        const nm=String(c.nm||""), col=Number(c.col)||0, uname=String(c.uname||"");
+        return `<div class="contact-item" onclick="shareContactPick(${i})"><div class="contact-av" style="background:${colBg(col)}">${escHtml((nm||"?")[0])}</div><div><div class="contact-nm">${escHtml(nm)}</div>${uname?`<div class="contact-ph">@${escHtml(uname)}</div>`:""}</div></div>`;
       }).join("")
     : `<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пока нет контактов</div>`;
   openM("m-share-contact");
 }
 async function sendContactMsg(userId,nm,col,uname){
+  if(e2eRefuse(S.chats.find(c=>c.id===S.chat))){ closeM("m-share-contact"); return; }   // C.1.2
   const chatId=S.chat;
   const tm=now();
   if(!S.messages[chatId])S.messages[chatId]=[];
@@ -13552,7 +13996,7 @@ async function sendContactMsg(userId,nm,col,uname){
 let imgViewerList=[], imgViewerIdx=-1;
 function buildImgViewerList(){
   const msgs=S.messages[S.chat]||[];
-  imgViewerList=msgs.filter(m=>m.img && !m._deletedForAll && !m._deletedForMe && !(m.spoiler&&!m.spoilerRevealed)).map(m=>m.img);
+  imgViewerList=msgs.filter(m=>m.img && !m._deletedForAll && !m._deletedForMe && !(m.spoiler&&!m.spoilerRevealed)).map(m=>safeUrl(m.img,"img")).filter(Boolean);
 }
 // 21 окт 2026 (этап C): видео из сетки альбома открывается в том же просмотрщике целиком.
 function viewerStopVideo(){
@@ -13562,6 +14006,7 @@ function viewerStopVideo(){
   v.style.display="none";
 }
 function openVideoViewer(url){
+  url=safeUrl(String(url||""), "media");   // C.1.2: адрес — после проверки
   if(!url) return;
   const v=el("imgview-video"), i=el("imgview-img"); if(!v) return;
   imgViewerList=[]; imgViewerIdx=-1;
@@ -13572,6 +14017,8 @@ function openVideoViewer(url){
   try{ const p=v.play(); if(p && p.catch) p.catch(()=>{}); }catch(e){}
 }
 function openImgViewer(url){
+  url=safeImgSrc(url);   // C.1.2: адрес — после проверки
+  if(!url) return;
   viewerStopVideo(); el("imgview-img").style.display="";
   buildImgViewerList();
   imgViewerIdx=imgViewerList.indexOf(url);
@@ -13654,7 +14101,9 @@ function formatDur(sec){
 function renderWaveBars(waveform){
   // Если волна не посчиталась (старое сообщение/ошибка) — рисуем нейтральный узор,
   // чтобы плеер не выглядел сломанным
-  const bars=(waveform && waveform.length) ? waveform : Array(40).fill(0.35);
+  // C.1.2: волна с сервера — только числа (строка или объект раньше роняли всю ленту на .map).
+  const w=Array.isArray(waveform) ? waveform.map(Number).filter(Number.isFinite).slice(0,400) : [];
+  const bars=w.length ? w : Array(40).fill(0.35);
   return bars.map(v=>`<span style="height:${Math.round(Math.max(8,v*100))}%"></span>`).join("");
 }
 
@@ -13755,6 +14204,7 @@ function recUnavailableReason(){
   if(isOfficialBotChat(id)) return "🎤 Голосовые здесь недоступны";
   if(!(typeof id==="string" && id.length>10)) return "🎤 Здесь голосовые и кружки пока недоступны";
   const ch=S.chats.find(c=>c.id===id);
+  if(chatE2E(ch)) return "🔒 "+E2E_UNSUPPORTED_MSG;   // C.1.2
   if(ch?.peerBlockVoiceVideo) return "🔒 Собеседник запретил голосовые и видео-сообщения";
   if(!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return "❌ Этот браузер не умеет записывать звук и видео";
   return null;
@@ -14194,6 +14644,8 @@ async function recFinish(r){
   recPopNav(r);
   if(rec===r) rec=null;
   const msg=sendRecordedMedia({file, kind, duration:сек, waveform, previewUrl});
+  // C.1.2: отправка отклонена (чат стал защищённым, пока шла запись) — слой записи снимаем, как при отмене.
+  if(!msg){ URL.revokeObjectURL(previewUrl); recBeginExit(r, "cancel"); r.phase="done"; return; }
   recFlyToMessage(r, msg);
   r.phase="done";
 }
@@ -14387,6 +14839,7 @@ document.addEventListener("keydown", (e)=>{
 
 // ── Отправка записи: тот же путь, что у всех вложений ────────────────────
 function sendRecordedMedia({file, kind, duration, waveform, previewUrl}){
+  if(e2eRefuse(S.chats.find(c=>c.id===S.chat))) return;   // C.1.2: защитили, пока шла запись
   const chatId=S.chat;
   const tm=now();
   if(!S.messages[chatId]) S.messages[chatId]=[];
@@ -14657,7 +15110,8 @@ function mediaRestoreAfterRender(c, ст){
 function toggleVoicePlay(wrapEl, url){
   const audio=wrapEl.querySelector("audio");
   const btn=wrapEl.querySelector(".voice-play-btn");
-  if(!audio.src) audio.src=url;
+  // 25 окт 2026 (C.1.2): адрес — проверенный data-src (слот), строкой из onclick больше не передаётся.
+  if(!audio.src){ const u=safeUrl(String(url||audio.dataset.src||""), "media"); if(!u) return; audio.src=u; }
   // Ставим на паузу все остальные голосовые в чате перед воспроизведением этого
   if(audio.paused){
     document.querySelectorAll(".voice-msg audio").forEach(a=>{ if(a!==audio && !a.paused) a.pause(); });
@@ -14808,6 +15262,7 @@ async function attachFile(inp){
   const files=[...inp.files];
   if(!files.length)return;
   inp.value=""; // сбрасываем, чтобы можно было выбрать тот же файл ещё раз
+  if(e2eRefuse(S.chats.find(c=>c.id===S.chat))) return;   // C.1.2
   if(S.editingId){ showToast("✏️ Идёт правка: чтобы поменять вложение, нажмите «Заменить»"); return; }   // этап C
   // 9 окт 2026: чат — тот, где файл ВЫБРАЛИ: чтение файла занимает время, и
   // открытый за это время другой чат не должен получить вложение.
@@ -14885,9 +15340,9 @@ function renderAttachPreview(){
   if(!pendingAttach){ wrap.classList.remove("on"); return; }
   wrap.classList.add("on");
   const thumb=el("ap-thumb");
-  if(pendingAttach.kind==="image") thumb.innerHTML=`<img src="${pendingAttach.previewUrl}">`;
-  else if(pendingAttach.kind==="video") thumb.innerHTML=`<video src="${pendingAttach.previewUrl}" muted preload="metadata" onloadedmetadata="notePendingVideoDims(this)"></video>`;
-  else if(pendingAttach.kind==="videoCircle") thumb.innerHTML=`<video src="${pendingAttach.previewUrl}" muted style="border-radius:50%"></video>`;
+  if(pendingAttach.kind==="image") thumb.innerHTML=`<img${imgAttr(pendingAttach.previewUrl)}>`;
+  else if(pendingAttach.kind==="video") thumb.innerHTML=`<video${mediaAttr(pendingAttach.previewUrl)} muted preload="metadata" onloadedmetadata="notePendingVideoDims(this)"></video>`;
+  else if(pendingAttach.kind==="videoCircle") thumb.innerHTML=`<video${mediaAttr(pendingAttach.previewUrl)} muted style="border-radius:50%"></video>`;
   else if(pendingAttach.kind==="audio") thumb.innerHTML=`🎵`;
   else if(pendingAttach.kind==="voice") thumb.innerHTML=`🎤`;
   else thumb.innerHTML=`📄`;
@@ -14935,7 +15390,7 @@ function renderAttachPreviewGroup(){
   const wrap=el("attach-preview-group");
   if(!pendingAttachGroup || !pendingAttachGroup.length){ wrap.classList.remove("on"); return; }
   wrap.classList.add("on");
-  el("apg-strip").innerHTML=pendingAttachGroup.map((it,i)=>`<div class="apg-thumb"><img src="${it.previewUrl}"><div class="apg-remove" onclick="removeGroupAttachAt(${i})">✕</div></div>`).join("");
+  el("apg-strip").innerHTML=pendingAttachGroup.map((it,i)=>`<div class="apg-thumb"><img${imgAttr(it.previewUrl)}><div class="apg-remove" onclick="removeGroupAttachAt(${i})">✕</div></div>`).join("");
   if(S.chat!=null) el("minput")?.focus();
 }
 function removeGroupAttachAt(i){
@@ -14964,6 +15419,7 @@ function cancelPendingAttachGroup(){
 // и отправляет одно сообщение: медиа + подпись (текст из поля ввода).
 // Сначала локальный превью с индикатором загрузки, потом — настоящая ссылка с сервера.
 async function sendWithAttachment(caption){
+  if(e2eRefuse(S.chats.find(c=>c.id===S.chat))) return;   // C.1.2
   const att=pendingAttach;
   pendingAttach=null;
   renderAttachPreview();
@@ -15005,6 +15461,7 @@ async function sendWithAttachment(caption){
 // Отправляем ПО ОЧЕРЕДИ (не Promise.all) — чтобы у собеседника фото
 // приходили строго в том порядке, в котором были в альбоме.
 async function sendImageGroup(caption){
+  if(e2eRefuse(S.chats.find(c=>c.id===S.chat))) return;   // C.1.2
   const items=pendingAttachGroup;
   pendingAttachGroup=null;
   renderAttachPreviewGroup();
@@ -15377,7 +15834,12 @@ function startEdit(id){
   if(editSession) editAbortUploads(editSession);
   if(!S.editingId) draftStash={chatId:composerChatId, text:getInputText()};
   const local = S.chat===77777;
-  const e2e = !!(ch && ch.e2eActive) || members.some(x=>x.e2e);
+  // C.1.2: в защищённом чате правится только зашифрованное сообщение (подпись и открытое — нельзя).
+  if(chatE2E(ch) && !m.e2e){ showToast("🔒 "+E2E_UNSUPPORTED_MSG); return; }
+  // C.1.2: здесь шифрование не готово (устанавливается, переключается, ключ на другом устройстве) — правка зашифровала бы
+  // текст устаревшим ключом этого устройства, и у собеседника читаемое сообщение стало бы «недоступно».
+  if(chatE2E(ch) && m.e2e && (e2eIsBusy(ch) || !ch.e2eActive)){ showToast(e2eNotReadyMsg(ch)); return; }
+  const e2e = chatE2E(ch) || members.some(x=>x.e2e);
   S.editingId=m.id;
   // baseRev — ревизия каждой позиции НА МОМЕНТ НАЧАЛА правки: её сервер и ожидает. Если, пока
   // человек правил, сообщение изменили на другом устройстве, сохранение не затрёт ту правку
@@ -15442,11 +15904,11 @@ function renderEditStrip(){
   box.innerHTML=items.map(it=>{
     const m=list.find(x=>x.id===it.msgId); const idx=es.items.indexOf(it);
     let thumb;
-    if(it.preview && it.newKind==="video") thumb=`<video src="${escHtml(it.preview)}" muted playsinline preload="metadata"></video>`;
-    else if(it.preview && it.newKind==="image") thumb=`<img src="${escHtml(it.preview)}" alt="">`;
+    if(it.preview && it.newKind==="video") thumb=`<video${mediaAttr(it.preview)} muted playsinline preload="metadata"></video>`;
+    else if(it.preview && it.newKind==="image") thumb=`<img${imgAttr(it.preview)} alt="">`;
     else if(it.file) thumb=`<span>${it.kind==="audio"?"🎵":"📄"}</span>`;
-    else if(m.img) thumb=`<img src="${escHtml(m.img)}" alt="">`;
-    else if(m.video) thumb=`<video src="${escHtml(m.video)}" muted playsinline preload="metadata"></video>`;
+    else if(m.img) thumb=`<img${imgAttr(m.img)} alt="">`;
+    else if(m.video) thumb=`<video${mediaAttr(m.video)} muted playsinline preload="metadata"></video>`;
     else thumb=`<span>${it.kind==="audio"?"🎵":"📄"}</span>`;
     const имя = it.file ? it.file.name : (m.audio ? m.audio.name : (m.file ? m.file.name : ""));
     const prog = (it.phase==="uploading") ? `<div class="es-prog" data-es-prog="${idx}">${it.progress||0}%</div>`
@@ -15521,7 +15983,7 @@ function editUploadFile(it, dbId, opId){
     xhr.send(fd);
   });
 }
-const EDIT_FATAL=new Set(["edit_expired","no_rights","not_author","forwarded","not_found","chat_blocked","text_not_editable","not_replaceable","scheduled","caption_on_first","restricted","muted","blocked"]);
+const EDIT_FATAL=new Set(["e2e_required","e2e_invalid","edit_expired","no_rights","not_author","forwarded","not_found","chat_blocked","text_not_editable","not_replaceable","scheduled","caption_on_first","restricted","muted","blocked"]);
 // Одна серверная операция: замена вложения (с подписью, если она у этого же сообщения) или
 // только подпись/текст. → "ok" | "retry" (режим остаётся, можно нажать ещё раз) | "fatal".
 // Поле правки не трогали — подставляем серверный текст (событие с другого устройства, 409):
@@ -15537,6 +15999,14 @@ async function runEditJob(es, job){
   const m=job.m;
   if(!m || !m.dbId){ es.status="Сообщение удалено"; showToast("❌ Сообщение удалено — изменение не сохранено"); return "fatal"; }
   const it=job.item;
+  // C.1.2: чат стал защищённым, пока шла правка, — открытый текст и замену вложения не отправляем.
+  if(chatE2E(S.chats.find(c=>c.id===es.chatId)) && (it || !m.e2e)){ es.status=E2E_UNSUPPORTED_MSG; showToast("🔒 "+E2E_UNSUPPORTED_MSG); return "fatal"; }
+  { const ech=S.chats.find(c=>c.id===es.chatId);
+    if(chatE2E(ech) && m.e2e && (e2eIsBusy(ech) || !ech.e2eActive)){
+      // Переключается или устанавливается — ненадолго: правка остаётся открытой («сохранить» ещё раз). Ключ на другом
+      // устройстве — правка отсюда невозможна.
+      es.status=e2eNotReadyMsg(ech); showToast(e2eNotReadyMsg(ech));
+      return (e2eIsBusy(ech) || (ech.e2ePending && !ech.e2eActive)) ? "retry" : "fatal"; } }
   // opId — ключ ОДНОЙ операции: тот же запрос при повторе после обрыва связи. Изменилось
   // содержимое (другой текст или подпись) — это уже новая операция с новым ключом.
   if(it && it.opId && it.opFor!==job.text) it.opId=null;
@@ -15572,8 +16042,9 @@ async function runEditJob(es, job){
     const c=es.encCache;
     if(c && c.msgId===m.id && c.opId===opId && c.plain===text) text=c.enc;
     else {
-      const enc=await encryptE2EText(es.chatId, text);
+      let enc=null; try{ enc=await encryptE2EText(es.chatId, text); }catch(e){ enc=null; }   // C.1.2: сбой шифрования — как нет ключа
       if(!enc){ showToast("🔒 Ключ шифрования недоступен на этом устройстве — изменить нельзя"); es.status="Нет ключа шифрования"; return "fatal"; }
+      if(enc.length>E2E_ENVELOPE_MAX){ showToast(E2E_TOO_LONG_MSG); es.status="Слишком длинный текст"; return "retry"; }
       es.encCache={msgId:m.id, opId, plain:text, enc}; text=enc;
     }
   }
@@ -17103,7 +17574,8 @@ function buildRxnQuickRow(){
   // как в Telegram. Без ограничения ряд из восьми реакций плюс 💎 и ➕ не
   // помещался в 360 CSS-пикселей и упирался в край.
   const allowedQuick=все.slice(0,6);
-  el("rxn-quick-row").innerHTML=`<div class="rxn-e rxn-crystal" onclick="openCrystalGiftModal(event)">💎</div>`+allowedQuick.map(em=>`<div class="rxn-e" onclick="addRxn('${em}')">${em}</div>`).join("");
+  _rxnQuickList=allowedQuick;   // C.1.2: реакция — по номеру, значок — экранирован
+  el("rxn-quick-row").innerHTML=`<div class="rxn-e rxn-crystal" onclick="openCrystalGiftModal(event)">💎</div>`+allowedQuick.map((em,i)=>`<div class="rxn-e" onclick="addRxnIdx(${i})">${escHtml(em)}</div>`).join("");
   return allowedQuick.length;
 }
 function collapseRxnExpandNow(){
@@ -18128,8 +18600,8 @@ function renderArchiveList(){
   box.innerHTML = list.length ? list.map(ch=>{
     // Служебные чаты «Монохрома» получают контурный значок, а не эмодзи и не
     // двухбуквенные инициалы: это элементы интерфейса, а не люди.
-    const avHTML=ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`
-      :(SYS_CHAT_ICON[ch.id]?uiIcon(SYS_CHAT_ICON[ch.id],19):(ch.ini||"?"));
+    const avHTML=safeImgSrc(ch.avatar)?`<img${imgAttr(ch.avatar)} style="width:100%;height:100%;object-fit:cover">`
+      :(SYS_CHAT_ICON[ch.id]?uiIcon(SYS_CHAT_ICON[ch.id],19):escHtml(ch.ini||"?"));
     return `<div class="ci" onclick="openArchivedChat(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})">
       <div class="chav" style="background:${colBg(ch.col)}">${avHTML}</div>
       <div class="cinfo" style="flex:1;overflow:hidden;min-width:0;transform:translateZ(0)">
@@ -18149,7 +18621,7 @@ function openChatConfirm(opts){
   const ch=opts.chat;
   const av=el("ccf-av");
   av.style.background=ch?colBg(ch.col):"var(--bg4)";
-  av.innerHTML=ch?.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(ch?.ini||"?");
+  av.innerHTML=safeImgSrc(ch?.avatar)?`<img${imgAttr(ch.avatar)} style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml(ch?.ini||"?");
   el("ccf-name").textContent=ch?.nm||"";
   el("ccf-text").textContent=opts.text;
   const cbRow=el("ccf-checkbox-row");
@@ -18310,9 +18782,10 @@ function renderRightPanelMedia(ch){
     }
     if(items.length){
       rpMd.innerHTML=items.map(m=>{
-        if(m.img) return `<div class="mth" style="padding:0;overflow:hidden" onclick="openImgViewer('${m.img}')"><img src="${m.img}" style="width:100%;height:100%;object-fit:cover"></div>`;
+        // 25 окт 2026 (C.1.2): адреса — слотами (DOM-свойством после проверки), обработчики берут их у элемента.
+        if(m.img) return `<div class="mth" style="padding:0;overflow:hidden" onclick="openImgViewer(this.firstElementChild.src)"><img${imgAttr(m.img)} style="width:100%;height:100%;object-fit:cover"></div>`;
         const vurl=m.video||m.videoCircle.url;
-        return `<div class="mth" style="padding:0;overflow:hidden;position:relative" onclick="openOutside('${vurl}','_blank')"><video src="${vurl}" muted style="width:100%;height:100%;object-fit:cover"></video><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25);color:#fff;font-size:16px">▶</div></div>`;
+        return `<div class="mth" style="padding:0;overflow:hidden;position:relative" onclick="if(this.firstElementChild.src)openOutside(this.firstElementChild.src,'_blank')"><video${mediaAttr(vurl)} muted style="width:100%;height:100%;object-fit:cover"></video><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25);color:#fff;font-size:16px">▶</div></div>`;
       }).join("");
     } else {
       rpMd.innerHTML=`<div style="grid-column:1/-1;color:var(--tx3);font-size:12px;text-align:center;padding:10px 0">Медиа пока нет</div>`;
@@ -18494,24 +18967,24 @@ function openMediaBrowse(type){
   if(type==="photos"){
     const items=msgs.filter(m=>m.img);
     list.style.display="grid"; list.style.gridTemplateColumns="repeat(3,1fr)"; list.style.gap="4px";
-    list.innerHTML=items.length?items.map(m=>`<div style="aspect-ratio:1;overflow:hidden;border-radius:6px;cursor:pointer" onclick="closeM('m-media-browse');openImgViewer('${m.img}')"><img src="${m.img}" style="width:100%;height:100%;object-fit:cover"></div>`).join(""):emptyMediaMsg("фото");
+    list.innerHTML=items.length?items.map(m=>`<div style="aspect-ratio:1;overflow:hidden;border-radius:6px;cursor:pointer" onclick="closeM('m-media-browse');openImgViewer(this.firstElementChild.src)"><img${imgAttr(m.img)} style="width:100%;height:100%;object-fit:cover"></div>`).join(""):emptyMediaMsg("фото");
   } else if(type==="videos"){
     const items=msgs.filter(m=>m.video||m.videoCircle);
     list.style.display="grid"; list.style.gridTemplateColumns="repeat(2,1fr)"; list.style.gap="6px";
-    list.innerHTML=items.length?items.map(m=>`<video src="${m.video||m.videoCircle?.url}" controls style="width:100%;border-radius:6px;background:#000;max-height:180px"></video>`).join(""):emptyMediaMsg("видео");
+    list.innerHTML=items.length?items.map(m=>`<video${mediaAttr(m.video||m.videoCircle?.url)} controls style="width:100%;border-radius:6px;background:#000;max-height:180px"></video>`).join(""):emptyMediaMsg("видео");
   } else if(type==="files"){
     const items=msgs.filter(m=>m.file);
-    list.innerHTML=items.length?items.map(m=>`<a href="${m.file.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--brd);color:var(--tx);text-decoration:none"><span style="font-size:20px;flex-shrink:0">📎</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px">${escHtml(m.file.name||"Файл")}</span></a>`).join(""):emptyMediaMsg("файлов");
+    list.innerHTML=items.length?items.map(m=>`<a${hrefAttr(m.file.url, "download")} target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--brd);color:var(--tx);text-decoration:none"><span style="font-size:20px;flex-shrink:0">📎</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px">${escHtml(m.file.name||"Файл")}</span></a>`).join(""):emptyMediaMsg("файлов");
   } else if(type==="links"){
     const items=[];
     msgs.forEach(m=>{ if(m.tx) items.push(...findMessageLinks(m.tx)); });
-    list.innerHTML=items.length?items.map(l=>`<a href="${escHtml(l.href)}" target="_blank" rel="noopener noreferrer" onclick="return openMsgLink(event,this)" style="display:block;padding:10px 4px;border-bottom:1px solid var(--brd);color:var(--acc2);font-size:13px;word-break:break-all;text-decoration:none">${escHtml(l.md ? l.label : l.text)}</a>`).join(""):emptyMediaMsg("ссылок");
+    list.innerHTML=items.length?items.map(l=>`<a${hrefAttr(l.href)} target="_blank" rel="noopener noreferrer" onclick="return openMsgLink(event,this)" style="display:block;padding:10px 4px;border-bottom:1px solid var(--brd);color:var(--acc2);font-size:13px;word-break:break-all;text-decoration:none">${escHtml(l.md ? l.label : l.text)}</a>`).join(""):emptyMediaMsg("ссылок");
   } else if(type==="voice" || type==="audio"){
     const items=msgs.filter(m=>type==="voice"?m.voice:m.audio);
     list.innerHTML=items.length?items.map(m=>{
       const src=type==="voice"?m.voice.url:m.audio.url;
       const label=type==="voice"?"🎤 Голосовое":"🎵 "+escHtml(m.audio.name||"Аудио");
-      return `<div style="padding:10px 4px;border-bottom:1px solid var(--brd)"><div style="font-size:12.5px;color:var(--tx2);margin-bottom:4px">${label}</div><audio controls src="${src}" style="width:100%;height:32px"></audio></div>`;
+      return `<div style="padding:10px 4px;border-bottom:1px solid var(--brd)"><div style="font-size:12.5px;color:var(--tx2);margin-bottom:4px">${label}</div><audio controls${mediaAttr(src)} style="width:100%;height:32px"></audio></div>`;
     }).join(""):emptyMediaMsg(type==="voice"?"голосовых":"аудиофайлов");
   } else if(type==="polls"){
     const items=msgs.filter(m=>m.poll);
@@ -18530,9 +19003,10 @@ function openChatInfo(){
   if(ch.id===88888){ openOfficialChannel(); return; }
 
   const av=el("ui-avatar");
-  av.innerHTML = ch.avatar ? `<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">` : avFallback(ch,30);
-  av.style.cursor = ch.avatar ? "pointer" : "default";
-  av.onclick = ch.avatar ? (()=>openImgViewer(ch.avatar)) : null;
+  av.innerHTML = safeImgSrc(ch.avatar) ? `<img${imgAttr(ch.avatar)} style="width:100%;height:100%;object-fit:cover">` : avFallback(ch,30);
+  const avU=safeImgSrc(ch.avatar);   // C.1.2: в просмотр — только проверенный адрес
+  av.style.cursor = avU ? "pointer" : "default";
+  av.onclick = avU ? (()=>openImgViewer(avU)) : null;
   el("ui-name").innerHTML = escHtml(ch.nm)+verifiedBadgeHTML(ch);
   el("ui-uname-row").style.display="none";
   el("ui-bio-row").style.display="none";
@@ -18602,7 +19076,7 @@ function openChatInfo(){
         const gifts=(d && d.gifts)||[];
         if(gifts.length){
           uiProfileGifts=gifts;
-          el("ui-gifts-grid").innerHTML = gifts.map((g,i)=>`<div class="pgift ${g.rarity||"common"}" title="${escHtml(g.name)}" onclick="showGiftDetailModal({icon:uiProfileGifts[${i}].icon,imageUrl:uiProfileGifts[${i}].image_url,name:uiProfileGifts[${i}].name,rarity:uiProfileGifts[${i}].rarity,fromName:uiProfileGifts[${i}].from_name,createdAt:uiProfileGifts[${i}].created_at,message:uiProfileGifts[${i}].message})">${giftVisual({icon:g.icon,imageUrl:g.image_url})}</div>`).join("");
+          el("ui-gifts-grid").innerHTML = gifts.map((g,i)=>`<div class="pgift ${giftRarity(g.rarity)}"${titleAttr(g.name)} onclick="showGiftDetailModal({icon:uiProfileGifts[${i}].icon,imageUrl:uiProfileGifts[${i}].image_url,name:uiProfileGifts[${i}].name,rarity:uiProfileGifts[${i}].rarity,fromName:uiProfileGifts[${i}].from_name,createdAt:uiProfileGifts[${i}].created_at,message:uiProfileGifts[${i}].message})">${giftVisual({icon:g.icon,imageUrl:g.image_url})}</div>`).join("");
           el("ui-gifts-row").style.display="block";
         }
       }).catch(()=>{});
@@ -18638,7 +19112,7 @@ function openChatInfo(){
 
       const gifts=msgs.filter(m=>m.t==="gift");
       if(gifts.length){
-        el("ui-gifts-grid").innerHTML = gifts.map(g=>`<div class="pgift ${g.rarity||"common"}" title="${escHtml(g.name)}">${giftVisual(g)}</div>`).join("");
+        el("ui-gifts-grid").innerHTML = gifts.map(g=>`<div class="pgift ${giftRarity(g.rarity)}"${titleAttr(g.name)}>${giftVisual(g)}</div>`).join("");
         el("ui-gifts-row").style.display="block";
       }
 
@@ -18660,7 +19134,7 @@ function openEditProfile(){
   const u=S.user;
   const av=el("prof-av-btn");
   if(av){
-    if(safeImgSrc(u.avatar)){av.innerHTML=`<img src="${escHtml(safeImgSrc(u.avatar))}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;av.style.background="none";}
+    if(safeImgSrc(u.avatar)){av.innerHTML=`<img${imgAttr(u.avatar)} style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;av.style.background="none";}
     else{av.textContent=u.initials||"Я";av.style.background=COLS[0];}
   }
   if(el("prof-name"))el("prof-name").value=u.name||"";
@@ -18716,7 +19190,7 @@ async function toggleProfilePrivacy(field, value){
   }catch(e){ showToast("❌ Нет связи с сервером"); }
 }
 
-function previewProfAvatar(inp){ if(!inp.files[0])return; profAvatarFile=inp.files[0]; const r=new FileReader();r.onload=e=>{profAvatarData=e.target.result;const av=el("prof-av-btn");if(av)av.innerHTML=`<img src="${profAvatarData}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;};r.readAsDataURL(inp.files[0]); }
+function previewProfAvatar(inp){ if(!inp.files[0])return; profAvatarFile=inp.files[0]; const r=new FileReader();r.onload=e=>{profAvatarData=e.target.result;const av=el("prof-av-btn");if(av)av.innerHTML=`<img${imgAttr(profAvatarData)} style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;};r.readAsDataURL(inp.files[0]); }
 async function saveBirthdayHideYear(){
   const val=!!el("prof-hide-birth-year")?.checked;
   try{
@@ -19217,7 +19691,7 @@ function renderSessions(){
     const isCurrent=s.id===S.currentSessionId;
     const device=(s.device_info||"Неизвестное устройство").slice(0,60);
     const when=new Date(s.last_active_at).toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
-    return `<div class="wi"><div class="wiico" style="background:rgba(var(--acc-rgb),.1)">📱</div><div style="flex:1"><div class="winm">${escHtml(device)}</div><div class="wiad">${s.ip_address||"?"} · ${when}</div></div>${isCurrent?'<span class="bg bgg">Текущее</span>':`<button class="xbtn rd" style="padding:3px 9px;font-size:11px" onclick="revokeSession('${s.id}')">✕</button>`}</div>`;
+    return `<div class="wi"><div class="wiico" style="background:rgba(var(--acc-rgb),.1)">📱</div><div style="flex:1"><div class="winm">${escHtml(device)}</div><div class="wiad">${escHtml(s.ip_address||"?")} · ${escHtml(when)}</div></div>${isCurrent?'<span class="bg bgg">Текущее</span>':`<button class="xbtn rd" style="padding:3px 9px;font-size:11px" onclick="revokeSession('${s.id}')">✕</button>`}</div>`;
   }).join("");
 }
 async function revokeSession(id){
@@ -19248,7 +19722,7 @@ function renderBlockedList(){
   if(!chats.length){ wrap.innerHTML='<div style="color:var(--tx3);font-size:12px;text-align:center;padding:20px 0">Заблокированных нет</div>'; return; }
   wrap.innerHTML=chats.map(ch=>`
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--brd)">
-      <div style="width:36px;height:36px;border-radius:50%;background:${colBg(ch.col||0)};display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;flex-shrink:0;overflow:hidden">${ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini}</div>
+      <div style="width:36px;height:36px;border-radius:50%;background:${colBg(ch.col||0)};display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;flex-shrink:0;overflow:hidden">${safeImgSrc(ch.avatar)?`<img${imgAttr(ch.avatar)} style="width:100%;height:100%;object-fit:cover">`:escHtml(ch.ini)}</div>
       <div style="flex:1;font-size:13px">${escHtml(ch.nm)}</div>
       <button class="xbtn sec" style="padding:4px 10px;font-size:11px" onclick="unblockUser('${ch.id}')">Разблокировать</button>
     </div>
@@ -19293,7 +19767,9 @@ async function downloadVideoCircleRounded(url, filename){
   showToast("⬇️ Готовим видео… это займёт примерно столько же, сколько длится запись");
   try{
     const video=document.createElement("video");
-    video.src=url;
+    const vu=safeUrl(String(url||""), "download");   // C.1.2: адрес — после проверки
+    if(!vu){ showToast("⏳ Файл ещё отправляется — скачайте после загрузки"); return; }
+    video.src=vu;
     video.crossOrigin="anonymous";
     video.playsInline=true;
     await new Promise((res,rej)=>{
@@ -19621,7 +20097,7 @@ function renderContacts(filter=""){
   const list=S.contacts.filter(c=>!filter||c.nm.toLowerCase().includes(filter.toLowerCase())||("@"+(c.uname||"")).includes(filter.toLowerCase()));
   list.sort((a,b)=>a.nm.localeCompare(b.nm));
   let html=""; let lastL="";
-  list.forEach(c=>{ const l=c.nm[0].toUpperCase(); if(l!==lastL){html+=`<div class="alpha-idx">${l}</div>`;lastL=l;} html+=`<div class="contact-item"><div style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer" onclick="startChatWith('${c.id}')"><div class="contact-av" style="background:${colBg(c.col)}">${escHtml(c.nm[0])}</div><div style="flex:1"><div class="contact-nm">${escHtml(c.nm)}</div><div class="contact-ph">@${escHtml(c.uname||"—")}${c.phone?" · "+escHtml(c.phone):""}</div></div><div class="contact-online">${contactOnline(c)?"● онлайн":""}</div></div><button class="xbtn sec" style="padding:4px 8px;font-size:10px;flex-shrink:0" onclick="event.stopPropagation();removeFromContacts('${c.id}')">✕</button></div>`; });
+  list.forEach(c=>{ const l=c.nm[0].toUpperCase(); if(l!==lastL){html+=`<div class="alpha-idx">${escHtml(l)}</div>`;lastL=l;} html+=`<div class="contact-item"><div style="display:flex;align-items:center;gap:10px;flex:1;cursor:pointer" onclick="startChatWith('${c.id}')"><div class="contact-av" style="background:${colBg(c.col)}">${escHtml(c.nm[0])}</div><div style="flex:1"><div class="contact-nm">${escHtml(c.nm)}</div><div class="contact-ph">@${escHtml(c.uname||"—")}${c.phone?" · "+escHtml(c.phone):""}</div></div><div class="contact-online">${contactOnline(c)?"● онлайн":""}</div></div><button class="xbtn sec" style="padding:4px 8px;font-size:10px;flex-shrink:0" onclick="event.stopPropagation();removeFromContacts('${c.id}')">✕</button></div>`; });
   if(!list.length)html=`<div style="text-align:center;color:var(--tx3);padding:24px">Не найдено</div>`;
   el("contacts-list").innerHTML=html;
 }
@@ -19679,11 +20155,13 @@ async function searchNewChat(v){
       if(!local.find(c=>c.id===u.id)) local.push({id:u.id,nm:u.name||u.username||"?",uname:u.username||"",col:colorFromId(u.id),online:false});
     });
   } catch(e){}
-  el("nc-results").innerHTML=local.map(c=>{
+  _ncResults=local;   // C.1.2: действия — по номеру результата, имена и ники — экранированы
+  el("nc-results").innerHTML=local.map((c,i)=>{
     const alreadyContact=S.contacts.some(x=>x.id===c.id);
-    return `<div class="contact-item" style="margin-bottom:4px"><div style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer" onclick="startChatWithUser('${c.id}','${c.nm}',${c.col||0});closeM('m-newchat')"><div class="contact-av" style="background:${colBg(c.col)}">${c.nm[0]}</div><div><div class="contact-nm">${c.nm}</div><div class="contact-ph">@${c.uname}</div></div></div>${alreadyContact?'':`<button class="xbtn sec" style="padding:4px 8px;font-size:11px;flex-shrink:0" onclick="event.stopPropagation();addToContacts('${c.id}','${c.nm}',${c.col||0})">+ Контакт</button>`}</div>`;
+    const nm=String(c.nm||"?");
+    return `<div class="contact-item" style="margin-bottom:4px"><div style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer" onclick="ncStart(${i})"><div class="contact-av" style="background:${colBg(c.col)}">${escHtml(nm[0])}</div><div><div class="contact-nm">${escHtml(nm)}</div><div class="contact-ph">@${escHtml(c.uname)}</div></div></div>${alreadyContact?'':`<button class="xbtn sec" style="padding:4px 8px;font-size:11px;flex-shrink:0" onclick="event.stopPropagation();ncAdd(${i})">+ Контакт</button>`}</div>`;
   }).join("");
-  if(!local.length&&v)el("nc-results").innerHTML=`<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пользователь @${v} не найден</div>`;
+  if(!local.length&&v)el("nc-results").innerHTML=`<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пользователь @${escHtml(v)} не найден</div>`;
 }
 let creatingChannelMode=false;
 function createGroup(){
@@ -19706,8 +20184,8 @@ function renderGroupMembers(){
   const list=(S.contacts||[]).length ? S.contacts : S.chats.filter(c=>c.withUserId && c.type==="personal");
   el("grp-members-list").innerHTML=list.map(c=>{
     const id=c.withUserId||c.id, nm=c.nm, col=c.col||0, uname=c.uname||"", avatar=c.avatar||"";
-    const avHTML=avatar?`<img src="${avatar}" style="width:100%;height:100%;object-fit:cover">`:nm[0];
-    return `<div class="contact-item" style="margin-bottom:4px"><input type="checkbox" id="grpm-${id}" style="margin-right:8px"><label for="grpm-${id}" style="display:flex;align-items:center;gap:8px;cursor:pointer"><div class="contact-av" style="width:32px;height:32px;border-radius:50%;background:${avatar?"none":colBg(col)};display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;overflow:hidden">${avHTML}</div><div><div class="contact-nm">${nm}</div>${uname?`<div class="contact-ph">@${uname}</div>`:""}</div></label></div>`;
+    const avHTML=safeImgSrc(avatar)?`<img${imgAttr(avatar)} style="width:100%;height:100%;object-fit:cover">`:escHtml(nm[0]);
+    return `<div class="contact-item" style="margin-bottom:4px"><input type="checkbox" id="grpm-${id}" style="margin-right:8px"><label for="grpm-${id}" style="display:flex;align-items:center;gap:8px;cursor:pointer"><div class="contact-av" style="width:32px;height:32px;border-radius:50%;background:${safeImgSrc(avatar)?"none":colBg(col)};display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;overflow:hidden">${avHTML}</div><div><div class="contact-nm">${escHtml(nm)}</div>${uname?`<div class="contact-ph">@${escHtml(uname)}</div>`:""}</div></label></div>`;
   }).join("") || `<div style="color:var(--tx3);font-size:12.5px;padding:12px">Пока не с кем создать группу — сначала начни с кем-нибудь чат</div>`;
 }
 async function doCreateGroup(){
@@ -19916,7 +20394,7 @@ function renderMembersList(){
     const roleBadge=roleLabel?`<span class="mem-role ${m.role}">${escHtml(roleLabel)}</span>`:"";
     const muteBadge=m.canWrite===false?`<span class="mem-role" style="background:var(--bg4);color:var(--tx3)" title="Не может писать">🔇</span>`:"";
     const mSrc=safeImgSrc(m.avatar);
-    const avHTML=mSrc?`<img src="${escHtml(mSrc)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml((m.nm||"?")[0]);
+    const avHTML=mSrc?`<img${imgAttr(mSrc)} style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml((m.nm||"?")[0]);
     return `<div class="mem-item" onclick="openMemberProfile('${m.id}')">
       <div class="mem-av" style="background:${mSrc?"none":colBg(m.col||0)}">${avHTML}</div>
       <div class="mem-info"><div class="mem-nm">${escHtml(m.nm)}${m.role==="owner"?" 👑":(m.role==="admin"?" ⭐":"")}</div><div class="mem-sub">${m.uname?"@"+escHtml(m.uname):"участник"}</div></div>
@@ -19938,7 +20416,7 @@ function inviteStatesHTML(ch){
     rows.map(i=>{
       const nm=i.name||"Без имени";
       const src=safeImgSrc(i.avatar);
-      const avHTML=src?`<img src="${escHtml(src)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml(nm[0]||"?");
+      const avHTML=src?`<img${imgAttr(src)} style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml(nm[0]||"?");
       return `<div class="mem-item" style="opacity:.72;cursor:default">
         <div class="mem-av" style="background:${src?"none":colBg(colorFromId(i.userId))}">${avHTML}</div>
         <div class="mem-info"><div class="mem-nm">${escHtml(nm)}</div><div class="mem-sub">${i.username?"@"+escHtml(i.username):"приглашение"}</div></div>
@@ -19959,7 +20437,7 @@ function openMemberProfile(memberId){
   const myRole=myRoleIn(ch);
   const isSelf=String(member.id)===String(S.user?.id);
 
-  el("mp-avatar").innerHTML = safeImgSrc(member.avatar) ? `<img src="${escHtml(safeImgSrc(member.avatar))}" style="width:100%;height:100%;object-fit:cover">` : escHtml(String(member.nm||"?")[0]);
+  el("mp-avatar").innerHTML = safeImgSrc(member.avatar) ? `<img${imgAttr(member.avatar)} style="width:100%;height:100%;object-fit:cover">` : escHtml(String(member.nm||"?")[0]);
   el("mp-name").textContent = member.nm||"Участник";
   el("mp-role").textContent = member.role==="owner"?"👑 Владелец":(member.role==="admin"?"⭐ "+(member.tag||"Админ"):"Участник")+(member.canWrite===false?" · 🔇 не может писать":"");
   el("mp-uname-row").style.display = member.uname?"block":"none";
@@ -19986,7 +20464,7 @@ function openMemberProfile(memberId){
       const gifts=(d && d.gifts)||[];
       if(gifts.length){
         mpProfileGifts=gifts;
-        el("mp-gifts-grid").innerHTML = gifts.map((g,i)=>`<div class="pgift ${g.rarity||"common"}" title="${escHtml(g.name)}" onclick="showGiftDetailModal({icon:mpProfileGifts[${i}].icon,imageUrl:mpProfileGifts[${i}].image_url,name:mpProfileGifts[${i}].name,rarity:mpProfileGifts[${i}].rarity,fromName:mpProfileGifts[${i}].from_name,createdAt:mpProfileGifts[${i}].created_at,message:mpProfileGifts[${i}].message})">${giftVisual({icon:g.icon,imageUrl:g.image_url})}</div>`).join("");
+        el("mp-gifts-grid").innerHTML = gifts.map((g,i)=>`<div class="pgift ${giftRarity(g.rarity)}"${titleAttr(g.name)} onclick="showGiftDetailModal({icon:mpProfileGifts[${i}].icon,imageUrl:mpProfileGifts[${i}].image_url,name:mpProfileGifts[${i}].name,rarity:mpProfileGifts[${i}].rarity,fromName:mpProfileGifts[${i}].from_name,createdAt:mpProfileGifts[${i}].created_at,message:mpProfileGifts[${i}].message})">${giftVisual({icon:g.icon,imageUrl:g.image_url})}</div>`).join("");
         el("mp-gifts-row").style.display="block";
       }
     }).catch(()=>{});
@@ -20168,7 +20646,7 @@ function openPermsFor(member){
   // если сохранение на сервере не удастся (иначе непереданные изменения
   // молча оставались бы в памяти до следующей перезагрузки страницы).
   member._permsBackup={...member.perms};
-  el("perms-member").innerHTML=`<div class="mem-av" style="width:36px;height:36px;background:${colBg(member.col||0)}">${(member.nm||"?")[0]}</div><div><div class="mem-nm">${member.nm}</div><div class="mem-sub">${member.uname?"@"+member.uname:"участник"}</div></div>`;
+  el("perms-member").innerHTML=`<div class="mem-av" style="width:36px;height:36px;background:${colBg(member.col||0)}">${escHtml(String(member.nm||"?")[0])}</div><div><div class="mem-nm">${escHtml(member.nm)}</div><div class="mem-sub">${member.uname?"@"+escHtml(member.uname):"участник"}</div></div>`;
   el("perms-tag").value=member.tag||"";
   renderPermsList(member);
   openM("m-perms");
@@ -20304,7 +20782,7 @@ async function addMemberToGroup(idx){
 // ── FORWARD ──────────────────────────────────────────────────
 function openForward(){
   const sorted=[...S.chats].sort((a,b)=>(b.id===77777?1:0)-(a.id===77777?1:0));
-  el("fwd-list").innerHTML=sorted.map(ch=>`<div class="contact-item" style="margin-bottom:4px" onclick="doForward(${typeof ch.id==="string"?`'${ch.id}'`:ch.id})"><div class="contact-av" style="background:${colBg(ch.col)}">${ch.ini}</div><div><div class="contact-nm">${ch.nm}</div></div></div>`).join("");
+  el("fwd-list").innerHTML=sorted.map(ch=>`<div class="contact-item" style="margin-bottom:4px" onclick="doForward(${typeof ch.id==="string"?`'${UUID_LIKE.test(ch.id)?ch.id:""}'`:Number(ch.id)||0})"><div class="contact-av" style="background:${colBg(ch.col)}">${escHtml(ch.ini)}</div><div><div class="contact-nm">${escHtml(ch.nm)}</div></div></div>`).join("");
   el("fwd-hide-author")?.classList.remove("on");
   openM("m-forward");
 }
@@ -20389,6 +20867,20 @@ async function sendForwardedMsg(localMsg, m, toId, toCh, hideAuthor, srcChatId){
   body.chatId=toId;
   if(!localMsg.clientMsgId) localMsg.clientMsgId=genClientMsgId();
   body.clientMsgId=localMsg.clientMsgId;
+  // C.1.2: защищённый чат-получатель — текст шифруется ключом ЭТОГО чата (новый IV на каждую попытку, clientMsgId
+  // прежний); не текст, нет ключа или шифрование ещё устанавливается — ничего не отправляется.
+  if(chatE2E(toCh)){
+    let enc=null;
+    if(toCh.e2eActive && !e2eIsBusy(toCh) && fwdTextOnly(m)){ try{ enc=await encryptE2EText(toId, String(m.tx)); }catch(e){ enc=null; } }
+    if(!enc){
+      localMsg.failed=true; if(S.chat===toId) renderMsgs(); saveState();
+      showToast(!fwdTextOnly(m) ? "🔒 "+E2E_UNSUPPORTED_MSG : (toCh.e2eActive && !e2eIsBusy(toCh) ? "🔒 Ключа шифрования на этом устройстве нет — сообщение не отправлено" : e2eNotReadyMsg(toCh)));
+      return;
+    }
+    ["mediaUrl","mediaType","fileName","fileSize","spoiler","waveform","contact"].forEach(k=>delete body[k]);
+    if(enc.length>E2E_ENVELOPE_MAX){ localMsg.failed=true; if(S.chat===toId) renderMsgs(); saveState(); showToast(E2E_TOO_LONG_MSG); return; }
+    body.type="e2e"; body.text=enc; localMsg.e2e=true; localMsg.e2eIntent=true;
+  }
   try{
     const d=await apiPost("/api/messages", body, true);
     // C.1.1: любой отказ сервера — тост с его текстом (у отказов пересылки — нет доступа к источнику,
@@ -20397,6 +20889,8 @@ async function sendForwardedMsg(localMsg, m, toId, toCh, hideAuthor, srcChatId){
     const dbId=d?.message?.id||null;
     if(dbId){
       adoptSentMessage(localMsg, d.message);
+      // C.1.2: зашифровано ли — по записи сервера (как у обычной отправки): ложного 🔒 не остаётся.
+      if(localMsg.e2e && d.message.type && d.message.type!=="e2e"){ localMsg.e2e=false; localMsg.e2eIntent=false; if(S.chat===toId) renderMsgs(); }
       // C.1.1: вложение копии — как его записал сервер (из исходной строки). Если источник пересылали, пока он
       // ещё загружался, у копии осталось местное превью (blob:/data:), и после перезагрузки оно бы не открылось.
       if("media_url" in d.message && (d.message.media_url||null)!==msgMediaUrl(localMsg)){ applyMediaFields(localMsg, stateFromDbRow(d.message)); if(S.chat===toId) renderMsgs(); }
@@ -20437,6 +20931,15 @@ async function sendForwardedMsg(localMsg, m, toId, toCh, hideAuthor, srcChatId){
 }
 
 function doForward(toId){
+  { const toCh0=S.chats.find(c=>c.id===toId);   // C.1.2: в защищённый чат — только текст, до любой записи
+    const ids=(S.fwdMultiple && S.fwdMultiple.length) ? S.fwdMultiple : [S.fwdId];
+    const src0=S.messages[S.chat]||[];
+    // Не расшифрованное здесь сообщение не пересылается никуда: ушла бы заглушка «недоступно» вместо текста.
+    if(ids.some(id=>e2eUnreadable(src0.find(x=>x.id===id)))){ showToast("🔒 Сообщение не расшифровано на этом устройстве — переслать нельзя"); return; }
+    if(chatE2E(toCh0)){
+      if(e2eIsBusy(toCh0) || !toCh0.e2eActive){ showToast(e2eNotReadyMsg(toCh0)); return; }
+      if(ids.some(id=>!fwdTextOnly(src0.find(x=>x.id===id)))){ showToast("🔒 "+E2E_UNSUPPORTED_MSG); return; }
+    } }
   if(!S.messages[toId])S.messages[toId]=[];
   const tm=now();
   const srcChatId=S.chat;
@@ -21270,19 +21773,20 @@ async function renderUsers(){
       const roleBadge=u.role==="admin"?"bgr":u.role==="moderator"?"bga":"bgg";
       const regDate=u.created_at ? new Date(u.created_at).toLocaleDateString("ru") : "—";
       const label=u.username||u.name||u.phone||"пользователя";
+      const labelJs=`${escHtml(JSON.stringify(String(label)))}`;   // C.1.2: строка в onclick — литерал JSON (имя задаёт сам пользователь)
       const statusHtml = u.is_banned ? '<span class="bg bgr">🚫 Заблокирован</span>' : u.is_deleted ? '<span class="bg bga">🗑️ Удалён</span>' : '<span style="color:var(--tx3)">Активен</span>';
       const banBtn = u.is_banned
-        ? `<button class="xbtn gn" style="padding:3px 8px;font-size:10px" onclick="unbanUser('${u.id}','${label}')">✅ Разбан</button>`
-        : `<button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="banUser('${u.id}','${label}')">🚫 Бан</button>`;
+        ? `<button class="xbtn gn" style="padding:3px 8px;font-size:10px" onclick="unbanUser('${u.id}',${labelJs})">✅ Разбан</button>`
+        : `<button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="banUser('${u.id}',${labelJs})">🚫 Бан</button>`;
       return `<tr>
-        <td style="color:var(--acc2);font-weight:500">${u.username?"@"+u.username:(u.name||"—")}</td>
-        <td style="color:var(--tx3);font-size:11.5px">${u.phone||"—"}</td>
-        <td><span class="bg ${roleBadge}">${u.role}</span></td>
+        <td style="color:var(--acc2);font-weight:500">${escHtml(u.username?"@"+u.username:(u.name||"—"))}</td>
+        <td style="color:var(--tx3);font-size:11.5px">${escHtml(u.phone||"—")}</td>
+        <td><span class="bg ${roleBadge}">${escHtml(u.role)}</span></td>
         <td style="color:var(--cr)">💎 ${Number(u.balance_cr||0).toLocaleString()}</td>
         <td>${isVip?`<span style="display:inline-flex;color:var(--am)" title="VIP">${VIP_STAR_SVG}</span>`:"—"}</td>
         <td style="color:var(--tx3)">${regDate}</td>
         <td>${statusHtml}</td>
-        <td style="white-space:nowrap">${banBtn} <button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="editUserRole('${u.id}','${u.role}')">✏️</button> <button class="xbtn am" style="padding:3px 8px;font-size:10px" onclick="grantVipForever('${u.id}','${label}')" title="Выдать VIP навсегда">♾️</button></td>
+        <td style="white-space:nowrap">${banBtn} <button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="editUserRole('${u.id}',${escHtml(JSON.stringify(String(u.role||"")))})">✏️</button> <button class="xbtn am" style="padding:3px 8px;font-size:10px" onclick="grantVipForever('${u.id}',${labelJs})" title="Выдать VIP навсегда">♾️</button></td>
       </tr>`;
     }).join("");
   }catch(err){
@@ -21308,9 +21812,9 @@ async function searchChatsForModeration(){
         ? `<span class="bg bgr">🚫 Доступ закрыт${c.admin_blocked_reason?" — "+escHtml(c.admin_blocked_reason):""}</span>`
         : `<span style="color:var(--tx3)">Активен</span>`;
       const actionBtn=c.admin_blocked
-        ? `<button class="xbtn gn" style="padding:4px 10px;font-size:11px" onclick="unblockChatByAdmin('${c.id}','${escHtml(c.name).replace(/'/g,"\\'")}')">✅ Открыть доступ</button>`
-        : `<button class="xbtn rd" style="padding:4px 10px;font-size:11px" onclick="blockChatByAdmin('${c.id}','${escHtml(c.name).replace(/'/g,"\\'")}')">🚫 Закрыть доступ</button>`;
-      const deleteBtn=`<button class="xbtn sec" style="padding:4px 10px;font-size:11px;color:var(--rd)" onclick="deleteChatByAdmin('${c.id}','${escHtml(c.name).replace(/'/g,"\\'")}')">🗑️ Удалить</button>`;
+        ? `<button class="xbtn gn" style="padding:4px 10px;font-size:11px" onclick="unblockChatByAdmin('${c.id}',${escHtml(JSON.stringify(String(c.name??"")))})">✅ Открыть доступ</button>`
+        : `<button class="xbtn rd" style="padding:4px 10px;font-size:11px" onclick="blockChatByAdmin('${c.id}',${escHtml(JSON.stringify(String(c.name??"")))})">🚫 Закрыть доступ</button>`;
+      const deleteBtn=`<button class="xbtn sec" style="padding:4px 10px;font-size:11px;color:var(--rd)" onclick="deleteChatByAdmin('${c.id}',${escHtml(JSON.stringify(String(c.name??"")))})">🗑️ Удалить</button>`;
       return `<div class="asec" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:180px">
           <div style="font-weight:600;font-size:13.5px">${typeLabel} ${escHtml(c.name)}${c.username?" · @"+escHtml(c.username):""}</div>
@@ -21418,7 +21922,7 @@ function isStickerImg(s){ return typeof s==="string" && (s.startsWith("http")||s
 function stickerHTML(sk, imgStyle){
   const s=String(sk==null?"":sk);
   const src=isStickerImg(s) ? safeImgSrc(s) : "";
-  return src ? `<img src="${escHtml(src)}" style="${imgStyle}">` : escHtml(s);
+  return src ? `<img${imgAttr(src)} style="${imgStyle}">` : escHtml(s);
 }
 // Стикер из набора и из «недавних» — по номеру, а не строкой внутри onclick.
 function sendPackSticker(pi, si){ const p=S.packs[pi]; const s=p && Array.isArray(p.stickers) ? p.stickers[si] : null; if(s!=null) sendSticker(s); }
@@ -21706,15 +22210,15 @@ async function renderBots(){
       <div class="botcard" style="flex-wrap:wrap;align-items:flex-start">
         <div style="width:36px;height:36px;border-radius:8px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🤖</div>
         <div style="flex:1;min-width:160px">
-          <div class="botnm">${b.name} <span style="color:var(--tx3);font-weight:400">@${b.username}</span></div>
+          <div class="botnm">${escHtml(b.name)} <span style="color:var(--tx3);font-weight:400">@${escHtml(b.username)}</span></div>
           <div class="botd" style="margin-bottom:4px">Токен для API:</div>
-          <div class="akrow"><div class="akval">${b.bot_token}</div><div class="akcpy" onclick="navigator.clipboard.writeText('${b.bot_token}').catch(()=>{});showToast('Скопировано')">Копировать</div></div>
-          <div class="fg" style="margin-top:6px"><span class="fl">Webhook URL (для личных сообщений боту)</span><input class="fii" value="${b.bot_webhook_url||''}" placeholder="https://your-server.com/webhook" onchange="saveBotWebhook('${b.id}',this.value)"></div>
+          <div class="akrow"><div class="akval">${escHtml(b.bot_token)}</div><div class="akcpy" onclick="navigator.clipboard.writeText(${escHtml(JSON.stringify(String(b.bot_token||"")))}).catch(()=>{});showToast('Скопировано')">Копировать</div></div>
+          <div class="fg" style="margin-top:6px"><span class="fl">Webhook URL (для личных сообщений боту)</span><input class="fii" value="${escHtml(b.bot_webhook_url||'')}" placeholder="https://your-server.com/webhook" onchange="saveBotWebhook('${b.id}',this.value)"></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
-          <span class="bg ${b.bot_status==='active'?'bgg':'bga'}" style="cursor:pointer" onclick="toggleBotStatus('${b.id}','${b.bot_status}')">${b.bot_status==='active'?'Активен':'Пауза'}</span>
+          <span class="bg ${b.bot_status==='active'?'bgg':'bga'}" style="cursor:pointer" onclick="toggleBotStatus('${b.id}',${escHtml(JSON.stringify(String(b.bot_status||"")))})">${b.bot_status==='active'?'Активен':'Пауза'}</span>
           <button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="regenerateBotToken('${b.id}')">🔄 Токен</button>
-          <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="deleteBot('${b.id}','${b.name}')">✕ Удалить</button>
+          <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="deleteBot('${b.id}',${escHtml(JSON.stringify(String(b.name||"")))})">✕ Удалить</button>
         </div>
       </div>`).join("");
   }catch(err){ e.innerHTML='<div style="color:var(--rd);font-size:11.5px">Не удалось загрузить</div>'; }
@@ -22076,11 +22580,11 @@ let giftVipRecipient=null;
 
 function openGiftVip(){
   const list=(S.contacts||[]).length ? S.contacts : S.chats.filter(c=>c.withUserId);
+  _giftVipList=list.map(c=>({id:c.withUserId||c.id, nm:c.nm, col:c.col||0}));   // C.1.2: получатель — по номеру
   el("gift-vip-list").innerHTML = list.length
-    ? list.map(c=>{
-        const id=c.withUserId||c.id, nm=c.nm, col=c.col||0;
-        const safeNm=escHtml(nm).replace(/'/g,"\\'");
-        return `<div class="contact-item" onclick="pickGiftVipRecipient('${id}','${safeNm}',${col})"><div class="contact-av" style="background:${colBg(col)}">${(nm||"?")[0]}</div><div><div class="contact-nm">${escHtml(nm)}</div></div></div>`;
+    ? list.map((c,i)=>{
+        const nm=String(c.nm||""), col=Number(c.col)||0;
+        return `<div class="contact-item" onclick="giftVipPick(${i})"><div class="contact-av" style="background:${colBg(col)}">${escHtml((nm||"?")[0])}</div><div><div class="contact-nm">${escHtml(nm)}</div></div></div>`;
       }).join("")
     : `<div style="color:var(--tx3);font-size:12.5px;padding:12px">Нет доступных получателей — сначала начни с кем-то чат</div>`;
   openM("m-gift-vip");
@@ -22324,22 +22828,26 @@ function renderStory(){
   el("story-caption").style.display="none";
 
   if(s.type==="text"){
-    sc.style.background = s.bg;
+    sc.style.background = safeStoryBg(s.bg);
     el("story-text").textContent = s.text||"";
     el("story-text").style.display="block";
   } else if(s.type==="emoji"){
-    sc.style.background = s.bg;
+    sc.style.background = safeStoryBg(s.bg);
     el("story-emoji").textContent = s.emoji||"";
     el("story-emoji").style.display="block";
   } else if(s.type==="photo"){
     sc.style.background = "#000";
     const img=el("story-media-img");
-    img.src=s.mediaUrl; img.style.display="block";
+    const iu=safeImgSrc(s.mediaUrl);   // C.1.2: адрес чужой сторис — после проверки
+    if(iu) img.src=iu; else img.removeAttribute("src");
+    img.style.display="block";
     if(s.caption){ el("story-caption").textContent=s.caption; el("story-caption").style.display="block"; }
   } else if(s.type==="video"){
     sc.style.background = "#000";
     const vid=el("story-media-video");
-    vid.src=s.mediaUrl; vid.style.display="block";
+    const vu=safeUrl(String(s.mediaUrl||""), "media");   // C.1.2: адрес чужой сторис — после проверки
+    if(vu) vid.src=vu; else vid.removeAttribute("src");
+    vid.style.display="block";
     vid.currentTime=0; vid.play().catch(()=>{});
     if(s.caption){ el("story-caption").textContent=s.caption; el("story-caption").style.display="block"; }
   }
@@ -23031,7 +23539,7 @@ function renderStoriesBar(){
     return data.items.length>0;
   });
   const мои=myActiveStories.length>0;
-  const кружок=(фон, текст, аватар)=>`<div class="story-av-inner" style="background:${фон};font-weight:700;font-size:12px;color:#fff">${аватар?`<img src="${escHtml(аватар)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml(текст||"?")}</div>`;
+  const кружок=(фон, текст, аватар)=>`<div class="story-av-inner" style="background:${фон};font-weight:700;font-size:12px;color:#fff">${safeImgSrc(аватар)?`<img${imgAttr(аватар)} style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml(текст||"?")}</div>`;
   // ⚠️ 4 октября 2026. Стопка — постоянная часть шапки и вход в создание
   // сторис. Первый слот — всегда своя ячейка: без своей сторис это пустой
   // стеклянный кружок с «+» (в ряду — аватар со значком «+» и подписью
@@ -23242,12 +23750,12 @@ function renderGiftsCatalog(rarity){
     const left = g.limit ? g.limit-g.sold : null;
     const scarce = left!==null && left<=g.limit*0.2; // осталось <20%
     return `
-    <div class="gift-card ${g.rarity}" onclick="openGiftModal(${g.id})">
-      <div class="gift-rarity ${g.rarity}">${rarityNames[g.rarity]}</div>
+    <div class="gift-card ${giftRarity(g.rarity)}" onclick="openGiftModal(${Number(g.id)||0})">
+      <div class="gift-rarity ${giftRarity(g.rarity)}">${escHtml(rarityNames[g.rarity]||"")}</div>
       ${scarce?`<div class="gift-scarce">🔥 ${left} шт</div>`:""}
       <div class="gift-ico">${giftVisual(g)}</div>
-      <div class="gift-name">${g.name}</div>
-      <div class="gift-price">💎 ${g.price.toLocaleString("ru")}</div>
+      <div class="gift-name">${escHtml(g.name)}</div>
+      <div class="gift-price">💎 ${(Number(g.price)||0).toLocaleString("ru")}</div>
       <div class="gift-limit">${g.limit?`Лимит: ${left} из ${g.limit}`:"∞ Без лимита"}</div>
     </div>`;
   }).join("");
@@ -23281,6 +23789,8 @@ async function giftChatWritable(chatId){
   try{
     const d=await apiGet("/api/messages/chat/"+chatId+"/can-write");
     if(d && d.ok===false){ showToast("❌ "+(d.error||"Подарок сюда отправить нельзя")); return false; }
+    // C.1.2: сервер считает чат защищённым — подарок туда не отправить; Crystals не списываются.
+    if(d && d.e2e && d.e2e.protected){ e2eQueue(chatId, ()=>applyE2EBlock(chatId, d.e2e)); showToast("🔒 "+E2E_UNSUPPORTED_MSG); return false; }
   }catch(e){ if(e && e.accountChanged) return false; }
   return true;
 }
@@ -23298,6 +23808,7 @@ async function sendGiftInner(targetChatId){
   const chatId = targetChatId || S.chat;
   const ch=S.chats.find(c=>c.id===chatId);
   if(!ch){ showToast("❌ Чат не найден"); return; }
+  if(e2eRefuse(ch)) return;   // C.1.2: до покупки — Crystals не списываются
   if(!(await giftChatWritable(chatId))) return;
 
   // Раньше списание и владение были полностью локальными — сервер вообще
@@ -23394,6 +23905,7 @@ async function giftFromInventoryInner(giftId, targetChatId){
   const chatId = targetChatId || S.chat;
   const ch=S.chats.find(c=>c.id===chatId);
   if(!ch){ showToast("❌ Чат не найден"); return; }
+  if(e2eRefuse(ch)) return;   // C.1.2: до списания из коллекции
   if(!(await giftChatWritable(chatId))) return;
 
   // Раньше это было чисто локальное уменьшение счётчика — сервер вообще
@@ -23448,8 +23960,8 @@ function renderGiftRecipientList(filter){
     : (chId)=>`giftFromInventory(${giftPickerTargetGiftId},'${chId}')`;
   wrap.innerHTML=chats.map(ch=>`
     <div class="contact-item" style="cursor:pointer" onclick="${fnCall(ch.id)};closeM('m-gift-recipient')">
-      <div class="contact-av" style="background:${colBg(ch.col||0)};overflow:hidden">${ch.avatar?`<img src="${ch.avatar}" style="width:100%;height:100%;object-fit:cover">`:ch.ini}</div>
-      <div><div class="contact-nm">${ch.nm}</div></div>
+      <div class="contact-av" style="background:${colBg(ch.col||0)};overflow:hidden">${safeImgSrc(ch.avatar)?`<img${imgAttr(ch.avatar)} style="width:100%;height:100%;object-fit:cover">`:escHtml(ch.ini)}</div>
+      <div><div class="contact-nm">${escHtml(ch.nm)}</div></div>
     </div>
   `).join("");
 }
@@ -23460,11 +23972,11 @@ function renderGiftInventory(){
   if(!entries.length){ wrap.innerHTML='<div style="color:var(--tx3);font-size:11.5px">Пока пусто — купите подарок кнопкой «💼 Купить», чтобы он появился здесь</div>'; return; }
   wrap.innerHTML=entries.map(([giftId,qty])=>{
     const g=S.gifts_catalog.find(x=>x.id===Number(giftId)); if(!g) return "";
-    return `<div class="gift-card ${g.rarity}" style="position:relative">
-      <div class="gift-scarce" style="background:var(--acc)">× ${qty}</div>
+    return `<div class="gift-card ${giftRarity(g.rarity)}" style="position:relative">
+      <div class="gift-scarce" style="background:var(--acc)">× ${Number(qty)||0}</div>
       <div class="gift-ico">${giftVisual(g)}</div>
-      <div class="gift-name">${g.name}</div>
-      <button class="xbtn gn" style="width:100%;margin-top:6px;padding:6px;font-size:11px" onclick="openGiftRecipientPicker(${g.id})">🎁 Подарить</button>
+      <div class="gift-name">${escHtml(g.name)}</div>
+      <button class="xbtn gn" style="width:100%;margin-top:6px;padding:6px;font-size:11px" onclick="openGiftRecipientPicker(${Number(g.id)||0})">🎁 Подарить</button>
     </div>`;
   }).join("");
 }
@@ -23569,12 +24081,12 @@ async function renderMyGifts(){
   let html="";
   if(special.length){
     html+=`<div class="pgift-section"><div class="pgift-section-tit" style="color:var(--am)">✨ Особые подарки</div><div class="pgift-grid">`;
-    html+=special.map(g=>`<div class="pgift ${g.rarity}" title="${g.name} от ${g.from}" onclick="openMyGiftDetail(${g.idx})">${giftVisual(g)}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
+    html+=special.map(g=>`<div class="pgift ${giftRarity(g.rarity)}"${titleAttr((g.name||"")+" от "+(g.from||""))} onclick="openMyGiftDetail(${g.idx})">${giftVisual(g)}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
     html+=`</div></div>`;
   }
   if(common.length){
     html+=`<div class="pgift-section"><div class="pgift-section-tit" style="color:var(--tx3)">🎁 Обычные</div><div class="pgift-grid">`;
-    html+=common.map(g=>`<div class="pgift ${g.rarity}" title="${g.name} от ${g.from}" onclick="openMyGiftDetail(${g.idx})">${giftVisual(g)}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
+    html+=common.map(g=>`<div class="pgift ${giftRarity(g.rarity)}"${titleAttr((g.name||"")+" от "+(g.from||""))} onclick="openMyGiftDetail(${g.idx})">${giftVisual(g)}${g.count>1?`<div class="pgift-cnt">${g.count}</div>`:""}</div>`).join("");
     html+=`</div></div>`;
   }
   showcase.style.flexWrap="";
@@ -23586,9 +24098,11 @@ async function renderMyGifts(){
 // Общая карточка деталей подарка — от кого, дата, сообщение, крупная
 // картинка. Раньше клик на подарок просто показывал тост с названием.
 function showGiftDetailModal(gift){
-  el("gd-visual").innerHTML = gift.imageUrl
-    ? `<img src="${gift.imageUrl}" style="width:96px;height:96px;object-fit:contain;border-radius:12px">`
-    : (gift.icon||"🎁");
+  // C.1.2: значок — текстом (раньше — сырой HTML из базы: строки подарков, записанные до 22 окт со слов клиента);
+  // картинка — только проверенным адресом, иначе значок.
+  el("gd-visual").innerHTML = safeImgSrc(gift.imageUrl)
+    ? `<img${imgAttr(gift.imageUrl)} style="width:96px;height:96px;object-fit:contain;border-radius:12px">`
+    : escHtml(gift.icon||"🎁");
   el("gd-name").textContent = gift.name||"Подарок";
   const rarityLabel={common:"⚪ Обычный",rare:"💜 Редкий",epic:"💚 Эпический",legendary:"⭐ Легендарный"}[gift.rarity]||"";
   el("gd-rarity").textContent = rarityLabel;
@@ -23694,7 +24208,7 @@ function renderStoryAuthorChoice(){
   let html=`<div style="font-size:11.5px;color:var(--tx2);margin-bottom:6px">Опубликовать от имени:</div><div style="display:flex;gap:6px;flex-wrap:wrap">`;
   html+=`<div class="story-author-opt${!selectedStoryChannel?" on":""}" onclick="pickStoryAuthor(null)"><div class="sas-av" style="background:${colBg(S.user?.col||0)}">${escHtml(String(S.user?.name||"Я")[0])}</div>Я</div>`;
   channels.forEach(c=>{
-    html+=`<div class="story-author-opt${selectedStoryChannel===c.id?" on":""}" onclick="pickStoryAuthor('${c.id}')"><div class="sas-av" style="background:${colBg(c.col)}">${c.ini}</div>${c.nm}</div>`;
+    html+=`<div class="story-author-opt${selectedStoryChannel===c.id?" on":""}" onclick="pickStoryAuthor('${UUID_LIKE.test(String(c.id))?c.id:""}')"><div class="sas-av" style="background:${colBg(c.col)}">${escHtml(c.ini)}</div>${escHtml(c.nm)}</div>`;
   });
   html+=`</div>`;
   wrap.innerHTML=html;
@@ -23715,6 +24229,15 @@ function selectStoryType(type){
   el("story-video-editor").style.display = type==="video"?"block":"none";
 }
 
+// 25 окт 2026 (C.1.2): фон сторис приходит от автора — только цвет или градиент вида, который создаёт редактор
+// (иначе url(...) в фоне чужой сторис обращался бы к постороннему адресу при просмотре).
+const STORY_BG_DEFAULT="linear-gradient(135deg,#6c63ff,#38bdf8)";
+function safeStoryBg(v){
+  const s=String(v||"").trim();
+  if(/^#[0-9a-f]{3,8}$/i.test(s)) return s;
+  if(/^linear-gradient\(\s*\d{1,3}deg(\s*,\s*#[0-9a-f]{3,8}(\s+\d{1,3}%)?){2,4}\s*\)$/i.test(s)) return s;
+  return STORY_BG_DEFAULT;
+}
 function selectStoryBg(bg, el_){
   selectedStoryBg = bg;
   document.querySelectorAll("[data-bg]").forEach(e=>e.style.borderColor="transparent");
@@ -23955,15 +24478,15 @@ function openMyStories(){
   el("mystories-list").innerHTML=stories.map((s,i)=>{
     const left=Math.max(0,Math.round((s.expires-Date.now())/3600000));
     const preview=s.type==="text"?(s.text||"Текст"):s.type==="emoji"?(s.emoji||"📖"):s.type==="photo"?"📷 Фото":"🎥 Видео";
-    const chanTag=s.channel?`<div style="font-size:10px;color:var(--acc2);margin-top:2px">📢 ${s.channel.nm}</div>`:"";
-    const thumbHTML = s.type==="photo" ? `<img src="${s.mediaUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`
-      : s.type==="video" ? `<video src="${s.mediaUrl}" muted style="width:100%;height:100%;object-fit:cover;border-radius:8px"></video>`
-      : (s.type==="emoji"?s.emoji:"Aa");
+    const chanTag=s.channel?`<div style="font-size:10px;color:var(--acc2);margin-top:2px">📢 ${escHtml(s.channel.nm)}</div>`:"";
+    const thumbHTML = s.type==="photo" ? `<img${imgAttr(s.mediaUrl)} style="width:100%;height:100%;object-fit:cover;border-radius:8px">`
+      : s.type==="video" ? `<video${mediaAttr(s.mediaUrl)} muted style="width:100%;height:100%;object-fit:cover;border-radius:8px"></video>`
+      : (s.type==="emoji"?escHtml(s.emoji):"Aa");
     return `<div class="mystory-item" onclick="closeM('m-mystories');viewMyStories(${i})" style="cursor:pointer">
-      <div class="mystory-prev" style="background:${s.bg||"#000"};overflow:hidden">${thumbHTML}</div>
+      <div class="mystory-prev" style="background:${s.bg?safeStoryBg(s.bg):"#000"};overflow:hidden">${thumbHTML}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:500">${preview.slice(0,30)}</div>
-        <div style="font-size:11px;color:var(--tx3)">👁 ${s.views} · ⏰ ${left}ч осталось</div>
+        <div style="font-size:13px;font-weight:500">${escHtml(String(preview).slice(0,30))}</div>
+        <div style="font-size:11px;color:var(--tx3)">👁 ${Number(s.views)||0} · ⏰ ${left}ч осталось</div>
         ${chanTag}
       </div>
       <span style="color:var(--rd);cursor:pointer;font-size:16px;padding:4px" onclick="event.stopPropagation();deleteMyStory(${s.id})">🗑️</span>
@@ -24302,7 +24825,7 @@ async function loadOfficialPosts(){
       list.innerHTML = realOfficialPosts.length
         ? realOfficialPosts.map(p=>`
           <div style="padding:10px 12px;background:var(--bg3);border-radius:10px;font-size:12.5px">
-            <div style="margin-bottom:4px">${p.emoji} ${escHtml(p.text)}</div>
+            <div style="margin-bottom:4px">${escHtml(p.emoji)} ${escHtml(p.text)}</div>
             <div style="display:flex;justify-content:space-between;align-items:center">
               <div style="color:var(--tx3);font-size:11px">${new Date(p.created_at).toLocaleString("ru")} · 👁 ${p.views||0}</div>
               <div style="display:flex;gap:6px">
@@ -24343,10 +24866,10 @@ function openOfficialChannel(){
       lastDateKey=dateKey;
     }
     const myReacted=S.officialPostReactions[p.id]||[];
-    const reactionsHtml=p.reactions.map(r=>{
+    const reactionsHtml=(Array.isArray(p.reactions)?p.reactions:[]).map((r,ri)=>{
       const mine=myReacted.includes(r.e);
       const count=r.c+(mine?1:0);
-      return `<div class="rxn${mine?" m":""}" onclick="togglePostReaction(${p.id},'${r.e}')">${r.e} ${count}</div>`;
+      return `<div class="rxn${mine?" m":""}" onclick="togglePostReactionIdx(${Number(p.id)||0},${ri})">${escHtml(r.e)} ${Number(count)||0}</div>`;
     }).join("");
     html+=`
     <div class="nexus-official-post">
@@ -24358,9 +24881,9 @@ function openOfficialChannel(){
             <span class="verify-badge" onmouseenter="showVerifyTip(this,'Официальный канал «Монохром»')" onmouseleave="hideVerifyTip()">${VERIFY_TICK_SVG}</span>
           </div>
         </div>
-        <div style="font-size:22px">${p.emoji}</div>
+        <div style="font-size:22px">${escHtml(p.emoji)}</div>
       </div>
-      <div style="font-size:13px;line-height:1.6;white-space:pre-line">${p.text.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')}</div>
+      <div style="font-size:13px;line-height:1.6;white-space:pre-line">${escHtml(p.text).replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')}</div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
         <div style="display:flex;gap:5px;flex-wrap:wrap">${reactionsHtml}</div>
         <div class="nop-views" style="flex-shrink:0;white-space:nowrap">
@@ -24378,6 +24901,11 @@ function openOfficialChannel(){
 
 // Настоящий тоггл реакции на посте — считает, сохраняет, показывает твой выбор,
 // ограничен по VIP: обычный пользователь — 1 реакция одновременно, VIP — до 3
+// C.1.2: реакция поста — по номеру (значок берётся из самого поста, не из строки в onclick).
+function togglePostReactionIdx(postId, ri){
+  const p=OFFICIAL_POSTS.find(x=>x.id===postId), r=p && Array.isArray(p.reactions) ? p.reactions[ri] : null;
+  if(r && typeof r.e==="string") togglePostReaction(postId, r.e);
+}
 function togglePostReaction(postId, emoji){
   if(!S.officialPostReactions) S.officialPostReactions={};
   if(!S.officialPostReactions[postId]) S.officialPostReactions[postId]=[];
@@ -24476,8 +25004,8 @@ async function renderVerificationStatus(){
       const [label,color] = labels[r.status]||labels.pending;
       const typeLabel = r.target_type==="user"?"Личный профиль":"Канал/группа";
       return `<div style="background:rgba(var(--acc3-rgb),.07);border:1px solid rgba(var(--acc3-rgb),.2);border-radius:10px;padding:12px;margin-bottom:8px">
-        <div style="font-weight:600;color:var(--acc3);margin-bottom:4px">${r.channel_name} <span style="font-size:10px;color:var(--tx3);font-weight:400">(${typeLabel})</span></div>
-        <div style="font-size:11.5px;color:var(--tx2)">${r.target_type==="user"?"Профиль":"Канал"}: ${r.channel_link}<br>Статус: <span style="color:${color}">${label}</span><br>Подано: ${new Date(r.created_at).toLocaleDateString("ru")}</div>
+        <div style="font-weight:600;color:var(--acc3);margin-bottom:4px">${escHtml(r.channel_name)} <span style="font-size:10px;color:var(--tx3);font-weight:400">(${typeLabel})</span></div>
+        <div style="font-size:11.5px;color:var(--tx2)">${r.target_type==="user"?"Профиль":"Канал"}: ${escHtml(r.channel_link)}<br>Статус: <span style="color:${color}">${label}</span><br>Подано: ${new Date(r.created_at).toLocaleDateString("ru")}</div>
       </div>`;
     }).join("");
   }catch(e){ box.innerHTML = "Не удалось загрузить"; }
@@ -24617,8 +25145,9 @@ function renderAdminGifts(){
 // Показывает картинку подарка, если она загружена, иначе эмодзи — единая точка для всех мест,
 // где отображается визуал подарка (магазин, детали, сообщение в чате, "мои подарки")
 function giftVisual(g){
-  if(g && g.imageUrl) return `<img src="${g.imageUrl}" style="width:100%;height:100%;object-fit:contain;display:block">`;
-  return (g && g.icon) || "🎁";
+  // 25 окт 2026 (C.1.2): картинка — проверенным адресом через слот, значок — текстом (раньше — сырой HTML).
+  if(g && safeImgSrc(g.imageUrl)) return `<img${imgAttr(g.imageUrl)} style="width:100%;height:100%;object-fit:contain;display:block">`;
+  return escHtml((g && g.icon) || "🎁");
 }
 
 // Повторно проиграть анимацию подарка по тапу. Перезапуск CSS-анимации
@@ -24742,11 +25271,11 @@ async function renderAdminVerificationsTable(){
       if(r.status==="pending") actions=`<button class="xbtn gn" style="padding:3px 8px;font-size:10px" onclick="reviewVerification('${r.id}','approved')">✓</button> <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="reviewVerification('${r.id}','rejected')">✕</button>`;
       else if(r.status==="approved") actions=`<button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="revokeVerification('${r.id}')">🔒 Снять верификацию</button>`;
       return `<tr>
-      <td>${r.channel_name} <span style="font-size:9px;color:var(--tx3)">${r.target_type==="user"?"👤 профиль":"📢 канал"}</span><br><span style="font-size:10px;color:var(--tx3)">${r.channel_link}</span></td>
-      <td style="color:var(--acc2)">${r.username?"@"+r.username:(r.phone||"—")}</td>
+      <td>${escHtml(r.channel_name)} <span style="font-size:9px;color:var(--tx3)">${r.target_type==="user"?"👤 профиль":"📢 канал"}</span><br><span style="font-size:10px;color:var(--tx3)">${escHtml(r.channel_link)}</span></td>
+      <td style="color:var(--acc2)">${escHtml(r.username?"@"+r.username:(r.phone||"—"))}</td>
       <td style="max-width:220px;font-size:11px;color:var(--tx2)"><div style="white-space:pre-line">${escHtml(r.reason||"—")}</div>${r.proof_links?`<div style="margin-top:4px;color:var(--tx3);white-space:pre-line">🔗 ${escHtml(r.proof_links)}</div>`:""}</td>
       <td style="color:var(--tx3)">${new Date(r.created_at).toLocaleDateString("ru")}</td>
-      <td>${statusBadge[r.status]||r.status}</td>
+      <td>${statusBadge[r.status]||escHtml(r.status)}</td>
       <td>${actions}</td>
     </tr>`;
     }).join("");
@@ -24888,8 +25417,8 @@ async function renderAdminFeedbackInbox(){
     t.innerHTML = msgs.map(m=>{
       const media = m.media_url
         ? (m.media_type==="video"
-            ? `<video src="${m.media_url}" controls style="max-width:200px;max-height:200px;border-radius:8px;display:block;margin-bottom:6px"></video>`
-            : `<a href="${m.media_url}" target="_blank" rel="noopener"><img src="${m.media_url}" style="max-width:160px;max-height:160px;border-radius:8px;display:block;margin-bottom:6px"></a>`)
+            ? `<video${mediaAttr(m.media_url)} controls style="max-width:200px;max-height:200px;border-radius:8px;display:block;margin-bottom:6px"></video>`
+            : `<a${hrefAttr(m.media_url,"download")} target="_blank" rel="noopener"><img${imgAttr(m.media_url)} style="max-width:160px;max-height:160px;border-radius:8px;display:block;margin-bottom:6px"></a>`)
         : "";
       return `<tr>
       <td style="color:var(--acc2)">${escHtml(m.name||"—")}${m.uname?" (@"+escHtml(m.uname)+")":""}</td>
@@ -24943,10 +25472,11 @@ const REPORT_REASON_LABELS={spam:"🚫 Спам", abuse:"😡 Оскорблен
 function reportMediaHTML(r){
   if(!r.message_media_url) return "";
   const url=r.message_media_url;
-  if(r.message_media_type==="image") return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" style="max-width:200px;max-height:200px;border-radius:8px;display:block;margin-top:6px"></a>`;
-  if(r.message_media_type==="video"||r.message_media_type==="videoCircle") return `<video src="${url}" controls style="max-width:220px;max-height:220px;border-radius:8px;display:block;margin-top:6px"></video>`;
-  if(r.message_media_type==="voice"||r.message_media_type==="audio") return `<audio src="${url}" controls style="display:block;margin-top:6px;max-width:240px"></audio>`;
-  return `<a href="${url}" target="_blank" rel="noopener" style="display:block;margin-top:6px;font-size:11.5px;color:var(--acc2)">📎 ${escHtml(r.message_file_name||"Файл")}</a>`;
+  // C.1.2: адрес вложения задаёт автор сообщения — только через слоты (протокол проверяется, в атрибут не вставляется).
+  if(r.message_media_type==="image") return `<a${hrefAttr(url,"download")} target="_blank" rel="noopener"><img${imgAttr(url)} style="max-width:200px;max-height:200px;border-radius:8px;display:block;margin-top:6px"></a>`;
+  if(r.message_media_type==="video"||r.message_media_type==="videoCircle") return `<video${mediaAttr(url)} controls style="max-width:220px;max-height:220px;border-radius:8px;display:block;margin-top:6px"></video>`;
+  if(r.message_media_type==="voice"||r.message_media_type==="audio") return `<audio${mediaAttr(url)} controls style="display:block;margin-top:6px;max-width:240px"></audio>`;
+  return `<a${hrefAttr(url,"download")} target="_blank" rel="noopener" style="display:block;margin-top:6px;font-size:11.5px;color:var(--acc2)">📎 ${escHtml(r.message_file_name||"Файл")}</a>`;
 }
 
 async function renderAdminReportsList(){
@@ -24969,8 +25499,8 @@ async function renderAdminReportsList(){
       let actions="";
       if(r.status==="pending"){
         actions=`<button class="xbtn gn" style="padding:3px 8px;font-size:10px" onclick="resolveReport('${r.id}','resolved')">✅ Рассмотрено</button> <button class="xbtn sec" style="padding:3px 8px;font-size:10px" onclick="resolveReport('${r.id}','dismissed')">➖ Отклонить</button>`;
-        if(r.chat_id && !r.admin_blocked) actions+=` <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="reportBlockChat('${r.id}','${r.chat_id}','${escHtml(r.chat_name||"").replace(/'/g,"\\'")}')">🚫 Закрыть чат</button>`;
-        if(r.reported_user_id) actions+=` <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="reportBanUser('${r.id}','${r.reported_user_id}','${escHtml(reportedLabel).replace(/'/g,"\\'")}')">🚫 Бан автора</button>`;
+        if(r.chat_id && !r.admin_blocked) actions+=` <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="reportBlockChat('${r.id}','${r.chat_id}',${escHtml(JSON.stringify(String(r.chat_name||"")))})">🚫 Закрыть чат</button>`;
+        if(r.reported_user_id) actions+=` <button class="xbtn rd" style="padding:3px 8px;font-size:10px" onclick="reportBanUser('${r.id}','${r.reported_user_id}',${escHtml(JSON.stringify(String(r.reported_name ? r.reported_name+(r.reported_uname?" (@"+r.reported_uname+")":"") : "—")))})">🚫 Бан автора</button>`;
       }
       return `<tr>
         <td style="color:var(--acc2)">${escHtml(r.reporter_name||"—")}${r.reporter_uname?" (@"+escHtml(r.reporter_uname)+")":""}</td>
@@ -25059,10 +25589,10 @@ async function renderAdminCustomPacksTable(){
     if(!packs.length){ t.innerHTML = '<tr><td colspan="6" style="color:var(--tx3);text-align:center;padding:14px">Нет заявок</td></tr>'; return; }
     const statusBadge = {moderation:'<span class="bg bga">На модерации</span>', approved:'<span class="bg bgg">Одобрен</span>', rejected:'<span class="bg bgr">Отклонён</span>'};
     t.innerHTML = packs.map(p=>`
-    <tr><td><strong>${p.name}</strong><br><span style="font-size:10px;color:var(--tx3)">@${p.link}</span></td>
-    <td style="color:var(--acc2)">${p.username?"@"+p.username:(p.phone||"—")}</td><td>${(p.stickers||[]).length}</td>
-    <td>${p.price?"💎 "+p.price:"Бесплатно"}</td>
-    <td>${statusBadge[p.status]||p.status}</td>
+    <tr><td><strong>${escHtml(p.name)}</strong><br><span style="font-size:10px;color:var(--tx3)">@${escHtml(p.link)}</span></td>
+    <td style="color:var(--acc2)">${escHtml(p.username?"@"+p.username:(p.phone||"—"))}</td><td>${Array.isArray(p.stickers)?p.stickers.length:0}</td>
+    <td>${p.price?"💎 "+escHtml(p.price):"Бесплатно"}</td>
+    <td>${statusBadge[p.status]||escHtml(p.status)}</td>
     <td>${p.status==="moderation"?`<button class="xbtn gn" style="padding:3px 7px;font-size:10px" onclick="reviewCustomPack('${p.id}','approved')">✓</button> <button class="xbtn rd" style="padding:3px 7px;font-size:10px" onclick="reviewCustomPack('${p.id}','rejected')">✕</button>`:""}</td></tr>
   `).join("");
   }catch(e){ t.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--rd);padding:14px">Не удалось загрузить</td></tr>'; }
