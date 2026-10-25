@@ -777,6 +777,8 @@ body.select-mode .msel-check{display:flex}
 .rprevtx{font-size:11px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px}
 .sysmsg{align-self:center;font-size:11px;color:var(--tx3);background:var(--bg3);border:1px solid var(--brd);padding:3px 11px;border-radius:999px;margin:3px 0}
 .skbub{font-size:68px;line-height:1;padding:3px;background:transparent !important;display:block}
+.skbub .rprev{line-height:1.5}
+.rprev-link{cursor:pointer}
 /* .vc-bub — см. «Кружок в ленте: никакого фона вокруг окружности» */
 .vbub{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:16px;border-bottom-left-radius:3px;background:var(--in)}
 .mrow.out .vbub{background:var(--out);border-bottom-right-radius:3px;border-bottom-left-radius:16px}
@@ -5584,7 +5586,8 @@ function wsHandleMessage(msg){
         ts: time ? new Date(time).getTime() : Date.now(),
         read: S.chat === chatId,
         rev: 0,   // этап C: новое сообщение ещё не правилось
-        groupId: groupId || null
+        groupId: groupId || null,
+        replyToId: isDbMsgId(msg.payload.replyToId) ? msg.payload.replyToId : null   // этап C.1
       };
       // "Переслано от X" — раньше вообще не долетало вживую (только после
       // перезагрузки чата), см. комментарий у forwardAuthorName в index.js
@@ -5672,11 +5675,11 @@ function wsHandleMessage(msg){
     }
 
     case "message.scheduled_delivered": {
-      const { chatId, id, text, time, mediaUrl, mediaType, fileName, fileSize, spoiler, waveform } = msg.payload;
+      const { chatId, id, text, time, mediaUrl, mediaType, fileName, fileSize, spoiler, waveform, replyToId } = msg.payload;
       if(!S.messages[chatId]) S.messages[chatId]=[];
       if(S.messages[chatId].find(m=>m.dbId===id)) break;
       const d=time?new Date(time):new Date();
-      const newMsg={id:nextId(), dbId:id, t:"out", tx:text, time:d.toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}), ts:d.getTime(), read:false};
+      const newMsg={id:nextId(), dbId:id, t:"out", tx:text, time:d.toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"}), ts:d.getTime(), read:false, replyToId:isDbMsgId(replyToId)?replyToId:null};
       // Та же ветка по типу вложения, что и в case "message.new" — отложенным
       // можно запланировать не только текст, но и фото/видео/файл (см.
       // scheduleAttachmentSend), поэтому автору нужно показать само вложение,
@@ -5879,6 +5882,8 @@ function wsHandleMessage(msg){
     // кикнутый как состоял в чате, так и оставался.
     case "chat.member.removed": {
       const { chatId, userId: removedUserId } = msg.payload;
+      // C.1.1: загрузка списка, начатая до исключения, чат не вернёт (отметка — даже если чата ещё нет в списке).
+      if(String(removedUserId)===String(S.user?.id) && isServerChatId(chatId)) markChatGone(chatId);
       const ch=S.chats.find(c=>c.id===chatId);
       if(ch){
         if(String(removedUserId)===String(S.user?.id)){
@@ -5899,10 +5904,11 @@ function wsHandleMessage(msg){
     // Кто-то другой (или мы сами с другого устройства) закрепил/открепил
     // сообщение — раньше закреп вообще не долетал до остальных участников
     case "chat.pin.updated": {
-      const { chatId, pinnedMessageIds } = msg.payload;
-      S.pinnedByChat[chatId] = pinnedMessageIds||[];
-      if(S.chat===chatId){ S.pinViewIdx=0; renderPinbar(); }
-      saveState();
+      // 24 окт 2026 (этап C.1): шлёт только сервер, после записи, — каждому участнику его список.
+      const { chatId, pinnedMessageIds } = msg.payload||{};
+      if(!isServerChatId(chatId)) break;
+      pinFrameTick(chatId);
+      applyServerPins(chatId, pinnedMessageIds);
       break;
     }
 
@@ -6117,6 +6123,7 @@ function wsHandleMessage(msg){
     case "chat.cleared": {
       const { chatId } = msg.payload;
       S.messages[chatId] = [];
+      pinFrameTick(chatId); if(S.pinnedByChat) S.pinnedByChat[chatId] = [];   // этап C.1: закрепы очищенной истории сервер снял
       const ch = S.chats.find(c => c.id === chatId);
       if(ch){ ch.prev = ""; }
       if(S.chat === chatId) renderMsgs();
@@ -6126,8 +6133,10 @@ function wsHandleMessage(msg){
 
     case "chat.deleted": {
       const { chatId } = msg.payload;
+      markChatGone(chatId);   // C.1.1: загрузка списка, начатая до удаления, чат не вернёт
       S.chats = S.chats.filter(c => c.id !== chatId); forgetChatDraft(chatId);
       delete S.messages[chatId];
+      if(S.pinnedByChat) delete S.pinnedByChat[chatId];
       if(S.chat === chatId) openChat(77777);
       renderChats(); saveState();
       break;
@@ -7276,6 +7285,7 @@ async function loadChatsFromDB(){
     // 7 окт 2026: что было в списке ДО запроса — только это можно убирать
     // (чат, появившийся, пока запрос шёл, сервер мог ещё не показать).
     const доЗапроса=new Set(S.chats.filter(c=>isServerChatId(c.id)).map(c=>c.id));
+    const pinSeqAtRequest=pinSeqNow();
     const data = await apiGet("/api/chats");
     if(!data || !Array.isArray(data.chats)) return;
     // Сервер отдаёт ВСЕ чаты, где человек участник (с архивом). Серверного
@@ -7283,7 +7293,9 @@ async function loadChatsFromDB(){
     // другого аккаунта со старого хранилища), удалённый или покинутый.
     {
       const есть=new Set(data.chats.map(c=>c.id));
-      const лишние=S.chats.filter(c=>isServerChatId(c.id) && доЗапроса.has(c.id) && !есть.has(c.id)).map(c=>c.id);
+      // C.1.1: и наоборот — чат, удалённый/покинутый после начала запроса и снова добавленный (вход по ссылке,
+      // приглашение), устаревший ответ не убирает.
+      const лишние=S.chats.filter(c=>isServerChatId(c.id) && доЗапроса.has(c.id) && !есть.has(c.id) && !chatDeleteBlocksReload(c.id, presenceSince)).map(c=>c.id);
       if(лишние.length){
         const убрать=new Set(лишние);
         S.chats=S.chats.filter(c=>!убрать.has(c.id));
@@ -7296,6 +7308,8 @@ async function loadChatsFromDB(){
     data.chats.forEach(dbChat => {
       // Пропускаем служебные чаты
       if(dbChat.id === 88888 || dbChat.id === 99999 || dbChat.id === 77777) return;
+      // C.1.1: чат удаляется с этого устройства (или удалён после начала запроса) — снимок устарел.
+      if(chatDeleteBlocksReload(dbChat.id, presenceSince)) return;
 
       // Достоверный список остальных участников чата — приходит прямо из chat_members,
       // не угадывается по истории сообщений (это и было источником бага с "путаницей" собеседника)
@@ -7305,8 +7319,10 @@ async function loadChatsFromDB(){
       if(otherUser && otherUser.presence) setPresence(otherUser.userId, otherUser.presence, {since:presenceSince});
       const displayName = otherUser?.name || dbChat.name || "Чат";
       // Закреплённые сообщения — раньше не хранились на сервере вообще
+      // 24 окт 2026 (этап C.1): список — серверные id; кадр chat.pin.updated, пришедший, пока шёл
+      // этот запрос, новее ответа — его не перетираем.
       if(!S.pinnedByChat) S.pinnedByChat={};
-      S.pinnedByChat[dbChat.id] = dbChat.pinned_message_ids || [];
+      if(!pinChangedSince(dbChat.id, pinSeqAtRequest)) S.pinnedByChat[dbChat.id] = (Array.isArray(dbChat.pinned_message_ids) ? dbChat.pinned_message_ids : []).filter(isDbMsgId);
 
       // Если чат уже есть локально — обновляем
       const existing = S.chats.find(c => c.id === dbChat.id);
@@ -7414,6 +7430,7 @@ async function loadChatsFromDB(){
     });
     saveState(); renderChats();
     { const открыт=S.chats.find(c=>c.id===S.chat); if(открыт) renderChatHeaderStatus(открыт); }
+    renderPinbar();   // этап C.1: закрепы открытого чата — с сервера
     loadBlockedUsers(); // после чатов — нужно сопоставлять по withUserId
     loadInvitesFromServer(); // приглашения — отдельным запросом, см. ниже
   } catch(e){ console.warn("loadChatsFromDB error:", e); }
@@ -7589,6 +7606,8 @@ function stateFromDbRow(r){
 function adoptSentMessage(m, row){
   if(!m || !row || !row.id) return;
   m.dbId=row.id;
+  // 24 окт 2026 (этап C.1): ответ — ровно такой, каким его записал сервер.
+  if("reply_to_id" in row){ const rt=isDbMsgId(row.reply_to_id) ? row.reply_to_id : null; m.replyToId=rt; if(!rt) delete m.reply; }
   if(!(Number(row.edit_revision)>0)){ m.rev=0; m.edited=!!row.edited_at; m.editedAt=row.edited_at||null; }
 }
 function applyMediaFields(m, st){
@@ -7802,6 +7821,10 @@ async function loadMessagesFromDB(chatId){
       const known=S.messages[chatId].find(m => m.dbId === dbMsg.id);
       if(known){
         if(unhideIfServerShows(known)) changedAnything=true;   // 22 окт 2026: см. unhideIfServerShows
+        // 24 окт 2026 (этап C.1): ссылка ответа — с сервера. Местный снимок цитаты, который на сервер
+        // так и не ушёл (сборки до ред. 26), снимается: собеседник его не видел.
+        { const rt=isDbMsgId(dbMsg.reply_to_id) ? dbMsg.reply_to_id : null;
+          if((known.replyToId||null)!==rt || (!rt && known.reply)){ known.replyToId=rt; if(!rt) delete known.reply; changedAnything=true; } }
         if(applyServerMsgState(chatId, stateFromDbRow(dbMsg))) changedAnything=true;
         continue;
       }
@@ -7860,7 +7883,8 @@ async function loadMessagesFromDB(chatId){
         edited: !!dbMsg.edited_at,
         editedAt: dbMsg.edited_at || null,
         rev: Number(dbMsg.edit_revision)||0,   // этап C: серверная ревизия правок
-        groupId: dbMsg.group_id || null
+        groupId: dbMsg.group_id || null,
+        replyToId: isDbMsgId(dbMsg.reply_to_id) ? dbMsg.reply_to_id : null   // этап C.1
       };
       // forwarded_author_name/forwarded_from_chat_* приходят пустыми с сервера,
       // если автор пересылки был скрыт (см. GET /api/messages/:chatId) — здесь
@@ -8028,7 +8052,7 @@ async function loadMessagesFromDB(chatId){
 
 function updateUserUI(){
   const u=S.user;
-  const initEl=el("uinit"); if(initEl){ if(u.avatar){initEl.innerHTML=`<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;}else{initEl.textContent=u.initials||"Я";} }
+  const initEl=el("uinit"); if(initEl){ if(safeImgSrc(u.avatar)){initEl.innerHTML=`<img src="${escHtml(safeImgSrc(u.avatar))}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;}else{initEl.textContent=u.initials||"Я";} }
   const nmEl=el("unm");
   if(nmEl){
     const base=u.name||(u.uname?"@"+u.uname:"dev_user");
@@ -8036,7 +8060,8 @@ function updateUserUI(){
     // Раньше здесь проверялась только VIP-корона, свою же собственную
     // синюю галочку верификации нигде не показывали вообще (даже себе)
     const verified=u.verified?verifiedBadgeHTML({verified:true}):"";
-    nmEl.innerHTML=base+vip+verified;
+    // 24 окт 2026 (C.1.1): имя — только как текст (раньше innerHTML: своё имя с разметкой исполнялось).
+    nmEl.innerHTML=escHtml(base)+vip+verified;
   }
   const devBtn=el("t-devp");
   if(devBtn) devBtn.style.display=isDevPanelAllowed()?"":"none";
@@ -8076,7 +8101,7 @@ function closeStore(){ popNavEntry(); }
 // закэшированную версию. Увеличивать/менять при каждом пуше, пока идёт
 // охота за багом со скачущей лентой. Убрать вместе с самим разделом, когда
 // баг подтверждённо пофикшен.
-const BUILD_TAG = "2026-10-22 выпуск 1, ред. 25 (локально): Android-приложение на WebView, групповая история — сообщения участника, которого вы заблокировали, в группе видны и после перезагрузки (снимается прежняя пометка «удалено у меня»), группа не прячется как личный чат автора; финальная проверка — подарок списывается только при отправке, повтор покупок без второго списания, реакции и голоса без повторов; защитная партия — отказ в отправке при блокировке и без права писать (без автоповторов), снятое отложенное сообщение, одиночное видео с зарезервированным местом; этап C — правка сообщений на сервере (текст и подписи, замена фото/видео/файла/музыки и позиций альбома, 48 часов, публикации каналов по праву), догон правок по журналу событий; правки 1.2 — плотная мозаика альбома (строки 2+3, 3+4…, обрезка миниатюр), окно «Удалить» больше не гаснет под меню, «?» и кружок выбора в альбоме на телефоне, меню «не отправлено» закрывается «назад», одно фото альбома — в своей пропорции, местные пометки контактов не затираются; правки 1.1 — контакты по списку сервера (без лишних «Добавить в контакты»), ссылки www.… и домен.зона в сообщениях; мост MonochromeAndroid (вход и выход, PIN-код и отпечаток, оплата и ссылки во внешнем браузере, загрузки); сайт и TWA без изменений; повторная отправка SMS-кода (кнопка после отсчёта, отсчёт по сроку), читаемые раскрывающиеся списки, инструкция для запрещённых уведомлений; уведомления на телефон — Web Push при свёрнутом и закрытом приложении, плашка «Включить уведомления», уведомление и в открытый чат свёрнутого приложения; поле номера — простая модель на libphonenumber-js (max), «+код» уходит из поля сразу, код без «+» одинаково при наборе и вставке, в поле только национальная часть, номер телефона по стране и «+код», Казахстан без «8», одна поддержка, онлайн только со слов сервера, «Выйти» завершает сессию, закрепление через сервер, уведомление открывает чат поверх всего, окно удаления — на свой чат, вложение своего чата, бренд Монохром, данные и черновики по аккаунтам, удаление и превью с сервера, баннер версии, номер только взаимным";
+const BUILD_TAG = "2026-10-24 выпуск 1, ред. 26 — ответы и закреп через сервер (локально): Android-приложение на WebView, ответы с цитатой и закреп сообщений через сервер (по серверному id — у собеседника, на втором устройстве и после перезагрузки; заглушки для незагруженного и удалённого; ответом могут быть фото, видео, файл, альбом, стикер, опрос, контакт и отложенное сообщение); групповая история — сообщения участника, которого вы заблокировали, в группе видны и после перезагрузки (снимается прежняя пометка «удалено у меня»), группа не прячется как личный чат автора; финальная проверка — подарок списывается только при отправке, повтор покупок без второго списания, реакции и голоса без повторов; защитная партия — отказ в отправке при блокировке и без права писать (без автоповторов), снятое отложенное сообщение, одиночное видео с зарезервированным местом; этап C — правка сообщений на сервере (текст и подписи, замена фото/видео/файла/музыки и позиций альбома, 48 часов, публикации каналов по праву), догон правок по журналу событий; правки 1.2 — плотная мозаика альбома (строки 2+3, 3+4…, обрезка миниатюр), окно «Удалить» больше не гаснет под меню, «?» и кружок выбора в альбоме на телефоне, меню «не отправлено» закрывается «назад», одно фото альбома — в своей пропорции, местные пометки контактов не затираются; правки 1.1 — контакты по списку сервера (без лишних «Добавить в контакты»), ссылки www.… и домен.зона в сообщениях; мост MonochromeAndroid (вход и выход, PIN-код и отпечаток, оплата и ссылки во внешнем браузере, загрузки); сайт и TWA без изменений; повторная отправка SMS-кода (кнопка после отсчёта, отсчёт по сроку), читаемые раскрывающиеся списки, инструкция для запрещённых уведомлений; уведомления на телефон — Web Push при свёрнутом и закрытом приложении, плашка «Включить уведомления», уведомление и в открытый чат свёрнутого приложения; поле номера — простая модель на libphonenumber-js (max), «+код» уходит из поля сразу, код без «+» одинаково при наборе и вставке, в поле только национальная часть, номер телефона по стране и «+код», Казахстан без «8», одна поддержка, онлайн только со слов сервера, «Выйти» завершает сессию, закрепление через сервер, уведомление открывает чат поверх всего, окно удаления — на свой чат, вложение своего чата, бренд Монохром, данные и черновики по аккаунтам, удаление и превью с сервера, баннер версии, номер только взаимным";
 const DEV_PANEL_PHONE = "9895977717";
 function isDevPanelAllowed(){
   return (S.user?.phone||"").replace(/\D/g,"").slice(-10) === DEV_PANEL_PHONE;
@@ -8096,7 +8121,7 @@ function renderSettingsScreen(){
   const u=S.user;
   if(el("priv-lastseen-value")) el("priv-lastseen-value").textContent=LAST_SEEN_LABEL[myLastSeenVisibility()];
   const sav=el("settings-av");
-  if(sav){ if(u.avatar)sav.innerHTML=`<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;else{sav.textContent=u.initials||"Я";sav.style.background=COLS[0];} }
+  if(sav){ if(safeImgSrc(u.avatar))sav.innerHTML=`<img src="${escHtml(safeImgSrc(u.avatar))}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;else{sav.textContent=u.initials||"Я";sav.style.background=COLS[0];} }
   if(el("settings-nm"))el("settings-nm").innerHTML=escHtml(u.name||"—")+(u.verified?verifiedBadgeHTML({verified:true}):"");
   if(el("settings-uname"))el("settings-uname").textContent=u.uname?"@"+u.uname:"";
   if(el("settings-bio"))el("settings-bio").textContent=u.bio||"";
@@ -9180,6 +9205,49 @@ function chatSelectArchive(){
 // вызов — для N выбранных чатов это было бы N всплывающих подтверждений
 // подряд). Вместо этого — то же ветвление "покинуть группу/канал, если не
 // владелец" / "удалить полностью", но с ОДНИМ общим подтверждением.
+// 24 окт 2026 (C.1.1): удаление чата на сервере с разбором ответа. Раньше ответ не читался: при отказе
+// (нет права, чат нельзя удалить — по нему есть материалы модерации) или сбое чат молча исчезал на этом
+// устройстве и возвращался при следующей загрузке списка, а черновик пропадал. Теперь: успех — черновик
+// забывается; отказ или сбой — тост с текстом сервера и список чатов с сервера (чат возвращается).
+// opts.noReload — список перезагрузит вызывающий (массовое удаление: один раз после всех запросов).
+// Возвращает true (удалён), false (отказ или сбой) или null (сменился аккаунт — ничего не делаем).
+// chatDeleteState: удаление «идёт» или время подтверждения. Загрузка списка, начатая раньше подтверждения
+// (возврат во вкладку, переподключение, перезагрузка после отказа другого удаления), могла взять снимок до
+// удаления — такой чат она обратно не добавляет (loadChatsFromDB).
+// Объявлено через var и функцию: loadChatsFromDB (выше по файлу) может вызваться раньше этой строки.
+var _chatDeleteState;
+function chatDeleteState(){ return _chatDeleteState || (_chatDeleteState=new Map()); }
+function chatDeleteBlocksReload(id, since){ const s=chatDeleteState().get(id); return s==="pending" || (typeof s==="number" && s>since); }
+// Чат убран с этого устройства по событию сервера (удалён владельцем, вас исключили) или подтверждённому выходу.
+function markChatGone(id){ chatDeleteState().set(id, performance.now()); }
+// Выход из чата: пока запрос идёт — «идёт», успех — markChatGone, отказ или сбой — учёт снят (чат вернётся при
+// следующей загрузке списка). true — вышли, false — нет, null — сменился аккаунт.
+function trackChatLeave(chatId){
+  chatDeleteState().set(chatId, "pending");
+  return apiDelete("/api/chats/"+chatId+"/leave").then(d=>{ if(d && d.success){ markChatGone(chatId); return true; } chatDeleteState().delete(chatId); return false; },
+    e=>{ chatDeleteState().delete(chatId); if(e && e.accountChanged) return null; console.warn("leave chat error:",e); return false; });
+}
+async function serverDeleteChat(chatId, memberIds, opts){
+  let d=null;
+  chatDeleteState().set(chatId, "pending");
+  try{ d=await apiDelete("/api/chats/"+chatId); }catch(e){ if(e && e.accountChanged){ chatDeleteState().delete(chatId); return null; } d=null; }
+  if(d && d.success){
+    chatDeleteState().set(chatId, performance.now());
+    // Загрузка, снимок которой взят до удаления, могла успеть вернуть чат — убираем его снова.
+    if(S.chats.some(c=>c.id===chatId)){
+      S.chats=S.chats.filter(c=>c.id!==chatId); delete S.messages[chatId]; if(S.pinnedByChat) delete S.pinnedByChat[chatId];
+      if(S.chat===chatId) openChat(77777);
+      renderChats(); saveState();
+    }
+    forgetChatDraft(chatId);
+    wsSendReliable({type:"chat.delete", payload:{chatId, memberIds}});
+    return true;
+  }
+  chatDeleteState().delete(chatId);   // отказ — чат должен вернуться при перезагрузке списка
+  showToast("❌ "+((d && d.error) || "Не удалось удалить чат — нет связи с сервером"));
+  if(!(opts && opts.noReload)){ try{ await loadChatsFromDB(); }catch(e){} }
+  return false;
+}
 function chatSelectDelete(){
   const ids=[...S.selectedChats];
   const targets=ids.map(id=>S.chats.find(c=>c.id===id)).filter(ch=>ch && !isSystemChat(ch.id));
@@ -9193,22 +9261,24 @@ function chatSelectDelete(){
   if(!confirm(msg)) return;
 
   const wasCurrentChatDeleted=targets.some(ch=>ch.id===S.chat);
+  const jobs=[];
   targets.forEach(ch=>{
     const chatId=ch.id;
     const isRealChat=typeof chatId==="string" && chatId.length>10;
     const isGroupOrChannel=ch.type==="groups"||ch.type==="channels";
     if(isGroupOrChannel && !canModerateChat(ch)){
       S.chats=S.chats.filter(c=>c.id!==chatId); forgetChatDraft(chatId); delete S.messages[chatId];
-      if(isRealChat) apiDelete("/api/chats/"+chatId+"/leave").catch(e=>console.warn("leave chat error:",e));
+      if(isRealChat) jobs.push(trackChatLeave(chatId));
     } else {
       const memberIds=getChatMemberIds(ch);
-      S.chats=S.chats.filter(c=>c.id!==chatId); forgetChatDraft(chatId); delete S.messages[chatId];
-      if(isRealChat){
-        apiDelete("/api/chats/"+chatId).catch(e=>console.warn("delete chat error:",e));
-        wsSendReliable({type:"chat.delete", payload:{chatId, memberIds}});
-      }
+      S.chats=S.chats.filter(c=>c.id!==chatId); delete S.messages[chatId];
+      if(isRealChat) jobs.push(serverDeleteChat(chatId, memberIds, {noReload:true}));
+      else forgetChatDraft(chatId);
     }
   });
+  // C.1.1: при отказе список с сервера — один раз, когда завершились ВСЕ удаления и выходы. Перезагрузка
+  // сразу после первого отказа могла вернуть в список чат, удаление которого ещё не дошло до сервера.
+  if(jobs.length) Promise.all(jobs).then(r=>{ if(r.some(x=>x===false)) loadChatsFromDB().catch(()=>{}); });
   saveState();
   if(wasCurrentChatDeleted) openChat(77777);
   showToast(`🗑️ Удалено/покинуто чатов: ${targets.length}`);
@@ -9665,6 +9735,34 @@ function retryFailedMsg(msgId){
   const chatId=S.chat;
 
   if(m._retryAtt){ retryAttachmentMsg(m, chatId, ch, memberIds); return; }
+  // C.1.1: в локальном чате (Избранное и т. п.) обычная отправка «не отправлено» не ставит — это копия пересылки
+  // (в том числе старая, со скрытым автором, без отметок). Она местная, в сеть ей уходить незачем.
+  if(!isServerChatId(chatId)){ renderMsgs(); saveState(); return; }
+  // Источник — локальный чат (Избранное, демо-канал): на сервере его нет и не будет. Как и раньше, повтор
+  // отправляет содержимое новым сообщением (ветки ниже, в E2E-чате — шифротекстом), без «Переслано от».
+  const localFwd=!!(m._fwdSrc && !m._fwdSrc.dbId && !isServerChatId(m._fwdSrc.chatId));
+  // C.1.1: пересылка повторяется пересылкой (тот же clientMsgId, содержимое сервер берёт из исходной
+  // строки). Раньше она уходила в текстовую ветку: вложение терялось, а в E2E-чате у пересланного фото
+  // без подписи шифровалась пустая строка и записывалось пустое сообщение.
+  if(m._fwdSrc && !localFwd){
+    const src=m._fwdSrc, list=S.messages[src.chatId]||[];
+    const srcM=src.dbId ? list.find(x=>x.dbId===src.dbId) : list.find(x=>x.id===src.localId);
+    // Пересылка зашифрованного сообщения несёт его расшифрованный текст (сервер шифротекст не
+    // пересылает) — повтор её не отправляет: открытый текст E2E-чата не уйдёт в сеть ещё раз.
+    if(src.e2e || (srcM && (srcM.e2e || srcM.e2eIntent))){
+      m.failed=true; renderMsgs(); saveState();
+      showToast("🔒 Пересылка зашифрованного сообщения повторно не отправляется");
+      return;
+    }
+    // Источник пересылали, когда он сам ещё не дошёл до сервера: пересылаем, если он с тех пор отправлен.
+    if(!src.dbId){
+      if(srcM && srcM.dbId) src.dbId=srcM.dbId;
+      else { m.failed=true; renderMsgs(); saveState(); showToast("Исходное сообщение ещё не отправлено — перешлите его заново"); return; }
+    }
+    renderMsgs(); saveState();
+    sendForwardedMsg(m, srcM || {...m, dbId:src.dbId}, chatId, ch, src.hide, src.chatId).then(()=>{ if(S.chat===chatId) renderMsgs(); });
+    return;
+  }
   // 7 сен 2026: во все четыре тела запроса добавлен chatId. Без него сервер
   // отвечал 400 "chatId обязателен" (routes/messages.js), то есть кнопка
   // "Отправить повторно" НИ РАЗУ не срабатывала ни для стикера, ни для опроса,
@@ -9683,8 +9781,44 @@ function retryFailedMsg(msgId){
   }
   renderMsgs(); saveState();
   if(m.t==="out"){
+    if(!m.clientMsgId) m.clientMsgId=genClientMsgId();
+    // 24 окт 2026 (C.1.1): в E2E-чате (или если сообщение задумано зашифрованным) — только шифротекст.
+    // Раньше ручной повтор слал расшифрованный m.tx с типом text: открытый текст уходил на сервер,
+    // собеседнику, в push и в превью чата.
+    // Копия пересылки без источника (сохранена до этой сборки) или вложение без данных для повтора —
+    // текстом не повторяется ни в каком чате: вложение потерялось бы, а пересланный текст зашифрованного
+    // чата ушёл бы открытым. Свои вложения всегда несут _retryAtt и сюда не доходят.
+    if((m.fwd && !localFwd) || m.img || m.video || m.videoCircle || m.voice || m.audio || m.file || m.contact){
+      m.failed=true; renderMsgs(); saveState();
+      showToast("Это сообщение не отправить повторно — перешлите или отправьте его заново");
+      return;
+    }
+    if(m.e2e || m.e2eIntent || (ch && ch.e2eActive)){ retryE2EText(m, chatId, ch, memberIds); return; }
     sendTextToServer(m, m.tx, chatId, ch, m.time, memberIds);
   }
+}
+// Повтор зашифрованного текста: тот же путь, что первая отправка (encryptE2EText → sendTextToServer с
+// типом e2e). Шифрование каждый раз новое, со свежим случайным IV под текущим общим ключом: старый
+// шифротекст не хранится и не переотправляется (ключ мог смениться). clientMsgId прежний: если первая
+// попытка уже записана, сервер вернёт её, второго сообщения не будет.
+// Ключа нет — сообщение остаётся «не отправлено», в сеть не уходит ничего. Сообщение без текста
+// текстом не повторяется — иначе ушёл бы пустой шифротекст (вложения отсеяны в retryFailedMsg).
+async function retryE2EText(m, chatId, ch, memberIds){
+  m.e2eIntent=true;
+  if(!hasRealText(m.tx)){
+    m.failed=true; renderMsgs(); saveState();
+    showToast("Это сообщение не отправить повторно — перешлите или отправьте его заново");
+    return;
+  }
+  let enc=null;
+  try{ enc=await encryptE2EText(chatId, m.tx); }catch(e){ enc=null; }
+  if(!enc){
+    m.failed=true; renderMsgs(); saveState();
+    showToast("🔒 Ключа шифрования на этом устройстве нет — сообщение не отправлено. Включите шифрование заново");
+    return;
+  }
+  m.e2e=true; saveState();
+  sendTextToServer(m, enc, chatId, ch, m.time, memberIds, "e2e");
 }
 
 // Общий повтор для стикеров/опросов/контактов/подарков — просто заново
@@ -9698,7 +9832,7 @@ const AUTO_RETRY_DELAYS=[1500, 3000, 6000];
 // services/chatAccess.js. Повторять бессмысленно: сообщение сразу «не отправлено», один тост
 // с текстом сервера (кто кого заблокировал, он не говорит).
 // 22 окт 2026: и отказы подарка — экземпляра нет в коллекции, неизвестный подарок, отложенный подарок.
-const SEND_REFUSED_CODES=new Set(["blocked","not_member","chat_blocked","channel_readonly","restricted","muted","voice_blocked","gift_not_owned","gift_invalid","gift_not_schedulable"]);
+const SEND_REFUSED_CODES=new Set(["sticker_invalid","reply_invalid","blocked","not_member","chat_blocked","channel_readonly","restricted","muted","voice_blocked","gift_not_owned","gift_invalid","gift_not_schedulable"]);
 function sendRefused(d){ return !!(d && !d.success && SEND_REFUSED_CODES.has(d.code)); }
 function sendRefusedError(d){ const e=new Error((d && d.error) || "Сообщение не отправлено"); e.sendRefused=true; e.code=d && d.code; return e; }
 // Один и тот же отказ (альбом, пересылка нескольких) — один тост, а не по тосту на каждое сообщение.
@@ -9752,7 +9886,7 @@ async function retrySimpleMsg(m, chatId, ch, memberIds, postBody, wsExtra){
   // здесь же и запоминаем на m, а не на каждый повторный вызов заново.
   if(!m.clientMsgId) m.clientMsgId=genClientMsgId();
   await attemptWithAutoRetry(m, async ()=>{
-    const d=await apiPost("/api/messages", {...postBody, clientMsgId:m.clientMsgId}, true);
+    const d=await apiPost("/api/messages", {...postBody, replyToId: replyIdForPost(m), clientMsgId:m.clientMsgId}, true);
     if(!d || !d.success){ if(sendRefused(d)) throw sendRefusedError(d); return false; }
     const dbId=d?.message?.id||null;
     if(dbId){ adoptSentMessage(m, d.message); saveState(); }
@@ -9807,7 +9941,7 @@ async function retryAttachmentMsg(m, chatId, ch, memberIds){
     // одиночных вложений m.groupId всегда undefined, apiPost/wsSend просто
     // не понесут это поле вообще, ничего не меняется для существующих
     // одиночных фото/видео/аудио/файлов/голосовых/видео-кружочков.
-    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:имяФайла,fileSize:размерФайла,spoiler:!!att.spoiler,waveform:att.waveform||null,groupId:m.groupId||undefined,clientMsgId:m.clientMsgId},true);
+    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:data.url,mediaType:att.kind,fileName:имяФайла,fileSize:размерФайла,spoiler:!!att.spoiler,waveform:att.waveform||null,groupId:m.groupId||undefined,replyToId:replyIdForPost(m),clientMsgId:m.clientMsgId},true);
     if(!d || !d.success){ if(sendRefused(d)) throw sendRefusedError(d); return false; }
     const dbId=d?.message?.id||null;
     if(dbId){ adoptSentMessage(m, d.message); saveState(); }
@@ -11277,9 +11411,10 @@ function renderMsgs(){
     // Чекбокс для режима выделения — для фотоальбома НЕ рисуем общий на всю
     // строку, у каждого фото в сетке свой собственный (см. .grp-cell-check)
     if(m.t!=="date"&&m.t!=="sys"&&!isGrpImg)h+=`<div class="msel-check">${selBadge(m.id)}</div>`;
-    if(m.t!=="out" && !(m.t==="gift"&&m.out) && !(m.t==="sk"&&m.out))h+=`<div class="mav" style="background:${m.frAvatar?"none":colBg(m.col||0)};padding:0;overflow:hidden${groupsWithPrev?";visibility:hidden":""}">${m.frAvatar?`<img src="${m.frAvatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:(m.fr?m.fr[0]:"?")}</div>`;
+    if(m.t!=="out" && !(m.t==="gift"&&m.out) && !(m.t==="sk"&&m.out))h+=`<div class="mav" style="background:${safeImgSrc(m.frAvatar)?"none":colBg(m.col||0)};padding:0;overflow:hidden${groupsWithPrev?";visibility:hidden":""}">${safeImgSrc(m.frAvatar)?`<img src="${escHtml(safeImgSrc(m.frAvatar))}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:escHtml(m.fr?String(m.fr)[0]:"?")}</div>`;
     if(m.t==="sk"){
-      h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="msgTouchStart(event,${m.id},this)" ontouchend="msgTouchEnd(event,${m.id})" ontouchmove="msgTouchMove(event)">${isStickerImg(m.sk)?`<img src="${m.sk}" style="width:150px;height:150px;object-fit:contain">`:m.sk}</div>${m.t==="sk"&&(m.failed||m.out)?`<div class="mt" style="justify-content:center">${m.time||""}${m.out?ticksHTML(m):""}</div>`:""}`;
+      const skRq=replyQuoteOf(S.chat, m, curCh);
+      h+=`<div class="bub skbub" oncontextmenu="showCtx(event,${m.id})" ontouchstart="msgTouchStart(event,${m.id},this)" ontouchend="msgTouchEnd(event,${m.id})" ontouchmove="msgTouchMove(event)">${skRq?replyQuoteHTML(m,skRq):""}${stickerHTML(m.sk,"width:150px;height:150px;object-fit:contain")}</div>${m.t==="sk"&&(m.failed||m.out)?`<div class="mt" style="justify-content:center">${m.time||""}${m.out?ticksHTML(m):""}</div>`:""}`;
     }else if(m.t==="gift"){
       const rc={common:"var(--tx2)",rare:"var(--acc2)",epic:"var(--gr)",legendary:"var(--am)"};
       // Анимация появления — один раз на подарок, а не на каждый рендер ленты.
@@ -11309,7 +11444,7 @@ function renderMsgs(){
       // канал (не конкретный админ, который нажал "отправить" — как у
       // "Топор+" в референсе: имя канала текстом над каждым постом).
       if(m.t!=="out" && curCh?.type==="groups" && m.frName && !m.asChannel && !groupsWithPrev){
-        bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${m.frNameColor||colSolid(m.col||0)}">${escHtml(m.frName)}${m.frStatusEmoji?' '+escHtml(m.frStatusEmoji):""}</div>`;
+        bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${safeColor(m.frNameColor)||colSolid(m.col||0)}">${escHtml(m.frName)}${m.frStatusEmoji?' '+escHtml(m.frStatusEmoji):""}</div>`;
       } else if(m.t!=="out" && curCh?.type==="channels" && !m.asChannel && !groupsWithPrev){
         bc+=`<div class="sender-name-tag" style="font-size:12.5px;font-weight:700;margin-bottom:3px;color:${colSolid(m.col||0)}">${escHtml(curCh.nm||"Канал")}</div>`;
       }
@@ -11326,7 +11461,7 @@ function renderMsgs(){
           : `startChatWithUser('${m.fwd.fromId}','${escHtml(m.fwd.fromName).replace(/'/g,"\\'")}',${m.fwd.fromCol||0})`;
         bc+=`<div class="as-channel-tag" style="opacity:.8${clickable?";cursor:pointer":""}"${clickable?` onclick="event.stopPropagation();${clickJS}"`:""}>↪️ Переслано от <b style="margin-left:3px${clickable?";text-decoration:underline":""}">${escHtml(m.fwd.fromName)}</b></div>`;
       }
-      if(m.reply)bc+=`<div class="rprev"><div class="rprevnm">${escHtml(m.reply.fr)}</div><div class="rprevtx">${escHtml(m.reply.tx)}</div></div>`;
+      { const rm=isGrpImg ? (groupMembers.find(g=>g.replyToId||g.reply)||m) : m; const rq=replyQuoteOf(S.chat, rm, curCh); if(rq) bc+=replyQuoteHTML(rm, rq); }
       if(m.img && !isGrpImg){
         const isSp=m.spoiler && !m.spoilerRevealed;
         // 30 июля 2026: .msg-img-wrap сидел внутри паддинга .bub со всех 4
@@ -11480,6 +11615,7 @@ function renderMsgs(){
     row.innerHTML=h; c.appendChild(row);
   });
   emojifyEl(c);
+  renderPinbar();   // 24 окт 2026 (этап C.1)
   mediaRestoreAfterRender(c, живыеМедиа);
   vcAfterRender();
   msgsDwellKick();   // О3: лента перерисована — запускаем отсчёт выдержки на экране
@@ -12068,17 +12204,14 @@ function deleteGroupFromSettings(){
   const memberIds = getChatMemberIds(ch);
 
   closeM("m-chsettings");
-  S.chats = S.chats.filter(c => c.id !== chatId); forgetChatDraft(chatId);
+  S.chats = S.chats.filter(c => c.id !== chatId); if(!isRealChat) forgetChatDraft(chatId);
   delete S.messages[chatId];
   saveState();
   openChat(77777);
   renderChats();
   showToast(`🗑️ ${isChannel?"Канал":"Группа"} удалена`);
 
-  if(isRealChat){
-    apiDelete("/api/chats/"+chatId).catch(e=>console.warn("delete chat error:",e));
-    wsSendReliable({type:"chat.delete", payload:{chatId, memberIds}});
-  }
+  if(isRealChat) serverDeleteChat(chatId, memberIds);
 }
 
 function openJoinByLink(){
@@ -12470,7 +12603,7 @@ function updateSendAsUI(){
       btn.classList.add("active");
     }
   } else {
-    btn.innerHTML=`<div class="sas-av" style="background:${colBg(S.user?.col||0)}">${(S.user?.name||"Я")[0]}</div><span>как я</span>`;
+    btn.innerHTML=`<div class="sas-av" style="background:${colBg(S.user?.col||0)}">${escHtml(String(S.user?.name||"Я")[0])}</div><span>как я</span>`;
     btn.classList.remove("active");
   }
 }
@@ -12790,7 +12923,7 @@ async function sendMsg(){
       msg.asChannel={id:chan.id, nm:chan.nm, ini:chan.ini, col:chan.col};
     }
   }
-  if(S.reply){msg.reply={fr:S.reply.fr,tx:S.reply.tx};cancelReply();}
+  takeReplyInto(msg);
   S.messages[S.chat].push(msg);
   const ch=S.chats.find(c=>c.id===S.chat);
   if(ch){ch.prev=txt;ch.time=tm;ch.lastTs=Date.now();clearChatDraft(ch.id);}
@@ -12804,9 +12937,12 @@ async function sendMsg(){
   // чтобы у самого отправителя он показывался как обычно.
   let sendType="text", sendText=txt;
   if(ch?.e2eActive){
+    // C.1.1: сообщение задумано зашифрованным — повтор (в том числе ручной) не уйдёт открытым текстом.
+    msg.e2eIntent=true;
     const enc=await encryptE2EText(chatId, txt);
     if(enc){
-      sendType="e2e"; sendText=enc; msg.e2e=true; renderMsgs();
+      sendType="e2e"; sendText=enc; msg.e2e=true;
+      renderMsgs();
     } else {
       // ⚠️ Важно: ch.e2eActive говорит "должно быть зашифровано", но ключа
       // в IndexedDB почему-то нет (например, очистили данные браузера) —
@@ -12848,11 +12984,18 @@ async function sendTextToServer(msg, txt, chatId, ch, tm, memberIds, msgType){
   let blockedFromRecipientId=null;
   if(typeof chatId === "string" && chatId.length > 10){
     const ok=await attemptWithAutoRetry(msg, async ()=>{
-      const d=await apiPost("/api/messages", {chatId, text: txt, type: msgType, asChannel: msg.asChannel||null, clientMsgId: msg.clientMsgId}, true);
+      const d=await apiPost("/api/messages", {chatId, text: txt, type: msgType, asChannel: msg.asChannel||null, replyToId: replyIdForPost(msg), clientMsgId: msg.clientMsgId}, true);
       if(!d || !d.success){ if(sendRefused(d)) throw sendRefusedError(d); return false; }
       dbId=d?.message?.id||null;
       blockedFromRecipientId=d?.blockedFromRecipientId||null;
       if(dbId){ adoptSentMessage(msg, d.message); }
+      // C.1.1: зашифровано ли сообщение — по записи сервера. Повтор того же clientMsgId возвращает ПЕРВУЮ
+      // запись; если она уже легла открытым текстом (до включения шифрования), значок 🔒 был бы ложным,
+      // а следующая правка положила бы шифротекст в строку типа text.
+      if(dbId && msg.e2e && d.message.type && d.message.type!=="e2e"){
+        msg.e2e=false; msg.e2eIntent=false; renderMsgs();
+        showToast("⚠️ Это сообщение уже было отправлено без шифрования");
+      }
       // 24 сен 2026: время подтверждённого сообщения берём с СЕРВЕРА (created_at),
       // а не с часов телефона. Раньше в ленте стояло местное время отправителя,
       // а после перезагрузки — серверное (см. загрузку истории, там ts и time
@@ -12918,12 +13061,16 @@ async function confirmScheduleSend(){
   const txt=getInputText();
   if(!hasRealText(txt)) return;
   const chatId=S.chat, owner=draftOwner();
+  const rep={}, savedReply=S.reply; takeReplyInto(rep, chatId);   // этап C.1: отложенный ответ
   closeM("m-schedule");
   setInputText(""); aResize(el("minput"));
-  const d=await apiPost("/api/messages", {chatId, text:txt, type:"text", scheduledAt: when.toISOString(), clientMsgId: genClientMsgId()}, true);
+  let d=null;
+  try{ d=await apiPost("/api/messages", {chatId, text:txt, type:"text", replyToId: replyIdForPost(rep), scheduledAt: when.toISOString(), clientMsgId: genClientMsgId()}, true); }
+  catch(e){ d={error:"Нет связи с сервером"}; }   // 24 окт 2026: обрыв сети — текст и ответ возвращаются, как при отказе
   if(!d || !d.success){
     showToast("❌ "+(d&&d.error||"Не удалось запланировать"));
     restoreComposerText(chatId, txt, owner); // возвращаем текст своему чату (и своему аккаунту), чтобы не потерялся
+    restoreReply(savedReply, chatId, owner);
     return;
   }
   showToast("🕓 Запланировано на "+when.toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}));
@@ -12937,6 +13084,7 @@ async function scheduleAttachmentSend(when){
   if(att && att.chatId!==undefined && att.chatId!==S.chat){ cancelPendingAttach(); closeM("m-schedule"); showToast("❌ Вложение было выбрано в другом чате — выберите заново"); return; }
   const caption=getInputText();
   const chatId=S.chat, owner=draftOwner();
+  const rep={}, savedReply=S.reply; takeReplyInto(rep, chatId);   // этап C.1: отложенный ответ
   closeM("m-schedule");
   pendingAttach=null; renderAttachPreview();
   setInputText(""); aResize(el("minput"));
@@ -12950,11 +13098,12 @@ async function scheduleAttachmentSend(when){
     if(!res.ok||!upData.success) throw new Error(upData.error||"Не удалось загрузить файл");
     // Пока грузился файл, сменился аккаунт (сессия кончилась, вошёл другой) —
     // публиковать чужим токеном нельзя: подпись — в черновик владельца.
-    if(draftOwner()!==owner){ restoreComposerText(chatId, caption, owner); showToast("Отложенная отправка отменена: аккаунт сменился"); return; }
-    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:upData.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,scheduledAt:when.toISOString(),clientMsgId:genClientMsgId()},true);
+    if(draftOwner()!==owner){ restoreComposerText(chatId, caption, owner); showToast("Отложенная отправка отменена: аккаунт сменился"); return; }   // ответ чужого аккаунта не возвращаем
+    const d=await apiPost("/api/messages",{chatId,text:caption||"",mediaUrl:upData.url,mediaType:att.kind,fileName:att.file.name,fileSize:att.file.size||0,spoiler:!!att.spoiler,waveform:att.waveform||null,replyToId:replyIdForPost(rep),scheduledAt:when.toISOString(),clientMsgId:genClientMsgId()},true);
     if(!d || !d.success){
       showToast("❌ "+(d&&d.error||"Не удалось запланировать"));
       if(restoreComposerText(chatId, caption, owner)){ pendingAttach=att; renderAttachPreview(); }
+      restoreReply(savedReply, chatId, owner);
       return;
     }
     showToast("🕓 Запланировано на "+when.toLocaleString("ru",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}));
@@ -12962,6 +13111,7 @@ async function scheduleAttachmentSend(when){
   }catch(e){
     showToast("❌ Нет связи с сервером");
     if(restoreComposerText(chatId, caption, owner)){ pendingAttach=att; renderAttachPreview(); }
+    restoreReply(savedReply, chatId, owner);
   }
 }
 // ⚠️ 5 окт 2026. Текст возвращается после await — человек мог уже уйти в
@@ -13047,6 +13197,7 @@ async function sendSticker(sk){
   if(!S.messages[S.chat])S.messages[S.chat]=[];
   const tm=now(); const id=nextId();
   const localMsg={id,t:"sk",sk,out:true,time:tm};
+  takeReplyInto(localMsg);   // 24 окт 2026 (этап C.1): стикер тоже может быть ответом
   S.messages[S.chat].push(localMsg);
   const ch=S.chats.find(c=>c.id===S.chat);
   if(ch){ch.prev="🐱 Стикер"+(isStickerImg(sk)?"":" "+sk);ch.time=tm;ch.lastTs=Date.now();}
@@ -13271,6 +13422,7 @@ async function submitPoll(){
   const tm=now();
   if(!S.messages[chatId])S.messages[chatId]=[];
   const msg={id:nextId(),t:"out",time:tm,ts:Date.now(),read:false,tx:"",poll};   // ts — W2, 24 сен 2026
+  takeReplyInto(msg, chatId);   // этап C.1: опрос тоже может быть ответом
   S.messages[chatId].push(msg);
   const ch=S.chats.find(c=>c.id===chatId);
   if(ch){ch.prev="📊 "+q;ch.time=tm;ch.lastTs=Date.now();}
@@ -13379,6 +13531,7 @@ async function sendContactMsg(userId,nm,col,uname){
   if(!S.messages[chatId])S.messages[chatId]=[];
   const contact={userId,nm,col,uname};
   const msg={id:nextId(),t:"out",time:tm,ts:Date.now(),read:false,tx:"",contact};   // ts — W2, 24 сен 2026
+  takeReplyInto(msg, chatId);   // этап C.1: контакт тоже может быть ответом
   S.messages[chatId].push(msg);
   const ch=S.chats.find(c=>c.id===chatId);
   if(ch){ch.prev="👤 "+nm;ch.time=tm;ch.lastTs=Date.now();}
@@ -14242,7 +14395,7 @@ function sendRecordedMedia({file, kind, duration, waveform, previewUrl}){
   msg._retryCaption="";
   if(kind==="voice") msg.voice={url:previewUrl, duration, waveform:waveform||null, size:file.size||0};
   else msg.videoCircle={url:previewUrl, duration};
-  if(S.reply){ msg.reply={fr:S.reply.fr, tx:S.reply.tx}; cancelReply(); }
+  takeReplyInto(msg);
   S.messages[chatId].push(msg);
   const ch=S.chats.find(c=>c.id===chatId);
   if(ch){ msg._chSnap={prev:ch.prev, time:ch.time, lastTs:ch.lastTs}; ch.prev = kind==="voice" ? "🎤 Голосовое" : "⭕ Видео-кружочек"; ch.time=tm; ch.lastTs=Date.now(); }
@@ -14830,7 +14983,7 @@ async function sendWithAttachment(caption){
   else if(att.kind==="voice") msg.voice={url:att.previewUrl,duration:att.duration||0,waveform:att.waveform||null,size:att.file?.size||0};
   else if(att.kind==="videoCircle") msg.videoCircle={url:att.previewUrl,duration:att.duration||0};
   else msg.file={name:att.file.name,size:att.file.size};
-  if(S.reply){msg.reply={fr:S.reply.fr,tx:S.reply.tx};cancelReply();}
+  takeReplyInto(msg);
   S.messages[chatId].push(msg);
   const ch=S.chats.find(c=>c.id===chatId);
   const label=att.kind==="image"?"📷 Фото":(att.kind==="video"?"🎥 Видео":(att.kind==="videoCircle"?"⭕ Видео-кружочек":(att.kind==="voice"?"🎤 Голосовое":(att.kind==="audio"?"🎵 "+att.file.name:"📎 "+att.file.name))));
@@ -14871,7 +15024,7 @@ async function sendImageGroup(caption){
     m._retryCaption=i===0?(caption||""):"";
     return m;
   });
-  if(S.reply){ msgs[0].reply={fr:S.reply.fr,tx:S.reply.tx}; cancelReply(); }
+  takeReplyInto(msgs[0]);
   S.messages[chatId].push(...msgs);
   if(ch){ ch.prev=caption?("🖼 "+items.length+" фото · "+caption):("🖼 "+items.length+" фото"); ch.time=tm; ch.lastTs=Date.now(); clearChatDraft(ch.id); }
   renderMsgs(); renderChats(); saveState();
@@ -15014,10 +15167,11 @@ function renderMP(mode){
   if(mode==="emoji"){ renderEmojiPanel(); return; }
   if(mode==="emoji_old"){ c.innerHTML=`<div class="egrid">${EMOJIS.map(e=>`<div class="epem" onclick="insEmoji('${e}')">${e}</div>`).join("")}</div>`; }
   else{
-    c.innerHTML=`<div class="spwrap">${S.packs.map(p=>{
+    // C.1.1: название, цена и стикеры набора — только экранированными, стикер в onclick — по номеру.
+    c.innerHTML=`<div class="spwrap">${S.packs.map((p,pi)=>{
       const owned=p.free||S.owned.includes(p.id)||S.vip?.active;
-      const stks=p.stickers.map(s=>`<div class="sitem${owned?"":' lk'}" ${owned?`onclick="sendSticker('${s}')"`:""}>${isStickerImg(s)?`<img src="${s}" style="width:100%;height:100%;object-fit:contain">`:s}</div>`).join("");
-      return`<div><div class="sphdr"><div class="spnm">${p.nm}</div>${owned?'<span style="font-size:10px;color:var(--gr)">✓</span>':`<div class="splk" onclick="openStkModal(${p.id})">💎 ${p.price} CR</div>`}</div><div class="srow">${stks}</div></div>`;
+      const stks=(Array.isArray(p.stickers)?p.stickers:[]).map((s,si)=>`<div class="sitem${owned?"":' lk'}" ${owned?`onclick="sendPackSticker(${pi},${si})"`:""}>${stickerHTML(s,"width:100%;height:100%;object-fit:contain")}</div>`).join("");
+      return`<div><div class="sphdr"><div class="spnm">${escHtml(String(p.nm??""))}</div>${owned?'<span style="font-size:10px;color:var(--gr)">✓</span>':`<div class="splk" onclick="openStkModal(S.packs[${pi}].id)">💎 ${escHtml(String(p.price??""))} CR</div>`}</div><div class="srow">${stks}</div></div>`;
     }).join("")}</div>`;
   }
 }
@@ -15069,7 +15223,103 @@ function insEmoji(e){
 }
 
 // ── REPLY / EDIT ──────────────────────────────────────────────
-function setReply(id){ const m=(S.messages[S.chat]||[]).find(x=>x.id===id);if(!m||m.t==="date"||m.t==="sys")return; S.reply={id,fr:m.frName||m.fr||"Вы",tx:m.tx||"🎙"}; el("rsnm").textContent=S.reply.fr; el("rstx").textContent=S.reply.tx; el("rstrip").classList.add("on"); el("minput").focus(); }
+// 24 окт 2026 (этап C.1): ответ с цитатой — через сервер (правило 16). На сервер уходит только
+// replyToId — серверный id (dbId) исходного сообщения ЭТОГО чата; текст и автора цитаты каждое
+// устройство берёт из своей ленты (replyQuoteOf). Раньше цитата жила только на устройстве
+// отвечающего (m.reply): собеседник, второе устройство и перезагрузка её не видели никогда.
+// Местный номер m.id на сервер не уходит: он у каждого устройства свой.
+function setReply(id){
+  const m=(S.messages[S.chat]||[]).find(x=>x.id===id);if(!m||m.t==="date"||m.t==="sys")return;
+  const ch=S.chats.find(c=>c.id===S.chat);
+  // Своё сообщение, которое сервер ещё не подтвердил, — у него ещё нет dbId, ссылаться не на что.
+  if(isServerChatId(S.chat) && !isDbMsgId(m.dbId)){ showToast("⏳ Сообщение ещё отправляется — ответить можно после отправки"); return; }
+  S.reply={id, db:isServerChatId(S.chat)?m.dbId:null, chat:S.chat, fr:replyAuthorOf(m, ch), tx:replyPreviewOf(m)};
+  el("rsnm").textContent=S.reply.fr; el("rstx").textContent=S.reply.tx; el("rstrip").classList.add("on"); el("minput").focus();
+}
+// UUID с сервера — id сообщения в базе (dbId). Та же форма, что у id серверного чата.
+function isDbMsgId(v){ return isServerChatId(v); }
+// Сообщение чата по серверному id — только по dbId, местный номер сюда не подходит.
+function findMsgByDbId(chatId, dbId){ return isDbMsgId(dbId) ? ((S.messages[chatId]||[]).find(x=>x.dbId===dbId)||null) : null; }
+// Подпись автора в цитате (и в полосе «ответ»): своё — «Вы», пост канала — сам канал.
+function replyAuthorOf(o, ch){
+  if(msgIsOut(o)) return "Вы";
+  if(o.asChannel) return String(o.asChannel.nm||"").trim()||"Канал";
+  if(ch && ch.type==="channels") return ch.nm||"Канал";
+  return o.frName || o.authorName || (ch && (ch.type||"personal")==="personal" ? ch.nm : "") || "Участник";
+}
+// Короткое описание сообщения для цитаты и закрепа: текст, иначе вид вложения.
+function replyPreviewOf(o){
+  if(o.t==="sk") return "🐱 Стикер";
+  if(o.t==="gift") return "🎁 "+(o.name||"Подарок");
+  if(o.tx) return String(o.tx);
+  if(o.img) return "📷 Фото";
+  if(o.video) return "🎥 Видео";
+  if(o.videoCircle) return "⭕ Видео-кружочек";
+  if(o.voice) return "🎤 Голосовое";
+  if(o.audio) return "🎵 "+(o.audio.name||"Аудио");
+  if(o.file) return "📎 "+(o.file.name||"Файл");
+  if(o.poll) return "📊 "+(o.poll.question||"Опрос");
+  if(o.contact) return "👤 "+(o.contact.nm||"Контакт");
+  return "Сообщение";
+}
+// Что показать в цитате ответа m: {fr, tx} или null (не ответ). Серверный ответ (replyToId) —
+// всегда по живому исходному из ленты этого устройства: правка исходного видна сразу; удалённое
+// или не загруженное (старше загруженного окна) — заглушка, без чужого текста. Местный снимок
+// m.reply — только у местных чатов и у старых записей без replyToId (до первой сверки с сервером).
+function replyQuoteOf(chatId, m, ch){
+  if(isDbMsgId(m.replyToId)){
+    const o=findMsgByDbId(chatId, m.replyToId);
+    if(!o) return {fr:"", tx:"Исходное сообщение не загружено"};
+    if(o._deletedForAll || o._deletedForMe) return {fr:"", tx:"Сообщение удалено"};
+    return {fr:replyAuthorOf(o, ch), tx:replyPreviewOf(o)};
+  }
+  if(m.reply) return {fr:String(m.reply.fr||""), tx:String(m.reply.tx||"")};
+  return null;
+}
+// Ссылка к исходному — только у серверного ответа (replyToId). Цитата местного чата и старый снимок
+// без replyToId — простой блок, как до C.1 (тап по нему на телефоне открывает меню сообщения).
+function replyQuoteHTML(m, rq){
+  const link=isDbMsgId(m.replyToId);
+  return `<div class="rprev${link?" rprev-link":""}"${link?` data-reply-of="${escHtml(String(m.id))}" onclick="jumpToReplyOrig(this)"`:""}>${rq.fr?`<div class="rprevnm">${escHtml(rq.fr)}</div>`:""}<div class="rprevtx">${escHtml(rq.tx)}</div></div>`;
+}
+// Режим ответа → поля нового сообщения: снимок для мгновенного показа и replyToId для сервера.
+function takeReplyInto(msg, chatId){
+  if(!S.reply) return;
+  const to=chatId===undefined ? S.chat : chatId;
+  if(S.reply.chat!==undefined && S.reply.chat!==to) return;   // ответ относится к другому чату
+  msg.reply={fr:S.reply.fr, tx:S.reply.tx};
+  if(isDbMsgId(S.reply.db)) msg.replyToId=S.reply.db;
+  cancelReply();
+}
+// Отложенная отправка не удалась — режим ответа возвращается вместе с текстом (если человек всё
+// ещё в том же чате и аккаунте и не начал другой ответ).
+function restoreReply(saved, chatId, owner){
+  if(!saved || S.reply || S.chat!==chatId || draftOwner()!==owner) return;
+  if(saved.chat!==undefined && saved.chat!==chatId) return;
+  S.reply=saved; el("rsnm").textContent=saved.fr; el("rstx").textContent=saved.tx; el("rstrip").classList.add("on");
+}
+// replyToId для тела POST /api/messages — только серверный id, иначе поля нет вовсе.
+function replyIdForPost(m){ return isDbMsgId(m && m.replyToId) ? m.replyToId : undefined; }
+// Строка ленты сообщения (у фото альбома — строка всего альбома) и короткая подсветка.
+function flashMsgRow(o){
+  const c=el("msgs"); if(!c || !o) return false;
+  const k=CSS.escape(String(o.id));
+  let row=c.querySelector(`.mrow[data-msg-id="${k}"]`);
+  if(!row){ const cell=c.querySelector(`.grp-cell[data-msg-id="${k}"]`); row=cell && cell.closest(".mrow"); }
+  if(!row) return false;
+  msgsJumpToRow(row,true) || row.scrollIntoView({block:"center",behavior:"smooth"});
+  row.style.transition="background .3s"; row.style.background="rgba(var(--acc-rgb),.15)"; setTimeout(()=>row.style.background="",800);
+  return true;
+}
+// Тап по цитате — к исходному, если оно в загруженной ленте. Догрузки старой истории в клиенте
+// нет (запрос с before сейчас пометил бы новые сообщения удалёнными), поэтому — только подсказка.
+function jumpToReplyOrig(node){
+  const key=node && node.dataset ? node.dataset.replyOf : null; if(key==null) return;
+  const m=(S.messages[S.chat]||[]).find(x=>String(x.id)===key); if(!m) return;
+  const o=isDbMsgId(m.replyToId) ? findMsgByDbId(S.chat, m.replyToId) : null;
+  if(o && (o._deletedForAll || o._deletedForMe)){ showToast("Сообщение удалено"); return; }
+  if(!o || !flashMsgRow(o)) showToast("Исходное сообщение не загружено");
+}
 function cancelReply(){ S.reply=null; el("rstrip").classList.remove("on"); }
 // ══════════════════════════════════════════════════════════════════
 // 21 окт 2026 (этап C): правка сообщения — на СЕРВЕРЕ (правило 16).
@@ -15871,7 +16121,7 @@ document.addEventListener("visibilitychange",()=>{
 // целиком до того, как что-то внутри успеет сработать.
 let msgsTouchStartAt=null;
 el("msgs")?.addEventListener("touchstart", function(e){ msgsTouchStartAt={ target:e.target, t:Date.now() }; }, {capture:true, passive:true});
-const MSG_OWN_ACTION_SEL="img.msg-img,video.grp-video,.msg-video,.voice-msg,.video-circle-wrap,.msg-file,.lnkprev,a.msg-link,.spoiler-overlay";
+const MSG_OWN_ACTION_SEL="img.msg-img,video.grp-video,.msg-video,.voice-msg,.video-circle-wrap,.msg-file,.lnkprev,a.msg-link,.spoiler-overlay,.rprev-link";
 el("msgs")?.addEventListener("click", function(e){
   {
     const ts=msgsTouchStartAt; msgsTouchStartAt=null;
@@ -15947,7 +16197,7 @@ el("msgs")?.addEventListener("click", function(e){
   // реакция), не мешаем ему работать как раньше
   // 20 окт 2026: и ссылка в тексте (a.msg-link) — раньше тап по ней на телефоне открывал меню сообщения,
   // а её собственный обработчик (внешний браузер через мост приложения) не вызывался.
-  if(bub && e.target.closest("img.msg-img,video.grp-video,.msg-video,.voice-msg,.video-circle-wrap,.poll-opt,.contact-item,.spoiler-overlay,.as-channel-tag,.msg-file,.gift-bubble,.lnkprev,.rxn,a.msg-link")) return;
+  if(bub && e.target.closest("img.msg-img,video.grp-video,.msg-video,.voice-msg,.video-circle-wrap,.poll-opt,.contact-item,.spoiler-overlay,.as-channel-tag,.msg-file,.gift-bubble,.lnkprev,.rxn,a.msg-link,.rprev-link")) return;
   // Короткий тап по обычному тексту/пустой части сообщения — открываем то
   // же меню действий, что раньше открывалось долгим нажатием. Гасим клик,
   // иначе он же долетит до document и глобальный обработчик выше немедленно
@@ -16342,92 +16592,157 @@ function ctxCopy(){ const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId);if(
 // ⚠️ Раньше закреп был полностью локальным (S.pinnedByChat только в
 // localStorage) — другие участники чата (и то же устройство после
 // перезахода) закреп вообще не видели, хотя действие проверяло права и
-// выглядело как настоящая групповая функция. Теперь реально сохраняется
-// на сервере (pinned_messages) и рассылается остальным через WS.
+// выглядело как настоящая групповая функция. Потом закреп стал записываться
+// на сервер (pinned_messages), но клиент искал и отправлял сообщение по
+// местному номеру m.id: запрос на сервер не уходил никогда, а список с сервера
+// (серверные id) панель не находила.
+// 24 окт 2026 (этап C.1): в серверном чате закреп — только по dbId, источник —
+// сервер. Ответ REST и кадр chat.pin.updated (его шлёт сервер всем участникам)
+// заменяют список целиком; S.pinnedByChat — лишь кэш для показа. Местный
+// номер на сервер не уходит. Местные чаты (Избранное и служебные) — как раньше,
+// по m.id и только на этом устройстве.
+// Когда пришёл последний кадр chat.pin.updated по чату. var без начального значения: loadChatsFromDB и
+// renderPinbar могут вызываться раньше, чем исполнится эта строка (let дал бы ReferenceError).
+// Две отметки: кадр сервера (и очистка истории) — новее и ответа REST, и /api/chats, запрошенных до него;
+// ответ REST — новее только /api/chats (два своих закрепа подряд не отбрасывают ответ второго).
+var _pinFrameSeq, _pinFrameAt, _pinRestAt, _pinbarShown;
+function pinFrameTick(chatId){ if(!_pinFrameAt) _pinFrameAt={}; _pinFrameSeq=(_pinFrameSeq||0)+1; _pinFrameAt[chatId]=_pinFrameSeq; }
+function pinRestTick(chatId){ if(!_pinRestAt) _pinRestAt={}; _pinFrameSeq=(_pinFrameSeq||0)+1; _pinRestAt[chatId]=_pinFrameSeq; }
+function pinSeqNow(){ return _pinFrameSeq||0; }
+function pinFrameNewerThan(chatId, seq){ return !!_pinFrameAt && (_pinFrameAt[chatId]||0) > seq; }
+function pinChangedSince(chatId, seq){ return pinFrameNewerThan(chatId, seq) || (!!_pinRestAt && (_pinRestAt[chatId]||0) > seq); }
+// Ключ закрепа сообщения: в серверном чате — dbId (или null, пока его нет), в местном — m.id.
+function pinKeyOf(chatId, m){ return isServerChatId(chatId) ? (isDbMsgId(m && m.dbId) ? m.dbId : null) : (m ? m.id : null); }
+function pinFind(chatId, key){
+  if(isServerChatId(chatId)) return findMsgByDbId(chatId, key);
+  return (S.messages[chatId]||[]).find(x=>x.id===key)||null;
+}
+// Список закрепов чата. В серверном чате остаются только серверные id; старое значение — местный
+// номер (сборки до ред. 26) — заменяется на dbId того же сообщения, если оно уже подтверждено, иначе
+// отбрасывается. Перевод — только для показа: на сервер уходит лишь то, что пришло с сервера.
+function pinListOf(chatId){
+  if(!S.pinnedByChat) S.pinnedByChat={};
+  const raw=Array.isArray(S.pinnedByChat[chatId]) ? S.pinnedByChat[chatId] : [];
+  if(!isServerChatId(chatId)) return raw.slice();
+  const ms=S.messages[chatId]||[], out=[];
+  for(const v of raw){
+    let k=null;
+    if(isDbMsgId(v)) k=v;
+    else if(typeof v==="number" || (typeof v==="string" && v!=="")){ const m=ms.find(x=>x.id===v); if(m && isDbMsgId(m.dbId)) k=m.dbId; }
+    if(k && !out.includes(k)) out.push(k);
+  }
+  if(out.length!==raw.length || out.some((k,n)=>k!==raw[n])) S.pinnedByChat[chatId]=out;
+  return out;
+}
+// Что показывать в панели: без сообщений, о которых это устройство уже знает, что они удалены
+// (сервер снимет закреп и пришлёт новый список). Не загруженное — остаётся, с заглушкой.
+// В местном чате — как раньше: только найденные и не удалённые.
+function pinVisibleList(chatId){
+  const srv=isServerChatId(chatId);
+  return pinListOf(chatId).filter(k=>{ const m=pinFind(chatId,k); return srv ? !(m && (m._deletedForAll||m._deletedForMe)) : !!(m && !m._deletedForAll && !m._deletedForMe); });
+}
+// Список с сервера (ответ REST или кадр) — целиком. Появился новый закреп — показываем его (как в
+// Telegram), иначе по возможности тот же, что был на экране.
+function applyServerPins(chatId, ids){
+  if(!S.pinnedByChat) S.pinnedByChat={};
+  const before=S.chat===chatId ? pinListOf(chatId) : [];
+  const cur=S.chat===chatId ? pinVisibleList(chatId)[S.pinViewIdx] : undefined;
+  S.pinnedByChat[chatId]=(Array.isArray(ids) ? ids : []).filter(isDbMsgId);
+  if(S.chat===chatId){
+    const vis=pinVisibleList(chatId), added=vis.filter(k=>!before.includes(k));
+    const i=added.length ? vis.indexOf(added[added.length-1]) : (cur===undefined ? -1 : vis.indexOf(cur));
+    S.pinViewIdx = i>=0 ? i : Math.max(0, Math.min(S.pinViewIdx||0, vis.length-1));
+    renderPinbar();
+  }
+  saveState();
+}
 async function ctxPin(){
   const m=(S.messages[S.chat]||[]).find(x=>x.id===S.ctxId); if(!m)return;
-  // Проверка прав на закрепление в группах
+  // Проверка прав на закрепление в группах (сервер проверяет сам и может отказать)
   if(!canI("pinMsg")){ showToast("🔒 Нет прав на закрепление"); return; }
-  if(!S.pinnedByChat[S.chat]) S.pinnedByChat[S.chat]=[];
-  const alreadyPinned = S.pinnedByChat[S.chat].includes(m.id);
-  // Системные/локально-ещё-не-подтверждённые сообщения — закрепляем только
-  // локально, синхронизировать с сервером нечего (нет настоящего chatId/messageId)
-  const canSync = typeof S.chat==="string" && S.chat.length>10 && typeof m.id==="string" && m.id.length>10;
-  if(canSync){
+  if(!S.pinnedByChat) S.pinnedByChat={};
+  const chatId=S.chat;
+  if(isServerChatId(chatId)){
+    const key=pinKeyOf(chatId, m);
+    if(!key){ showToast("⏳ Сообщение ещё отправляется — закрепить можно после отправки"); return; }
+    const alreadyPinned=pinListOf(chatId).includes(key);
+    const seq0=pinSeqNow();
+    let data;
     try{
-      const data = alreadyPinned
-        ? await apiDelete("/api/chats/"+S.chat+"/pin/"+m.id)
-        : await apiPost("/api/chats/"+S.chat+"/pin", {messageId:m.id}, true);
-      if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось изменить закреп")); return; }
-      S.pinnedByChat[S.chat]=data.pinnedMessageIds;
-      broadcastPinsUpdate();
+      data = alreadyPinned
+        ? await apiDelete("/api/chats/"+chatId+"/pin/"+key)
+        : await apiPost("/api/chats/"+chatId+"/pin", {messageId:key}, true);
     }catch(e){ showToast("❌ Нет связи с сервером"); return; }
-  } else {
-    const idx=S.pinnedByChat[S.chat].indexOf(m.id);
-    if(idx!==-1) S.pinnedByChat[S.chat].splice(idx,1); else S.pinnedByChat[S.chat].push(m.id);
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось изменить закреп")); return; }
+    // Кадр с сервера, пришедший, пока шёл запрос, новее ответа (сервер шлёт его и нам после записи).
+    if(!pinFrameNewerThan(chatId, seq0)){ pinRestTick(chatId); applyServerPins(chatId, data.pinnedMessageIds); }
+    if(!alreadyPinned && S.chat===chatId){ const i=pinVisibleList(chatId).indexOf(key); if(i>=0){ S.pinViewIdx=i; renderPinbar(); } }
+    showToast(alreadyPinned?"📌 Откреплено":"📌 Закреплено");
+    return;
   }
+  const list=S.pinnedByChat[chatId]||(S.pinnedByChat[chatId]=[]);
+  const alreadyPinned=list.includes(m.id);
+  const idx=list.indexOf(m.id);
+  if(idx!==-1) list.splice(idx,1); else list.push(m.id);
   showToast(alreadyPinned?"📌 Откреплено":"📌 Закреплено");
   S.pinViewIdx=0;
   renderPinbar(); saveState();
 }
-// Живое уведомление остальных участников чата — сам REST-эндпоинт только
-// сохраняет в БД, рассылку (как и у chat.updated) делает клиент через WS
-function broadcastPinsUpdate(){
-  const ch=S.chats.find(c=>c.id===S.chat); if(!ch)return;
-  wsSendReliable({type:"chat.pin.updated", payload:{chatId:S.chat, pinnedMessageIds:S.pinnedByChat[S.chat]||[], memberIds:getChatMemberIds(ch)}});
-}
 
+// _pinbarShown — что сейчас в панели: перерисовка ленты зовёт renderPinbar часто.
 function renderPinbar(){
   const pinbar=el("pinbar");
-  const pins=S.pinnedByChat[S.chat]||[];
-  if(!pins.length){ if(pinbar)pinbar.style.display="none"; return; }
-  const ms=S.messages[S.chat]||[];
-  // Валидные закреплённые (не удалённые)
-  const validPins=pins.filter(pid=>{ const m=ms.find(x=>x.id===pid); return m && !m._deletedForAll && !m._deletedForMe; });
-  if(!validPins.length){ if(pinbar)pinbar.style.display="none"; return; }
-  if(S.pinViewIdx>=validPins.length)S.pinViewIdx=0;
-  const curId=validPins[S.pinViewIdx];
-  const pm=ms.find(x=>x.id===curId);
-  if(pinbar)pinbar.style.display="flex";
-  if(el("pintxt"))el("pintxt").innerHTML=`<span style="color:var(--acc2);font-weight:600">📌 ${validPins.length>1?`(${S.pinViewIdx+1}/${validPins.length}) `:""}</span>${pm?escHtml(pm.tx||pm.sk||"Стикер"):"—"}`;
+  const pins=pinVisibleList(S.chat);
+  if(!_pinbarShown || _pinbarShown.chat!==S.chat){ if(_pinbarShown) S.pinViewIdx=0; }
+  let html="", show=pins.length>0;
+  if(show){
+    if(!(S.pinViewIdx>=0 && S.pinViewIdx<pins.length)) S.pinViewIdx=0;
+    const pm=pinFind(S.chat, pins[S.pinViewIdx]);
+    // Не загруженное (старше окна истории) — заглушка; текст — только как текст.
+    html=`<span style="color:var(--acc2);font-weight:600">📌 ${pins.length>1?`(${S.pinViewIdx+1}/${pins.length}) `:""}</span>${pm?escHtml(replyPreviewOf(pm)):"Закреплённое сообщение"}`;
+  }
+  const st={chat:S.chat, show, html};
+  if(_pinbarShown && _pinbarShown.chat===st.chat && _pinbarShown.show===st.show && _pinbarShown.html===st.html && pinbar && pinbar.style.display===(show?"flex":"none")) return;
+  _pinbarShown=st;
+  if(pinbar) pinbar.style.display=show?"flex":"none";
+  if(show && el("pintxt")) el("pintxt").innerHTML=html;
 }
 
-// Клик по pinbar — листает закреплённые и скроллит к ним
+// Клик по pinbar — к текущему закреплённому (по dbId) и листание к следующему
 function cyclePins(){
-  const pins=(S.pinnedByChat[S.chat]||[]).filter(pid=>{ const m=(S.messages[S.chat]||[]).find(x=>x.id===pid); return m && !m._deletedForAll && !m._deletedForMe; });
+  const pins=pinVisibleList(S.chat);
   if(!pins.length)return;
-  const curId=pins[S.pinViewIdx];
-  // Скроллим к закреплённому
-  const row=document.querySelector(`.mrow[data-id="${curId}"]`);
-  if(row){ msgsJumpToRow(row,true) || row.scrollIntoView({block:"center",behavior:"smooth"}); row.style.transition="background .3s"; row.style.background="rgba(var(--acc-rgb),.15)"; setTimeout(()=>row.style.background="",800); }
+  if(!(S.pinViewIdx>=0 && S.pinViewIdx<pins.length)) S.pinViewIdx=0;
+  const pm=pinFind(S.chat, pins[S.pinViewIdx]);
+  if(!pm || !flashMsgRow(pm)) showToast("Закреплённое сообщение не загружено");
   S.pinViewIdx=(S.pinViewIdx+1)%pins.length;
   renderPinbar();
 }
 
-// Показать список всех закреплённых
+// Показать число закреплённых (прежний помощник, вызовов нет)
 function showAllPins(){
-  const pins=(S.pinnedByChat[S.chat]||[]).filter(pid=>{ const m=(S.messages[S.chat]||[]).find(x=>x.id===pid); return m && !m._deletedForAll && !m._deletedForMe; });
+  const pins=pinVisibleList(S.chat);
   if(!pins.length){ showToast("Нет закреплённых"); return; }
-  const ms=S.messages[S.chat]||[];
   showToast(`📌 Закреплено: ${pins.length}`);
 }
 async function unpinMsg(){
-  const pins=S.pinnedByChat[S.chat]||[];
-  const valid=pins.filter(pid=>{ const m=(S.messages[S.chat]||[]).find(x=>x.id===pid); return m && !m._deletedForAll && !m._deletedForMe; });
+  const chatId=S.chat;
+  const valid=pinVisibleList(chatId);
   if(!valid.length) return;
-  const curId=valid[S.pinViewIdx % valid.length];
-  const canSync = typeof S.chat==="string" && S.chat.length>10 && typeof curId==="string" && curId.length>10;
-  if(canSync){
-    try{
-      const data = await apiDelete("/api/chats/"+S.chat+"/pin/"+curId);
-      if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось открепить")); return; }
-      S.pinnedByChat[S.chat]=data.pinnedMessageIds;
-      broadcastPinsUpdate();
-    }catch(e){ showToast("❌ Нет связи с сервером"); return; }
-  } else {
-    const idx=S.pinnedByChat[S.chat].indexOf(curId);
-    if(idx!==-1)S.pinnedByChat[S.chat].splice(idx,1);
+  const curId=valid[(S.pinViewIdx||0) % valid.length];
+  if(isServerChatId(chatId)){
+    if(!isDbMsgId(curId)) return;
+    const seq0=pinSeqNow();
+    let data;
+    try{ data = await apiDelete("/api/chats/"+chatId+"/pin/"+curId); }
+    catch(e){ showToast("❌ Нет связи с сервером"); return; }
+    if(!data || !data.success){ showToast("❌ "+(data&&data.error||"Не удалось открепить")); return; }
+    if(!pinFrameNewerThan(chatId, seq0)){ pinRestTick(chatId); applyServerPins(chatId, data.pinnedMessageIds); }
+    return;
   }
+  const list=S.pinnedByChat[chatId]||[];
+  const idx=list.indexOf(curId);
+  if(idx!==-1) list.splice(idx,1);
   S.pinViewIdx=0;
   renderPinbar(); saveState();
 }
@@ -17925,9 +18240,7 @@ function deleteChatCompletely(){
         if(S.chat===chatId) openChat(77777);
         renderChats();
         showToast("Вы покинули «"+ch.nm+"»");
-        if(isRealChat){
-          apiDelete("/api/chats/"+chatId+"/leave").catch(e=>console.warn("leave chat error:",e));
-        }
+        if(isRealChat) trackChatLeave(chatId);   // C.1.1: устаревший снимок списка чат не вернёт
       }
     });
     return;
@@ -17950,7 +18263,7 @@ function deleteChatCompletely(){
       const isRealChat = typeof chatId==="string" && chatId.length>10;
       const memberIds = getChatMemberIds(ch);
 
-      S.chats = S.chats.filter(c => c.id !== chatId); forgetChatDraft(chatId);
+      S.chats = S.chats.filter(c => c.id !== chatId); if(!isRealChat) forgetChatDraft(chatId);
       delete S.messages[chatId];
       saveState();
 
@@ -17958,10 +18271,7 @@ function deleteChatCompletely(){
       renderChats();
       showToast("🗑️ Чат удалён");
 
-      if(isRealChat){
-        apiDelete("/api/chats/"+chatId).catch(e=>console.warn("delete chat error:",e));
-        wsSendReliable({type:"chat.delete", payload:{chatId, memberIds}});
-      }
+      if(isRealChat) serverDeleteChat(chatId, memberIds);   // C.1.1: отказ сервера — чат вернётся
     }
   });
 }
@@ -17980,7 +18290,8 @@ function renderRightPanelMedia(ch){
       if(m.t==="sk" && m.sk && !seen.has(m.sk)){ seen.add(m.sk); used.push(m.sk); }
     }
     if(used.length){
-      rpStk.innerHTML=used.map(sk=>`<div style="font-size:32px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--bg3);cursor:pointer;overflow:hidden" onclick="sendSticker('${sk}')" title="Отправить ещё раз">${isStickerImg(sk)?`<img src="${sk}" style="width:100%;height:100%;object-fit:contain">`:sk}</div>`).join("");
+      _rpRecentStickers=used;   // C.1.1: стикер по номеру и безопасный вывод (здесь и чужие стикеры)
+      rpStk.innerHTML=used.map((sk,i)=>`<div style="font-size:32px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--bg3);cursor:pointer;overflow:hidden" onclick="sendRecentSticker(${i})" title="Отправить ещё раз">${stickerHTML(sk,"width:100%;height:100%;object-fit:contain")}</div>`).join("");
     } else {
       // В этом чате стикеров ещё не было — показываем понятный плейсхолдер
       // (раньше тут были превью первых 4 паков — выглядело как рабочие
@@ -18349,7 +18660,7 @@ function openEditProfile(){
   const u=S.user;
   const av=el("prof-av-btn");
   if(av){
-    if(u.avatar){av.innerHTML=`<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;av.style.background="none";}
+    if(safeImgSrc(u.avatar)){av.innerHTML=`<img src="${escHtml(safeImgSrc(u.avatar))}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;av.style.background="none";}
     else{av.textContent=u.initials||"Я";av.style.background=COLS[0];}
   }
   if(el("prof-name"))el("prof-name").value=u.name||"";
@@ -19648,7 +19959,7 @@ function openMemberProfile(memberId){
   const myRole=myRoleIn(ch);
   const isSelf=String(member.id)===String(S.user?.id);
 
-  el("mp-avatar").innerHTML = member.avatar ? `<img src="${member.avatar}" style="width:100%;height:100%;object-fit:cover">` : (member.nm||"?")[0];
+  el("mp-avatar").innerHTML = safeImgSrc(member.avatar) ? `<img src="${escHtml(safeImgSrc(member.avatar))}" style="width:100%;height:100%;object-fit:cover">` : escHtml(String(member.nm||"?")[0]);
   el("mp-name").textContent = member.nm||"Участник";
   el("mp-role").textContent = member.role==="owner"?"👑 Владелец":(member.role==="admin"?"⭐ "+(member.tag||"Админ"):"Участник")+(member.canWrite===false?" · 🔇 не может писать":"");
   el("mp-uname-row").style.display = member.uname?"block":"none";
@@ -20064,18 +20375,33 @@ async function sendForwardedMsg(localMsg, m, toId, toCh, hideAuthor, srcChatId){
     // Демо-чат или сообщение без серверного id (совсем старые локальные
     // данные) — реально отправить некуда, помечаем как неотправленное,
     // а не тихо притворяемся, что всё получилось.
-    if(!m.dbId){ localMsg.failed=true; if(S.chat===toId) renderMsgs(); saveState(); }
+    if(!m.dbId && isRealTarget){
+      // C.1.1: источник — по местному номеру: повтор перешлёт его, когда он сам дойдёт до сервера.
+      // (В локальный чат — Избранное и т. п. — копия просто остаётся местной, отправлять её некуда.)
+      if(!localMsg._fwdSrc) localMsg._fwdSrc={dbId:null, localId:m.id, chatId:srcChatId, hide:!!hideAuthor, e2e:!!(m.e2e||m.e2eIntent)};
+      localMsg.failed=true; if(S.chat===toId) renderMsgs(); saveState();
+    }
     return;
   }
+  // C.1.1: источник — на локальной копии, чтобы «Отправить повторно» повторил именно пересылку.
+  if(!localMsg._fwdSrc) localMsg._fwdSrc={dbId:m.dbId, chatId:srcChatId, hide:!!hideAuthor, e2e:!!(m.e2e||m.e2eIntent)};
   const body=buildForwardPostBody(m, hideAuthor);
   body.chatId=toId;
   if(!localMsg.clientMsgId) localMsg.clientMsgId=genClientMsgId();
   body.clientMsgId=localMsg.clientMsgId;
   try{
     const d=await apiPost("/api/messages", body, true);
-    if(!d || !d.success){ localMsg.failed=true; if(S.chat===toId) renderMsgs(); saveState(); if(sendRefused(d)) showSendRefusedToast(d.error); return; }
+    // C.1.1: любой отказ сервера — тост с его текстом (у отказов пересылки — нет доступа к источнику,
+    // защита от пересылки — кода нет, и раньше сообщение молча оставалось «не отправлено»).
+    if(!d || !d.success){ localMsg.failed=true; if(S.chat===toId) renderMsgs(); saveState(); if(d && d.error) showSendRefusedToast(d.error); return; }
     const dbId=d?.message?.id||null;
-    if(dbId){ adoptSentMessage(localMsg, d.message); saveState(); }
+    if(dbId){
+      adoptSentMessage(localMsg, d.message);
+      // C.1.1: вложение копии — как его записал сервер (из исходной строки). Если источник пересылали, пока он
+      // ещё загружался, у копии осталось местное превью (blob:/data:), и после перезагрузки оно бы не открылось.
+      if("media_url" in d.message && (d.message.media_url||null)!==msgMediaUrl(localMsg)){ applyMediaFields(localMsg, stateFromDbRow(d.message)); if(S.chat===toId) renderMsgs(); }
+      saveState();
+    }
     const memberIds=getChatMemberIds(toCh);
     const wsMemberIds = d.blockedFromRecipientId ? memberIds.filter(id=>id!==d.blockedFromRecipientId) : memberIds;
     wsSendReliable({type:"message.send", payload:{
@@ -20514,7 +20840,8 @@ function renderStore(){
     const priceHtml = basePrice ? `<span style="text-decoration:line-through;color:var(--tx3);font-size:11px;margin-right:4px">${basePrice}</span>${price} ${curr.sym}` : `${price} ${curr.sym}`;
     return `<div class="cpkg${pop?" pop":""}" onclick="openBuyM(${p.cr},${price},'${curr.sym}')">${discountBadge||(pop?`<div class="pkgb">Хит</div>`:"")}<div class="pkgico">${uiIcon("gem",26,'style="color:var(--cr)"')}</div><div class="pkgamt">${p.cr.toLocaleString()}</div><div class="pkgpr">${priceHtml}</div>${p.bonus?`<div class="pkgbo">+${String(p.bonus).replace(/^[+]/,"")} CR</div>`:""}</div>`;
   }).join("");
-  el("stkst").innerHTML=S.packs.map(p=>{const owned=p.free||S.owned.includes(p.id)||S.vip?.active;const prev=p.stickers.slice(0,4).map(s=>isStickerImg(s)?`<img src="${s}" style="width:28px;height:28px;object-fit:contain">`:`<span>${s}</span>`).join("");return`<div class="scard"><div class="scprev">${prev}</div><div class="scbot"><div><div class="scnm">${p.nm}</div><div class="scdesc">${p.desc}</div></div><button class="scbuy${owned?" owned":""}" ${owned?"disabled":""} onclick="${owned?"":` openStkModal(${p.id})`}">${owned?(p.free?"Бесплатно":(S.vip?.active&&!S.owned.includes(p.id)?"VIP":"Куплено")):`${p.price} CR`}</button></div></div>`;}).join("");
+  // C.1.1: витрина наборов — название, описание, цена и стикеры только экранированными.
+  el("stkst").innerHTML=S.packs.map((p,pi)=>{const owned=p.free||S.owned.includes(p.id)||S.vip?.active;const prev=(Array.isArray(p.stickers)?p.stickers:[]).slice(0,4).map(s=>{const sh=stickerHTML(s,"width:28px;height:28px;object-fit:contain");return sh.startsWith("<img")?sh:`<span>${sh}</span>`;}).join("");return`<div class="scard"><div class="scprev">${prev}</div><div class="scbot"><div><div class="scnm">${escHtml(String(p.nm??""))}</div><div class="scdesc">${escHtml(String(p.desc??""))}</div></div><button class="scbuy${owned?" owned":""}" ${owned?"disabled":""} onclick="${owned?"":` openStkModal(S.packs[${pi}].id)`}">${owned?(p.free?"Бесплатно":(S.vip?.active&&!S.owned.includes(p.id)?"VIP":"Куплено")):`${escHtml(String(p.price??""))} CR`}</button></div></div>`;}).join("");
 }
 function openBuyM(cr,price,sym){ S.buyPkg={cr,price}; el("mbpkg").textContent=cr.toLocaleString()+" CR"; el("mbcr").textContent=cr.toLocaleString()+" 💎"; el("mbpr").textContent=price+" "+sym; if(el("mbuy-method")) el("mbuy-method").value="tinkoff"; updateBuyMethodHint(); openM("m-buy"); }
 
@@ -21082,6 +21409,21 @@ async function grantVipForever(userId, label){
 // файл) вместо обычного эмодзи-символа — старые паки остаются эмодзи
 // (обратная совместимость), новые создаются загрузкой картинок.
 function isStickerImg(s){ return typeof s==="string" && (s.startsWith("http")||s.startsWith("data:")); }
+// 24 окт 2026 (C.1.1): разметка стикера — только безопасный вывод. Картинка — <img> с адресом https или
+// data:image (safeImgSrc) в экранированном атрибуте; всё остальное (эмодзи, сомнительный адрес) —
+// экранированный текст (Twemoji потом подменяет эмодзи по DOM, как и раньше). Раньше текст стикера
+// вставлялся как HTML: «стикер» собеседника вида <img src=x onerror=…> исполнялся у получателя, а адрес
+// с кавычкой выходил из атрибута src. Сервер такой стикер больше не принимает (services/stickers.js),
+// но кэш на устройстве и старые записи могли его сохранить.
+function stickerHTML(sk, imgStyle){
+  const s=String(sk==null?"":sk);
+  const src=isStickerImg(s) ? safeImgSrc(s) : "";
+  return src ? `<img src="${escHtml(src)}" style="${imgStyle}">` : escHtml(s);
+}
+// Стикер из набора и из «недавних» — по номеру, а не строкой внутри onclick.
+function sendPackSticker(pi, si){ const p=S.packs[pi]; const s=p && Array.isArray(p.stickers) ? p.stickers[si] : null; if(s!=null) sendSticker(s); }
+var _rpRecentStickers;
+function sendRecentSticker(i){ const s=(_rpRecentStickers||[])[i]; if(s!=null) sendSticker(s); }
 
 async function loadStickerPacks(){
   try{
@@ -23350,7 +23692,7 @@ function renderStoryAuthorChoice(){
   if(!channels.length){ wrap.style.display="none"; return; }
   wrap.style.display="block";
   let html=`<div style="font-size:11.5px;color:var(--tx2);margin-bottom:6px">Опубликовать от имени:</div><div style="display:flex;gap:6px;flex-wrap:wrap">`;
-  html+=`<div class="story-author-opt${!selectedStoryChannel?" on":""}" onclick="pickStoryAuthor(null)"><div class="sas-av" style="background:${colBg(S.user?.col||0)}">${(S.user?.name||"Я")[0]}</div>Я</div>`;
+  html+=`<div class="story-author-opt${!selectedStoryChannel?" on":""}" onclick="pickStoryAuthor(null)"><div class="sas-av" style="background:${colBg(S.user?.col||0)}">${escHtml(String(S.user?.name||"Я")[0])}</div>Я</div>`;
   channels.forEach(c=>{
     html+=`<div class="story-author-opt${selectedStoryChannel===c.id?" on":""}" onclick="pickStoryAuthor('${c.id}')"><div class="sas-av" style="background:${colBg(c.col)}">${c.ini}</div>${c.nm}</div>`;
   });
@@ -24217,8 +24559,8 @@ async function renderMyCustomPacks(){
       return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--brd)">
       <div style="font-size:22px">🎨</div>
       <div style="flex:1">
-        <div style="font-weight:600;font-size:12.5px">${p.name}</div>
-        <div style="font-size:10.5px;color:var(--tx3)">@${p.link} · ${count} стикеров · ${p.price?p.price+" CR":"Бесплатно"}</div>
+        <div style="font-weight:600;font-size:12.5px">${escHtml(String(p.name??""))}</div>
+        <div style="font-size:10.5px;color:var(--tx3)">@${escHtml(String(p.link??""))} · ${count} стикеров · ${p.price?escHtml(String(p.price))+" CR":"Бесплатно"}</div>
       </div>
       <span class="bg ${p.status==="moderation"?"bga":p.status==="approved"?"bgg":"bgr"}">${p.status==="moderation"?"На модерации":p.status==="approved"?"Одобрен":"Отклонён"}</span>
     </div>`;
